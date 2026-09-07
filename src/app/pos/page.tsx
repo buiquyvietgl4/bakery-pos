@@ -920,8 +920,8 @@ export default function POSPage() {
 
       {/* ── MODAL 1: TẠO ĐƠN ĐẶT BÁNH KEM (CUSTOM CAKE PREORDER) ── */}
       {isPreorderModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto animate-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-600 flex items-center justify-center">
@@ -1289,8 +1289,8 @@ export default function POSPage() {
 
       {/* ── MODAL 2: DANH SÁCH LỊCH GIAO BÁNH ĐẶT TRƯỚC ── */}
       {isPreorderListOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in duration-200">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-pink-600" />
@@ -1352,8 +1352,8 @@ export default function POSPage() {
 
       {/* ── MODAL 3: QUẢN LÝ CA BÁN HÀNG & KIỂM KÉT ── */}
       {isShiftModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl max-h-[90dvh] overflow-y-auto overscroll-contain space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
                 <Wallet className="w-5 h-5 text-amber-600" />
@@ -1452,23 +1452,25 @@ export default function POSPage() {
 
       {/* ── MODAL 4: THANH TOÁN BÁN TẠI QUẦY ── */}
       {isCheckoutOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in duration-200">
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl flex flex-col max-h-[92dvh] animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between pb-2.5 border-b border-zinc-100 shrink-0">
               <h3 className="font-black text-lg text-zinc-900">Xác Nhận Thanh Toán</h3>
-              <button onClick={() => setIsCheckoutOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+              <button onClick={() => setIsCheckoutOpen(false)} className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="text-center py-4 bg-amber-50 rounded-2xl border border-amber-200/60">
-              <span className="text-xs text-amber-700 font-bold uppercase tracking-wider">
-                Số tiền phải thu
-              </span>
-              <div className="text-3xl font-black text-amber-600 mt-0.5">
-                {totalAmount.toLocaleString('vi-VN')}₫
+            {/* Vùng nội dung có thể cuộn trên điện thoại */}
+            <div className="overflow-y-auto flex-1 py-2.5 space-y-4 pr-1 overscroll-contain">
+              <div className="text-center py-3 sm:py-4 bg-amber-50 rounded-2xl border border-amber-200/60">
+                <span className="text-xs text-amber-700 font-bold uppercase tracking-wider">
+                  Số tiền phải thu
+                </span>
+                <div className="text-2xl sm:text-3xl font-black text-amber-600 mt-0.5">
+                  {totalAmount.toLocaleString('vi-VN')}₫
+                </div>
               </div>
-            </div>
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-700">Phương thức thanh toán:</label>
@@ -1673,12 +1675,14 @@ export default function POSPage() {
                 </p>
               </div>
             )}
+            </div>
 
-            <div className="flex gap-3 pt-2">
+            {/* Nút hành động ghim cố định ở đáy modal (Luôn nhìn thấy, không bị khuất) */}
+            <div className="flex gap-3 pt-3 border-t border-zinc-100 shrink-0">
               <button
                 type="button"
                 onClick={() => setIsCheckoutOpen(false)}
-                className="flex-1 py-3 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50"
+                className="flex-1 py-3 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
               >
                 Hủy
               </button>
@@ -1686,7 +1690,7 @@ export default function POSPage() {
                 type="button"
                 disabled={processingOrder}
                 onClick={handleCompleteOrder}
-                className="flex-2 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5"
+                className="flex-2 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 cursor-pointer"
               >
                 {processingOrder ? 'Đang xử lý...' : 'Hoàn Tất Đơn & In Bill'}
               </button>
@@ -1697,8 +1701,8 @@ export default function POSPage() {
 
       {/* ── MODAL 5: HÓA ĐƠN IN NHIỆT / PHIẾU HẸN GIAO BÁNH ── */}
       {completedOrder && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl animate-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-4 sm:p-6 space-y-4 shadow-2xl max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in duration-200">
             <div className="p-4 bg-amber-50/40 rounded-2xl border border-zinc-300 text-zinc-900 font-mono text-xs space-y-3">
               <div className="text-center space-y-1 border-b border-dashed border-zinc-300 pb-2">
                 <h2 className="font-black text-sm tracking-wider">TIỆM BÁNH ABC</h2>
