@@ -3,6 +3,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { 
+  broadcastOrderStatusUpdate, 
+  broadcastClearDemoOrders, 
+  subscribeCrossDeviceSync, 
+  syncOrderToSupabase 
+} from '@/lib/supabase/realtimeSync';
+import { 
   ChefHat, Clock, CheckCircle2, ArrowRight, Flame, Sparkles, 
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
   ShoppingBag, Phone, User
@@ -126,7 +132,7 @@ export default function KitchenPage() {
         }
       }
 
-      // 2. Thử đồng bộ từ Supabase nếu có mạng
+      // 2. Đồng bộ từ Supabase nếu có kết nối mạng
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         try {
           const { data, error } = await supabase
@@ -139,6 +145,9 @@ export default function KitchenPage() {
               created_at,
               preorder_pickup_at,
               notes,
+              customer_name,
+              customer_phone,
+              cake_message,
               order_items (
                 id,
                 product_name_snapshot,
@@ -146,26 +155,60 @@ export default function KitchenPage() {
                 notes
               )
             `)
-            .in('status', ['pending', 'preparing', 'ready'])
-            .order('created_at', { ascending: true });
+            .order('created_at', { ascending: false })
+            .limit(50);
 
           if (!error && data && data.length > 0) {
-            const sbOrders: KDSOrder[] = data.map((o: any) => ({
-              id: o.id,
-              order_number: o.order_number || 'BK-XXX',
-              order_type: o.order_type,
-              status: o.status,
-              created_at: o.created_at,
-              preorder_pickup_at: o.preorder_pickup_at,
-              notes: o.notes,
-              items: o.order_items || [],
-            }));
+            // Map từ Supabase
+            const sbMap = new Map<string, any>();
+            data.forEach((so: any) => {
+              if (so.order_number) sbMap.set(so.order_number, so);
+            });
 
-            // Merge Supabase orders with local orders (local takes precedence if matching id)
-            const map = new Map<string, KDSOrder>();
-            sbOrders.forEach((so) => map.set(so.order_number, so));
-            localOrders.forEach((lo) => map.set(lo.order_number, lo));
-            localOrders = Array.from(map.values());
+            // Gộp đơn: Trạng thái từ Supabase luôn được ưu tiên cao nhất
+            // Nếu một đơn đã được điện thoại bấm sang "preparing" hoặc "completed" trên Supabase,
+            // máy tính sẽ tự động cập nhật theo trạng thái mới nhất đó!
+            const mergedMap = new Map<string, KDSOrder>();
+
+            // 1. Đưa các đơn cục bộ vào trước
+            localOrders.forEach((lo) => {
+              if (lo.order_number) mergedMap.set(lo.order_number, lo);
+            });
+
+            // 2. Phủ dữ liệu Supabase lên (dữ liệu Supabase là chân lý giữa các thiết bị)
+            data.forEach((so: any) => {
+              const existing = mergedMap.get(so.order_number);
+              const merged: KDSOrder = {
+                id: so.id || existing?.id || so.order_number,
+                order_number: so.order_number || existing?.order_number || 'BK-XXX',
+                order_type: so.order_type || existing?.order_type || 'takeaway',
+                status: so.status, // Trạng thái Supabase được ưu tiên
+                created_at: so.created_at || existing?.created_at || new Date().toISOString(),
+                preorder_pickup_at: so.preorder_pickup_at || existing?.preorder_pickup_at || '',
+                notes: so.notes || existing?.notes || '',
+                customer_name: so.customer_name || existing?.customer_name || '',
+                customer_phone: so.customer_phone || existing?.customer_phone || '',
+                cake_message: so.cake_message || existing?.cake_message || '',
+                items: so.order_items && so.order_items.length > 0
+                  ? so.order_items.map((it: any) => ({
+                      id: it.id,
+                      product_name_snapshot: it.product_name_snapshot || 'Bánh',
+                      quantity: it.quantity || 1,
+                      notes: it.notes || '',
+                    }))
+                  : (existing?.items || []),
+              };
+              mergedMap.set(so.order_number, merged);
+            });
+
+            localOrders = Array.from(mergedMap.values());
+
+            // Lưu ngược lại localStorage để các lần mở sau luôn có dữ liệu mới nhất
+            if (typeof window !== 'undefined') {
+              try {
+                localStorage.setItem('bakery_orders', JSON.stringify(localOrders));
+              } catch {}
+            }
           }
         } catch (sbErr) {
           console.warn('Supabase KDS notice:', sbErr);
@@ -190,7 +233,7 @@ export default function KitchenPage() {
   useEffect(() => {
     loadOrders();
 
-    // Lắng nghe sự kiện đồng bộ cục bộ (cùng tab và khác tab)
+    // 1. Lắng nghe sự kiện đồng bộ cục bộ (cùng máy khác tab)
     const handleLocalUpdate = () => {
       loadOrders();
     };
@@ -204,29 +247,85 @@ export default function KitchenPage() {
     window.addEventListener('bakery_orders_updated', handleLocalUpdate);
     window.addEventListener('storage', handleStorageChange);
 
-    // Polling định kỳ mỗi 3 giây để bắt đơn từ các máy/tab khác
+    // 2. Polling định kỳ mỗi 3 giây làm chốt an toàn
     const pollTimer = setInterval(loadOrders, 3000);
 
-    // Lắng nghe Supabase Realtime
-    let channel: any = null;
-    try {
-      channel = supabase
-        .channel('kds-orders-realtime')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'orders' },
-          () => {
-            loadOrders();
+    // 3. Kênh Supabase Realtime Broadcast & Postgres Changes (Đồng bộ đa thiết bị tức thì ~50ms)
+    const unsubscribeSync = subscribeCrossDeviceSync({
+      onStatusUpdate: (payload) => {
+        // Nhận lệnh đổi bước từ điện thoại hoặc máy khác
+        setOrders((prev) => {
+          const exists = prev.some((o) => o.order_number === payload.order_number || o.id === payload.order_number);
+          if (payload.status === 'completed' || payload.status === 'cancelled') {
+            return prev.filter((o) => o.order_number !== payload.order_number && o.id !== payload.order_number);
           }
-        )
-        .subscribe();
-    } catch {}
+          if (exists) {
+            return prev.map((o) =>
+              (o.order_number === payload.order_number || o.id === payload.order_number)
+                ? { ...o, status: payload.status }
+                : o
+            );
+          }
+          if (payload.order_data) {
+            return [...prev, { ...payload.order_data, status: payload.status }];
+          }
+          return prev;
+        });
+
+        // Cập nhật ngay vào localStorage của máy này
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem('bakery_orders');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const updated = parsed.map((o: any) =>
+                  (o.order_number === payload.order_number || o.id === payload.order_number)
+                    ? { ...o, status: payload.status, updated_at: payload.updated_at }
+                    : o
+                );
+                localStorage.setItem('bakery_orders', JSON.stringify(updated));
+              }
+            }
+          } catch {}
+        }
+      },
+      onNewOrder: () => {
+        loadOrders();
+      },
+      onClearDemo: () => {
+        if (typeof window !== 'undefined') {
+          try {
+            const raw = localStorage.getItem('bakery_orders');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const filtered = parsed.filter(
+                  (o: any) =>
+                    o.id !== 'kds-demo-1' &&
+                    o.id !== 'kds-demo-2' &&
+                    o.order_number !== 'BK-PRE-20260908-01' &&
+                    o.order_number !== 'BK-20260907-002'
+                );
+                localStorage.setItem('bakery_orders', JSON.stringify(filtered));
+              }
+            }
+            localStorage.setItem('bakery_kds_seeded', 'true');
+            window.dispatchEvent(new Event('bakery_orders_updated'));
+          } catch {}
+        }
+        loadOrders();
+      },
+      onDbChange: () => {
+        loadOrders();
+      },
+    });
 
     return () => {
       window.removeEventListener('bakery_orders_updated', handleLocalUpdate);
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(pollTimer);
-      if (channel) supabase.removeChannel(channel);
+      unsubscribeSync();
     };
   }, [loadOrders]);
 
@@ -237,10 +336,13 @@ export default function KitchenPage() {
     else if (currentStatus === 'preparing') nextStatus = 'ready';
     else if (currentStatus === 'ready') nextStatus = 'completed';
 
-    // 1. Cập nhật ngay trên giao diện React
+    const targetOrder = orders.find((o) => o.id === orderId || o.order_number === orderId);
+    const orderNum = targetOrder?.order_number || orderId;
+
+    // 1. Cập nhật ngay trên giao diện React của thiết bị hiện tại
     setOrders((prev) =>
       prev
-        .map((o) => (o.id === orderId || o.order_number === orderId ? { ...o, status: nextStatus } : o))
+        .map((o) => (o.id === orderId || o.order_number === orderId || o.order_number === orderNum ? { ...o, status: nextStatus } : o))
         .filter((o) => o.status !== 'completed')
     );
 
@@ -252,7 +354,13 @@ export default function KitchenPage() {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             const updated = parsed.map((o: any) => {
-              if (o.id === orderId || o.local_id === orderId || o.order_number === orderId || o.orderNumber === orderId) {
+              if (
+                o.id === orderId || 
+                o.local_id === orderId || 
+                o.order_number === orderId || 
+                o.orderNumber === orderId || 
+                o.order_number === orderNum
+              ) {
                 return { ...o, status: nextStatus, updated_at: new Date().toISOString() };
               }
               return o;
@@ -267,7 +375,7 @@ export default function KitchenPage() {
           const parsedPo = JSON.parse(rawPo);
           if (Array.isArray(parsedPo)) {
             const updatedPo = parsedPo.map((po: any) => {
-              if (po.id === orderId || po.orderNumber === orderId) {
+              if (po.id === orderId || po.orderNumber === orderId || po.orderNumber === orderNum) {
                 return { ...po, status: nextStatus };
               }
               return po;
@@ -276,18 +384,20 @@ export default function KitchenPage() {
           }
         }
 
-        // Phát sự kiện để các tab khác (POS / Admin) nhận biết ngay
+        // Phát sự kiện để các tab khác trên cùng máy nhận biết ngay
         window.dispatchEvent(new Event('bakery_orders_updated'));
       } catch (err) {
         console.warn('Lỗi lưu trạng thái đơn vào localStorage:', err);
       }
     }
 
-    // 3. Cập nhật nền lên Supabase nếu có mạng
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
-      try {
-        await supabase.from('orders').update({ status: nextStatus }).eq('id', orderId);
-      } catch {}
+    // 3. PHÁT SÓNG REALTIME BROADCAST SANG CÁC THIẾT BỊ KHÁC (Điện thoại <-> Máy tính)
+    // Máy tính sẽ nhận được cập nhật tức thì trong vòng ~50ms mà không cần F5!
+    await broadcastOrderStatusUpdate(orderNum, nextStatus, targetOrder);
+
+    // 4. Đồng bộ nền lên Supabase Database (PostgreSQL) để lưu vĩnh viễn
+    if (targetOrder) {
+      syncOrderToSupabase(targetOrder, nextStatus);
     }
   };
 
@@ -317,6 +427,8 @@ export default function KitchenPage() {
           console.warn('Lỗi dọn đơn mẫu:', e);
         }
       }
+      // Phát sóng để tất cả điện thoại/máy tính khác cùng xóa đơn mẫu
+      broadcastClearDemoOrders();
     }
   };
 

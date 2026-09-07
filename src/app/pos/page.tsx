@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { exportToCSV } from '@/lib/utils/exportExcel';
+import { broadcastNewOrder, subscribeCrossDeviceSync } from '@/lib/supabase/realtimeSync';
 
 interface CartItem {
   product: CachedProduct;
@@ -322,9 +323,18 @@ export default function POSPage() {
 
     window.addEventListener('bakery_orders_updated', handleSync);
     window.addEventListener('storage', handleStorage);
+
+    // Kênh đồng bộ đa thiết bị tức thì (Điện thoại bếp bấm đổi trạng thái -> Quầy POS cập nhật ngay)
+    const unsubscribeSync = subscribeCrossDeviceSync({
+      onStatusUpdate: () => reloadOrdersData(),
+      onNewOrder: () => reloadOrdersData(),
+      onDbChange: () => reloadOrdersData(),
+    });
+
     return () => {
       window.removeEventListener('bakery_orders_updated', handleSync);
       window.removeEventListener('storage', handleStorage);
+      unsubscribeSync();
     };
   }, []);
 
@@ -437,6 +447,7 @@ export default function POSPage() {
           localStorage.setItem('bakery_kds_seeded', 'true');
           setInvoicesList(recentOrders.slice(0, 100));
           window.dispatchEvent(new Event('bakery_orders_updated'));
+          broadcastNewOrder(orderData);
         } catch {}
       }
 
@@ -619,6 +630,7 @@ export default function POSPage() {
           localStorage.setItem('bakery_preorders', JSON.stringify(recentPos.slice(0, 100)));
 
           window.dispatchEvent(new Event('bakery_orders_updated'));
+          broadcastNewOrder(unifiedPreorder);
         } catch {}
       }
 
@@ -691,6 +703,9 @@ export default function POSPage() {
                 subtotal: preorderForm.totalPrice,
                 total_amount: preorderForm.totalPrice,
                 notes: fullNotes,
+                customer_name: preorderForm.customerName,
+                customer_phone: preorderForm.customerPhone,
+                cake_message: preorderForm.cakeMessage,
               })
               .select('id')
               .single();
