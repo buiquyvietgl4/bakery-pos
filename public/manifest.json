@@ -1,0 +1,21 @@
+{
+  "name": "Tiệm Bánh ABC — ERP & POS Mini",
+  "short_name": "Tiệm Bánh POS",
+  "description": "Hệ thống Bán hàng, Kho vật tư & Kế toán tự động cho tiệm bánh",
+  "start_url": "/pos",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#d97706",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
