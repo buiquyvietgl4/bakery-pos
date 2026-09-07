@@ -9,7 +9,7 @@ import {
   Download, Trash2, ArrowUpRight, ArrowDownRight, ShieldAlert,
   HelpCircle, ChevronRight, Cake, X, Image as ImageIcon,
   ArrowDownCircle, ArrowUpCircle, QrCode, Copy, Check, Building2,
-  Wallet, Smartphone
+  Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -77,8 +77,25 @@ export interface EwalletConfig {
 }
 
 export default function AdminDashboard() {
-  const { isAdmin } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'inventory' | 'recipes' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud'>('overview');
+  const {
+    isAdmin,
+    loginAdmin,
+    updateAdminCredentials,
+    updateStaffCredentials,
+    securityConfig,
+    resetSecurityDefaults,
+  } = useAuth();
+  const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'inventory' | 'recipes' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud' | 'security'>('overview');
+
+  // ── SECURITY & PERMISSIONS STATE ──
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [adminOldPass, setAdminOldPass] = useState('');
+  const [adminNewPass, setAdminNewPass] = useState('');
+  const [adminNameInput, setAdminNameInput] = useState(securityConfig.adminName);
+  const [staffPinInput, setStaffPinInput] = useState(securityConfig.staffPin);
+  const [staffNameInput, setStaffNameInput] = useState(securityConfig.staffName);
+  const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   
   // ── VIETQR BANK TRANSFER CONFIG STATE ──
   const [vietqrConfig, setVietqrConfig] = useState({
@@ -878,23 +895,66 @@ export default function AdminDashboard() {
 
   if (!isAdmin) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-md mx-auto space-y-4">
-        <div className="w-16 h-16 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center">
-          <ShieldAlert className="w-10 h-10" />
+      <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-md mx-auto space-y-4 min-h-[70vh]">
+        <div className="w-16 h-16 rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-lg shadow-rose-200">
+          <ShieldAlert className="w-9 h-9" />
         </div>
-        <h2 className="text-xl font-black text-zinc-900">Khu Vực Dành Cho Chủ Tiệm (Admin)</h2>
+        <h2 className="text-xl font-black text-zinc-900">Khu Vực Dành Riêng Cho Chủ Tiệm</h2>
         <p className="text-xs text-zinc-600 leading-relaxed">
-          Tài khoản của bạn hiện đang ở vai trò <b>Nhân viên (Staff)</b>. Hệ thống tự động bảo vệ và chặn xem giá vốn nguyên liệu, công thức bánh và các báo cáo tài chính/kế toán.
+          Tài khoản hiện tại là <b>Nhân viên (Staff)</b>. Hệ thống tự động bảo vệ và chặn xem giá vốn nguyên liệu, công thức bánh và báo cáo kế toán.
         </p>
-        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 p-2.5 rounded-xl">
-          💡 Bạn có thể bấm nút <b>"Admin"</b> ở góc trên cùng bên phải thanh menu để chuyển quyền trải nghiệm đầy đủ!
-        </p>
-        <Link
-          href="/pos"
-          className="px-5 py-2.5 rounded-xl bg-amber-600 text-white font-bold text-xs hover:bg-amber-700 transition shadow-md shadow-amber-600/20"
+
+        {/* Form mở khóa nhanh trực tiếp */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setUnlockError('');
+            const res = loginAdmin(unlockPassword);
+            if (!res.success) {
+              setUnlockError(res.error || 'Mật khẩu không chính xác!');
+            }
+          }}
+          className="w-full space-y-3 bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm text-left"
         >
-          Quay lại Quầy Bán Hàng (POS)
-        </Link>
+          <div className="space-y-1.5">
+            <div className="flex justify-between items-center text-xs">
+              <label className="font-bold text-zinc-700">Mật khẩu Chủ Tiệm (Admin):</label>
+              <span className="text-[10px] text-zinc-400 font-mono">Mặc định: admin123</span>
+            </div>
+            <div className="relative">
+              <input
+                type="password"
+                required
+                autoFocus
+                value={unlockPassword}
+                onChange={(e) => setUnlockPassword(e.target.value)}
+                placeholder="Nhập mật khẩu admin..."
+                className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-sm font-black text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+              />
+              <KeyRound className="w-4 h-4 text-zinc-400 absolute right-3.5 top-3" />
+            </div>
+          </div>
+
+          {unlockError && (
+            <p className="text-xs text-rose-600 font-bold">⚠️ {unlockError}</p>
+          )}
+
+          <button
+            type="submit"
+            className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+          >
+            <Shield className="w-4 h-4" /> Mở Khóa Quản Trị Ngay
+          </button>
+        </form>
+
+        <div className="pt-2">
+          <Link
+            href="/pos"
+            className="text-xs font-bold text-zinc-500 hover:text-zinc-800 transition"
+          >
+            ← Quay lại Quầy Bán Hàng (POS)
+          </Link>
+        </div>
       </div>
     );
   }
@@ -923,6 +983,7 @@ export default function AdminDashboard() {
             { id: 'cashflow', label: 'Sổ Quỹ Thu Chi', icon: DollarSign },
             { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode },
             { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
+            { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield },
             { id: 'cloud', label: 'Cloud 500MB', icon: HardDrive },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -2749,6 +2810,278 @@ export default function AdminDashboard() {
                   </p>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB 10: QUẢN LÝ TÀI KHOẢN & PHÂN QUYỀN BẢO MẬT (SECURITY & ROLES) ── */}
+      {activeTab === 'security' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-zinc-200 shadow-xs">
+            <div>
+              <h2 className="text-lg font-black text-zinc-900 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-amber-600" /> Quản Lý Phân Quyền & Tài Khoản
+              </h2>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                Thiết lập mật khẩu quản trị cho Chủ Tiệm và mã PIN đăng nhập nhanh cho Nhân Viên quầy bán hàng.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (confirm('Khôi phục mật khẩu Admin về "admin123" và mã PIN nhân viên về "1234"?')) {
+                  resetSecurityDefaults();
+                  setAdminNameInput('Chủ Tiệm (Admin)');
+                  setStaffPinInput('1234');
+                  setStaffNameInput('Nhân Viên Quầy & Bếp');
+                  setSecurityMsg({ type: 'success', text: 'Đã khôi phục thông tin đăng nhập về mặc định thành công!' });
+                  setTimeout(() => setSecurityMsg(null), 4000);
+                }
+              }}
+              className="px-3.5 py-2 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-xs font-bold text-zinc-600 transition cursor-pointer self-start sm:self-auto"
+            >
+              Khôi Phục Mặc Định
+            </button>
+          </div>
+
+          {securityMsg && (
+            <div
+              className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center gap-2 ${
+                securityMsg.type === 'success'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : 'bg-rose-50 text-rose-800 border-rose-200'
+              }`}
+            >
+              <span>{securityMsg.type === 'success' ? '✅' : '⚠️'}</span>
+              <span>{securityMsg.text}</span>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* THẺ 1: TÀI KHOẢN CHỦ TIỆM (ADMIN) */}
+            <div className="bg-white p-5 rounded-3xl border border-amber-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center font-black">
+                    👑
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base text-zinc-900">Tài Khoản Chủ Tiệm (Admin)</h3>
+                    <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                      Toàn Quyền Quản Trị
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Tên hiển thị Chủ Tiệm:</label>
+                  <input
+                    type="text"
+                    value={adminNameInput}
+                    onChange={(e) => setAdminNameInput(e.target.value)}
+                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl font-bold text-zinc-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Tên đăng nhập:</label>
+                  <input
+                    type="text"
+                    disabled
+                    value="admin"
+                    className="w-full p-2.5 bg-zinc-100 border border-zinc-200 rounded-xl font-mono font-bold text-zinc-500 cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Đổi mật khẩu Admin */}
+                <div className="p-3.5 bg-amber-50/50 rounded-2xl border border-amber-200/80 space-y-2.5">
+                  <span className="font-bold text-amber-900 block text-xs">
+                    🔑 Đổi Mật Khẩu Đăng Nhập Quản Trị:
+                  </span>
+                  <div className="space-y-2">
+                    <div>
+                      <label className="text-[11px] text-zinc-600 block mb-0.5">Mật khẩu cũ hiện tại:</label>
+                      <input
+                        type="password"
+                        value={adminOldPass}
+                        onChange={(e) => setAdminOldPass(e.target.value)}
+                        placeholder="Nhập mật khẩu cũ (mặc định: admin123)..."
+                        className="w-full p-2 bg-white border border-zinc-200 rounded-xl text-xs font-mono"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-zinc-600 block mb-0.5">Mật khẩu mới:</label>
+                      <input
+                        type="password"
+                        value={adminNewPass}
+                        onChange={(e) => setAdminNewPass(e.target.value)}
+                        placeholder="Tối thiểu 4 ký tự..."
+                        className="w-full p-2 bg-white border border-zinc-200 rounded-xl text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSecurityMsg(null);
+                      const res = updateAdminCredentials(adminOldPass, adminNewPass, adminNameInput);
+                      if (res.success) {
+                        setSecurityMsg({ type: 'success', text: 'Đã đổi mật khẩu Chủ Tiệm (Admin) thành công!' });
+                        setAdminOldPass('');
+                        setAdminNewPass('');
+                      } else {
+                        setSecurityMsg({ type: 'error', text: res.error || 'Đổi mật khẩu thất bại' });
+                      }
+                      setTimeout(() => setSecurityMsg(null), 4000);
+                    }}
+                    className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                  >
+                    Lưu Mật Khẩu Admin Mới
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* THẺ 2: TÀI KHOẢN NHÂN VIÊN (STAFF) */}
+            <div className="bg-white p-5 rounded-3xl border border-orange-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-700 flex items-center justify-center font-black">
+                    👤
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base text-zinc-900">Tài Khoản Nhân Viên (Staff)</h3>
+                    <span className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+                      Chỉ Bán Hàng & Bếp (Khóa Giá Vốn & P&L)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Tên hiển thị Nhân viên:</label>
+                  <input
+                    type="text"
+                    value={staffNameInput}
+                    onChange={(e) => setStaffNameInput(e.target.value)}
+                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl font-bold text-zinc-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Tên đăng nhập:</label>
+                  <input
+                    type="text"
+                    disabled
+                    value="nhanvien"
+                    className="w-full p-2.5 bg-zinc-100 border border-zinc-200 rounded-xl font-mono font-bold text-zinc-500 cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Đổi mã PIN nhân viên */}
+                <div className="p-3.5 bg-orange-50/50 rounded-2xl border border-orange-200/80 space-y-2.5">
+                  <span className="font-bold text-orange-900 block text-xs">
+                    🔢 Cài Đặt Mã PIN Đăng Nhập Nhanh Cho Thu Ngân:
+                  </span>
+                  <p className="text-[11px] text-zinc-500">
+                    Nhân viên đứng quầy thu ngân chỉ cần bấm 4 số PIN này trên màn hình cảm ứng để vào ca bán bánh, không cần gõ bàn phím phức tạp.
+                  </p>
+                  <div>
+                    <label className="text-[11px] text-zinc-600 block mb-0.5">Mã PIN mới (4 số):</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={staffPinInput}
+                      onChange={(e) => setStaffPinInput(e.target.value)}
+                      placeholder="Ví dụ: 1234, 6868..."
+                      className="w-full p-2 bg-white border border-zinc-200 rounded-xl text-sm font-black text-center tracking-widest font-mono text-zinc-900"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSecurityMsg(null);
+                      const res = updateStaffCredentials(staffPinInput, undefined, staffNameInput);
+                      if (res.success) {
+                        setSecurityMsg({ type: 'success', text: `Đã cập nhật mã PIN nhân viên (${staffPinInput}) thành công!` });
+                      } else {
+                        setSecurityMsg({ type: 'error', text: res.error || 'Cập nhật mã PIN thất bại' });
+                      }
+                      setTimeout(() => setSecurityMsg(null), 4000);
+                    }}
+                    className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                  >
+                    Lưu Mã PIN Cho Nhân Viên
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* BẢNG MA TRẬN PHÂN QUYỀN HỆ THỐNG */}
+          <div className="bg-white p-5 rounded-3xl border border-zinc-200 shadow-xs space-y-3">
+            <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+              <UserCheck className="w-4 h-4 text-emerald-600" /> Bảng Ma Trận Phân Quyền 2 Loại Tài Khoản
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-700 font-bold">
+                    <th className="p-3">Tính Năng / Phân Hệ</th>
+                    <th className="p-3 text-center text-amber-700">👑 Chủ Tiệm (Admin)</th>
+                    <th className="p-3 text-center text-orange-700">👤 Nhân Viên (Staff)</th>
+                    <th className="p-3">Ghi chú nghiệp vụ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 text-zinc-800 font-medium">
+                  <tr>
+                    <td className="p-3 font-bold">Quầy Thu Ngân Bán Hàng (POS)</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-zinc-500">Tạo đơn, nhận thanh toán, in bill, mở/đóng ca két tiền.</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-bold">Đặt Bánh Kem / Bánh Sinh Nhật Trước</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-zinc-500">Lưu chữ viết lên bánh, hẹn giờ lấy bánh, nhận cọc.</td>
+                  </tr>
+                  <tr>
+                    <td className="p-3 font-bold">Màn Hình Bếp Làm Bánh (Kitchen KDS)</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-zinc-500">Xem danh sách bánh cần làm theo thời gian thực.</td>
+                  </tr>
+                  <tr className="bg-rose-50/40">
+                    <td className="p-3 font-bold text-rose-900">Trang Quản Trị Hệ Thống (/admin)</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-center text-rose-600 font-black">❌ Bị Khóa 100%</td>
+                    <td className="p-3 text-rose-600 font-semibold">Tự động hiện màn hình khóa yêu cầu mật khẩu Admin.</td>
+                  </tr>
+                  <tr className="bg-rose-50/40">
+                    <td className="p-3 font-bold text-rose-900">Báo Cáo Doanh Thu & Lãi Lỗ (P&L)</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-center text-rose-600 font-black">❌ Ẩn tuyệt đối</td>
+                    <td className="p-3 text-rose-600 font-semibold">Nhân viên không xem được lợi nhuận của tiệm.</td>
+                  </tr>
+                  <tr className="bg-rose-50/40">
+                    <td className="p-3 font-bold text-rose-900">Công Thức Bánh BOM & Giá Vốn COGS</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-center text-rose-600 font-black">❌ Ẩn tuyệt đối</td>
+                    <td className="p-3 text-rose-600 font-semibold">Bảo mật công thức cốt bánh và giá nguyên liệu đầu vào.</td>
+                  </tr>
+                  <tr className="bg-rose-50/40">
+                    <td className="p-3 font-bold text-rose-900">Cài Đặt VietQR & Ví Điện Tử (MoMo)</td>
+                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
+                    <td className="p-3 text-center text-rose-600 font-black">❌ Không được sửa</td>
+                    <td className="p-3 text-rose-600 font-semibold">Chỉ chủ tiệm được đổi số tài khoản nhận tiền.</td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
