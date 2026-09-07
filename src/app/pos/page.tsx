@@ -10,9 +10,10 @@ import {
   Banknote, QrCode, CheckCircle2, AlertCircle, X, Printer,
   Sparkles, Wallet, Lock, History, AlertTriangle, Cake, Calendar,
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
-  Package, ArrowLeft, ChevronRight
+  Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
+import { exportToCSV } from '@/lib/utils/exportExcel';
 
 interface CartItem {
   product: CachedProduct;
@@ -151,11 +152,21 @@ export default function POSPage() {
   const [preordersList, setPreordersList] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
       try {
+        const hasSeeded = localStorage.getItem('bakery_kds_seeded');
+        const rawOrders = localStorage.getItem('bakery_orders');
+        if (rawOrders) {
+          const parsed = JSON.parse(rawOrders);
+          if (Array.isArray(parsed)) {
+            const pos = parsed.filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime);
+            if (pos.length > 0 || hasSeeded) return pos;
+          }
+        }
         const saved = localStorage.getItem('bakery_preorders');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && (parsed.length > 0 || hasSeeded)) return parsed;
         }
+        if (hasSeeded) return [];
       } catch {}
     }
     return [
@@ -186,6 +197,23 @@ export default function POSPage() {
         status: 'preparing',
       }
     ];
+  });
+
+  // ── LỊCH SỬ HÓA ĐƠN & LƯU TRỮ ĐƠN ĐÃ XUẤT STATE ──
+  const [isInvoiceHistoryOpen, setIsInvoiceHistoryOpen] = useState(false);
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
+  const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'takeaway' | 'preorder' | 'cash' | 'transfer'>('all');
+  const [invoicesList, setInvoicesList] = useState<any[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem('bakery_orders');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) return parsed;
+        }
+      } catch {}
+    }
+    return [];
   });
 
   // 1. Fetch Products with offline-first persistence
@@ -262,6 +290,42 @@ export default function POSPage() {
         } catch {}
       }
     }
+  }, []);
+
+  // Đồng bộ hóa đơn và đơn đặt trước từ LocalStorage Realtime
+  const reloadOrdersData = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            setInvoicesList(parsed);
+            const pos = parsed.filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime);
+            if (pos.length > 0) {
+              setPreordersList(pos);
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Lỗi đồng bộ orders:', e);
+      }
+    }
+  };
+
+  useEffect(() => {
+    reloadOrdersData();
+    const handleSync = () => reloadOrdersData();
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'bakery_orders' || e.key === 'bakery_preorders') reloadOrdersData();
+    };
+
+    window.addEventListener('bakery_orders_updated', handleSync);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener('bakery_orders_updated', handleSync);
+      window.removeEventListener('storage', handleStorage);
+    };
   }, []);
 
   // Save Shift State
@@ -369,7 +433,10 @@ export default function POSPage() {
         try {
           const recentOrders = JSON.parse(localStorage.getItem('bakery_orders') || '[]');
           recentOrders.unshift(orderData);
-          localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 50)));
+          localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 100)));
+          localStorage.setItem('bakery_kds_seeded', 'true');
+          setInvoicesList(recentOrders.slice(0, 100));
+          window.dispatchEvent(new Event('bakery_orders_updated'));
         } catch {}
       }
 
@@ -474,28 +541,88 @@ export default function POSPage() {
       const pickupDateTimeStr = `${preorderForm.pickupTime} ngày ${preorderForm.pickupDate}`;
       const fullNotes = `[ĐẶT BÁNH KEM] Khách: ${preorderForm.customerName} (${preorderForm.customerPhone}) | Lấy: ${pickupDateTimeStr} | Size: ${preorderForm.size} | Chữ trên bánh: "${preorderForm.cakeMessage}" | Yêu cầu: ${preorderForm.notes} | Cọc: ${preorderForm.depositAmount.toLocaleString('vi-VN')}đ | Còn thu: ${(preorderForm.totalPrice - preorderForm.depositAmount).toLocaleString('vi-VN')}đ`;
 
-      // 1. Cập nhật danh sách đơn đặt trước hiển thị ở POS & lưu vào localStorage
-      const newPreorder = {
+      // 1. Tạo đơn đặt bánh đồng bộ đầy đủ thông tin cho cả Bếp KDS và Lịch Sử Hóa Đơn
+      const unifiedPreorder = {
         id: localId,
+        local_id: localId,
+        order_number: orderNumber,
         orderNumber,
-        customerName: preorderForm.customerName,
-        customerPhone: preorderForm.customerPhone,
+        order_type: 'preorder' as const,
+        status: 'pending' as const,
+        created_at: now.toISOString(),
+        preorder_pickup_at: pickupDateTimeStr,
         pickupDateTime: pickupDateTimeStr,
+        customer_name: preorderForm.customerName,
+        customerName: preorderForm.customerName,
+        customer_phone: preorderForm.customerPhone,
+        customerPhone: preorderForm.customerPhone,
+        cake_name: preorderForm.cakeName,
         cakeName: preorderForm.cakeName,
+        cake_size: preorderForm.size,
+        size: preorderForm.size,
+        flavor: preorderForm.flavor,
+        cake_message: preorderForm.cakeMessage,
         cakeMessage: preorderForm.cakeMessage,
+        special_notes: preorderForm.notes,
+        notes: fullNotes,
+        subtotal: preorderForm.totalPrice,
+        discount_amount: 0,
+        discount_pct: 0,
+        total_amount: preorderForm.totalPrice,
         totalPrice: preorderForm.totalPrice,
+        deposit_amount: preorderForm.depositAmount,
         depositAmount: preorderForm.depositAmount,
+        remaining_amount: preorderForm.totalPrice - preorderForm.depositAmount,
         remainingAmount: preorderForm.totalPrice - preorderForm.depositAmount,
-        status: 'pending',
+        payment_method: preorderForm.paymentMethod,
+        paymentMethod: preorderForm.paymentMethod,
+        cashier: user?.name || 'Thu Ngân',
+        items: [
+          {
+            id: generateUUID(),
+            product_name_snapshot: `${preorderForm.cakeName} (${preorderForm.size})`,
+            product: {
+              name: `${preorderForm.cakeName} (${preorderForm.size})`,
+              selling_price: preorderForm.totalPrice,
+            },
+            quantity: 1,
+            unit_price: preorderForm.totalPrice,
+            line_total: preorderForm.totalPrice,
+            notes: `Chữ: "${preorderForm.cakeMessage}"${preorderForm.notes ? ` | ${preorderForm.notes}` : ''}`,
+          },
+        ],
+        payments: preorderForm.depositAmount > 0 ? [
+          {
+            method: preorderForm.paymentMethod,
+            amount: preorderForm.depositAmount,
+          },
+        ] : [],
       };
-      
-      setPreordersList((prev) => {
-        const updated = [newPreorder, ...prev];
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('bakery_preorders', JSON.stringify(updated));
-        }
-        return updated;
-      });
+
+      // Lưu ngay vào Dexie & localStorage
+      try {
+        await db.orders.add(unifiedPreorder as any);
+      } catch (dbErr) {
+        console.warn('Lỗi ghi Dexie preorder:', dbErr);
+      }
+
+      if (typeof window !== 'undefined') {
+        try {
+          const recentOrders = JSON.parse(localStorage.getItem('bakery_orders') || '[]');
+          recentOrders.unshift(unifiedPreorder);
+          localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 100)));
+          localStorage.setItem('bakery_kds_seeded', 'true');
+          setInvoicesList(recentOrders.slice(0, 100));
+
+          const recentPos = JSON.parse(localStorage.getItem('bakery_preorders') || '[]');
+          recentPos.unshift(unifiedPreorder);
+          localStorage.setItem('bakery_preorders', JSON.stringify(recentPos.slice(0, 100)));
+
+          window.dispatchEvent(new Event('bakery_orders_updated'));
+        } catch {}
+      }
+
+      setPreordersList((prev) => [unifiedPreorder, ...prev]);
 
       // 2. Cập nhật tiền ca bán từ tiền cọc
       if (preorderForm.depositAmount > 0) {
@@ -599,24 +726,45 @@ export default function POSPage() {
     }
   };
 
+  const filteredInvoices = invoicesList.filter((inv: any) => {
+    const isPreorder = inv.order_type === 'preorder' || !!inv.pickupDateTime;
+    const isTakeaway = !isPreorder;
+    const method = inv.payment_method || inv.paymentMethod || (inv.payments?.[0]?.method) || 'cash';
+
+    if (invoiceFilter === 'takeaway' && !isTakeaway) return false;
+    if (invoiceFilter === 'preorder' && !isPreorder) return false;
+    if (invoiceFilter === 'cash' && method !== 'cash') return false;
+    if (invoiceFilter === 'transfer' && method === 'cash') return false;
+
+    if (invoiceSearchQuery.trim()) {
+      const q = invoiceSearchQuery.toLowerCase();
+      const num = String(inv.order_number || inv.orderNumber || '').toLowerCase();
+      const name = String(inv.customer_name || inv.customerName || '').toLowerCase();
+      const phone = String(inv.customer_phone || inv.customerPhone || '').toLowerCase();
+      const cake = String(inv.cakeName || inv.cake_name || '').toLowerCase();
+      return num.includes(q) || name.includes(q) || phone.includes(q) || cake.includes(q);
+    }
+    return true;
+  });
+
   return (
     <div className="flex-1 flex flex-col lg:flex-row h-[calc(100vh-4rem)] overflow-hidden bg-zinc-100">
       {/* ── THANH CHUYỂN TAB MOBILE (CHỈ HIỆN TRÊN ĐIỆN THOẠI) ── */}
-      <div className="lg:hidden flex items-center bg-white border-b border-zinc-200 p-2 gap-2 shadow-xs shrink-0 z-20">
+      <div className="lg:hidden flex items-center bg-white border-b border-zinc-200 p-2 gap-1.5 shadow-xs shrink-0 z-20">
         <button
           onClick={() => setMobileTab('menu')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition ${
+          className={`flex-1 py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition ${
             mobileTab === 'menu'
               ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/25'
               : 'text-zinc-600 hover:bg-zinc-100 bg-zinc-50'
           }`}
         >
           <Package className="w-4 h-4" />
-          <span>Thực Đơn Bánh ({filteredProducts.length})</span>
+          <span>Thực Đơn ({filteredProducts.length})</span>
         </button>
         <button
           onClick={() => setMobileTab('cart')}
-          className={`flex-1 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition relative ${
+          className={`flex-1 py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition relative ${
             mobileTab === 'cart'
               ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/25'
               : 'text-zinc-600 hover:bg-zinc-100 bg-zinc-50'
@@ -631,6 +779,13 @@ export default function POSPage() {
               {cart.reduce((s, i) => s + i.quantity, 0)}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setIsInvoiceHistoryOpen(true)}
+          className="flex-1 py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-zinc-700 bg-zinc-50 hover:bg-amber-50 border border-zinc-200/80 transition"
+        >
+          <Receipt className="w-4 h-4 text-amber-600" />
+          <span>Lịch Sử Đơn ({invoicesList.length})</span>
         </button>
       </div>
 
@@ -671,11 +826,22 @@ export default function POSPage() {
             {/* Nút Xem Lịch Đơn Đặt Trước */}
             <button
               onClick={() => setIsPreorderListOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white border border-zinc-200 hover:border-pink-300 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-pink-50/40"
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white border border-zinc-200 hover:border-pink-300 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-pink-50/40 cursor-pointer"
               title="Xem danh sách lịch hẹn giao bánh đặt trước"
             >
               <Calendar className="w-4 h-4 text-pink-600" />
               <span className="hidden sm:inline">Lịch hẹn giao ({preordersList.length})</span>
+            </button>
+
+            {/* Nút Xem Lịch Sử Hóa Đơn Đã Xuất */}
+            <button
+              onClick={() => setIsInvoiceHistoryOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white border border-zinc-200 hover:border-amber-400 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-amber-50/50 cursor-pointer"
+              title="Xem lại các hóa đơn đã xuất và in lại hóa đơn"
+            >
+              <Receipt className="w-4 h-4 text-amber-600" />
+              <span className="hidden sm:inline">Lịch sử hóa đơn ({invoicesList.length})</span>
+              <span className="sm:hidden">Hóa đơn ({invoicesList.length})</span>
             </button>
 
             {/* Shift Trigger Button */}
@@ -684,7 +850,7 @@ export default function POSPage() {
                 setClosingCashInput(expectedCashInRegister);
                 setIsShiftModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white border border-zinc-200 hover:border-amber-400 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-amber-50/50"
+              className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-white border border-zinc-200 hover:border-amber-400 text-xs font-bold text-zinc-700 shadow-xs transition hover:bg-amber-50/50 cursor-pointer"
             >
               <Wallet className="w-4 h-4 text-amber-600" />
               <span className="font-black text-amber-600">
@@ -1294,57 +1460,509 @@ export default function POSPage() {
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-pink-600" />
-                <h3 className="font-black text-lg text-zinc-900">Lịch Giao Bánh Kem Đặt Trước</h3>
+                <h3 className="font-black text-lg text-zinc-900">Lịch Giao Bánh Kem Đặt Trước ({preordersList.length})</h3>
               </div>
-              <button onClick={() => setIsPreorderListOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPreorderListOpen(false);
+                    setIsPreorderModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs flex items-center gap-1 shadow-sm cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Đặt Bánh Mới
+                </button>
+                <button onClick={() => setIsPreorderListOpen(false)} className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              {preordersList.length === 0 ? (
+                <div className="text-center py-10 space-y-2 text-zinc-400">
+                  <Cake className="w-10 h-10 mx-auto text-zinc-300" />
+                  <p className="text-xs">Chưa có đơn đặt bánh kem nào trong hệ thống</p>
+                  <button
+                    onClick={() => {
+                      setIsPreorderListOpen(false);
+                      setIsPreorderModalOpen(true);
+                    }}
+                    className="text-xs font-bold text-pink-600 hover:underline"
+                  >
+                    + Tạo đơn đặt bánh đầu tiên
+                  </button>
+                </div>
+              ) : (
+                preordersList.map((po) => {
+                  const orderNum = po.order_number || po.orderNumber;
+                  const custName = po.customer_name || po.customerName;
+                  const custPhone = po.customer_phone || po.customerPhone;
+                  const pickup = po.preorder_pickup_at || po.pickupDateTime;
+                  const cake = po.cake_name || po.cakeName;
+                  const msg = po.cake_message || po.cakeMessage;
+                  const total = po.total_amount || po.totalPrice || 0;
+                  const deposit = po.deposit_amount !== undefined ? po.deposit_amount : (po.depositAmount || 0);
+                  const remaining = po.remaining_amount !== undefined ? po.remaining_amount : (po.remainingAmount || (total - deposit));
+                  const status = po.status || 'pending';
+
+                  return (
+                    <div
+                      key={po.id || orderNum}
+                      className="p-4 rounded-2xl bg-pink-50/40 border border-pink-200/80 space-y-2.5 hover:shadow-md transition"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono font-black text-xs text-pink-700 bg-pink-100 px-2 py-0.5 rounded-md">
+                            {orderNum}
+                          </span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            status === 'completed'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : status === 'ready'
+                              ? 'bg-blue-100 text-blue-800'
+                              : status === 'preparing'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {status === 'completed'
+                              ? '✓ Đã hoàn thành'
+                              : status === 'ready'
+                              ? 'Bánh đã chín / sẵn sàng'
+                              : status === 'preparing'
+                              ? 'Bếp đang làm'
+                              : 'Chờ bếp làm'}
+                          </span>
+                        </div>
+                        <span className="text-xs font-bold text-zinc-800 flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-zinc-200">
+                          <Clock className="w-3.5 h-3.5 text-amber-600" /> Hạn giao: <span className="text-pink-600 font-extrabold">{pickup}</span>
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-zinc-500">Khách đặt:</span>{' '}
+                          <span className="font-bold text-zinc-900">{custName}</span> ({custPhone})
+                        </div>
+                        <div>
+                          <span className="text-zinc-500">Loại bánh:</span>{' '}
+                          <span className="font-bold text-zinc-900">{cake}</span>
+                        </div>
+                      </div>
+
+                      {msg && (
+                        <div className="p-2 bg-white rounded-xl border border-pink-200 text-xs font-semibold text-pink-800">
+                          ✍️ Chữ trên bánh: <span className="font-bold">"{msg}"</span>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap justify-between items-center text-xs pt-2 border-t border-pink-100 gap-2">
+                        <div>
+                          <span className="text-zinc-500">Tổng tiền:</span> <span className="font-bold">{total.toLocaleString('vi-VN')}₫</span>
+                          <span className="mx-2 text-zinc-300">|</span>
+                          <span className="text-emerald-600 font-semibold">Đã cọc: {deposit.toLocaleString('vi-VN')}₫</span>
+                          {remaining > 0 && (
+                            <span className="font-black text-rose-600 ml-2">Còn thu: {remaining.toLocaleString('vi-VN')}₫</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          {/* Nút In phiếu hẹn / Hóa đơn */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setCompletedOrder({
+                                orderNumber: orderNum,
+                                items: [
+                                  {
+                                    product: {
+                                      name: `[BÁNH ĐẶT] ${cake}`,
+                                      selling_price: total,
+                                    },
+                                    quantity: 1,
+                                  },
+                                ],
+                                subtotal: total,
+                                discountAmount: 0,
+                                totalAmount: total,
+                                depositAmount: deposit > 0 ? deposit : undefined,
+                                remainingAmount: remaining,
+                                paymentMethod: po.payment_method || po.paymentMethod || 'cash',
+                                cakeMessage: msg,
+                                pickupDateTimeStr: pickup,
+                                customerName: custName,
+                                customerPhone: custPhone,
+                                createdAt: new Date(po.created_at || Date.now()).toLocaleString('vi-VN'),
+                                cashier: po.cashier || 'Thu Ngân',
+                              });
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-white border border-pink-300 hover:bg-pink-50 text-pink-700 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" /> In Phiếu Hẹn
+                          </button>
+
+                          {/* Nút Đã giao bánh / Hoàn thành */}
+                          {status !== 'completed' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (typeof window !== 'undefined') {
+                                  try {
+                                    const raw = localStorage.getItem('bakery_orders');
+                                    if (raw) {
+                                      const parsed = JSON.parse(raw);
+                                      const updated = parsed.map((o: any) =>
+                                        (o.id === po.id || o.order_number === orderNum || o.orderNumber === orderNum)
+                                          ? { ...o, status: 'completed', updated_at: new Date().toISOString() }
+                                          : o
+                                      );
+                                      localStorage.setItem('bakery_orders', JSON.stringify(updated));
+                                      window.dispatchEvent(new Event('bakery_orders_updated'));
+                                    }
+                                    setPreordersList((prev) =>
+                                      prev.map((o) => (o.id === po.id || o.orderNumber === orderNum ? { ...o, status: 'completed' } : o))
+                                    );
+                                  } catch {}
+                                }
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition cursor-pointer shadow-xs"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" /> Đã Giao Khách
+                            </button>
+                          )}
+
+                          {/* Nút Xóa Đơn */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Xác nhận hủy đơn đặt bánh ${orderNum}?`)) {
+                                if (typeof window !== 'undefined') {
+                                  try {
+                                    const raw = localStorage.getItem('bakery_orders');
+                                    if (raw) {
+                                      const parsed = JSON.parse(raw);
+                                      const filtered = parsed.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum && o.id !== po.id);
+                                      localStorage.setItem('bakery_orders', JSON.stringify(filtered));
+                                      window.dispatchEvent(new Event('bakery_orders_updated'));
+                                    }
+                                    setPreordersList((prev) => prev.filter((o) => (o.orderNumber || o.order_number) !== orderNum && o.id !== po.id));
+                                  } catch {}
+                                }
+                              }
+                            }}
+                            className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            title="Hủy đơn đặt bánh này"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 2.5: LỊCH SỬ HÓA ĐƠN & LƯU TRỮ ĐÃ XUẤT ── */}
+      {isInvoiceHistoryOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-3xl w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92dvh] flex flex-col animate-in zoom-in duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <Receipt className="w-5 h-5 text-amber-600" />
+                <div>
+                  <h3 className="font-black text-lg text-zinc-900">Lịch Sử Hóa Đơn & Đơn Hàng Đã Xuất</h3>
+                  <p className="text-xs text-zinc-500">Xem lại, tra cứu và in lại hóa đơn bất kỳ lúc nào</p>
+                </div>
+              </div>
+              <button onClick={() => setIsInvoiceHistoryOpen(false)} className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-3">
-              {preordersList.map((po) => (
-                <div
-                  key={po.id}
-                  className="p-4 rounded-2xl bg-pink-50/40 border border-pink-200/80 space-y-2.5 hover:shadow-md transition"
+            {/* Quick Stats Bar & Actions */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs shrink-0">
+              <div className="bg-amber-50/70 p-3 rounded-2xl border border-amber-200/60">
+                <span className="text-zinc-500 text-[11px] block">Tổng hóa đơn:</span>
+                <span className="font-black text-amber-700 text-base">{invoicesList.length} đơn</span>
+              </div>
+              <div className="bg-emerald-50/70 p-3 rounded-2xl border border-emerald-200/60">
+                <span className="text-zinc-500 text-[11px] block">Tổng doanh thu:</span>
+                <span className="font-black text-emerald-700 text-base">
+                  {invoicesList.reduce((s, o) => s + (o.total_amount || o.totalPrice || 0), 0).toLocaleString('vi-VN')}₫
+                </span>
+              </div>
+              <div className="bg-blue-50/70 p-3 rounded-2xl border border-blue-200/60">
+                <span className="text-zinc-500 text-[11px] block">Tiền cọc giữ:</span>
+                <span className="font-black text-blue-700 text-base">
+                  {invoicesList.reduce((s, o) => s + (o.deposit_amount || o.depositAmount || 0), 0).toLocaleString('vi-VN')}₫
+                </span>
+              </div>
+              <div className="flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const exportData = filteredInvoices.map((inv: any, idx: number) => ({
+                      stt: idx + 1,
+                      ma_don: inv.order_number || inv.orderNumber,
+                      loai_don: inv.order_type === 'preorder' || inv.pickupDateTime ? 'Đặt bánh trước' : 'Bán tại quầy',
+                      ngay_tao: new Date(inv.created_at || Date.now()).toLocaleString('vi-VN'),
+                      thu_ngan: inv.cashier || 'Thu Ngân',
+                      khach_hang: inv.customer_name || inv.customerName || 'Khách vãng lai',
+                      sdt: inv.customer_phone || inv.customerPhone || '',
+                      tong_tien: inv.total_amount || inv.totalPrice || 0,
+                      tien_coc: inv.deposit_amount || inv.depositAmount || 0,
+                      hinh_thuc: inv.payment_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / MoMo',
+                      trang_thai: inv.status === 'completed' ? 'Đã hoàn thành' : 'Đang xử lý',
+                    }));
+                    exportToCSV('lich_su_hoa_don_tiem_banh', [
+                      { header: 'STT', key: 'stt' },
+                      { header: 'Mã Hóa Đơn', key: 'ma_don' },
+                      { header: 'Loại Đơn', key: 'loai_don' },
+                      { header: 'Ngày Giờ Tạo', key: 'ngay_tao' },
+                      { header: 'Thu Ngân', key: 'thu_ngan' },
+                      { header: 'Khách Hàng', key: 'khach_hang' },
+                      { header: 'Số Điện Thoại', key: 'sdt' },
+                      { header: 'Tổng Tiền (VNĐ)', key: 'tong_tien' },
+                      { header: 'Tiền Cọc (VNĐ)', key: 'tien_coc' },
+                      { header: 'Hình Thức TT', key: 'hinh_thuc' },
+                      { header: 'Trạng Thái', key: 'trang_thai' },
+                    ], exportData);
+                  }}
+                  className="w-full py-2.5 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-sm flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-mono font-black text-xs text-pink-700 bg-pink-100 px-2 py-0.5 rounded-md">
-                      {po.orderNumber}
-                    </span>
-                    <span className="text-xs font-bold text-zinc-800 flex items-center gap-1 bg-white px-2.5 py-1 rounded-lg border border-zinc-200">
-                      <Clock className="w-3.5 h-3.5 text-amber-600" /> Hạn giao: <span className="text-pink-600 font-extrabold">{po.pickupDateTime}</span>
-                    </span>
-                  </div>
+                  <FileSpreadsheet className="w-4 h-4" />
+                  <span>Xuất Excel</span>
+                </button>
+              </div>
+            </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                    <div>
-                      <span className="text-zinc-500">Khách đặt:</span>{' '}
-                      <span className="font-bold text-zinc-900">{po.customerName}</span> ({po.customerPhone})
-                    </div>
-                    <div>
-                      <span className="text-zinc-500">Loại bánh:</span>{' '}
-                      <span className="font-bold text-zinc-900">{po.cakeName}</span>
-                    </div>
-                  </div>
+            {/* Search & Filter Bar */}
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              <div className="relative flex-1 min-w-[200px]">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <input
+                  type="text"
+                  value={invoiceSearchQuery}
+                  onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+                  placeholder="Tìm theo mã đơn (BK-...), tên khách, SĐT..."
+                  className="w-full pl-9 pr-4 py-2 rounded-xl bg-zinc-50 border border-zinc-200 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+                {invoiceSearchQuery && (
+                  <button onClick={() => setInvoiceSearchQuery('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
 
-                  {po.cakeMessage && (
-                    <div className="p-2 bg-white rounded-xl border border-pink-200 text-xs font-semibold text-pink-800">
-                      ✍️ Chữ trên bánh: <span className="font-bold">"{po.cakeMessage}"</span>
-                    </div>
-                  )}
+              <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-xl text-xs font-semibold">
+                {(['all', 'takeaway', 'preorder', 'cash', 'transfer'] as const).map((filterKey) => {
+                  const labels = {
+                    all: 'Tất cả',
+                    takeaway: 'Tại quầy',
+                    preorder: 'Bánh đặt',
+                    cash: 'Tiền mặt',
+                    transfer: 'Chuyển khoản',
+                  };
+                  return (
+                    <button
+                      key={filterKey}
+                      type="button"
+                      onClick={() => setInvoiceFilter(filterKey)}
+                      className={`px-2.5 py-1 rounded-lg transition ${
+                        invoiceFilter === filterKey ? 'bg-white text-zinc-900 font-bold shadow-xs' : 'text-zinc-600 hover:text-zinc-900'
+                      }`}
+                    >
+                      {labels[filterKey]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
-                  <div className="flex justify-between items-center text-xs pt-1 border-t border-pink-100">
-                    <div>
-                      <span className="text-zinc-500">Tổng tiền:</span> <span className="font-bold">{po.totalPrice.toLocaleString('vi-VN')}₫</span>
-                      <span className="mx-2 text-zinc-300">|</span>
-                      <span className="text-emerald-600 font-semibold">Đã cọc: {po.depositAmount.toLocaleString('vi-VN')}₫</span>
-                    </div>
-                    <div className="font-black text-rose-600">
-                      Còn phải thu: {po.remainingAmount.toLocaleString('vi-VN')}₫
-                    </div>
-                  </div>
+            {/* List of Invoices with Full Scrolling */}
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 overscroll-contain">
+              {filteredInvoices.length === 0 ? (
+                <div className="text-center py-10 space-y-2 text-zinc-400">
+                  <Receipt className="w-10 h-10 mx-auto text-zinc-300" />
+                  <p className="text-xs">Không tìm thấy hóa đơn nào phù hợp bộ lọc</p>
                 </div>
-              ))}
+              ) : (
+                filteredInvoices.map((inv: any) => {
+                  const isPreorder = inv.order_type === 'preorder' || !!inv.pickupDateTime;
+                  const orderNum = inv.order_number || inv.orderNumber;
+                  const createdStr = inv.created_at ? new Date(inv.created_at).toLocaleString('vi-VN') : 'Vừa xong';
+                  const total = inv.total_amount || inv.totalPrice || 0;
+                  const deposit = inv.deposit_amount !== undefined ? inv.deposit_amount : (inv.depositAmount || 0);
+                  const remaining = inv.remaining_amount !== undefined ? inv.remaining_amount : (inv.remainingAmount || (total - deposit));
+                  const items = Array.isArray(inv.items) ? inv.items : [];
+
+                  return (
+                    <div
+                      key={inv.id || orderNum}
+                      className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200/90 hover:border-amber-300 hover:shadow-md transition space-y-2.5"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className={`font-mono font-black text-xs px-2.5 py-1 rounded-lg ${
+                            isPreorder ? 'bg-pink-100 text-pink-700 border border-pink-200' : 'bg-amber-100 text-amber-800 border border-amber-200'
+                          }`}>
+                            #{orderNum}
+                          </span>
+                          <span className="text-[11px] text-zinc-500">{createdStr}</span>
+                          <span className="text-[11px] text-zinc-400">• Thu ngân: {inv.cashier || 'Thu Ngân'}</span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5">
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                            inv.status === 'completed'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : inv.status === 'ready'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {inv.status === 'completed' ? '✓ Đã hoàn tất' : inv.status === 'ready' ? 'Sẵn sàng giao' : 'Đang xử lý'}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-700">
+                            {inv.payment_method === 'cash' || inv.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / Ví'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Customer info if preorder */}
+                      {(inv.customer_name || inv.customerName) && (
+                        <div className="text-xs bg-white p-2.5 rounded-xl border border-zinc-200/70 flex flex-wrap justify-between gap-2">
+                          <div>
+                            <span className="text-zinc-500">Khách hàng:</span>{' '}
+                            <span className="font-bold text-zinc-900">{inv.customer_name || inv.customerName}</span>{' '}
+                            <span className="text-zinc-500">({inv.customer_phone || inv.customerPhone})</span>
+                          </div>
+                          {(inv.preorder_pickup_at || inv.pickupDateTime) && (
+                            <div className="text-pink-700 font-bold flex items-center gap-1">
+                              <Clock className="w-3.5 h-3.5" /> Hẹn lấy: {inv.preorder_pickup_at || inv.pickupDateTime}
+                            </div>
+                          )}
+                          {(inv.cake_message || inv.cakeMessage) && (
+                            <div className="w-full text-pink-600 italic text-[11px] pt-1 border-t border-zinc-100">
+                              ✍️ Chữ: "{inv.cake_message || inv.cakeMessage}"
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Items list */}
+                      <div className="text-xs divide-y divide-zinc-200/50 bg-white/70 rounded-xl p-2.5 border border-zinc-200/60 space-y-1">
+                        {items.length > 0 ? (
+                          items.map((it: any, idx: number) => (
+                            <div key={idx} className="flex justify-between py-1 text-zinc-800">
+                              <span>
+                                <span className="font-bold text-amber-700 mr-1.5">{it.quantity}x</span>
+                                {it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm'}
+                              </span>
+                              <span className="font-bold">
+                                {((it.unit_price || it.product?.selling_price || 0) * it.quantity).toLocaleString('vi-VN')}₫
+                              </span>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="flex justify-between py-1 text-zinc-800">
+                            <span>{inv.cakeName || 'Đơn hàng bánh'}</span>
+                            <span className="font-bold">{total.toLocaleString('vi-VN')}₫</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Totals & Actions */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-200 text-xs">
+                        <div className="space-x-3">
+                          <span>Tổng cộng: <b className="text-zinc-900">{total.toLocaleString('vi-VN')}₫</b></span>
+                          {deposit > 0 && (
+                            <span className="text-emerald-700">Đã cọc: <b>{deposit.toLocaleString('vi-VN')}₫</b></span>
+                          )}
+                          {remaining > 0 && (
+                            <span className="text-rose-600 font-bold">Còn thu: {remaining.toLocaleString('vi-VN')}₫</span>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              // Chuyển dữ liệu sang modal in hóa đơn tiêu chuẩn
+                              setCompletedOrder({
+                                orderNumber: orderNum,
+                                items: items.length > 0
+                                  ? items.map((it: any) => ({
+                                      product: {
+                                        name: it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm',
+                                        selling_price: it.unit_price || it.product?.selling_price || 0,
+                                      },
+                                      quantity: it.quantity || 1,
+                                    }))
+                                  : [
+                                      {
+                                        product: {
+                                          name: inv.cakeName || 'Bánh đặt',
+                                          selling_price: total,
+                                        },
+                                        quantity: 1,
+                                      },
+                                    ],
+                                subtotal: inv.subtotal || total,
+                                discountAmount: inv.discount_amount || 0,
+                                totalAmount: total,
+                                depositAmount: deposit > 0 ? deposit : undefined,
+                                remainingAmount: remaining,
+                                paymentMethod: inv.payment_method || inv.paymentMethod || 'cash',
+                                cashGiven: inv.cash_given || total,
+                                changeAmount: inv.change_amount || 0,
+                                cakeMessage: inv.cake_message || inv.cakeMessage,
+                                pickupDateTimeStr: inv.preorder_pickup_at || inv.pickupDateTime,
+                                customerName: inv.customer_name || inv.customerName,
+                                customerPhone: inv.customer_phone || inv.customerPhone,
+                                createdAt: createdStr,
+                                cashier: inv.cashier || 'Thu Ngân',
+                              });
+                            }}
+                            className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>In Lại Hóa Đơn</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`Xác nhận xóa hóa đơn #${orderNum} khỏi lịch sử?`)) {
+                                if (typeof window !== 'undefined') {
+                                  try {
+                                    const raw = localStorage.getItem('bakery_orders');
+                                    if (raw) {
+                                      const parsed = JSON.parse(raw);
+                                      const filtered = parsed.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum);
+                                      localStorage.setItem('bakery_orders', JSON.stringify(filtered));
+                                      setInvoicesList(filtered);
+                                      window.dispatchEvent(new Event('bakery_orders_updated'));
+                                    }
+                                  } catch {}
+                                }
+                              }
+                            }}
+                            className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            title="Xóa hóa đơn này"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
