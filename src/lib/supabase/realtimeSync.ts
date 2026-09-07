@@ -90,7 +90,7 @@ export async function broadcastClearDemoOrders() {
 }
 
 /**
- * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác
+ * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác (dùng chung channel 'bakery_cross_device_sync')
  */
 export function subscribeCrossDeviceSync(callbacks: {
   onStatusUpdate?: (payload: SyncOrderPayload) => void;
@@ -98,20 +98,16 @@ export function subscribeCrossDeviceSync(callbacks: {
   onClearDemo?: () => void;
   onDbChange?: () => void;
 }) {
-  const channel = supabase.channel(`kds_sub_${Date.now()}_${Math.random().toString(36).substring(7)}`, {
-    config: {
-      broadcast: { self: false },
-    },
-  });
+  const channel = getSyncChannel();
 
   if (callbacks.onStatusUpdate) {
-    channel.on('broadcast', { event: 'kds_status_update' }, ({ payload }) => {
+    channel.on('broadcast', { event: 'kds_status_update' }, ({ payload }: any) => {
       callbacks.onStatusUpdate?.(payload);
     });
   }
 
   if (callbacks.onNewOrder) {
-    channel.on('broadcast', { event: 'pos_order_created' }, ({ payload }) => {
+    channel.on('broadcast', { event: 'pos_order_created' }, ({ payload }: any) => {
       callbacks.onNewOrder?.(payload?.order);
     });
   }
@@ -135,7 +131,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   channel.subscribe();
 
   return () => {
-    supabase.removeChannel(channel);
+    // Không removeChannel để giữ kết nối broadcast dùng chung
   };
 }
 
