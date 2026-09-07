@@ -26,7 +26,7 @@ interface KDSOrder {
   id: string;
   order_number: string;
   order_type: 'dine_in' | 'takeaway' | 'preorder';
-  status: 'pending' | 'preparing' | 'ready' | 'completed';
+  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   created_at: string;
   preorder_pickup_at?: string;
   notes?: string;
@@ -96,35 +96,37 @@ export default function KitchenPage() {
           try {
             const parsed = JSON.parse(rawLocal);
             if (Array.isArray(parsed)) {
-              localOrders = parsed.map((o: any) => ({
-                id: o.id || o.local_id || o.order_number,
-                order_number: o.order_number || o.orderNumber || 'BK-XXX',
-                order_type: o.order_type || (o.pickupDateTime ? 'preorder' : 'takeaway'),
-                status: o.status || 'pending',
-                created_at: o.created_at || new Date().toISOString(),
-                preorder_pickup_at: o.preorder_pickup_at || o.pickupDateTime || '',
-                customer_name: o.customer_name || o.customerName || '',
-                customer_phone: o.customer_phone || o.customerPhone || '',
-                cake_message: o.cake_message || o.cakeMessage || '',
-                notes: o.notes || '',
-                items: Array.isArray(o.items) && o.items.length > 0
-                  ? o.items.map((it: any, idx: number) => ({
-                      id: it.id || `it-${idx}`,
-                      product_name_snapshot: it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm',
-                      quantity: it.quantity || 1,
-                      notes: it.notes || '',
-                    }))
-                  : o.cakeName
-                  ? [
-                      {
-                        id: 'cake-1',
-                        product_name_snapshot: o.cakeName,
-                        quantity: 1,
-                        notes: o.cakeMessage ? `Chữ: "${o.cakeMessage}"` : '',
-                      },
-                    ]
-                  : [],
-              }));
+              localOrders = parsed
+                .filter((o: any) => o && typeof o === 'object')
+                .map((o: any) => ({
+                  id: String(o.id || o.local_id || o.order_number || Math.random()),
+                  order_number: String(o.order_number || o.orderNumber || 'BK-XXX'),
+                  order_type: o.order_type || (o.pickupDateTime ? 'preorder' : 'takeaway'),
+                  status: o.status || 'pending',
+                  created_at: o.created_at || new Date().toISOString(),
+                  preorder_pickup_at: o.preorder_pickup_at || o.pickupDateTime || '',
+                  customer_name: o.customer_name || o.customerName || '',
+                  customer_phone: o.customer_phone || o.customerPhone || '',
+                  cake_message: o.cake_message || o.cakeMessage || '',
+                  notes: o.notes || '',
+                  items: Array.isArray(o.items) && o.items.length > 0
+                    ? o.items.filter((it: any) => it && typeof it === 'object').map((it: any, idx: number) => ({
+                        id: String(it.id || `it-${idx}`),
+                        product_name_snapshot: it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm',
+                        quantity: Number(it.quantity) || 1,
+                        notes: it.notes || '',
+                      }))
+                    : o.cakeName
+                    ? [
+                        {
+                          id: 'cake-1',
+                          product_name_snapshot: String(o.cakeName),
+                          quantity: 1,
+                          notes: o.cakeMessage ? `Chữ: "${o.cakeMessage}"` : '',
+                        },
+                      ]
+                    : [],
+                }));
             }
           } catch (e) {
             console.warn('Lỗi đọc bakery_orders:', e);
@@ -177,25 +179,28 @@ export default function KitchenPage() {
 
             // 2. Phủ dữ liệu Supabase lên (dữ liệu Supabase là chân lý giữa các thiết bị)
             data.forEach((so: any) => {
+              if (!so || !so.order_number) return;
               const existing = mergedMap.get(so.order_number);
               const merged: KDSOrder = {
-                id: so.id || existing?.id || so.order_number,
-                order_number: so.order_number || existing?.order_number || 'BK-XXX',
+                id: String(so.id || existing?.id || so.order_number),
+                order_number: String(so.order_number || existing?.order_number || 'BK-XXX'),
                 order_type: so.order_type || existing?.order_type || 'takeaway',
-                status: so.status, // Trạng thái Supabase được ưu tiên
+                status: so.status || existing?.status || 'pending',
                 created_at: so.created_at || existing?.created_at || new Date().toISOString(),
                 preorder_pickup_at: so.preorder_pickup_at || existing?.preorder_pickup_at || '',
                 notes: so.notes || existing?.notes || '',
                 customer_name: so.customer_name || existing?.customer_name || '',
                 customer_phone: so.customer_phone || existing?.customer_phone || '',
                 cake_message: so.cake_message || existing?.cake_message || '',
-                items: so.order_items && so.order_items.length > 0
-                  ? so.order_items.map((it: any) => ({
-                      id: it.id,
-                      product_name_snapshot: it.product_name_snapshot || 'Bánh',
-                      quantity: it.quantity || 1,
-                      notes: it.notes || '',
-                    }))
+                items: Array.isArray(so.order_items) && so.order_items.length > 0
+                  ? so.order_items
+                      .filter((it: any) => it && typeof it === 'object')
+                      .map((it: any) => ({
+                        id: String(it.id || Math.random()),
+                        product_name_snapshot: it.product_name_snapshot || 'Bánh',
+                        quantity: Number(it.quantity) || 1,
+                        notes: it.notes || '',
+                      }))
                   : (existing?.items || []),
               };
               mergedMap.set(so.order_number, merged);
@@ -217,8 +222,8 @@ export default function KitchenPage() {
 
       // 3. Chỉ hiển thị các đơn còn đang cần làm: pending, preparing, ready
       // Các đơn completed hoặc cancelled sẽ hoàn toàn không xuất hiện trên bảng bếp
-      const activeOrders = localOrders.filter(
-        (o) => o.status === 'pending' || o.status === 'preparing' || o.status === 'ready'
+      const activeOrders = (localOrders || []).filter(
+        (o) => o && (o.status === 'pending' || o.status === 'preparing' || o.status === 'ready')
       );
 
       setOrders(activeOrders);
@@ -253,23 +258,41 @@ export default function KitchenPage() {
     // 3. Kênh Supabase Realtime Broadcast & Postgres Changes (Đồng bộ đa thiết bị tức thì ~50ms)
     const unsubscribeSync = subscribeCrossDeviceSync({
       onStatusUpdate: (payload) => {
+        if (!payload || !payload.order_number) return;
         // Nhận lệnh đổi bước từ điện thoại hoặc máy khác
         setOrders((prev) => {
-          const exists = prev.some((o) => o.order_number === payload.order_number || o.id === payload.order_number);
+          const list = Array.isArray(prev) ? prev : [];
+          const exists = list.some((o) => o && (o.order_number === payload.order_number || o.id === payload.order_number));
           if (payload.status === 'completed' || payload.status === 'cancelled') {
-            return prev.filter((o) => o.order_number !== payload.order_number && o.id !== payload.order_number);
+            return list.filter((o) => o && o.order_number !== payload.order_number && o.id !== payload.order_number);
           }
           if (exists) {
-            return prev.map((o) =>
-              (o.order_number === payload.order_number || o.id === payload.order_number)
+            return list.map((o) =>
+              (o && (o.order_number === payload.order_number || o.id === payload.order_number))
                 ? { ...o, status: payload.status }
                 : o
             );
           }
           if (payload.order_data) {
-            return [...prev, { ...payload.order_data, status: payload.status }];
+            const od = payload.order_data;
+            return [
+              ...list,
+              {
+                id: String(od.id || payload.order_number),
+                order_number: String(od.order_number || payload.order_number),
+                order_type: od.order_type || 'takeaway',
+                status: payload.status,
+                created_at: od.created_at || new Date().toISOString(),
+                preorder_pickup_at: od.preorder_pickup_at || '',
+                notes: od.notes || '',
+                customer_name: od.customer_name || '',
+                customer_phone: od.customer_phone || '',
+                cake_message: od.cake_message || '',
+                items: Array.isArray(od.items) ? od.items : [],
+              },
+            ];
           }
-          return prev;
+          return list;
         });
 
         // Cập nhật ngay vào localStorage của máy này
@@ -432,13 +455,20 @@ export default function KitchenPage() {
     }
   };
 
-  const pendingOrders = orders.filter((o) => o.status === 'pending');
-  const preparingOrders = orders.filter((o) => o.status === 'preparing');
-  const readyOrders = orders.filter((o) => o.status === 'ready');
+  const pendingOrders = (orders || []).filter((o) => o && o.status === 'pending');
+  const preparingOrders = (orders || []).filter((o) => o && o.status === 'preparing');
+  const readyOrders = (orders || []).filter((o) => o && o.status === 'ready');
 
-  const getElapsedMinutes = (dateStr: string) => {
-    const diff = Date.now() - new Date(dateStr).getTime();
-    return Math.max(0, Math.floor(diff / (1000 * 60)));
+  const getElapsedMinutes = (dateStr?: string) => {
+    if (!dateStr) return 0;
+    try {
+      const time = new Date(dateStr).getTime();
+      if (isNaN(time)) return 0;
+      const diff = Date.now() - time;
+      return Math.max(0, Math.floor(diff / (1000 * 60)));
+    } catch {
+      return 0;
+    }
   };
 
   return (
@@ -460,7 +490,7 @@ export default function KitchenPage() {
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <div className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 text-zinc-300 flex items-center gap-2">
             <span>Tổng đơn cần làm:</span>
-            <span className="font-black text-orange-400 text-sm">{orders.length}</span>
+            <span className="font-black text-orange-400 text-sm">{(orders || []).length}</span>
           </div>
 
           <button
@@ -473,7 +503,7 @@ export default function KitchenPage() {
           </button>
 
           {/* Nút xóa đơn mẫu nếu còn tồn tại */}
-          {orders.some((o) => o.id === 'kds-demo-1' || o.id === 'kds-demo-2' || o.order_number === 'BK-PRE-20260908-01') && (
+          {(orders || []).some((o) => o && (o.id === 'kds-demo-1' || o.id === 'kds-demo-2' || o.order_number === 'BK-PRE-20260908-01')) && (
             <button
               onClick={handleClearDemoOrders}
               className="px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-300 font-bold transition flex items-center gap-1.5 cursor-pointer text-xs"
@@ -576,7 +606,7 @@ export default function KitchenPage() {
 
                     {/* Items list */}
                     <div className="space-y-1.5 py-1 border-t border-b border-zinc-800/80">
-                      {order.items.map((item, idx) => (
+                      {(order.items || []).map((item, idx) => (
                         <div key={idx} className="text-xs space-y-0.5">
                           <div className="flex justify-between items-start">
                             <span className="font-bold text-zinc-200">
@@ -656,7 +686,7 @@ export default function KitchenPage() {
                     )}
 
                     <div className="space-y-1.5 py-1 border-t border-b border-zinc-800/80">
-                      {order.items.map((item, idx) => (
+                      {(order.items || []).map((item, idx) => (
                         <div key={idx} className="text-xs space-y-0.5">
                           <div className="flex justify-between items-start">
                             <span className="font-bold text-zinc-200">
@@ -726,7 +756,7 @@ export default function KitchenPage() {
                     )}
 
                     <div className="space-y-1 py-1 border-t border-b border-zinc-800/80 text-xs">
-                      {order.items.map((item, idx) => (
+                      {(order.items || []).map((item, idx) => (
                         <div key={idx} className="font-semibold text-zinc-300">
                           {item.quantity}x {item.product_name_snapshot}
                         </div>
