@@ -7,23 +7,89 @@ export interface SyncOrderPayload {
   order_data?: any;
 }
 
+type StatusCallback = (payload: SyncOrderPayload) => void;
+type NewOrderCallback = (order: any) => void;
+type ClearDemoCallback = () => void;
+type DbChangeCallback = () => void;
+
+const statusListeners = new Set<StatusCallback>();
+const newOrderListeners = new Set<NewOrderCallback>();
+const clearDemoListeners = new Set<ClearDemoCallback>();
+const dbChangeListeners = new Set<DbChangeCallback>();
+
 let syncChannelInstance: any = null;
 
 /**
- * Lấy hoặc khởi tạo channel Supabase Realtime Broadcast cho toàn bộ hệ thống
+ * Khởi tạo kênh Realtime singleton duy nhất cho toàn hệ thống.
+ * Đính kèm TẤT CẢ các bộ lắng nghe (broadcast & postgres_changes) TRƯỚC KHI gọi subscribe()
+ * để ngăn chặn hoàn toàn lỗi: "cannot add postgres_changes callbacks after channel has subscribed"
  */
-export function getSyncChannel() {
-  if (!syncChannelInstance) {
+function ensureSyncChannel() {
+  if (syncChannelInstance) return syncChannelInstance;
+
+  try {
     syncChannelInstance = supabase.channel('bakery_cross_device_sync', {
       config: {
         broadcast: {
-          self: false, // Không nhận lại sự kiện do chính tab/thiết bị này gửi
+          self: false,
         },
       },
     });
-    syncChannelInstance.subscribe();
+
+    syncChannelInstance
+      .on('broadcast', { event: 'kds_status_update' }, ({ payload }: any) => {
+        statusListeners.forEach((cb) => {
+          try {
+            cb(payload);
+          } catch (e) {
+            console.warn('Lỗi statusListener:', e);
+          }
+        });
+      })
+      .on('broadcast', { event: 'pos_order_created' }, ({ payload }: any) => {
+        newOrderListeners.forEach((cb) => {
+          try {
+            cb(payload?.order);
+          } catch (e) {
+            console.warn('Lỗi newOrderListener:', e);
+          }
+        });
+      })
+      .on('broadcast', { event: 'kds_clear_demo' }, () => {
+        clearDemoListeners.forEach((cb) => {
+          try {
+            cb();
+          } catch (e) {
+            console.warn('Lỗi clearDemoListener:', e);
+          }
+        });
+      })
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'orders' },
+        () => {
+          dbChangeListeners.forEach((cb) => {
+            try {
+              cb();
+            } catch (e) {
+              console.warn('Lỗi dbChangeListener:', e);
+            }
+          });
+        }
+      )
+      .subscribe();
+  } catch (err) {
+    console.warn('Lỗi khởi tạo Realtime Channel:', err);
   }
+
   return syncChannelInstance;
+}
+
+/**
+ * Lấy channel để gửi dữ liệu
+ */
+export function getSyncChannel() {
+  return ensureSyncChannel();
 }
 
 /**
@@ -36,17 +102,19 @@ export async function broadcastOrderStatusUpdate(
   orderData?: any
 ) {
   try {
-    const channel = getSyncChannel();
-    await channel.send({
-      type: 'broadcast',
-      event: 'kds_status_update',
-      payload: {
-        order_number: orderNumber,
-        status,
-        updated_at: new Date().toISOString(),
-        order_data: orderData,
-      },
-    });
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'kds_status_update',
+        payload: {
+          order_number: orderNumber,
+          status,
+          updated_at: new Date().toISOString(),
+          order_data: orderData,
+        },
+      });
+    }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastOrderStatusUpdate:', err);
   }
@@ -57,15 +125,17 @@ export async function broadcastOrderStatusUpdate(
  */
 export async function broadcastNewOrder(order: any) {
   try {
-    const channel = getSyncChannel();
-    await channel.send({
-      type: 'broadcast',
-      event: 'pos_order_created',
-      payload: {
-        order,
-        created_at: new Date().toISOString(),
-      },
-    });
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'pos_order_created',
+        payload: {
+          order,
+          created_at: new Date().toISOString(),
+        },
+      });
+    }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastNewOrder:', err);
   }
@@ -76,62 +146,45 @@ export async function broadcastNewOrder(order: any) {
  */
 export async function broadcastClearDemoOrders() {
   try {
-    const channel = getSyncChannel();
-    await channel.send({
-      type: 'broadcast',
-      event: 'kds_clear_demo',
-      payload: {
-        cleared_at: new Date().toISOString(),
-      },
-    });
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'kds_clear_demo',
+        payload: {
+          cleared_at: new Date().toISOString(),
+        },
+      });
+    }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastClearDemoOrders:', err);
   }
 }
 
 /**
- * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác (dùng chung channel 'bakery_cross_device_sync')
+ * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác
+ * An toàn tuyệt đối với React StrictMode và Remount
  */
 export function subscribeCrossDeviceSync(callbacks: {
-  onStatusUpdate?: (payload: SyncOrderPayload) => void;
-  onNewOrder?: (order: any) => void;
-  onClearDemo?: () => void;
-  onDbChange?: () => void;
+  onStatusUpdate?: StatusCallback;
+  onNewOrder?: NewOrderCallback;
+  onClearDemo?: ClearDemoCallback;
+  onDbChange?: DbChangeCallback;
 }) {
-  const channel = getSyncChannel();
+  ensureSyncChannel();
 
-  if (callbacks.onStatusUpdate) {
-    channel.on('broadcast', { event: 'kds_status_update' }, ({ payload }: any) => {
-      callbacks.onStatusUpdate?.(payload);
-    });
-  }
+  const { onStatusUpdate, onNewOrder, onClearDemo, onDbChange } = callbacks;
 
-  if (callbacks.onNewOrder) {
-    channel.on('broadcast', { event: 'pos_order_created' }, ({ payload }: any) => {
-      callbacks.onNewOrder?.(payload?.order);
-    });
-  }
-
-  if (callbacks.onClearDemo) {
-    channel.on('broadcast', { event: 'kds_clear_demo' }, () => {
-      callbacks.onClearDemo?.();
-    });
-  }
-
-  if (callbacks.onDbChange) {
-    channel.on(
-      'postgres_changes',
-      { event: '*', schema: 'public', table: 'orders' },
-      () => {
-        callbacks.onDbChange?.();
-      }
-    );
-  }
-
-  channel.subscribe();
+  if (onStatusUpdate) statusListeners.add(onStatusUpdate);
+  if (onNewOrder) newOrderListeners.add(onNewOrder);
+  if (onClearDemo) clearDemoListeners.add(onClearDemo);
+  if (onDbChange) dbChangeListeners.add(onDbChange);
 
   return () => {
-    // Không removeChannel để giữ kết nối broadcast dùng chung
+    if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
+    if (onNewOrder) newOrderListeners.delete(onNewOrder);
+    if (onClearDemo) clearDemoListeners.delete(onClearDemo);
+    if (onDbChange) dbChangeListeners.delete(onDbChange);
   };
 }
 
