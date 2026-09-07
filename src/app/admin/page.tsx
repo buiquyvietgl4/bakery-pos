@@ -560,12 +560,16 @@ export default function AdminDashboard() {
     try {
       // 1. Load Products with offline cache priority
       let currentProds: any[] = DEFAULT_BAKERY_PRODUCTS;
+      let localProds: any[] = [];
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem('bakery_products');
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) currentProds = parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              localProds = parsed;
+              currentProds = parsed;
+            }
           } catch {}
         }
       }
@@ -573,7 +577,14 @@ export default function AdminDashboard() {
       try {
         const cached = await db.products.toArray();
         if (cached && cached.length > 0) {
-          currentProds = cached;
+          // Merge: if localProds has custom images, keep them
+          const localMap = new Map(localProds.map((p) => [p.id, p]));
+          currentProds = cached.map((cp) => {
+            const lp = localMap.get(cp.id);
+            return lp && lp.image_url ? { ...cp, image_url: lp.image_url } : cp;
+          });
+        } else if (localProds.length > 0) {
+          await db.products.bulkPut(localProds);
         }
       } catch {}
 
@@ -1092,6 +1103,20 @@ export default function AdminDashboard() {
             try {
               localStorage.setItem('bakery_products', JSON.stringify(updated));
             } catch {}
+
+            // 4. Lưu trực tiếp vào Dexie IndexedDB (db.products) để POS và Admin đọc được ngay
+            try {
+              db.products.update(productId, { image_url: base64Url }).catch(() => {
+                const target = updated.find((p) => p.id === productId);
+                if (target) db.products.put(target);
+              });
+            } catch {}
+
+            // 5. Phát sự kiện để POS tab cập nhật ảnh ngay tức khắc
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new Event('bakery_products_updated'));
+            }
+
             return updated;
           });
 

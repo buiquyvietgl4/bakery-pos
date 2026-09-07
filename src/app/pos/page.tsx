@@ -147,6 +147,7 @@ export default function POSPage() {
     depositAmount: 150000,
     paymentMethod: 'cash',
   });
+  const [preorderError, setPreorderError] = useState<string | null>(null);
 
   // Preorder List View Modal
   const [isPreorderListOpen, setIsPreorderListOpen] = useState(false);
@@ -221,12 +222,16 @@ export default function POSPage() {
   const loadProducts = async () => {
     try {
       let currentProducts: CachedProduct[] = DEFAULT_BAKERY_PRODUCTS;
+      let localProducts: CachedProduct[] = [];
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem('bakery_products');
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) currentProducts = parsed;
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              localProducts = parsed;
+              currentProducts = parsed;
+            }
           } catch {}
         }
       }
@@ -234,8 +239,13 @@ export default function POSPage() {
       try {
         const cached = await db.products.toArray();
         if (cached && cached.length > 0) {
-          currentProducts = cached;
-        } else {
+          // Merge: Preserve custom images from localProducts
+          const localMap = new Map(localProducts.map((p) => [p.id, p]));
+          currentProducts = cached.map((cp) => {
+            const lp = localMap.get(cp.id);
+            return lp && lp.image_url ? { ...cp, image_url: lp.image_url } : cp;
+          });
+        } else if (currentProducts.length > 0) {
           await db.products.bulkPut(currentProducts);
         }
       } catch (dbErr) {
@@ -275,6 +285,12 @@ export default function POSPage() {
 
   useEffect(() => {
     loadProducts();
+
+    const handleProductsUpdated = () => {
+      loadProducts();
+    };
+    window.addEventListener('bakery_products_updated', handleProductsUpdated);
+
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('bakery_vietqr_config');
       if (saved) {
@@ -291,6 +307,10 @@ export default function POSPage() {
         } catch {}
       }
     }
+
+    return () => {
+      window.removeEventListener('bakery_products_updated', handleProductsUpdated);
+    };
   }, []);
 
   // Đồng bộ hóa đơn và đơn đặt trước từ LocalStorage Realtime
@@ -354,6 +374,18 @@ export default function POSPage() {
   });
 
   const addToCart = (product: CachedProduct) => {
+    // Nếu bánh chuyên nhận đặt trước, mở ngay Modal Đặt Bánh Kem điền sẵn mẫu bánh!
+    if (product.is_preorder_only) {
+      setPreorderForm((prev) => ({
+        ...prev,
+        cakeName: product.name,
+        totalPrice: product.selling_price,
+        depositAmount: Math.round(product.selling_price * 0.4),
+      }));
+      setIsPreorderModalOpen(true);
+      return;
+    }
+
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
@@ -536,10 +568,11 @@ export default function POSPage() {
   // ── HANDLER: TẠO ĐƠN ĐẶT BÁNH KEM (PREORDER CAKE) ──
   const handleCreatePreorder = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!preorderForm.customerName || !preorderForm.customerPhone) {
-      alert('Vui lòng nhập tên khách hàng và số điện thoại!');
+    if (!preorderForm.customerName?.trim() || !preorderForm.customerPhone?.trim()) {
+      setPreorderError('Vui lòng nhập Tên khách hàng và Số điện thoại!');
       return;
     }
+    setPreorderError(null);
 
     setProcessingOrder(true);
     try {
@@ -777,15 +810,27 @@ export default function POSPage() {
           <Package className="w-4 h-4" />
           <span>Thực Đơn ({filteredProducts.length})</span>
         </button>
+        {/* NÚT ĐẶT BÁNH TRỰC TIẾP TRÊN MOBILE */}
+        <button
+          onClick={() => {
+            setPreorderError(null);
+            setIsPreorderModalOpen(true);
+          }}
+          className="flex-1 py-2 px-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition bg-pink-600 text-white shadow-sm shadow-pink-600/25 active:scale-95 cursor-pointer"
+        >
+          <Cake className="w-3.5 h-3.5" />
+          <span>Đặt Bánh</span>
+        </button>
+
         <button
           onClick={() => setMobileTab('cart')}
-          className={`flex-1 py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition relative ${
+          className={`flex-1 py-2 px-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition relative ${
             mobileTab === 'cart'
               ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/25'
               : 'text-zinc-600 hover:bg-zinc-100 bg-zinc-50'
           }`}
         >
-          <ShoppingCart className="w-4 h-4" />
+          <ShoppingCart className="w-3.5 h-3.5" />
           <span>Giỏ Hàng</span>
           {cart.length > 0 && (
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
@@ -797,10 +842,10 @@ export default function POSPage() {
         </button>
         <button
           onClick={() => setIsInvoiceHistoryOpen(true)}
-          className="flex-1 py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-zinc-700 bg-zinc-50 hover:bg-amber-50 border border-zinc-200/80 transition"
+          className="flex-1 py-2 px-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-zinc-700 bg-zinc-50 hover:bg-amber-50 border border-zinc-200/80 transition"
         >
-          <Receipt className="w-4 h-4 text-amber-600" />
-          <span>Lịch Sử Đơn ({invoicesList.length})</span>
+          <Receipt className="w-3.5 h-3.5 text-amber-600" />
+          <span>Lịch Sử ({invoicesList.length})</span>
         </button>
       </div>
 
@@ -1119,6 +1164,13 @@ export default function POSPage() {
             </div>
 
             <form onSubmit={handleCreatePreorder} className="space-y-3.5 text-xs">
+              {preorderError && (
+                <div className="p-3 bg-rose-50 border border-rose-300 text-rose-800 rounded-2xl font-bold flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{preorderError}</span>
+                </div>
+              )}
+
               {/* 1. Thông tin khách */}
               <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-2.5">
                 <span className="font-bold text-pink-700 uppercase tracking-wider block text-[10px]">
