@@ -1048,21 +1048,21 @@ export default function AdminDashboard() {
     setNewExpDesc('');
   };
 
-  // ── XỬ LÝ TẢI ẢNH BÁNH (UPLOAD 1 LẦN) ──
+  // ── XỬ LÝ TẢI ẢNH BÁNH (OFFLINE-FIRST: LƯU BASE64 VÀO LOCALSTORAGE TRƯỚC) ──
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedProductId) return;
 
     setUploadingId(selectedProductId);
     try {
-      const img = new Image();
+      const img = new window.Image();
       const reader = new FileReader();
 
       reader.onload = (event) => {
         img.src = event.target?.result as string;
         img.onload = async () => {
           const canvas = document.createElement('canvas');
-          const maxDim = 800;
+          const maxDim = 400; // Nhỏ hơn để base64 gọn, đủ hiển thị POS
           let width = img.width;
           let height = img.height;
 
@@ -1079,51 +1079,87 @@ export default function AdminDashboard() {
           const ctx = canvas.getContext('2d');
           ctx?.drawImage(img, 0, 0, width, height);
 
-          canvas.toBlob(
-            async (blob) => {
-              if (!blob) return;
+          // 1. Tạo base64 ngay lập tức (hoạt động 100% offline)
+          const base64Url = canvas.toDataURL('image/webp', 0.7);
 
-              const fileName = `product_${selectedProductId}_${Date.now()}.webp`;
-              const { data: storageData, error: storageErr } = await supabase.storage
-                .from('product-images')
-                .upload(fileName, blob, {
-                  contentType: 'image/webp',
-                  upsert: true,
-                });
+          // 2. Cập nhật giao diện React ngay tức khắc
+          const productId = selectedProductId;
+          setProducts((prev) => {
+            const updated = prev.map((p) =>
+              p.id === productId ? { ...p, image_url: base64Url } : p
+            );
+            // 3. Lưu vào localStorage để giữ ảnh khi reload
+            try {
+              localStorage.setItem('bakery_products', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
 
-              let publicUrl = '';
-              if (!storageErr && storageData) {
-                const { data: urlData } = supabase.storage
+          setUploadSuccess('Đã cập nhật ảnh thành công!');
+          setTimeout(() => setUploadSuccess(null), 4000);
+          setUploadingId(null);
+
+          // Reset file input để có thể chọn lại cùng file
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+
+          // 4. Thử upload lên Supabase Storage (bonus, không bắt buộc)
+          try {
+            canvas.toBlob(
+              async (blob) => {
+                if (!blob) return;
+                const fileName = `product_${productId}_${Date.now()}.webp`;
+
+                const { data: storageData, error: storageErr } = await supabase.storage
                   .from('product-images')
-                  .getPublicUrl(fileName);
-                publicUrl = urlData.publicUrl;
-              } else {
-                publicUrl = canvas.toDataURL('image/webp', 0.85);
-              }
+                  .upload(fileName, blob, {
+                    contentType: 'image/webp',
+                    upsert: true,
+                  });
 
-              await supabase
-                .from('products')
-                .update({ image_url: publicUrl })
-                .eq('id', selectedProductId);
+                let finalUrl = base64Url;
+                if (!storageErr && storageData) {
+                  const { data: urlData } = supabase.storage
+                    .from('product-images')
+                    .getPublicUrl(fileName);
+                  finalUrl = urlData.publicUrl;
 
-              setProducts((prev) =>
-                prev.map((p) => (p.id === selectedProductId ? { ...p, image_url: publicUrl } : p))
-              );
+                  // Cập nhật lại UI với URL từ Supabase (bền vững hơn base64)
+                  setProducts((prev) => {
+                    const updated = prev.map((p) =>
+                      p.id === productId ? { ...p, image_url: finalUrl } : p
+                    );
+                    try {
+                      localStorage.setItem('bakery_products', JSON.stringify(updated));
+                    } catch {}
+                    return updated;
+                  });
+                }
 
-              setUploadSuccess(`Đã cập nhật ảnh thành công! Mọi thiết bị khác tự động có ảnh ngay lập tức.`);
-              setTimeout(() => setUploadSuccess(null), 4000);
-              setUploadingId(null);
-            },
-            'image/webp',
-            0.85
-          );
+                // Cập nhật URL vào bảng products trên Supabase DB
+                await supabase
+                  .from('products')
+                  .update({ image_url: finalUrl })
+                  .eq('id', productId);
+              },
+              'image/webp',
+              0.7
+            );
+          } catch (syncErr) {
+            console.warn('Supabase sync ảnh (không ảnh hưởng):', syncErr);
+          }
         };
       };
 
       reader.readAsDataURL(file);
     } catch (err) {
-      console.error('Lỗi upload ảnh:', err);
+      console.error('Lỗi xử lý ảnh:', err);
       setUploadingId(null);
+      // Reset file input khi lỗi
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
     }
   };
 
