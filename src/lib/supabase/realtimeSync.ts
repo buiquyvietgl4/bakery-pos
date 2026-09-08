@@ -11,11 +11,17 @@ type StatusCallback = (payload: SyncOrderPayload) => void;
 type NewOrderCallback = (order: any) => void;
 type ClearDemoCallback = () => void;
 type DbChangeCallback = () => void;
+export type ProductChangePayload = {
+  action: 'create' | 'update' | 'delete';
+  product: any;
+};
+type ProductChangeCallback = (payload: ProductChangePayload) => void;
 
 const statusListeners = new Set<StatusCallback>();
 const newOrderListeners = new Set<NewOrderCallback>();
 const clearDemoListeners = new Set<ClearDemoCallback>();
 const dbChangeListeners = new Set<DbChangeCallback>();
+const productListeners = new Set<ProductChangeCallback>();
 
 let syncChannelInstance: any = null;
 
@@ -61,6 +67,15 @@ function ensureSyncChannel() {
             cb();
           } catch (e) {
             console.warn('Lỗi clearDemoListener:', e);
+          }
+        });
+      })
+      .on('broadcast', { event: 'product_changed' }, ({ payload }: any) => {
+        productListeners.forEach((cb) => {
+          try {
+            cb(payload);
+          } catch (e) {
+            console.warn('Lỗi productListener:', e);
           }
         });
       })
@@ -162,6 +177,25 @@ export async function broadcastClearDemoOrders() {
 }
 
 /**
+ * Phát sóng khi có thay đổi sản phẩm (tạo bánh mới, đổi ảnh bánh, xóa bánh)
+ * Để tất cả máy tính và điện thoại đồng bộ tức thì menu và ảnh trong ~50ms
+ */
+export async function broadcastProductChange(payload: ProductChangePayload) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'product_changed',
+        payload,
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastProductChange:', err);
+  }
+}
+
+/**
  * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác
  * An toàn tuyệt đối với React StrictMode và Remount
  */
@@ -170,21 +204,24 @@ export function subscribeCrossDeviceSync(callbacks: {
   onNewOrder?: NewOrderCallback;
   onClearDemo?: ClearDemoCallback;
   onDbChange?: DbChangeCallback;
+  onProductChange?: ProductChangeCallback;
 }) {
   ensureSyncChannel();
 
-  const { onStatusUpdate, onNewOrder, onClearDemo, onDbChange } = callbacks;
+  const { onStatusUpdate, onNewOrder, onClearDemo, onDbChange, onProductChange } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
   if (onNewOrder) newOrderListeners.add(onNewOrder);
   if (onClearDemo) clearDemoListeners.add(onClearDemo);
   if (onDbChange) dbChangeListeners.add(onDbChange);
+  if (onProductChange) productListeners.add(onProductChange);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
     if (onNewOrder) newOrderListeners.delete(onNewOrder);
     if (onClearDemo) clearDemoListeners.delete(onClearDemo);
     if (onDbChange) dbChangeListeners.delete(onDbChange);
+    if (onProductChange) productListeners.delete(onProductChange);
   };
 }
 

@@ -349,6 +349,39 @@ export default function POSPage() {
       onStatusUpdate: () => reloadOrdersData(),
       onNewOrder: () => reloadOrdersData(),
       onDbChange: () => reloadOrdersData(),
+      onProductChange: (payload) => {
+        if (!payload || !payload.product) return;
+        const { action, product } = payload;
+        if (action === 'create') {
+          setProducts((prev) => {
+            if (prev.some((p) => p.id === product.id || p.name === product.name)) return prev;
+            const updated = [product, ...prev];
+            try {
+              localStorage.setItem('bakery_products', JSON.stringify(updated));
+              db.products.put(product);
+            } catch {}
+            return updated;
+          });
+        } else if (action === 'update') {
+          setProducts((prev) => {
+            const updated = prev.map((p) => (p.id === product.id ? { ...p, ...product } : p));
+            try {
+              localStorage.setItem('bakery_products', JSON.stringify(updated));
+              db.products.update(product.id, product);
+            } catch {}
+            return updated;
+          });
+        } else if (action === 'delete') {
+          setProducts((prev) => {
+            const updated = prev.filter((p) => p.id !== product.id);
+            try {
+              localStorage.setItem('bakery_products', JSON.stringify(updated));
+              db.products.delete(product.id);
+            } catch {}
+            return updated;
+          });
+        }
+      },
     });
 
     return () => {

@@ -18,6 +18,7 @@ import { DEFAULT_BAKERY_PRODUCTS } from '@/lib/constants/bakeryData';
 import { db } from '@/lib/db/dexie';
 import { generateUUID } from '@/lib/utils/uuid';
 import { exportToCSV, exportMultiSheetExcel } from '@/lib/utils/exportExcel';
+import { broadcastProductChange, subscribeCrossDeviceSync } from '@/lib/supabase/realtimeSync';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -646,6 +647,47 @@ export default function AdminDashboard() {
         }
       }
     }
+
+    // Lắng nghe đồng bộ sản phẩm thời gian thực giữa điện thoại và máy tính
+    const unsubscribeSync = subscribeCrossDeviceSync({
+      onProductChange: (payload) => {
+        if (!payload || !payload.product) return;
+        const { action, product } = payload;
+        if (action === 'create') {
+          setProducts((prev) => {
+            if (prev.some((p) => p.id === product.id || p.name === product.name)) return prev;
+            const updated = [product, ...prev];
+            try {
+              localStorage.setItem('bakery_products', JSON.stringify(updated));
+              db.products.put(product);
+            } catch {}
+            return updated;
+          });
+        } else if (action === 'update') {
+          setProducts((prev) => {
+            const updated = prev.map((p) => (p.id === product.id ? { ...p, ...product } : p));
+            try {
+              localStorage.setItem('bakery_products', JSON.stringify(updated));
+              db.products.update(product.id, product);
+            } catch {}
+            return updated;
+          });
+        } else if (action === 'delete') {
+          setProducts((prev) => {
+            const updated = prev.filter((p) => p.id !== product.id);
+            try {
+              localStorage.setItem('bakery_products', JSON.stringify(updated));
+              db.products.delete(product.id);
+            } catch {}
+            return updated;
+          });
+        }
+      },
+    });
+
+    return () => {
+      unsubscribeSync();
+    };
   }, []);
 
   const handleSaveVietqr = (e?: React.FormEvent) => {
@@ -929,8 +971,9 @@ export default function AdminDashboard() {
     };
 
     try {
-      if (navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
         await supabase.from('products').insert({
+          id: newId,
           name: newProdName,
           category: newProdCategory,
           selling_price: newProdPrice,
@@ -945,10 +988,14 @@ export default function AdminDashboard() {
       setProducts(updated);
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_products', JSON.stringify(updated));
+        window.dispatchEvent(new Event('bakery_products_updated'));
       }
       try {
         await db.products.put(newProductObj);
       } catch {}
+
+      // Đồng bộ thời gian thực sang Máy tính và Điện thoại khác ngay lập tức (< 50ms)
+      await broadcastProductChange({ action: 'create', product: newProductObj });
 
       setUploadSuccess(`Đã thêm sản phẩm "${newProdName}" thành công! Menu quầy POS đã tự động cập nhật.`);
       setTimeout(() => setUploadSuccess(null), 5000);
@@ -964,10 +1011,15 @@ export default function AdminDashboard() {
       setProducts(fallbackUpdated);
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_products', JSON.stringify(fallbackUpdated));
+        window.dispatchEvent(new Event('bakery_products_updated'));
       }
       try {
         await db.products.put(newProductObj);
       } catch {}
+
+      // Vẫn phát sóng để các thiết bị khác nhận được
+      await broadcastProductChange({ action: 'create', product: newProductObj });
+
       setIsAddProductModalOpen(false);
     } finally {
       setCreatingProduct(false);
@@ -980,6 +1032,7 @@ export default function AdminDashboard() {
       setProducts(updated);
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_products', JSON.stringify(updated));
+        window.dispatchEvent(new Event('bakery_products_updated'));
       }
       try {
         await db.products.delete(id);
@@ -987,6 +1040,9 @@ export default function AdminDashboard() {
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         await supabase.from('products').delete().eq('id', id);
       }
+
+      // Phát sóng xóa sản phẩm sang các thiết bị khác
+      await broadcastProductChange({ action: 'delete', product: { id } });
     }
   };
 
@@ -1116,6 +1172,9 @@ export default function AdminDashboard() {
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new Event('bakery_products_updated'));
             }
+
+            // 6. Phát sóng sang tất cả điện thoại và máy tính khác qua Realtime
+            broadcastProductChange({ action: 'update', product: { id: productId, image_url: base64Url } });
 
             return updated;
           });
