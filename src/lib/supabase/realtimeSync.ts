@@ -16,12 +16,14 @@ export type ProductChangePayload = {
   product: any;
 };
 type ProductChangeCallback = (payload: ProductChangePayload) => void;
+type TelegramConfigCallback = (config: any) => void;
 
 const statusListeners = new Set<StatusCallback>();
 const newOrderListeners = new Set<NewOrderCallback>();
 const clearDemoListeners = new Set<ClearDemoCallback>();
 const dbChangeListeners = new Set<DbChangeCallback>();
 const productListeners = new Set<ProductChangeCallback>();
+const telegramConfigListeners = new Set<TelegramConfigCallback>();
 
 let syncChannelInstance: any = null;
 
@@ -78,6 +80,17 @@ function ensureSyncChannel() {
             console.warn('Lỗi productListener:', e);
           }
         });
+      })
+      .on('broadcast', { event: 'telegram_config_updated' }, ({ payload }: any) => {
+        if (payload?.config) {
+          telegramConfigListeners.forEach((cb) => {
+            try {
+              cb(payload.config);
+            } catch (e) {
+              console.warn('Lỗi telegramConfigListener:', e);
+            }
+          });
+        }
       })
       .on(
         'postgres_changes',
@@ -196,6 +209,27 @@ export async function broadcastProductChange(payload: ProductChangePayload) {
 }
 
 /**
+ * Phát sóng cập nhật cấu hình Telegram tới tất cả thiết bị
+ */
+export async function broadcastTelegramConfig(config: any) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'telegram_config_updated',
+        payload: {
+          config,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastTelegramConfig:', err);
+  }
+}
+
+/**
  * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác
  * An toàn tuyệt đối với React StrictMode và Remount
  */
@@ -205,16 +239,18 @@ export function subscribeCrossDeviceSync(callbacks: {
   onClearDemo?: ClearDemoCallback;
   onDbChange?: DbChangeCallback;
   onProductChange?: ProductChangeCallback;
+  onTelegramConfigChange?: TelegramConfigCallback;
 }) {
   ensureSyncChannel();
 
-  const { onStatusUpdate, onNewOrder, onClearDemo, onDbChange, onProductChange } = callbacks;
+  const { onStatusUpdate, onNewOrder, onClearDemo, onDbChange, onProductChange, onTelegramConfigChange } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
   if (onNewOrder) newOrderListeners.add(onNewOrder);
   if (onClearDemo) clearDemoListeners.add(onClearDemo);
   if (onDbChange) dbChangeListeners.add(onDbChange);
   if (onProductChange) productListeners.add(onProductChange);
+  if (onTelegramConfigChange) telegramConfigListeners.add(onTelegramConfigChange);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
@@ -222,6 +258,7 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onClearDemo) clearDemoListeners.delete(onClearDemo);
     if (onDbChange) dbChangeListeners.delete(onDbChange);
     if (onProductChange) productListeners.delete(onProductChange);
+    if (onTelegramConfigChange) telegramConfigListeners.delete(onTelegramConfigChange);
   };
 }
 
@@ -290,4 +327,129 @@ export async function syncOrderToSupabase(
   } catch (err) {
     console.warn('Lỗi syncOrderToSupabase:', err);
   }
+}
+
+/**
+ * Trích xuất thông tin đặt bánh từ trường ghi chú (notes)
+ * Làm chốt an toàn khi dữ liệu đồng bộ qua các hệ thống hoặc thiết bị khác nhau
+ */
+export function parsePreorderFromNotes(notes?: string) {
+  if (!notes || typeof notes !== 'string') {
+    return {
+      delivery_method: undefined,
+      shipping_address: undefined,
+      deposit_amount: undefined,
+      remaining_amount: undefined,
+    };
+  }
+
+  const isShip =
+    notes.includes('Hình thức: Giao tận nơi') ||
+    notes.includes('Ship bánh') ||
+    notes.includes('Đ/C:') ||
+    notes.toLowerCase().includes('giao tận nơi') ||
+    notes.toLowerCase().includes('ship');
+
+  let shippingAddress: string | undefined = undefined;
+  const addrMatch = notes.match(/Đ\/C:\s*([^|]+)/i);
+  if (addrMatch && addrMatch[1]) {
+    shippingAddress = addrMatch[1].trim();
+  }
+
+  let remainingAmount: number | undefined = undefined;
+  const remMatch = notes.match(/CÒN (?:LẠI PHẢI|THU KHI GIAO|CẦN THU|LẠI CẦN THU):\s*([\d\.\,]+)/i);
+  if (remMatch && remMatch[1]) {
+    const cleanNum = parseInt(remMatch[1].replace(/\D/g, ''), 10);
+    if (!isNaN(cleanNum)) remainingAmount = cleanNum;
+  }
+
+  let depositAmount: number | undefined = undefined;
+  const depMatch = notes.match(/Đã cọc:\s*([\d\.\,]+)/i);
+  if (depMatch && depMatch[1]) {
+    const cleanNum = parseInt(depMatch[1].replace(/\D/g, ''), 10);
+    if (!isNaN(cleanNum)) depositAmount = cleanNum;
+  }
+
+  let referenceImageUrl: string | undefined = undefined;
+  const imgMatch = notes.match(/\[MẪU_ẢNH:([^\]]+)\]/);
+  if (imgMatch && imgMatch[1]) {
+    referenceImageUrl = imgMatch[1].trim();
+  }
+
+  let cakeName: string | undefined = undefined;
+  let cakeSize: string | undefined = undefined;
+  const cakeMatch = notes.match(/Bánh:\s*([^\(\|]+)(?:\(([^)]+)\))?/i);
+  if (cakeMatch) {
+    if (cakeMatch[1]) cakeName = cakeMatch[1].trim();
+    if (cakeMatch[2]) cakeSize = cakeMatch[2].trim();
+  }
+
+  let customerName: string | undefined = undefined;
+  let customerPhone: string | undefined = undefined;
+  const custMatch = notes.match(/Khách:\s*([^\(\|]+)(?:\(([^)]+)\))?/i);
+  if (custMatch) {
+    if (custMatch[1]) customerName = custMatch[1].trim();
+    if (custMatch[2]) customerPhone = custMatch[2].trim();
+  }
+
+  let pickupTime: string | undefined = undefined;
+  const pickupMatch = notes.match(/Hẹn:\s*([^|]+)/i);
+  if (pickupMatch && pickupMatch[1]) {
+    pickupTime = pickupMatch[1].trim();
+  }
+
+  let cakeMessage: string | undefined = undefined;
+  const msgMatch = notes.match(/Chữ:\s*\"?([^\"]+)\"?/i);
+  if (msgMatch && msgMatch[1]) {
+    cakeMessage = msgMatch[1].trim();
+  }
+
+  return {
+    delivery_method: isShip ? ('shipping' as const) : undefined,
+    shipping_address: shippingAddress,
+    deposit_amount: depositAmount,
+    remaining_amount: remainingAmount,
+    reference_image_url: referenceImageUrl,
+    cake_name: cakeName,
+    cake_size: cakeSize,
+    customer_name: customerName,
+    customer_phone: customerPhone,
+    preorder_pickup_at: pickupTime,
+    cake_message: cakeMessage,
+  };
+}
+
+/**
+ * Làm sạch chuỗi ghi chú hiển thị ra giao diện (loại bỏ tag hình ảnh Base64 nếu có)
+ */
+export function cleanDisplayNotes(notes?: string): string {
+  if (!notes || typeof notes !== 'string') return '';
+  return notes.replace(/\[MẪU_ẢNH:[^\]]+\]/g, '').trim();
+}
+
+/**
+ * Định dạng ngày giờ hẹn giao / nhận bánh thân thiện cho thợ làm bánh và nhân viên
+ * Ví dụ: '2026-09-09T17:30:00+00:00' -> '17:30 ngày 09/09/2026'
+ */
+export function formatPickupDateTime(dt?: string): string {
+  if (!dt || typeof dt !== 'string') return '';
+
+  // Nếu đã ở dạng chuỗi đẹp như "17:30 ngày mai (08/09)" thì giữ nguyên
+  if (!dt.includes('T') && !dt.includes('Z')) {
+    return dt;
+  }
+
+  try {
+    const d = new Date(dt);
+    if (!isNaN(d.getTime())) {
+      const hours = String(d.getHours()).padStart(2, '0');
+      const minutes = String(d.getMinutes()).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${hours}:${minutes} ngày ${day}/${month}/${year}`;
+    }
+  } catch {}
+
+  return dt;
 }

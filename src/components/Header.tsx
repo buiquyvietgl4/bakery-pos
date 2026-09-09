@@ -2,15 +2,24 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingBag, ChefHat, BarChart3, Wifi, WifiOff, Cake, Shield, Users, Lock, LogOut, KeyRound } from 'lucide-react';
+import { ShoppingBag, ChefHat, BarChart3, Wifi, WifiOff, Cake, Shield, Users, Lock, LogOut, KeyRound, Bell, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import LoginModal from '@/components/LoginModal';
+import NotificationSettingsModal from '@/components/NotificationSettingsModal';
+import { phoneNotificationService } from '@/lib/utils/phoneNotification';
+import { autoOrderWatcher } from '@/lib/supabase/autoOrderWatcher';
+import { getUnreadNotificationCount, subscribeNotificationHistory } from '@/lib/utils/notificationHistory';
 
 export default function Header() {
   const pathname = usePathname();
   const [isOnline, setIsOnline] = useState(true);
   const [mounted, setMounted] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<string>('default');
+  const [autoDemoActive, setAutoDemoActive] = useState(false);
+  const [isNotifSettingsOpen, setIsNotifSettingsOpen] = useState(false);
+  const [notifModalTab, setNotifModalTab] = useState<'history' | 'pwa' | 'telegram' | 'kiosk'>('history');
+  const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
   const { user, isAdmin, isStaff, logout, openLoginModal } = useAuth();
 
   useEffect(() => {
@@ -19,12 +28,33 @@ export default function Header() {
     const handleOnline = () => setIsOnline(true);
     const handleOffline = () => setIsOnline(false);
 
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+      phoneNotificationService.initServiceWorker();
+      setNotifPermission(phoneNotificationService.getPermission());
+      autoOrderWatcher.start();
+      setAutoDemoActive(autoOrderWatcher.isAutoDemoEnabled());
+
+      // Lắng nghe số thông báo chưa đọc
+      const updateUnread = () => {
+        setUnreadNotifs(getUnreadNotificationCount());
+      };
+      updateUnread();
+      const unsubHistory = subscribeNotificationHistory(updateUnread);
+
+      const handleDemoToggle = (e: any) => {
+        setAutoDemoActive(Boolean(e.detail?.enabled));
+      };
+      window.addEventListener('bakery_auto_demo_toggle', handleDemoToggle);
+
+      return () => {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+        window.removeEventListener('bakery_auto_demo_toggle', handleDemoToggle);
+        unsubHistory();
+      };
+    }
   }, []);
 
   const navItems = [
@@ -35,21 +65,25 @@ export default function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-amber-100 shadow-xs">
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 flex items-center justify-between h-16">
+      <header className="sticky top-0 z-40 bg-[#fbf7f2]/95 backdrop-blur-xl border-b border-amber-200/50 shadow-xs w-full overflow-x-hidden">
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 flex items-center justify-between h-16 w-full gap-1 sm:gap-2">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2.5 font-bold text-lg text-amber-900 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-orange-400 flex items-center justify-center text-white shadow-md shadow-amber-500/20 group-hover:scale-105 transition">
-              <Cake className="w-6 h-6" />
+          <Link href="/" className="flex items-center gap-2 sm:gap-3 font-bold text-lg text-amber-950 group shrink-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 flex items-center justify-center text-white shadow-lg shadow-amber-500/25 group-hover:scale-105 group-hover:shadow-amber-500/35 transition-all duration-300 shrink-0">
+              <Cake className="w-4 h-4 sm:w-5 sm:h-5 drop-shadow-xs" />
             </div>
-            <div>
-              <span className="block text-sm sm:text-base font-extrabold tracking-tight">TIỆM BÁNH ABC</span>
-              <span className="block text-[10px] sm:text-[11px] font-semibold text-amber-600">Bakery ERP & POS Mini</span>
+            <div className="shrink-0 flex flex-col justify-center">
+              <span className="block text-xs sm:text-base font-black tracking-tight text-amber-950 whitespace-nowrap leading-tight">
+                TIỆM BÁNH ABC
+              </span>
+              <span className="hidden sm:block text-[10px] sm:text-[11px] font-bold text-amber-600 tracking-wide uppercase mt-0.5 whitespace-nowrap">
+                Artisan Bakery & POS
+              </span>
             </div>
           </Link>
 
-          {/* Navigation Tabs */}
-          <nav className="flex items-center gap-1 sm:gap-2">
+          {/* Navigation Tabs - Modern Segmented Pills */}
+          <nav className="flex items-center gap-0.5 sm:gap-1 p-1 bg-[#ebe0d3]/70 rounded-2xl border border-amber-200/40 shrink-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname.startsWith(item.href);
@@ -62,11 +96,11 @@ export default function Header() {
                     type="button"
                     onClick={() => openLoginModal('admin')}
                     title="Khu vực dành riêng cho Chủ Tiệm (Bấm để nhập mật khẩu)"
-                    className="flex items-center gap-1.5 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold text-zinc-400 hover:text-amber-800 hover:bg-amber-50/80 transition cursor-pointer"
+                    className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-amber-800 hover:bg-white/80 transition cursor-pointer"
                   >
                     <Lock className="w-3.5 h-3.5 text-zinc-400" />
                     <span className="hidden sm:inline">{item.label}</span>
-                    <span className="text-[10px] bg-zinc-200 text-zinc-600 px-1.5 py-0.2 rounded font-mono">Khóa</span>
+                    <span className="text-[10px] bg-zinc-200/80 text-zinc-600 px-1.5 py-0.2 rounded font-mono hidden sm:inline">Khóa</span>
                   </button>
                 );
               }
@@ -75,13 +109,13 @@ export default function Header() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition ${
+                  className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
                     isActive
-                      ? 'bg-amber-600 text-white shadow-md shadow-amber-600/25'
-                      : 'text-zinc-600 hover:bg-amber-50 hover:text-amber-900'
+                      ? 'bg-white text-amber-800 shadow-xs shadow-zinc-200'
+                      : 'text-zinc-600 hover:text-amber-900 hover:bg-white/50'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className={`w-4 h-4 ${isActive ? 'text-amber-600' : 'text-zinc-400'}`} />
                   <span className="hidden sm:inline">{item.label}</span>
                 </Link>
               );
@@ -89,41 +123,41 @@ export default function Header() {
           </nav>
 
           {/* Right side: Role Account Badge & Online Status */}
-          <div className="flex items-center gap-1.5 sm:gap-2.5">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {mounted && (
               <>
                 {isAdmin ? (
                   // Đang là Admin
-                  <div className="flex items-center gap-1 sm:gap-1.5 bg-amber-50 p-1 pl-2 sm:pl-2.5 rounded-xl border border-amber-200 text-xs">
-                    <span className="flex items-center gap-1 font-black text-amber-800 text-[11px] sm:text-xs">
-                      <Shield className="w-3.5 h-3.5 text-amber-600" />
+                  <div className="flex items-center gap-1 bg-amber-50/90 p-1 sm:pl-2.5 rounded-xl border border-amber-200/80 text-xs shadow-2xs">
+                    <span className="flex items-center gap-1 font-black text-amber-900 text-[11px] sm:text-xs">
+                      <Shield className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                       <span className="hidden md:inline">Chủ Tiệm</span>
                     </span>
                     <button
                       type="button"
                       onClick={logout}
                       title="Khóa quyền Admin (Chuyển về quyền Nhân viên khi giao máy cho thu ngân)"
-                      className="p-1 sm:px-2 sm:py-0.5 rounded-lg bg-white border border-amber-200 hover:bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                      className="p-1 sm:px-2 sm:py-0.5 rounded-lg bg-white border border-amber-200/80 hover:bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
                     >
                       <LogOut className="w-3 h-3 text-amber-700" />
-                      <span className="hidden sm:inline">Khóa Admin</span>
+                      <span className="hidden md:inline">Khóa Admin</span>
                     </button>
                   </div>
                 ) : (
                   // Đang là Nhân viên
-                  <div className="flex items-center gap-1 bg-zinc-100 p-1 pl-2 rounded-xl border border-zinc-200 text-xs">
-                    <span className="flex items-center gap-1 font-bold text-zinc-700 text-[11px] sm:text-xs">
+                  <div className="flex items-center gap-1 bg-stone-100/90 p-1 sm:pl-2 rounded-xl border border-stone-200 text-xs shadow-2xs">
+                    <span className="hidden md:flex items-center gap-1 font-bold text-zinc-700 text-[11px] sm:text-xs">
                       <Users className="w-3.5 h-3.5 text-orange-600" />
-                      <span className="hidden md:inline">Nhân viên</span>
+                      <span>Nhân viên</span>
                     </span>
                     <button
                       type="button"
                       onClick={() => openLoginModal('admin')}
-                      className="px-2 py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                      className="p-1.5 sm:px-2 sm:py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer"
                       title="Nhập mật khẩu để mở quyền Chủ Tiệm"
                     >
                       <KeyRound className="w-3 h-3" />
-                      <span>Mở Admin</span>
+                      <span className="hidden sm:inline">Mở Admin</span>
                     </button>
                   </div>
                 )}
@@ -132,21 +166,93 @@ export default function Header() {
 
             {/* Online / Offline Badge */}
             {isOnline ? (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <Wifi className="w-3 h-3" />
-                <span className="hidden lg:inline">Online</span>
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="hidden lg:inline">Live Sync</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
                 <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                <WifiOff className="w-3 h-3" />
-                <span>Offline</span>
+                <span className="hidden sm:inline">Offline</span>
               </span>
+            )}
+
+            {/* Nút Bật/Tắt Nhận Đơn Tự Động (Auto-Demo Mode): Ẩn trên mobile để tránh tràn viền */}
+            {mounted && (
+              <button
+                type="button"
+                onClick={() => {
+                  const active = autoOrderWatcher.toggleAutoDemo();
+                  setAutoDemoActive(active);
+                }}
+                className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
+                  autoDemoActive
+                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm shadow-emerald-600/30 ring-2 ring-emerald-400/40'
+                    : 'bg-white/80 text-zinc-700 border-amber-200/80 hover:bg-amber-100/60 hover:text-amber-900 shadow-2xs'
+                }`}
+                title={
+                  autoDemoActive
+                    ? 'Chế độ Tự Động Nhận Đơn: ĐANG BẬT (Hệ thống tự nhận đơn mẫu & báo chuông/rung/thông báo nổi mỗi 30s)'
+                    : 'Bật chế độ Tự Động Nhận Đơn (Hệ thống sẽ tự nhận đơn mới để kiểm tra chuông & thông báo)'
+                }
+              >
+                <Sparkles className={`w-3.5 h-3.5 ${autoDemoActive ? 'animate-spin text-amber-200' : 'text-amber-600'}`} />
+                <span className="hidden lg:inline">
+                  {autoDemoActive ? 'Tự Động: BẬT' : 'Tự Động Nhận Đơn'}
+                </span>
+                <span className={`w-1.5 h-1.5 rounded-full ${autoDemoActive ? 'bg-white animate-pulse' : 'bg-zinc-400'}`} />
+              </button>
+            )}
+
+            {/* Nút Bật & Cài Đặt Thông Báo & Lịch Sử */}
+            {mounted && notifPermission !== 'unsupported' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (notifPermission !== 'granted') {
+                    await phoneNotificationService.requestPermission();
+                    setNotifPermission(phoneNotificationService.getPermission());
+                  }
+                  setNotifModalTab('history');
+                  setIsNotifSettingsOpen(true);
+                }}
+                className={`relative flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
+                  unreadNotifs > 0
+                    ? 'bg-gradient-to-r from-amber-600 via-rose-600 to-pink-600 text-white border-transparent shadow-xs ring-2 ring-rose-300/40 hover:scale-105'
+                    : notifPermission === 'granted'
+                    ? 'bg-amber-50/90 text-amber-900 border-amber-300 hover:bg-amber-100 shadow-2xs'
+                    : 'bg-gradient-to-r from-rose-500 to-pink-500 text-white border-transparent shadow-xs animate-pulse hover:scale-105'
+                }`}
+                title="Bấm để xem lịch sử thông báo hoặc cài đặt báo chuông khi tắt màn hình"
+              >
+                <Bell className={`w-3.5 h-3.5 ${unreadNotifs > 0 ? 'text-white animate-bounce' : notifPermission === 'granted' ? 'text-amber-700' : 'text-white animate-bounce'}`} />
+                <span className="hidden sm:inline">
+                  {unreadNotifs > 0 ? 'Thông Báo' : notifPermission === 'granted' ? 'Báo Đơn' : 'Bật Báo'}
+                </span>
+                {unreadNotifs > 0 ? (
+                  <span className="px-1.5 py-0.2 rounded-full bg-white text-rose-700 text-[10px] font-black shadow-2xs">
+                    {unreadNotifs}
+                  </span>
+                ) : notifPermission === 'granted' ? (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                ) : (
+                  <span className="text-[10px] bg-white/20 px-1 rounded-sm sm:inline hidden">Bật</span>
+                )}
+              </button>
             )}
           </div>
         </div>
       </header>
+
+      {/* Modal Cài Đặt Báo Đơn & Xem Lịch Sử Thông Báo */}
+      <NotificationSettingsModal
+        isOpen={isNotifSettingsOpen}
+        defaultTab={notifModalTab}
+        onClose={() => setIsNotifSettingsOpen(false)}
+      />
 
       {/* Modal Đăng Nhập / Mở Khóa Quyền */}
       <LoginModal />

@@ -47,8 +47,13 @@ export interface CachedProduct {
   category: string;
   image_url?: string;
   selling_price: number;
+  price?: number;
   is_active: boolean;
   is_preorder_only?: boolean;
+  stock_qty?: number;
+  min_stock_alert?: number;
+  unit?: string;
+  is_semi_finished?: boolean;
 }
 
 export class BakeryDB extends Dexie {
