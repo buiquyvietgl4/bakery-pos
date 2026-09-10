@@ -44,4 +44,7 @@ next-env.d.ts
 # archives & test scripts
 *.zip
 test_*.mjs
+SQL backup/
+*.bakery.json
+config.yml
 

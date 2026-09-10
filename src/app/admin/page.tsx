@@ -40,6 +40,7 @@ import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistory
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
+import { AccountingClosingSection } from '@/components/admin/AccountingClosingSection';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -2005,7 +2006,7 @@ export default function AdminDashboard() {
             { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode },
             { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
             { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield },
-            { id: 'cloud', label: 'Cloud 500MB', icon: HardDrive },
+            { id: 'cloud', label: 'Chốt Sổ & Cloud', icon: HardDrive },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -2080,6 +2081,15 @@ export default function AdminDashboard() {
                 }`}
               >
                 Tất Cả Thời Gian
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveTab('cloud')}
+                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-amber-800 hover:bg-amber-50 border border-amber-300 shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                title="Mở phân hệ chốt sổ kế toán & khóa kỳ"
+              >
+                <Lock className="w-3.5 h-3.5 text-amber-600" />
+                <span>Chốt Sổ Kế Toán</span>
               </button>
             </div>
           </div>
@@ -4031,54 +4041,13 @@ export default function AdminDashboard() {
             </button>
           </div>
 
-          <div className="space-y-4">
-            <h3 className="font-bold text-sm text-zinc-800">Quy Trình 3 Bước Dọn Dẹp Định Kỳ (Mỗi 3-6 Tháng):</h3>
-
-            <div className="p-4 rounded-2xl border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-              <div className="space-y-1">
-                <span className="text-xs font-bold text-amber-700">Bước 1: Chốt Sổ Kế Toán Tháng</span>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Tổng hợp toàn bộ doanh thu, COGS và OPEX vào bảng <code>monthly_accounting_summary</code>.
-                </p>
-              </div>
-              <button
-                onClick={handleCloseMonth}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 cursor-pointer text-center transition"
-              >
-                Chốt Sổ Tháng 09/2026
-              </button>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-              <div className="space-y-1">
-                <span className="text-xs font-bold text-blue-700">Bước 2: Tải Dữ Liệu Về Máy Tính</span>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Tải toàn bộ file JSON / Excel lưu trữ trên máy tính của tiệm trước khi xóa data trên cloud.
-                </p>
-              </div>
-              <button
-                onClick={handleDownloadBackup}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shrink-0 flex items-center justify-center gap-1.5 cursor-pointer text-center transition"
-              >
-                <Download className="w-3.5 h-3.5" /> Tải File Backup
-              </button>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-              <div className="space-y-1">
-                <span className="text-xs font-bold text-rose-700">Bước 3: Dọn Dẹp & Xóa Đơn Hàng Cũ</span>
-                <p className="text-xs text-zinc-500 leading-relaxed">
-                  Xóa các đơn chi tiết của tháng đã chốt. Biểu đồ lịch sử vẫn giữ nguyên 100%.
-                </p>
-              </div>
-              <button
-                onClick={handlePurgeOldOrders}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shrink-0 flex items-center justify-center gap-1.5 cursor-pointer text-center transition"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Xóa Data Cũ
-              </button>
-            </div>
-          </div>
+          {/* PHÂN HỆ CHỐT SỔ KẾ TOÁN THIẾT THỰC (NGÀY / TUẦN / THÁNG / NĂM) */}
+          <AccountingClosingSection
+            orders={posOrders}
+            expenses={expenses}
+            spoilageLogs={spoilageLogs}
+            adminName={adminNameInput || 'Chủ tiệm'}
+          />
         </div>
       )}
 
