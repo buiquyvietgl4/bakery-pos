@@ -12,6 +12,7 @@ import { getSpoilageLogs } from './spoilageManager';
 import { supabase } from '@/lib/supabase/client';
 import { getTelegramConfig } from './telegramNotify';
 import { getPrinterConfig } from './printerManager';
+import { getStoreBranding } from './storeBranding';
 
 const CONFIG_KEY = 'bakery_auto_backup_config';
 const DB_NAME = 'bakery_backup_handles_db';
@@ -419,7 +420,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   return {
     schemaVersion: 'bakery-backup-v2',
     exportedAt: new Date().toISOString(),
-    storeName: 'Tiệm Bánh Hạnh Phúc (Bakery ERP)',
+    storeName: getStoreBranding().storeName || 'Tiệm Bánh Hạnh Phúc (Bakery ERP)',
     dataHash,
     metadata: {
       totalProducts: products.length,
@@ -446,6 +447,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       ewallet: ewalletConfig,
       printer: printerConfig,
       telegram: telegramConfig,
+      branding: getStoreBranding(),
     },
   };
 }

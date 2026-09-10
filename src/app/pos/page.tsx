@@ -40,6 +40,7 @@ import {
 import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
+import { getStoreBranding, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 
 interface CartItem {
   product: CachedProduct;
@@ -400,6 +401,23 @@ export default function POSPage() {
 
   // ── PRINTER SETTINGS MODAL STATE ──
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
+
+  // ── STORE BRANDING STATE (ĐỒNG BỘ TÊN TIỆM & LOGO) ──
+  const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
+
+  useEffect(() => {
+    setBranding(getStoreBranding());
+    const handleBrandingUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<StoreBrandingConfig>).detail;
+      if (detail) {
+        setBranding(detail);
+      } else {
+        setBranding(getStoreBranding());
+      }
+    };
+    window.addEventListener(BRANDING_UPDATED_EVENT, handleBrandingUpdate);
+    return () => window.removeEventListener(BRANDING_UPDATED_EVENT, handleBrandingUpdate);
+  }, []);
 
   // ── IN HÓA ĐƠN QUA IFRAME ĐỘC LẬP (KHẮC PHỤC LỖI NHẢY 2 TRANG VÀ LỘ NÚT BẤM) ──
   const handlePrintReceipt = () => {
@@ -2347,27 +2365,27 @@ export default function POSPage() {
                 <span className="font-bold text-pink-700 uppercase tracking-wider block text-[10px]">
                   1. Thông tin khách đặt bánh
                 </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="font-semibold text-zinc-700">Tên khách hàng *</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="min-w-0">
+                    <label className="font-semibold text-zinc-700 text-xs">Tên khách hàng *</label>
                     <input
                       type="text"
                       required
                       value={preorderForm.customerName}
                       onChange={(e) => setPreorderForm({ ...preorderForm, customerName: e.target.value })}
                       placeholder="Chị Lan Anh..."
-                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold"
+                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold min-w-0"
                     />
                   </div>
-                  <div>
-                    <label className="font-semibold text-zinc-700">Số điện thoại *</label>
+                  <div className="min-w-0">
+                    <label className="font-semibold text-zinc-700 text-xs">Số điện thoại *</label>
                     <input
                       type="tel"
                       required
                       value={preorderForm.customerPhone}
                       onChange={(e) => setPreorderForm({ ...preorderForm, customerPhone: e.target.value })}
                       placeholder="0912 345 678..."
-                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold"
+                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold min-w-0"
                     />
                   </div>
                 </div>
@@ -2378,7 +2396,7 @@ export default function POSPage() {
                 <span className="font-bold text-blue-800 uppercase tracking-wider block text-[10px] flex items-center gap-1">
                   <Truck className="w-3.5 h-3.5 text-blue-600" /> 2. Hình thức nhận bánh & Địa chỉ giao
                 </span>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <button
                     type="button"
                     onClick={() => setPreorderForm({ ...preorderForm, deliveryMethod: 'pickup' })}
@@ -2439,25 +2457,25 @@ export default function POSPage() {
                 <span className="font-bold text-zinc-700 uppercase tracking-wider block text-[10px]">
                   3. Hẹn ngày & giờ {preorderForm.deliveryMethod === 'shipping' ? 'giao hàng' : 'nhận bánh'}
                 </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="font-semibold text-zinc-600">Ngày {preorderForm.deliveryMethod === 'shipping' ? 'giao:' : 'nhận:'}</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="min-w-0">
+                    <label className="font-semibold text-zinc-600 block text-xs mb-1">Ngày {preorderForm.deliveryMethod === 'shipping' ? 'giao:' : 'nhận:'}</label>
                     <input
                       type="date"
                       required
                       value={preorderForm.pickupDate}
                       onChange={(e) => setPreorderForm({ ...preorderForm, pickupDate: e.target.value })}
-                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-zinc-900"
+                      className="w-full max-w-full box-border p-2 rounded-xl bg-white border border-zinc-200 font-black text-zinc-900 min-w-0"
                     />
                   </div>
-                  <div>
-                    <label className="font-semibold text-zinc-600">Giờ {preorderForm.deliveryMethod === 'shipping' ? 'giao:' : 'nhận:'}</label>
+                  <div className="min-w-0">
+                    <label className="font-semibold text-zinc-600 block text-xs mb-1">Giờ {preorderForm.deliveryMethod === 'shipping' ? 'giao:' : 'nhận:'}</label>
                     <input
                       type="time"
                       required
                       value={preorderForm.pickupTime}
                       onChange={(e) => setPreorderForm({ ...preorderForm, pickupTime: e.target.value })}
-                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-zinc-900"
+                      className="w-full max-w-full box-border p-2 rounded-xl bg-white border border-zinc-200 font-black text-zinc-900 min-w-0"
                     />
                   </div>
                 </div>
@@ -2489,10 +2507,10 @@ export default function POSPage() {
 
               {/* 4. Mẫu bánh & Kích thước */}
               <div className="space-y-2.5">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="min-w-0">
                     <div className="flex items-center justify-between gap-1">
-                      <label className="font-semibold text-zinc-700">Loại mẫu bánh:</label>
+                      <label className="font-semibold text-zinc-700 text-xs">Loại mẫu bánh:</label>
                       <button
                         type="button"
                         onClick={() => {
@@ -2523,7 +2541,7 @@ export default function POSPage() {
                           value={preorderForm.cakeName}
                           onChange={(e) => setPreorderForm({ ...preorderForm, cakeName: e.target.value })}
                           placeholder="Nhập tên bánh tùy chọn (VD: Bánh Mousse Trà Xanh, Bánh Rút Tiền...)"
-                          className="w-full p-2 rounded-xl bg-pink-50/70 border-2 border-pink-400 font-bold text-zinc-900 focus:bg-white text-xs placeholder:text-zinc-400"
+                          className="w-full p-2 rounded-xl bg-pink-50/70 border-2 border-pink-400 font-bold text-zinc-900 focus:bg-white text-xs placeholder:text-zinc-400 min-w-0"
                           autoFocus
                         />
                         <span className="text-[10px] text-pink-700 font-semibold block mt-0.5">
@@ -2546,7 +2564,7 @@ export default function POSPage() {
                             totalPrice: selectedP ? selectedP.selling_price : preorderForm.totalPrice,
                           });
                         }}
-                        className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold"
+                        className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold min-w-0 text-xs"
                       >
                         {products.map((p) => (
                           <option key={p.id} value={p.name}>
@@ -2559,12 +2577,12 @@ export default function POSPage() {
                       </select>
                     )}
                   </div>
-                  <div>
-                    <label className="font-semibold text-zinc-700">Kích thước bánh:</label>
+                  <div className="min-w-0">
+                    <label className="font-semibold text-zinc-700 text-xs">Kích thước bánh:</label>
                     <select
                       value={preorderForm.size}
                       onChange={(e) => setPreorderForm({ ...preorderForm, size: e.target.value })}
-                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold"
+                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold min-w-0 text-xs"
                     >
                       <option value="Size 16cm (4 - 6 người)">Size 16cm (4 - 6 người)</option>
                       <option value="Size 18cm (6 - 8 người)">Size 18cm (6 - 8 người)</option>
@@ -2715,18 +2733,18 @@ export default function POSPage() {
                 <span className="font-bold text-amber-800 uppercase tracking-wider block text-[10px]">
                   5. Thông tin thanh toán, Giảm giá & Tiền cọc
                 </span>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="min-w-0">
                     <label className="font-semibold text-zinc-700 text-xs">Giá bánh (VND):</label>
                     <input
                       type="number"
                       required
                       value={preorderForm.totalPrice || ''}
                       onChange={(e) => setPreorderForm({ ...preorderForm, totalPrice: Number(e.target.value) })}
-                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-amber-700 text-sm"
+                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-amber-700 text-sm min-w-0"
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex justify-between items-center">
                       <label className="font-semibold text-zinc-700 text-xs">Giảm giá:</label>
                       <div className="flex gap-1 text-[10px]">
@@ -2752,7 +2770,7 @@ export default function POSPage() {
                       value={preorderDiscountVal || ''}
                       onChange={(e) => setPreorderDiscountVal(Number(e.target.value))}
                       placeholder={preorderDiscountMode === 'percent' ? 'VD: 10 (%)' : 'VD: 50000 (₫)'}
-                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-emerald-600 text-sm"
+                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-emerald-600 text-sm min-w-0"
                     />
                   </div>
                 </div>
@@ -3892,46 +3910,46 @@ export default function POSPage() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">Tên khách nhận:</label>
                       <input
                         type="text"
                         value={posCustomerName}
                         onChange={(e) => setPosCustomerName(e.target.value)}
                         placeholder="VD: Chị Mai"
-                        className="w-full px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-blue-500"
+                        className="w-full px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-blue-500 min-w-0"
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">Số điện thoại:</label>
                       <input
                         type="tel"
                         value={posCustomerPhone}
                         onChange={(e) => setPosCustomerPhone(e.target.value)}
                         placeholder="VD: 0988..."
-                        className="w-full px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-blue-500"
+                        className="w-full px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-blue-500 min-w-0"
                       />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">Ngày hẹn lấy:</label>
                       <input
                         type="date"
                         value={posPickupDate}
                         onChange={(e) => setPosPickupDate(e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-blue-500"
+                        className="w-full max-w-full box-border px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-blue-500 min-w-0"
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">Giờ hẹn lấy:</label>
                       <input
                         type="time"
                         value={posPickupTime}
                         onChange={(e) => setPosPickupTime(e.target.value)}
-                        className="w-full px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-blue-500"
+                        className="w-full max-w-full box-border px-2.5 py-1.5 bg-white border border-blue-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-blue-500 min-w-0"
                       />
                     </div>
                   </div>
@@ -3993,25 +4011,25 @@ export default function POSPage() {
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">Tên người nhận:</label>
                       <input
                         type="text"
                         value={posCustomerName}
                         onChange={(e) => setPosCustomerName(e.target.value)}
                         placeholder="VD: Anh Tuấn"
-                        className="w-full px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-emerald-500"
+                        className="w-full px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-emerald-500 min-w-0"
                       />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <label className="block text-[11px] font-bold text-zinc-700 mb-1">SĐT người nhận:</label>
                       <input
                         type="tel"
                         value={posCustomerPhone}
                         onChange={(e) => setPosCustomerPhone(e.target.value)}
                         placeholder="VD: 0912..."
-                        className="w-full px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-emerald-500"
+                        className="w-full px-2.5 py-1.5 bg-white border border-emerald-200 rounded-lg text-xs font-bold text-zinc-900 focus:outline-emerald-500 min-w-0"
                       />
                     </div>
                   </div>
@@ -4042,7 +4060,7 @@ export default function POSPage() {
                         className="w-full px-3 py-2 bg-white border border-emerald-300/80 rounded-xl text-xs font-bold text-zinc-900 focus:outline-emerald-500 shadow-2xs"
                       />
                     </div>
-                    <div className="grid grid-cols-2 gap-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                       <div className="min-w-0">
                         <label className="block text-[11px] font-bold text-zinc-700 mb-1 flex items-center gap-1">
                           ⏰ Giờ giao:
@@ -4593,9 +4611,21 @@ export default function POSPage() {
           <div className="bg-white rounded-3xl max-w-sm w-full p-4 sm:p-6 space-y-4 shadow-2xl max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in duration-200">
             <div id="printable-pos-receipt" className="p-4 bg-amber-50/40 rounded-2xl border border-zinc-300 text-zinc-900 font-mono text-xs space-y-3">
               <div className="text-center space-y-1 border-b border-dashed border-zinc-300 pb-2">
-                <h2 className="font-black text-sm tracking-wider">TIỆM BÁNH ABC</h2>
-                <p className="text-[10px] text-zinc-500">123 Đường Bánh Ngọt, TP.HCM</p>
-                <p className="text-[10px] text-zinc-500">Hotline: 0901 234 567</p>
+                {branding.logoUrl && (
+                  <div className="flex justify-center mb-1">
+                    <img
+                      src={branding.logoUrl}
+                      alt={branding.storeName}
+                      className="h-9 w-auto max-w-[120px] object-contain mx-auto"
+                    />
+                  </div>
+                )}
+                <h2 className="font-black text-sm tracking-wider uppercase">{branding.storeName || 'TIỆM BÁNH ABC'}</h2>
+                {branding.slogan && (
+                  <p className="text-[9px] text-zinc-600 font-medium italic">{branding.slogan}</p>
+                )}
+                <p className="text-[10px] text-zinc-500">{branding.address || '123 Đường Bánh Ngọt, TP.HCM'}</p>
+                <p className="text-[10px] text-zinc-500">Hotline: {branding.phone || '0901 234 567'}</p>
                 <p className="font-bold text-xs pt-1">
                   {completedOrder.deliveryMethod === 'shipping'
                     ? 'PHIẾU GIAO HÀNG TẬN NƠI (SHIP BÁNH)'
@@ -4758,7 +4788,7 @@ export default function POSPage() {
               )}
 
               <div className="text-center pt-2 text-[10px] text-zinc-500 border-t border-dashed border-zinc-300">
-                <p>Cảm ơn Quý Khách & Hẹn Gặp Lại!</p>
+                <p>{branding.footerMessage || 'Cảm ơn Quý Khách & Hẹn Gặp Lại!'}</p>
               </div>
             </div>
 

@@ -108,6 +108,7 @@ export interface BakeryBackupData {
     ewallet?: any;
     printer?: any;
     telegram?: any;
+    branding?: any;
   };
 }
 

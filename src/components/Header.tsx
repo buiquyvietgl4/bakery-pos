@@ -10,6 +10,7 @@ import NotificationSettingsModal from '@/components/NotificationSettingsModal';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 import { autoOrderWatcher } from '@/lib/supabase/autoOrderWatcher';
 import { getUnreadNotificationCount, subscribeNotificationHistory } from '@/lib/utils/notificationHistory';
+import { getStoreBranding, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 
 export default function Header() {
   const pathname = usePathname();
@@ -19,7 +20,18 @@ export default function Header() {
   const [isNotifSettingsOpen, setIsNotifSettingsOpen] = useState(false);
   const [notifModalTab, setNotifModalTab] = useState<'history' | 'pwa' | 'telegram' | 'kiosk'>('history');
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
+  const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
   const { user, isAdmin, isStaff, logout, openLoginModal } = useAuth();
+
+  useEffect(() => {
+    setBranding(getStoreBranding());
+    const handleBranding = (e: any) => {
+      if (e.detail) setBranding(e.detail);
+      else setBranding(getStoreBranding());
+    };
+    window.addEventListener(BRANDING_UPDATED_EVENT, handleBranding);
+    return () => window.removeEventListener(BRANDING_UPDATED_EVENT, handleBranding);
+  }, []);
 
   useEffect(() => {
     setMounted(true);
@@ -62,15 +74,19 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-2 sm:px-6 flex items-center justify-between h-16 w-full gap-1 sm:gap-2">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 sm:gap-3 font-bold text-lg text-amber-950 group shrink-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 flex items-center justify-center text-white shadow-lg shadow-amber-500/25 group-hover:scale-105 group-hover:shadow-amber-500/35 transition-all duration-300 shrink-0">
-              <Cake className="w-4 h-4 sm:w-5 sm:h-5 drop-shadow-xs" />
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 flex items-center justify-center text-white shadow-lg shadow-amber-500/25 group-hover:scale-105 group-hover:shadow-amber-500/35 transition-all duration-300 shrink-0 overflow-hidden">
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.storeName} className="w-full h-full object-contain p-0.5" />
+              ) : (
+                <Cake className="w-4 h-4 sm:w-5 sm:h-5 drop-shadow-xs" />
+              )}
             </div>
-            <div className="shrink-0 flex flex-col justify-center">
-              <span className="block text-xs sm:text-base font-black tracking-tight text-amber-950 whitespace-nowrap leading-tight">
-                TIỆM BÁNH ABC
+            <div className="shrink-0 flex flex-col justify-center max-w-[170px] sm:max-w-xs">
+              <span className="block text-xs sm:text-base font-black tracking-tight text-amber-950 whitespace-nowrap leading-tight truncate uppercase">
+                {branding.storeName || 'TIỆM BÁNH ABC'}
               </span>
-              <span className="hidden sm:block text-[10px] sm:text-[11px] font-bold text-amber-600 tracking-wide uppercase mt-0.5 whitespace-nowrap">
-                Artisan Bakery & POS
+              <span className="hidden sm:block text-[10px] sm:text-[11px] font-bold text-amber-600 tracking-wide uppercase mt-0.5 whitespace-nowrap truncate">
+                {branding.slogan || 'Artisan Bakery & POS'}
               </span>
             </div>
           </Link>

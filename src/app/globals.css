@@ -30,6 +30,21 @@ input, textarea, select, button {
   touch-action: manipulation;
 }
 
+/* Chống tràn và chống chồng đè tất cả các ô nhập liệu */
+input, select, textarea {
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  display: block;
+}
+
 @media screen and (max-width: 768px) {
   /* Ngăn iOS Safari và Chrome tự động zoom khi chạm vào ô nhập dữ liệu */
   input, textarea, select {

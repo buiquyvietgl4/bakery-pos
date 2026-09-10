@@ -924,6 +924,10 @@ export async function executePushToSQL(
         if (backupData.settings.printer) {
           localStorage.setItem('bakery_printer_config', JSON.stringify(backupData.settings.printer));
         }
+        if (backupData.settings.branding) {
+          localStorage.setItem('bakery_store_branding', JSON.stringify(backupData.settings.branding));
+          window.dispatchEvent(new CustomEvent('bakery_branding_updated', { detail: backupData.settings.branding }));
+        }
       } catch {}
     }
 

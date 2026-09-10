@@ -1,6 +1,7 @@
 // src/lib/utils/closingManager.ts
 
 import { AccountingClosingRecord, ClosingPeriodType } from '@/lib/types/closing';
+import { getStoreBranding } from './storeBranding';
 
 const STORAGE_KEY = 'bakery_closing_records';
 export const CLOSING_UPDATED_EVENT = 'bakery_closing_records_updated';
@@ -235,6 +236,7 @@ export function printClosingReceipt(record: AccountingClosingRecord) {
     : `-${Math.abs(record.cashDifference).toLocaleString('vi-VN')} đ (Thiếu két)`;
 
   const diffColor = record.cashDifference === 0 ? '#166534' : record.cashDifference > 0 ? '#15803d' : '#b91c1c';
+  const branding = getStoreBranding();
 
   const html = `
     <!DOCTYPE html>
@@ -261,7 +263,9 @@ export function printClosingReceipt(record: AccountingClosingRecord) {
       <body>
         <div class="center border-b">
           <div class="title">PHIẾU CHỐT SỔ KẾ TOÁN</div>
-          <div class="bold" style="font-size: 14px;">TIỆM BÁNH HẠNH PHÚC (BAKERY ERP)</div>
+          <div class="bold" style="font-size: 14px; text-transform: uppercase;">${branding.storeName || 'TIỆM BÁNH HẠNH PHÚC'}</div>
+          ${branding.address ? `<div style="font-size: 11px; color: #555;">${branding.address}</div>` : ''}
+          ${branding.phone ? `<div style="font-size: 11px; color: #555;">Hotline: ${branding.phone}</div>` : ''}
           <div class="badge">${record.periodLabel}</div>
           <div style="font-size: 11px; color: #555; margin-top: 6px;">Thời gian chốt: ${new Date(record.closedAt).toLocaleString('vi-VN')}</div>
           <div style="font-size: 11px; color: #555;">Người chốt: <b>${record.closedBy || 'Chủ tiệm'}</b></div>

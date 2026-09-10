@@ -41,6 +41,7 @@ import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { AccountingClosingSection } from '@/components/admin/AccountingClosingSection';
+import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -110,7 +111,7 @@ export default function AdminDashboard() {
     securityConfig,
     resetSecurityDefaults,
   } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'inventory' | 'recipes' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud' | 'security'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'inventory' | 'recipes' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
 
   // ── SECURITY & PERMISSIONS STATE ──
   const [unlockPassword, setUnlockPassword] = useState('');
@@ -2005,6 +2006,7 @@ export default function AdminDashboard() {
             { id: 'cashflow', label: 'Sổ Quỹ Thu Chi', icon: DollarSign },
             { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode },
             { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
+            { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2 },
             { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield },
             { id: 'cloud', label: 'Chốt Sổ & Cloud', icon: HardDrive },
           ].map((tab) => {
@@ -2912,7 +2914,7 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-zinc-700">Danh mục:</label>
                   <select
@@ -2952,7 +2954,7 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-zinc-700 flex items-center gap-1 text-xs">
                     <Package className="w-3.5 h-3.5 text-amber-600" />
@@ -3090,7 +3092,7 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="font-bold text-zinc-700">Số lượng nhập:</label>
                     <input
@@ -3315,7 +3317,7 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-zinc-700">Đơn vị tính (g, ml, quả...) *</label>
                   <input
@@ -3345,7 +3347,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-zinc-700">Tồn kho ban đầu:</label>
                   <input
@@ -3366,7 +3368,7 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-zinc-700">Mức báo động sắp hết:</label>
                   <input
@@ -4261,7 +4263,7 @@ export default function AdminDashboard() {
                 {/* Test amount & note editor */}
                 <div className="w-full bg-white p-3 rounded-2xl border border-zinc-200/80 space-y-2 text-xs">
                   <span className="font-bold text-zinc-600 block text-[11px]">Thử nghiệm quét QR:</span>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <label className="text-[10px] text-zinc-400 block">Số tiền thử:</label>
                       <input
@@ -4674,7 +4676,7 @@ export default function AdminDashboard() {
                 {/* Thử nghiệm số tiền & ghi chú */}
                 <div className="w-full bg-white p-3 rounded-2xl border border-zinc-200 space-y-2 text-xs">
                   <span className="font-bold text-zinc-600 block text-[11px]">Thử nghiệm quét QR Ví:</span>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
                       <label className="text-[10px] text-zinc-400 block">Số tiền thử:</label>
                       <input
@@ -5137,6 +5139,9 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* ── TAB BRANDING: CÀI ĐẶT TÊN TIỆM & LOGO QUÁN ── */}
+      {activeTab === 'branding' && <StoreBrandingSettings />}
 
       {/* ── MODAL LỊCH SỬ THAY ĐỔI TỒN KHO BÁNH ── */}
       <StockAdjustmentHistoryModal

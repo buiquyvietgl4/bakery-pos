@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Printer, Tag, Check, Copy, Sparkles, Clock, MapPin, Phone, User, Settings } from 'lucide-react';
 import { printHtml } from '@/lib/utils/printHelper';
 import { formatPickupDateTime } from '@/lib/supabase/realtimeSync';
 import { PrinterSettingsModal } from './PrinterSettingsModal';
+import { getStoreBranding, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 
 export interface CakeStickerData {
   orderNumber?: string;
@@ -34,6 +35,18 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
   const [labelSize, setLabelSize] = useState<'50x30' | '50x40'>('50x30');
   const [copied, setCopied] = useState(false);
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
+  const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
+
+  useEffect(() => {
+    setBranding(getStoreBranding());
+    const handleUpdate = (e: Event) => {
+      const detail = (e as CustomEvent<StoreBrandingConfig>).detail;
+      if (detail) setBranding(detail);
+      else setBranding(getStoreBranding());
+    };
+    window.addEventListener(BRANDING_UPDATED_EVENT, handleUpdate);
+    return () => window.removeEventListener(BRANDING_UPDATED_EVENT, handleUpdate);
+  }, []);
 
   if (!isOpen || !data) return null;
 
@@ -163,8 +176,8 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
               {/* Header tem */}
               <div className="border-b border-black pb-1 flex justify-between items-center text-[10px] leading-tight">
                 <div>
-                  <span className="font-black uppercase tracking-wide">TIỆM BÁNH HOÀNG GIA</span>
-                  <span className="block text-[8px] text-zinc-600 font-medium">Hotline: 0901.234.567</span>
+                  <span className="font-black uppercase tracking-wide">{branding.storeName || 'TIỆM BÁNH HOÀNG GIA'}</span>
+                  <span className="block text-[8px] text-zinc-600 font-medium">Hotline: {branding.phone || '0901.234.567'}</span>
                 </div>
                 <span className="font-mono font-black text-[9px] bg-black text-white px-1.5 py-0.5 rounded">
                   #{orderNum}
@@ -200,7 +213,7 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
                   <div className={`font-black ${labelSize === '50x30' ? 'truncate text-[8px]' : 'line-clamp-2 text-[8.5px]'} ${isShipping ? 'text-blue-900' : 'text-zinc-950'}`}>
                     {isShipping
                       ? `🚚 Giao: ${data.shippingAddress || 'Theo địa chỉ khách yêu cầu'}`
-                      : '🏪 Nhận: Tại tiệm (123 Đường Bánh Ngọt, TP.HCM)'}
+                      : `🏪 Nhận: Tại tiệm (${branding.address || 'Tại cửa hàng'})`}
                   </div>
                 </div>
               </div>
