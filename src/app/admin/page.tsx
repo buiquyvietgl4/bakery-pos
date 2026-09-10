@@ -38,6 +38,8 @@ import {
 } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
+import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
+import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -119,6 +121,17 @@ export default function AdminDashboard() {
   const [staffNameInput, setStaffNameInput] = useState(securityConfig.staffName);
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+
+  // Khởi động watcher Auto Backup khi Admin đăng nhập
+  useEffect(() => {
+    if (isAdmin) {
+      startAutoBackupWatcher();
+    }
+    return () => {
+      stopAutoBackupWatcher();
+    };
+  }, [isAdmin]);
 
   // ── TELEGRAM BOT NOTIFICATION CONFIG STATE (SQL SYNC) ──
   const [adminTgConfig, setAdminTgConfig] = useState<TelegramConfig>({
@@ -1958,15 +1971,26 @@ export default function AdminDashboard() {
               Quản Lý Tiệm Bánh, Kho & Kế Toán
             </h1>
           </div>
-          <button
-            type="button"
-            onClick={() => setIsPrinterSettingsOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-stone-200 hover:border-blue-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-blue-50/60 cursor-pointer shrink-0"
-            title="Cài đặt & kiểm tra kết nối máy in Bluetooth, USB, iPhone, Android"
-          >
-            <Printer className="w-4 h-4 text-blue-600" />
-            <span className="hidden sm:inline">Máy In POS</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsPrinterSettingsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-stone-200 hover:border-blue-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-blue-50/60 cursor-pointer"
+              title="Cài đặt & kiểm tra kết nối máy in Bluetooth, USB, iPhone, Android"
+            >
+              <Printer className="w-4 h-4 text-blue-600" />
+              <span className="hidden sm:inline">Máy In POS</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsBackupModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
+              title="Tự động sao lưu toàn bộ dữ liệu & phục hồi đẩy lên SQL đối soát thông minh"
+            >
+              <Database className="w-4 h-4 text-white" />
+              <span>Sao Lưu & SQL</span>
+            </button>
+          </div>
         </div>
 
         {/* Tab Navigation */}
@@ -3986,6 +4010,27 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* BANNER TỰ ĐỘNG SAO LƯU & PHỤC HỒI SQL */}
+          <div className="p-5 rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2 text-sm font-black text-amber-900">
+                <Database className="w-5 h-5 text-amber-600" />
+                Hệ Thống Tự Động Sao Lưu Toàn Diện & Phục Hồi SQL
+              </div>
+              <p className="text-xs text-zinc-600 leading-relaxed max-w-xl">
+                Tự động kiểm tra dữ liệu mới, lưu vào thư mục máy tính tùy chọn, đóng gói 100% dữ liệu tiệm bánh kèm toàn bộ hình ảnh và đẩy ngược lên SQL với cơ chế đối soát thông minh tránh trùng lặp.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsBackupModalOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shrink-0 flex items-center justify-center gap-2 shadow-sm hover:shadow transition cursor-pointer"
+            >
+              <Database className="w-4 h-4" />
+              Mở Cấu Hình & Phục Hồi
+            </button>
+          </div>
+
           <div className="space-y-4">
             <h3 className="font-bold text-sm text-zinc-800">Quy Trình 3 Bước Dọn Dẹp Định Kỳ (Mỗi 3-6 Tháng):</h3>
 
@@ -5135,6 +5180,12 @@ export default function AdminDashboard() {
       <PrinterSettingsModal
         isOpen={isPrinterSettingsOpen}
         onClose={() => setIsPrinterSettingsOpen(false)}
+      />
+
+      {/* ── MODAL SAO LƯU TỰ ĐỘNG & PHỤC HỒI SQL ĐỐI SOÁT THÔNG MINH ── */}
+      <BackupRestoreModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
       />
     </div>
   );
