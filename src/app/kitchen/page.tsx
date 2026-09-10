@@ -16,7 +16,7 @@ import {
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
   ShoppingBag, Phone, User, Camera, X, AlertTriangle, Volume2, VolumeX, Bell,
   Package, Search, Plus, Minus, ChevronDown, Timer, Play, Calculator, Scale, BookOpen, CheckCheck, Send, History,
-  Tag
+  Tag, RotateCcw
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
@@ -34,6 +34,9 @@ import { getUnreadNotificationCount, subscribeNotificationHistory } from '@/lib/
 import { DEFAULT_BAKERY_RECIPES, DEFAULT_BAKERY_PRODUCTS, BakeryRecipe } from '@/lib/constants/bakeryData';
 import { db } from '@/lib/db/dexie';
 import CakeStickerModal, { CakeStickerData } from '@/components/pos/CakeStickerModal';
+import { ConfirmDoneModal } from '@/components/kitchen/ConfirmDoneModal';
+import { CancelRemakeModal } from '@/components/kitchen/CancelRemakeModal';
+import { addSpoilageLog } from '@/lib/utils/spoilageManager';
 
 interface OrderItem {
   id: string;
@@ -62,6 +65,8 @@ interface KDSOrder {
   deposit_amount?: number;
   remaining_amount?: number;
   reference_image_url?: string;
+  remake_reason?: string;
+  remake_notes?: string;
   items: OrderItem[];
 }
 
@@ -149,6 +154,26 @@ export default function KitchenPage() {
     });
     setIsStickerModalOpen(true);
   };
+
+  // ── MODAL XÁC NHẬN HOÀN THÀNH BÁNH / GIAO XONG (TRÁNH ẤN NHẦM) ──
+  const [confirmDoneState, setConfirmDoneState] = useState<{
+    isOpen: boolean;
+    order: KDSOrder | null;
+    targetStep: 'ready' | 'completed';
+  }>({
+    isOpen: false,
+    order: null,
+    targetStep: 'ready',
+  });
+
+  // ── MODAL HỦY BÁNH HỎNG & LÀM LẠI TỪ ĐẦU ──
+  const [cancelRemakeState, setCancelRemakeState] = useState<{
+    isOpen: boolean;
+    order: KDSOrder | null;
+  }>({
+    isOpen: false,
+    order: null,
+  });
 
   // ── CHẾ ĐỘ MÀN HÌNH BẾP: 'orders' (Đơn Khách & Bán Quầy) vs 'production' (Làm Bánh Bán Theo BOM) ──
   const [kitchenMode, setKitchenMode] = useState<'orders' | 'production'>('orders');
@@ -1156,6 +1181,128 @@ export default function KitchenPage() {
     }
   };
 
+  // Hủy bánh hỏng & Chuyển về bước đầu làm lại từ đầu (Pending)
+  const handleCancelAndRemakeOrder = async (
+    order: KDSOrder,
+    reason: string,
+    notes: string,
+    logSpoilage: boolean
+  ) => {
+    const orderId = order.id;
+    const orderNum = order.order_number || orderId;
+
+    // 1. Cập nhật ngay trên giao diện React đưa về status: 'pending'
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.id === orderId || o.order_number === orderId || o.order_number === orderNum
+          ? { ...o, status: 'pending' as const, remake_reason: reason, remake_notes: notes }
+          : o
+      )
+    );
+
+    // 2. Lưu trạng thái vào localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((o: any) => {
+              if (
+                o.id === orderId ||
+                o.local_id === orderId ||
+                o.order_number === orderId ||
+                o.orderNumber === orderId ||
+                o.order_number === orderNum
+              ) {
+                return {
+                  ...o,
+                  status: 'pending',
+                  updated_at: new Date().toISOString(),
+                  remake_reason: reason,
+                  remake_notes: notes,
+                };
+              }
+              return o;
+            });
+            localStorage.setItem('bakery_orders', JSON.stringify(updated));
+          }
+        }
+
+        // Cập nhật cả bakery_preorders nếu có
+        const rawPo = localStorage.getItem('bakery_preorders');
+        if (rawPo) {
+          const parsedPo = JSON.parse(rawPo);
+          if (Array.isArray(parsedPo)) {
+            const updatedPo = parsedPo.map((po: any) => {
+              if (po.id === orderId || po.orderNumber === orderId || po.orderNumber === orderNum) {
+                return { ...po, status: 'pending', remake_reason: reason };
+              }
+              return po;
+            });
+            localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo));
+          }
+        }
+
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+      } catch (err) {
+        console.warn('Lỗi cập nhật localStorage khi hủy làm lại bánh:', err);
+      }
+    }
+
+    // 3. Phát sóng realtime sang các thiết bị khác (POS, máy tính, tablet)
+    await broadcastOrderStatusUpdate(orderNum, 'pending', {
+      ...order,
+      status: 'pending',
+      remake_reason: reason,
+    });
+
+    // 4. Đồng bộ Supabase Database
+    syncOrderToSupabase({ ...order, status: 'pending', remake_reason: reason }, 'pending');
+
+    // 5. Ghi nhận hao hụt vào Spoilage Manager nếu được chọn
+    if (logSpoilage) {
+      try {
+        const mainItem = order.items?.[0];
+        const cakeName = mainItem?.product_name_snapshot || order.cake_name || 'Bánh Kem Theo Yêu Cầu';
+        const qty = mainItem?.quantity || 1;
+        const unitPrice = mainItem?.unit_price || (order.total_amount ? Math.round(order.total_amount / qty) : 250000);
+        const estCost = Math.round(unitPrice * 0.45);
+
+        addSpoilageLog({
+          productId: mainItem?.id || 'remake-' + orderNum,
+          productName: `${cakeName} (Hỏng đơn #${orderNum})`,
+          quantity: qty,
+          unit: 'cái',
+          baseCost: estCost,
+          sellingPrice: unitPrice,
+          totalCostLoss: estCost * qty,
+          totalRevenueLoss: unitPrice * qty,
+          reason: `Làm lại KDS: ${reason}`,
+          notes: notes ? `${notes} (Đơn #${orderNum} làm lại từ đầu)` : `Đơn #${orderNum} làm lại từ đầu`,
+          loggedBy: 'Thợ Bếp (KDS)',
+        });
+      } catch (e) {
+        console.warn('Lỗi ghi sổ hao hụt bánh:', e);
+      }
+    }
+
+    // 6. Âm báo & thông báo điện thoại
+    soundManager.playUrgentAlert();
+    phoneNotificationService.triggerOrderNotification({
+      id: String(Date.now()),
+      type: 'new_order',
+      appTitle: 'BẾP LÀM LẠI BÁNH',
+      title: `🔄 Làm Lại Bánh #${orderNum}`,
+      sender: 'Thợ Bếp Báo Hỏng',
+      message: `Đơn #${orderNum} (${order.cake_name || order.items?.[0]?.product_name_snapshot || 'Bánh'}) đã hủy và quay về bước đầu làm lại do: ${reason}!`,
+      orderNumber: orderNum,
+    });
+
+    // 7. Chuyển tab trên mobile sang 'pending' để thợ nhìn thấy đơn ngay
+    setKdsMobileTab('pending');
+  };
+
   // Nút xóa sạch đơn mẫu thử nghiệm
   const handleClearDemoOrders = () => {
     if (confirm('Bạn có chắc muốn xóa 2 đơn mẫu thử nghiệm? Bảng bếp sẽ trở về trạng thái sạch để đón nhận các đơn thực tế từ quầy bán hàng.')) {
@@ -1616,6 +1763,17 @@ export default function KitchenPage() {
                       )}
                     </div>
 
+                    {/* Banner cảnh báo đơn làm lại từ đầu do báo hỏng */}
+                    {order.remake_reason && (
+                      <div className="px-2.5 py-1.5 rounded-xl bg-rose-950/90 border border-rose-600 text-rose-200 text-xs font-black flex items-center justify-between shadow-xs">
+                        <span className="flex items-center gap-1.5 truncate">
+                          <RotateCcw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          <span className="truncate">LÀM LẠI: {order.remake_reason}</span>
+                        </span>
+                        <span className="text-[9px] uppercase bg-rose-900 px-1.5 py-0.5 rounded font-black text-white shrink-0">BÁO HỎNG</span>
+                      </div>
+                    )}
+
                     {/* Preorder Schedule Banner */}
                     {isPreorder && (() => {
                       const fromN = parsePreorderFromNotes(order.notes);
@@ -1902,18 +2060,29 @@ export default function KitchenPage() {
                       ))}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="space-y-2 pt-1">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCakeSticker(order)}
+                          className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
+                          title="In tem nhãn dán hộp bánh (50x30 / 50x40)"
+                        >
+                          <Tag className="w-3.5 h-3.5 text-amber-400" /> Tem Hộp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCancelRemakeState({ isOpen: true, order })}
+                          className="flex-1 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 hover:text-rose-100 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95"
+                          title="Bánh bị cháy khét, hỏng kem, rơi vỡ... Hủy để nhảy về bước đầu làm lại"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-rose-400" /> Hỏng Bánh (Làm Lại)
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => handleOpenCakeSticker(order)}
-                        className="px-3 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
-                        title="In tem nhãn dán hộp bánh (50x30 / 50x40)"
-                      >
-                        <Tag className="w-3.5 h-3.5 text-amber-400" /> Tem Hộp
-                      </button>
-                      <button
-                        onClick={() => handleUpdateStatus(order.id, 'preparing')}
-                        className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-blue-600/30 cursor-pointer active:scale-95"
+                        onClick={() => setConfirmDoneState({ isOpen: true, order, targetStep: 'ready' })}
+                        className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-blue-600/30 cursor-pointer active:scale-95"
                       >
                         <CheckCircle2 className="w-4 h-4" /> Bánh Đã Xong / Sẵn Sàng
                       </button>
@@ -2061,21 +2230,31 @@ export default function KitchenPage() {
                       ))}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="space-y-2 pt-1">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCakeSticker(order)}
+                          className="flex-1 py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
+                          title="In tem nhãn dán hộp bánh khổ 50x30mm hoặc 50x40mm"
+                        >
+                          <Tag className="w-3.5 h-3.5 text-amber-400" /> In Tem Hộp
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setCancelRemakeState({ isOpen: true, order })}
+                          className="flex-1 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 hover:text-rose-100 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95"
+                          title="Bánh bị rơi vỡ, móp méo tại quầy... Hủy để nhảy về bước đầu làm lại"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-rose-400" /> Hủy Bánh (Làm Lại)
+                        </button>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => handleOpenCakeSticker(order)}
-                        className="flex-1 py-2.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs active:scale-95"
-                        title="In tem nhãn dán hộp bánh khổ 50x30mm hoặc 50x40mm"
+                        onClick={() => setConfirmDoneState({ isOpen: true, order, targetStep: 'completed' })}
+                        className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-emerald-600/30 cursor-pointer active:scale-95"
                       >
-                        <Tag className="w-3.5 h-3.5 text-amber-400" /> In Tem Hộp
-                      </button>
-
-                      <button
-                        onClick={() => handleUpdateStatus(order.id, 'ready')}
-                        className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-emerald-600/30 cursor-pointer active:scale-95"
-                      >
-                        <ArrowRight className="w-4 h-4" /> {isShip ? 'Đã Giao Shipper' : 'Đã Giao Khách'}
+                        <ArrowRight className="w-4 h-4" /> {isShip ? 'Đã Giao Shipper (Hoàn Tất)' : 'Đã Giao Khách (Hoàn Tất)'}
                       </button>
                     </div>
                   </div>
@@ -2744,6 +2923,31 @@ export default function KitchenPage() {
         isOpen={isStickerModalOpen}
         onClose={() => setIsStickerModalOpen(false)}
         data={stickerModalData}
+      />
+
+      {/* ── MODAL XÁC NHẬN HOÀN THÀNH BÁNH / GIAO XONG (TRÁNH ẤN NHẦM) ── */}
+      <ConfirmDoneModal
+        isOpen={confirmDoneState.isOpen}
+        onClose={() => setConfirmDoneState((prev) => ({ ...prev, isOpen: false }))}
+        order={confirmDoneState.order}
+        targetStep={confirmDoneState.targetStep}
+        onConfirm={() => {
+          if (confirmDoneState.order) {
+            handleUpdateStatus(confirmDoneState.order.id, confirmDoneState.order.status);
+          }
+        }}
+      />
+
+      {/* ── MODAL HỦY BÁNH HỎNG & LÀM LẠI TỪ ĐẦU ── */}
+      <CancelRemakeModal
+        isOpen={cancelRemakeState.isOpen}
+        onClose={() => setCancelRemakeState((prev) => ({ ...prev, isOpen: false }))}
+        order={cancelRemakeState.order}
+        onConfirm={(reason, notes, logSpoilage) => {
+          if (cancelRemakeState.order) {
+            handleCancelAndRemakeOrder(cancelRemakeState.order, reason, notes, logSpoilage);
+          }
+        }}
       />
 
     </div>
