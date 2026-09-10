@@ -11,7 +11,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, QrCode, Copy, Check, Building2,
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
-  Send, Bell
+  Send, Bell, History
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -30,6 +30,13 @@ import {
 } from '@/lib/utils/telegramNotify';
 import { SpoilageLog } from '@/lib/types/spoilage';
 import { getSpoilageLogs, getTodaySpoilageSummary } from '@/lib/utils/spoilageManager';
+import { COMMON_STOCK_ADJUSTMENT_REASONS } from '@/lib/types/stockAdjustment';
+import {
+  getStockAdjustmentLogs,
+  addStockAdjustmentLog,
+  STOCK_ADJUSTMENT_EVENT,
+} from '@/lib/utils/stockAdjustmentManager';
+import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -383,6 +390,22 @@ export default function AdminDashboard() {
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [editingStockProductId, setEditingStockProductId] = useState<string | null>(null);
   const [tempStockValue, setTempStockValue] = useState<number>(0);
+  const [tempStockReason, setTempStockReason] = useState<string>('Nhập thêm mẻ mới từ lò bếp');
+  const [tempStockNote, setTempStockNote] = useState<string>('');
+  const [isStockHistoryModalOpen, setIsStockHistoryModalOpen] = useState(false);
+  const [stockHistoryFilterProductId, setStockHistoryFilterProductId] = useState<string | null>(null);
+  const [stockLogsCount, setStockLogsCount] = useState<number>(() => getStockAdjustmentLogs().length);
+
+  // Lắng nghe sự kiện cập nhật lịch sử thay đổi tồn kho
+  useEffect(() => {
+    const handleStockLogsUpdated = () => {
+      setStockLogsCount(getStockAdjustmentLogs().length);
+    };
+    window.addEventListener(STOCK_ADJUSTMENT_EVENT, handleStockLogsUpdated);
+    return () => {
+      window.removeEventListener(STOCK_ADJUSTMENT_EVENT, handleStockLogsUpdated);
+    };
+  }, []);
 
   // ── DUNG LƯỢNG DATABASE LƯU ẢNH STATE ──
   const [imageStats, setImageStats] = useState({
@@ -1341,12 +1364,19 @@ export default function AdminDashboard() {
   };
 
   // ── XỬ LÝ CẬP NHẬT SỐ LƯỢNG BÁNH TỒN QUẦY (OFFLINE-FIRST & REALTIME SYNC) ──
-  const handleUpdateProductStock = async (productId: string, newStockQty: number) => {
+  const handleUpdateProductStock = async (
+    productId: string,
+    newStockQty: number,
+    reason: string = 'Nhập thêm mẻ mới từ lò bếp',
+    notes?: string
+  ) => {
     const qty = Math.max(0, Math.floor(newStockQty));
     let targetProduct: any = null;
+    let oldQty = 0;
 
     const updated = products.map((p) => {
       if (p.id === productId) {
+        oldQty = p.stock_qty ?? 10;
         targetProduct = { ...p, stock_qty: qty };
         return targetProduct;
       }
@@ -1354,6 +1384,21 @@ export default function AdminDashboard() {
     });
 
     setProducts(updated);
+
+    // Ghi nhận lịch sử biến động số lượng bánh
+    if (targetProduct) {
+      addStockAdjustmentLog({
+        productId,
+        productName: targetProduct.name,
+        productCategory: targetProduct.category,
+        oldQuantity: oldQty,
+        newQuantity: qty,
+        deltaQuantity: qty - oldQty,
+        reason: reason || 'Thay đổi số lượng',
+        notes: notes?.trim() || undefined,
+        adjustedBy: 'Quản lý quầy / Admin',
+      });
+    }
 
     if (typeof window !== 'undefined') {
       try {
@@ -2346,12 +2391,32 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <button
-              onClick={() => setIsAddProductModalOpen(true)}
-              className="px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition hover:scale-102 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> Thêm Loại Bánh Mới
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setStockHistoryFilterProductId(null);
+                  setIsStockHistoryModalOpen(true);
+                }}
+                className="px-3.5 py-2.5 rounded-2xl bg-white hover:bg-amber-50/80 border border-amber-300 text-amber-900 text-xs font-black shadow-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95"
+                title="Xem toàn bộ lịch sử thay đổi số lượng tồn kho bánh"
+              >
+                <History className="w-4 h-4 text-amber-600" />
+                <span>Lịch Sử Thay Đổi Tồn Kho</span>
+                {stockLogsCount > 0 && (
+                  <span className="px-2 py-0.5 text-[10px] bg-amber-100 text-amber-800 font-black rounded-full border border-amber-300">
+                    {stockLogsCount}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={() => setIsAddProductModalOpen(true)}
+                className="px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition hover:scale-102 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Thêm Loại Bánh Mới
+              </button>
+            </div>
           </div>
 
           {uploadSuccess && (
@@ -2487,18 +2552,33 @@ export default function AdminDashboard() {
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setEditingStockProductId(p.id);
-                          setTempStockValue(p.stock_qty ?? 10);
-                        }}
-                        className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs shrink-0"
-                        title="Bấm để mở phần nhập số lượng bánh"
-                      >
-                        <Sliders className="w-3 h-3 text-amber-700" />
-                        <span>Thay đổi số lượng</span>
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setStockHistoryFilterProductId(p.id);
+                            setIsStockHistoryModalOpen(true);
+                          }}
+                          className="p-1.5 rounded-xl text-zinc-400 hover:text-amber-700 hover:bg-amber-50 transition cursor-pointer border border-zinc-200"
+                          title="Xem lịch sử thay đổi tồn kho của bánh này"
+                        >
+                          <History className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingStockProductId(p.id);
+                            setTempStockValue(p.stock_qty ?? 10);
+                            setTempStockReason('Nhập thêm mẻ mới từ lò bếp');
+                            setTempStockNote('');
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs shrink-0"
+                          title="Bấm để mở phần nhập số lượng bánh"
+                        >
+                          <Sliders className="w-3 h-3 text-amber-700" />
+                          <span>Thay đổi số lượng</span>
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     /* Hộp nhập số lượng chỉ mở ra khi bấm "Thay đổi số lượng" */
@@ -2508,6 +2588,22 @@ export default function AdminDashboard() {
                           <Package className="w-3.5 h-3.5 text-amber-700" />
                           Nhập số lượng mới:
                         </span>
+                        
+                        {/* Huy hiệu chênh lệch */}
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                          tempStockValue > (p.stock_qty ?? 10)
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                            : tempStockValue < (p.stock_qty ?? 10)
+                            ? 'bg-rose-100 text-rose-800 border border-rose-300'
+                            : 'bg-zinc-100 text-zinc-600'
+                        }`}>
+                          {tempStockValue > (p.stock_qty ?? 10)
+                            ? `+${tempStockValue - (p.stock_qty ?? 10)} (Tăng)`
+                            : tempStockValue < (p.stock_qty ?? 10)
+                            ? `${tempStockValue - (p.stock_qty ?? 10)} (Giảm)`
+                            : 'Không đổi'}
+                        </span>
+
                         <button
                           type="button"
                           onClick={() => setEditingStockProductId(null)}
@@ -2580,6 +2676,31 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
+                      {/* Ô CHỌN VÀ NHẬP LÝ DO THAY ĐỔI */}
+                      <div className="space-y-1.5 pt-1.5 border-t border-amber-200/80">
+                        <label className="text-[11px] font-black text-amber-900 block">
+                          Lý do thay đổi số lượng:
+                        </label>
+                        <select
+                          value={tempStockReason}
+                          onChange={(e) => setTempStockReason(e.target.value)}
+                          className="w-full bg-white border border-amber-300 rounded-xl px-2 py-1.5 text-xs text-zinc-800 font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                        >
+                          {COMMON_STOCK_ADJUSTMENT_REASONS.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Ghi chú thêm lý do chi tiết (nếu có)..."
+                          value={tempStockNote}
+                          onChange={(e) => setTempStockNote(e.target.value)}
+                          className="w-full bg-white border border-amber-300 rounded-xl px-2 py-1.5 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                        />
+                      </div>
+
                       {/* 2 nút xác nhận Lưu và Hủy để tuyệt đối tránh ấn nhầm */}
                       <div className="flex items-center gap-2 pt-1 border-t border-amber-200/60">
                         <button
@@ -2592,7 +2713,7 @@ export default function AdminDashboard() {
                         <button
                           type="button"
                           onClick={async () => {
-                            await handleUpdateProductStock(p.id, tempStockValue);
+                            await handleUpdateProductStock(p.id, tempStockValue, tempStockReason, tempStockNote);
                             setEditingStockProductId(null);
                           }}
                           className="flex-1 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition cursor-pointer text-center shadow-md shadow-emerald-600/20 flex items-center justify-center gap-1"
@@ -4989,6 +5110,13 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      {/* ── MODAL LỊCH SỬ THAY ĐỔI TỒN KHO BÁNH ── */}
+      <StockAdjustmentHistoryModal
+        isOpen={isStockHistoryModalOpen}
+        onClose={() => setIsStockHistoryModalOpen(false)}
+        filterProductId={stockHistoryFilterProductId}
+      />
     </div>
   );
 }

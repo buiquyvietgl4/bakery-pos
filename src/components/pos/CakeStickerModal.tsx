@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { X, Printer, Tag, Check, Copy, Sparkles, Clock, MapPin, Phone, User } from 'lucide-react';
+import { printHtml } from '@/lib/utils/printHelper';
+import { formatPickupDateTime } from '@/lib/supabase/realtimeSync';
 
 export interface CakeStickerData {
   orderNumber?: string;
@@ -39,7 +41,40 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
   const timeStr = `${String(createdDate.getHours()).padStart(2, '0')}:${String(createdDate.getMinutes()).padStart(2, '0')}`;
 
   const handlePrint = () => {
-    window.print();
+    const el = document.getElementById('printable-cake-sticker');
+    if (!el) return;
+
+    printHtml(el.outerHTML, {
+      title: `Tem_${orderNum}`,
+      pageSize: labelSize,
+      customCss: `
+        html, body {
+          width: 50mm !important;
+          height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
+          max-width: 50mm !important;
+          max-height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
+          overflow: hidden !important;
+          margin: 0 !important;
+          padding: 0 !important;
+        }
+        #printable-cake-sticker {
+          width: 50mm !important;
+          height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
+          max-width: 50mm !important;
+          max-height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
+          box-shadow: none !important;
+          border: none !important;
+          border-radius: 0 !important;
+          margin: 0 !important;
+          padding: 1.5mm 2mm !important;
+          box-sizing: border-box !important;
+          page-break-after: avoid !important;
+          break-after: avoid !important;
+          page-break-inside: avoid !important;
+          break-inside: avoid !important;
+        }
+      `,
+    });
   };
 
   const handleCopyOrderNum = () => {
@@ -52,47 +87,6 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-      {/* Inline Print Styles tailored for 50x30mm & 50x40mm thermal rolls */}
-      <style jsx global>{`
-        @media print {
-          @page {
-            size: ${labelSize === '50x30' ? '50mm 30mm' : '50mm 40mm'};
-            margin: 0;
-          }
-          body {
-            background: white !important;
-            color: black !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          body * {
-            visibility: hidden !important;
-          }
-          #printable-cake-sticker,
-          #printable-cake-sticker * {
-            visibility: visible !important;
-          }
-          #printable-cake-sticker {
-            position: fixed !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: ${labelSize === '50x30' ? '50mm' : '50mm'} !important;
-            height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
-            margin: 0 !important;
-            padding: 1.5mm 2mm !important;
-            border: none !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
-            background: white !important;
-            color: black !important;
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: space-between !important;
-            box-sizing: border-box !important;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif !important;
-          }
-        }
-      `}</style>
 
       <div className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in duration-150 border border-zinc-200 text-zinc-900">
         {/* Header Modal */}
@@ -194,7 +188,7 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
                   )}
                   {data.pickupTime && (
                     <div className="font-black text-zinc-900 truncate">
-                      ⏰ Hẹn giao: {data.pickupTime}
+                      ⏰ Hẹn giao: {formatPickupDateTime(data.pickupTime) || data.pickupTime}
                     </div>
                   )}
                   {labelSize === '50x40' && data.shippingAddress && (

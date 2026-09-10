@@ -29,6 +29,7 @@ import { sendTelegramOrderAlert } from '@/lib/utils/telegramNotify';
 import { triggerServerPush } from '@/lib/utils/webPushManager';
 import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerModal';
 import { ManagerPinModal } from '@/components/pos/ManagerPinModal';
+import { printHtml } from '@/lib/utils/printHelper';
 import { SpoilageLog, SPOILAGE_REASONS } from '@/lib/types/spoilage';
 import {
   getSpoilageLogs,
@@ -36,6 +37,8 @@ import {
   deleteSpoilageLog,
   getTodaySpoilageSummary,
 } from '@/lib/utils/spoilageManager';
+import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
+import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 
 interface CartItem {
   product: CachedProduct;
@@ -177,9 +180,27 @@ export default function POSPage() {
     return products.filter((p) => (p.stock_qty ?? 0) <= (p.min_stock_alert ?? 3));
   }, [products]);
 
-  const updateProductStock = (productId: string, newQty: number) => {
+  const [isPosStockHistoryOpen, setIsPosStockHistoryOpen] = useState(false);
+  const [posStockFilterId, setPosStockFilterId] = useState<string | null>(null);
+
+  const updateProductStock = (productId: string, newQty: number, reason: string = 'Kiểm kê định kỳ quầy POS') => {
     setProducts((prev) => {
-      const updated = prev.map((p) => (p.id === productId ? { ...p, stock_qty: Math.max(0, newQty) } : p));
+      const target = prev.find((p) => p.id === productId);
+      const safeNewQty = Math.max(0, newQty);
+      if (target) {
+        const oldQty = target.stock_qty ?? 10;
+        addStockAdjustmentLog({
+          productId,
+          productName: target.name,
+          productCategory: target.category,
+          oldQuantity: oldQty,
+          newQuantity: safeNewQty,
+          deltaQuantity: safeNewQty - oldQty,
+          reason,
+          adjustedBy: 'Thu ngân / Quầy POS',
+        });
+      }
+      const updated = prev.map((p) => (p.id === productId ? { ...p, stock_qty: safeNewQty } : p));
       try {
         localStorage.setItem('bakery_products', JSON.stringify(updated));
         db.products.bulkPut(updated);
@@ -190,8 +211,23 @@ export default function POSPage() {
     });
   };
 
-  const addProductStock = (productId: string, amount: number) => {
+  const addProductStock = (productId: string, amount: number, reason: string = 'Nhập thêm mẻ mới từ lò bếp') => {
     setProducts((prev) => {
+      const target = prev.find((p) => p.id === productId);
+      if (target) {
+        const oldQty = target.stock_qty ?? 10;
+        const safeNewQty = Math.max(0, oldQty + amount);
+        addStockAdjustmentLog({
+          productId,
+          productName: target.name,
+          productCategory: target.category,
+          oldQuantity: oldQty,
+          newQuantity: safeNewQty,
+          deltaQuantity: amount,
+          reason,
+          adjustedBy: 'Thu ngân / Quầy POS',
+        });
+      }
       const updated = prev.map((p) => (p.id === productId ? { ...p, stock_qty: Math.max(0, (p.stock_qty ?? 0) + amount) } : p));
       try {
         localStorage.setItem('bakery_products', JSON.stringify(updated));
@@ -359,6 +395,36 @@ export default function POSPage() {
   const openStickerModal = (data: CakeStickerData) => {
     setStickerModalData(data);
     setIsStickerModalOpen(true);
+  };
+
+  // ── IN HÓA ĐƠN QUA IFRAME ĐỘC LẬP (KHẮC PHỤC LỖI NHẢY 2 TRANG VÀ LỘ NÚT BẤM) ──
+  const handlePrintReceipt = () => {
+    const el = document.getElementById('printable-pos-receipt');
+    if (!el) return;
+
+    printHtml(el.outerHTML, {
+      title: `HoaDon_${completedOrder?.orderNumber || 'POS'}`,
+      pageSize: '80mm',
+      customCss: `
+        html, body {
+          width: 80mm !important;
+          max-width: 80mm !important;
+          margin: 0 auto !important;
+          padding: 2mm 2mm 4mm 2mm !important;
+          background: #ffffff !important;
+        }
+        #printable-pos-receipt {
+          border: none !important;
+          background: #ffffff !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          padding: 0 !important;
+          margin: 0 !important;
+          width: 100% !important;
+          color: #000000 !important;
+        }
+      `,
+    });
   };
 
   // ── MANAGER PIN SECURITY MODAL STATE ──
@@ -4510,7 +4576,7 @@ export default function POSPage() {
       {completedOrder && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-sm w-full p-4 sm:p-6 space-y-4 shadow-2xl max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in duration-200">
-            <div className="p-4 bg-amber-50/40 rounded-2xl border border-zinc-300 text-zinc-900 font-mono text-xs space-y-3">
+            <div id="printable-pos-receipt" className="p-4 bg-amber-50/40 rounded-2xl border border-zinc-300 text-zinc-900 font-mono text-xs space-y-3">
               <div className="text-center space-y-1 border-b border-dashed border-zinc-300 pb-2">
                 <h2 className="font-black text-sm tracking-wider">TIỆM BÁNH ABC</h2>
                 <p className="text-[10px] text-zinc-500">123 Đường Bánh Ngọt, TP.HCM</p>
@@ -4532,7 +4598,8 @@ export default function POSPage() {
                   <>
                     <div className="font-bold text-zinc-900">Khách hàng: {completedOrder.customerName} ({completedOrder.customerPhone})</div>
                     <div className="font-bold text-pink-700">
-                      {completedOrder.deliveryMethod === 'shipping' ? 'HẸN GIỜ GIAO:' : 'HẸN LẤY BÁNH:'} {completedOrder.pickupDateTimeStr}
+                      {completedOrder.deliveryMethod === 'shipping' ? 'HẸN GIỜ GIAO:' : 'HẸN LẤY BÁNH:'}{' '}
+                      {formatPickupDateTime(completedOrder.pickupDateTimeStr) || completedOrder.pickupDateTimeStr}
                     </div>
                     <div className="flex items-center gap-1 font-semibold text-zinc-800">
                       <span>Hình thức nhận:</span>
@@ -4691,7 +4758,7 @@ export default function POSPage() {
                       customerName: completedOrder.customerName,
                       customerPhone: completedOrder.customerPhone,
                       cakeMessage: completedOrder.cakeMessage,
-                      pickupTime: completedOrder.pickupDateTimeStr,
+                      pickupTime: formatPickupDateTime(completedOrder.pickupDateTimeStr) || completedOrder.pickupDateTimeStr,
                       deliveryMethod: completedOrder.deliveryMethod,
                       shippingAddress: completedOrder.shippingAddress,
                       createdAt: completedOrder.createdAt,
@@ -4704,7 +4771,7 @@ export default function POSPage() {
                   <span>In Tem Dán Hộp (50x30)</span>
                 </button>
                 <button
-                  onClick={() => window.print()}
+                  onClick={handlePrintReceipt}
                   className="flex-1 py-2.5 rounded-xl border border-zinc-300 text-xs font-bold text-zinc-700 flex items-center justify-center gap-1.5 hover:bg-zinc-50 cursor-pointer"
                 >
                   <Printer className="w-4 h-4" />{' '}
@@ -4758,8 +4825,8 @@ export default function POSPage() {
               </button>
             </div>
 
-            {/* Chuyển tab: Tồn kho tủ bánh VS Báo hủy bánh cuối ca */}
-            <div className="flex rounded-2xl bg-zinc-100 p-1 border border-zinc-200 text-xs font-bold shrink-0 my-2">
+            {/* Chuyển tab: Tồn kho tủ bánh VS Báo hủy bánh cuối ca VS Lịch sử thay đổi */}
+            <div className="flex gap-1.5 rounded-2xl bg-zinc-100 p-1 border border-zinc-200 text-xs font-bold shrink-0 my-2">
               <button
                 type="button"
                 onClick={() => setInventorySubTab('stock')}
@@ -4782,7 +4849,7 @@ export default function POSPage() {
                 }`}
               >
                 <Trash2 className="w-4 h-4" />
-                <span>Báo Hủy Bánh Cuối Ca (Hao Hụt)</span>
+                <span>Báo Hủy Bánh (Hao Hụt)</span>
                 {spoilageLogs.length > 0 && (
                   <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                     inventorySubTab === 'spoilage' ? 'bg-rose-800 text-white' : 'bg-rose-100 text-rose-700'
@@ -4790,6 +4857,19 @@ export default function POSPage() {
                     {spoilageLogs.length}
                   </span>
                 )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setPosStockFilterId(null);
+                  setIsPosStockHistoryOpen(true);
+                }}
+                className="px-3 py-2 rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer bg-white text-amber-900 hover:bg-amber-50 border border-amber-200/80 shadow-xs"
+                title="Xem toàn bộ lịch sử thay đổi tồn kho bánh"
+              >
+                <History className="w-4 h-4 text-amber-600" />
+                <span className="hidden sm:inline">Lịch Sử Thay Đổi</span>
+                <span className="sm:hidden">Lịch sử</span>
               </button>
             </div>
 
@@ -5311,6 +5391,13 @@ export default function POSPage() {
           actionDescription={pinActionData.actionDescription}
         />
       )}
+
+      {/* ── MODAL LỊCH SỬ THAY ĐỔI TỒN KHO BÁNH ── */}
+      <StockAdjustmentHistoryModal
+        isOpen={isPosStockHistoryOpen}
+        onClose={() => setIsPosStockHistoryOpen(false)}
+        filterProductId={posStockFilterId}
+      />
 
     </div>
   );
