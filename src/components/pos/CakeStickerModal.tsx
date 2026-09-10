@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
-import { X, Printer, Tag, Check, Copy, Sparkles, Clock, MapPin, Phone, User } from 'lucide-react';
+import { X, Printer, Tag, Check, Copy, Sparkles, Clock, MapPin, Phone, User, Settings } from 'lucide-react';
 import { printHtml } from '@/lib/utils/printHelper';
 import { formatPickupDateTime } from '@/lib/supabase/realtimeSync';
+import { PrinterSettingsModal } from './PrinterSettingsModal';
 
 export interface CakeStickerData {
   orderNumber?: string;
@@ -32,6 +33,7 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
 }) => {
   const [labelSize, setLabelSize] = useState<'50x30' | '50x40'>('50x30');
   const [copied, setCopied] = useState(false);
+  const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
 
   if (!isOpen || !data) return null;
 
@@ -39,6 +41,10 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
   const createdDate = data.createdAt ? new Date(data.createdAt) : new Date();
   const dateStr = `${String(createdDate.getDate()).padStart(2, '0')}/${String(createdDate.getMonth() + 1).padStart(2, '0')}`;
   const timeStr = `${String(createdDate.getHours()).padStart(2, '0')}:${String(createdDate.getMinutes()).padStart(2, '0')}`;
+
+  const isShipping =
+    data.deliveryMethod === 'shipping' ||
+    (data.shippingAddress && data.shippingAddress.trim().length > 0);
 
   const handlePrint = () => {
     const el = document.getElementById('printable-cake-sticker');
@@ -86,202 +92,219 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-
-      <div className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in duration-150 border border-zinc-200 text-zinc-900">
-        {/* Header Modal */}
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
-              <Tag className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="font-black text-base sm:text-lg text-zinc-900 flex items-center gap-2">
-                In Tem Dán Hộp Bánh
-              </h3>
-              <p className="text-xs text-zinc-500 font-medium">Khổ tem in nhiệt Barcode / Sticker</p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-zinc-400 hover:text-zinc-700 p-1.5 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Cấu hình chọn khổ tem */}
-        <div className="flex items-center justify-between bg-zinc-50 p-2 rounded-2xl border border-zinc-200/80 text-xs">
-          <span className="font-bold text-zinc-600 pl-1">Khổ giấy in nhiệt:</span>
-          <div className="flex gap-1">
-            <button
-              type="button"
-              onClick={() => setLabelSize('50x30')}
-              className={`px-3 py-1.5 rounded-xl font-black transition cursor-pointer ${
-                labelSize === '50x30'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100'
-              }`}
-            >
-              50 x 30 mm (Chuẩn)
-            </button>
-            <button
-              type="button"
-              onClick={() => setLabelSize('50x40')}
-              className={`px-3 py-1.5 rounded-xl font-black transition cursor-pointer ${
-                labelSize === '50x40'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100'
-              }`}
-            >
-              50 x 40 mm (Tem lớn)
-            </button>
-          </div>
-        </div>
-
-        {/* Khung Xem Trước Tem Nhãn Thực Tế (Preview Container) */}
-        <div className="p-4 bg-zinc-100/80 rounded-2xl border border-dashed border-zinc-300 flex flex-col items-center justify-center">
-          <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-amber-500" />
-            Bản xem trước tem dán ({labelSize}mm)
-          </div>
-
-          {/* CHÍNH THỨC CON TEM CÓ ID PRINTABLE */}
-          <div
-            id="printable-cake-sticker"
-            className="w-72 bg-white rounded-xl border border-zinc-300 p-3 shadow-md text-black flex flex-col justify-between font-sans select-none overflow-hidden"
-            style={{
-              aspectRatio: labelSize === '50x30' ? '5 / 3' : '5 / 4',
-            }}
-          >
-            {/* Header tem */}
-            <div className="border-b border-black pb-1 flex justify-between items-center text-[10px] leading-tight">
-              <div>
-                <span className="font-black uppercase tracking-wide">TIỆM BÁNH HOÀNG GIA</span>
-                <span className="block text-[8px] text-zinc-600 font-medium">Hotline: 0901.234.567</span>
+    <>
+      <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+        <div className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in duration-150 border border-zinc-200 text-zinc-900">
+          {/* Header Modal */}
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
+                <Tag className="w-5 h-5" />
               </div>
-              <span className="font-mono font-black text-[9px] bg-black text-white px-1.5 py-0.5 rounded">
-                #{orderNum}
-              </span>
+              <div>
+                <h3 className="font-black text-base sm:text-lg text-zinc-900 flex items-center gap-2">
+                  In Tem Dán Hộp Bánh
+                </h3>
+                <p className="text-xs text-zinc-500 font-medium">Khổ tem in nhiệt Barcode / Sticker</p>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-zinc-400 hover:text-zinc-700 p-1.5 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Cấu hình chọn khổ tem */}
+          <div className="flex items-center justify-between bg-zinc-50 p-2 rounded-2xl border border-zinc-200/80 text-xs">
+            <span className="font-bold text-zinc-600 pl-1">Khổ giấy in nhiệt:</span>
+            <div className="flex gap-1">
+              <button
+                type="button"
+                onClick={() => setLabelSize('50x30')}
+                className={`px-3 py-1.5 rounded-xl font-black transition cursor-pointer ${
+                  labelSize === '50x30'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100'
+                }`}
+              >
+                50 x 30 mm (Chuẩn)
+              </button>
+              <button
+                type="button"
+                onClick={() => setLabelSize('50x40')}
+                className={`px-3 py-1.5 rounded-xl font-black transition cursor-pointer ${
+                  labelSize === '50x40'
+                    ? 'bg-amber-600 text-white shadow-xs'
+                    : 'bg-white text-zinc-700 border border-zinc-200 hover:bg-zinc-100'
+                }`}
+              >
+                50 x 40 mm (Tem lớn)
+              </button>
+            </div>
+          </div>
+
+          {/* Khung Xem Trước Tem Nhãn Thực Tế (Preview Container) */}
+          <div className="p-4 bg-zinc-100/80 rounded-2xl border border-dashed border-zinc-300 flex flex-col items-center justify-center">
+            <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
+              <Sparkles className="w-3 h-3 text-amber-500" />
+              Bản xem trước tem dán ({labelSize}mm)
             </div>
 
-            {/* Thân tem: Tên bánh cực to & rõ */}
-            <div className="py-1">
-              <h4 className="font-black text-xs leading-snug line-clamp-2 text-zinc-950 uppercase">
-                {data.cakeName}
-              </h4>
+            {/* CHÍNH THỨC CON TEM CÓ ID PRINTABLE */}
+            <div
+              id="printable-cake-sticker"
+              className="w-72 bg-white rounded-xl border border-zinc-300 p-3 shadow-md text-black flex flex-col justify-between font-sans select-none overflow-hidden"
+              style={{
+                aspectRatio: labelSize === '50x30' ? '5 / 3' : '5 / 4',
+              }}
+            >
+              {/* Header tem */}
+              <div className="border-b border-black pb-1 flex justify-between items-center text-[10px] leading-tight">
+                <div>
+                  <span className="font-black uppercase tracking-wide">TIỆM BÁNH HOÀNG GIA</span>
+                  <span className="block text-[8px] text-zinc-600 font-medium">Hotline: 0901.234.567</span>
+                </div>
+                <span className="font-mono font-black text-[9px] bg-black text-white px-1.5 py-0.5 rounded">
+                  #{orderNum}
+                </span>
+              </div>
 
-              {/* Lời nhắn / Ghi chữ bánh */}
-              {data.cakeMessage && (
-                <p className="text-[9px] font-bold text-zinc-800 italic mt-0.5 line-clamp-1 border-l-2 border-black pl-1">
-                  ✍️ "{data.cakeMessage}"
-                </p>
-              )}
+              {/* Thân tem: Tên bánh cực to & rõ */}
+              <div className="py-1">
+                <h4 className="font-black text-xs leading-snug line-clamp-2 text-zinc-950 uppercase">
+                  {data.cakeName}
+                </h4>
 
-              {/* Khách hàng & Hẹn giờ */}
-              {(data.customerName || data.pickupTime) && (
-                <div className="text-[8.5px] mt-1 space-y-0.5 text-zinc-800">
+                {/* Lời nhắn / Ghi chữ bánh */}
+                {data.cakeMessage && (
+                  <p className="text-[9px] font-bold text-zinc-800 italic mt-0.5 line-clamp-1 border-l-2 border-black pl-1">
+                    ✍️ "{data.cakeMessage}"
+                  </p>
+                )}
+
+                {/* Khách hàng & Hẹn giờ & Địa chỉ nhận bánh */}
+                <div className="text-[8.5px] mt-1 space-y-0.5 text-zinc-900 leading-tight">
                   {data.customerName && (
                     <div className="font-semibold truncate">
                       👤 {data.customerName} {data.customerPhone ? `• ${data.customerPhone}` : ''}
                     </div>
                   )}
                   {data.pickupTime && (
-                    <div className="font-black text-zinc-900 truncate">
+                    <div className="font-black truncate">
                       ⏰ Hẹn giao: {formatPickupDateTime(data.pickupTime) || data.pickupTime}
                     </div>
                   )}
-                  {labelSize === '50x40' && data.shippingAddress && (
-                    <div className="text-[8px] text-zinc-600 truncate">
-                      📍 {data.shippingAddress}
-                    </div>
-                  )}
+                  {/* NẾU TẠI TIỆM GHI TẠI TIỆM, NẾU SHIP GHI ĐỊA CHỈ NHẬN */}
+                  <div className={`font-black ${labelSize === '50x30' ? 'truncate text-[8px]' : 'line-clamp-2 text-[8.5px]'} ${isShipping ? 'text-blue-900' : 'text-zinc-950'}`}>
+                    {isShipping
+                      ? `🚚 Giao: ${data.shippingAddress || 'Theo địa chỉ khách yêu cầu'}`
+                      : '🏪 Nhận: Tại tiệm (123 Đường Bánh Ngọt, TP.HCM)'}
+                  </div>
                 </div>
-              )}
-            </div>
-
-            {/* Footer tem: Barcode SVG + NSX & HSD */}
-            <div className="pt-1 border-t border-black/80 flex flex-col items-center">
-              {/* Giả lập Barcode SVG sắc nét */}
-              <div className="w-full flex items-center justify-center h-4">
-                <svg className="w-40 h-full" viewBox="0 0 160 20" preserveAspectRatio="none">
-                  <rect x="0" y="0" width="2" height="20" fill="black" />
-                  <rect x="4" y="0" width="1" height="20" fill="black" />
-                  <rect x="7" y="0" width="3" height="20" fill="black" />
-                  <rect x="12" y="0" width="1" height="20" fill="black" />
-                  <rect x="15" y="0" width="2" height="20" fill="black" />
-                  <rect x="19" y="0" width="4" height="20" fill="black" />
-                  <rect x="25" y="0" width="1" height="20" fill="black" />
-                  <rect x="28" y="0" width="2" height="20" fill="black" />
-                  <rect x="32" y="0" width="3" height="20" fill="black" />
-                  <rect x="37" y="0" width="1" height="20" fill="black" />
-                  <rect x="40" y="0" width="2" height="20" fill="black" />
-                  <rect x="44" y="0" width="4" height="20" fill="black" />
-                  <rect x="50" y="0" width="1" height="20" fill="black" />
-                  <rect x="53" y="0" width="3" height="20" fill="black" />
-                  <rect x="58" y="0" width="2" height="20" fill="black" />
-                  <rect x="62" y="0" width="1" height="20" fill="black" />
-                  <rect x="65" y="0" width="3" height="20" fill="black" />
-                  <rect x="70" y="0" width="2" height="20" fill="black" />
-                  <rect x="74" y="0" width="4" height="20" fill="black" />
-                  <rect x="80" y="0" width="1" height="20" fill="black" />
-                  <rect x="83" y="0" width="2" height="20" fill="black" />
-                  <rect x="87" y="0" width="3" height="20" fill="black" />
-                  <rect x="92" y="0" width="1" height="20" fill="black" />
-                  <rect x="95" y="0" width="3" height="20" fill="black" />
-                  <rect x="100" y="0" width="2" height="20" fill="black" />
-                  <rect x="104" y="0" width="4" height="20" fill="black" />
-                  <rect x="110" y="0" width="1" height="20" fill="black" />
-                  <rect x="113" y="0" width="2" height="20" fill="black" />
-                  <rect x="117" y="0" width="3" height="20" fill="black" />
-                  <rect x="122" y="0" width="1" height="20" fill="black" />
-                  <rect x="125" y="0" width="2" height="20" fill="black" />
-                  <rect x="130" y="0" width="3" height="20" fill="black" />
-                  <rect x="135" y="0" width="1" height="20" fill="black" />
-                  <rect x="138" y="0" width="3" height="20" fill="black" />
-                  <rect x="143" y="0" width="2" height="20" fill="black" />
-                  <rect x="147" y="0" width="4" height="20" fill="black" />
-                  <rect x="153" y="0" width="2" height="20" fill="black" />
-                  <rect x="157" y="0" width="2" height="20" fill="black" />
-                </svg>
               </div>
 
-              <div className="w-full flex justify-between items-center text-[7.5px] font-bold text-zinc-600 mt-0.5">
-                <span>NSX: {dateStr} {timeStr}</span>
-                <span>HSD: 48 Giờ (Bảo quản 2-5°C)</span>
+              {/* Footer tem: Barcode SVG + NSX & HSD */}
+              <div className="pt-1 border-t border-black/80 flex flex-col items-center">
+                {/* Giả lập Barcode SVG sắc nét */}
+                <div className="w-full flex items-center justify-center h-4">
+                  <svg className="w-40 h-full" viewBox="0 0 160 20" preserveAspectRatio="none">
+                    <rect x="0" y="0" width="2" height="20" fill="black" />
+                    <rect x="4" y="0" width="1" height="20" fill="black" />
+                    <rect x="7" y="0" width="3" height="20" fill="black" />
+                    <rect x="12" y="0" width="1" height="20" fill="black" />
+                    <rect x="15" y="0" width="2" height="20" fill="black" />
+                    <rect x="19" y="0" width="4" height="20" fill="black" />
+                    <rect x="25" y="0" width="1" height="20" fill="black" />
+                    <rect x="28" y="0" width="2" height="20" fill="black" />
+                    <rect x="32" y="0" width="3" height="20" fill="black" />
+                    <rect x="37" y="0" width="1" height="20" fill="black" />
+                    <rect x="40" y="0" width="2" height="20" fill="black" />
+                    <rect x="44" y="0" width="4" height="20" fill="black" />
+                    <rect x="50" y="0" width="1" height="20" fill="black" />
+                    <rect x="53" y="0" width="3" height="20" fill="black" />
+                    <rect x="58" y="0" width="2" height="20" fill="black" />
+                    <rect x="62" y="0" width="1" height="20" fill="black" />
+                    <rect x="65" y="0" width="3" height="20" fill="black" />
+                    <rect x="70" y="0" width="2" height="20" fill="black" />
+                    <rect x="74" y="0" width="4" height="20" fill="black" />
+                    <rect x="80" y="0" width="1" height="20" fill="black" />
+                    <rect x="83" y="0" width="2" height="20" fill="black" />
+                    <rect x="87" y="0" width="3" height="20" fill="black" />
+                    <rect x="92" y="0" width="1" height="20" fill="black" />
+                    <rect x="95" y="0" width="3" height="20" fill="black" />
+                    <rect x="100" y="0" width="2" height="20" fill="black" />
+                    <rect x="104" y="0" width="4" height="20" fill="black" />
+                    <rect x="110" y="0" width="1" height="20" fill="black" />
+                    <rect x="113" y="0" width="2" height="20" fill="black" />
+                    <rect x="117" y="0" width="3" height="20" fill="black" />
+                    <rect x="122" y="0" width="1" height="20" fill="black" />
+                    <rect x="125" y="0" width="2" height="20" fill="black" />
+                    <rect x="130" y="0" width="3" height="20" fill="black" />
+                    <rect x="135" y="0" width="1" height="20" fill="black" />
+                    <rect x="138" y="0" width="3" height="20" fill="black" />
+                    <rect x="143" y="0" width="2" height="20" fill="black" />
+                    <rect x="147" y="0" width="4" height="20" fill="black" />
+                    <rect x="153" y="0" width="2" height="20" fill="black" />
+                    <rect x="157" y="0" width="2" height="20" fill="black" />
+                  </svg>
+                </div>
+
+                <div className="w-full flex justify-between items-center text-[7.5px] font-bold text-zinc-600 mt-0.5">
+                  <span>NSX: {dateStr} {timeStr}</span>
+                  <span>HSD: 48 Giờ (Bảo quản 2-5°C)</span>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Hướng dẫn máy in */}
-        <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200/80 text-[11px] text-amber-900 leading-relaxed">
-          💡 <b>Gợi ý in:</b> Chọn máy in tem nhiệt (Xprinter, Gprinter, HPRT). Trong hộp thoại in của trình duyệt, chọn kích thước giấy là <b>50x30mm</b> và đặt lề (Margins) là <b>None</b>.
-        </div>
+          {/* Hướng dẫn máy in & Nút Cài đặt */}
+          <div className="p-3 bg-amber-50/80 rounded-2xl border border-amber-200/80 text-[11px] text-amber-950 flex items-center justify-between gap-2">
+            <div className="leading-relaxed">
+              💡 <b>Khổ in:</b> Khổ {labelSize}mm. Tương thích máy in nhiệt Bluetooth, USB, iPhone (AirPrint) & Android.
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsPrinterSettingsOpen(true)}
+              className="shrink-0 px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer active:scale-95"
+              title="Mở cấu hình máy in và kiểm tra kết nối"
+            >
+              <Settings className="w-3.5 h-3.5 text-amber-700" />
+              <span>Cài đặt máy in</span>
+            </button>
+          </div>
 
-        {/* Nút hành động */}
-        <div className="flex gap-2 pt-1">
-          <button
-            type="button"
-            onClick={handleCopyOrderNum}
-            className="px-3.5 py-3 rounded-2xl border border-zinc-200 hover:bg-zinc-50 text-xs font-bold text-zinc-600 flex items-center justify-center gap-1.5 transition cursor-pointer"
-            title="Sao chép mã đơn"
-          >
-            {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-            <span>{copied ? 'Đã chép' : 'Chép mã'}</span>
-          </button>
+          {/* Nút hành động */}
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleCopyOrderNum}
+              className="px-3.5 py-3 rounded-2xl border border-zinc-200 hover:bg-zinc-50 text-xs font-bold text-zinc-600 flex items-center justify-center gap-1.5 transition cursor-pointer"
+              title="Sao chép mã đơn"
+            >
+              {copied ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+              <span>{copied ? 'Đã chép' : 'Chép mã'}</span>
+            </button>
 
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex-1 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs sm:text-sm shadow-md shadow-amber-600/30 flex items-center justify-center gap-2 transition cursor-pointer active:scale-95"
-          >
-            <Printer className="w-4 h-4" />
-            <span>In Tem Nhãn ({labelSize})</span>
-          </button>
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="flex-1 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs sm:text-sm shadow-md shadow-amber-600/30 flex items-center justify-center gap-2 transition cursor-pointer active:scale-95"
+            >
+              <Printer className="w-4 h-4" />
+              <span>In Tem Nhãn ({labelSize})</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* MODAL CÀI ĐẶT VÀ KIỂM TRA MÁY IN */}
+      <PrinterSettingsModal
+        isOpen={isPrinterSettingsOpen}
+        onClose={() => setIsPrinterSettingsOpen(false)}
+      />
+    </>
   );
 };
 

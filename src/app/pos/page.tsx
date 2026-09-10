@@ -11,7 +11,7 @@ import {
   Sparkles, Wallet, Lock, History, AlertTriangle, Cake, Calendar,
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
   Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet,
-  Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag
+  Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { exportToCSV } from '@/lib/utils/exportExcel';
@@ -39,6 +39,7 @@ import {
 } from '@/lib/utils/spoilageManager';
 import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
+import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 
 interface CartItem {
   product: CachedProduct;
@@ -396,6 +397,9 @@ export default function POSPage() {
     setStickerModalData(data);
     setIsStickerModalOpen(true);
   };
+
+  // ── PRINTER SETTINGS MODAL STATE ──
+  const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
 
   // ── IN HÓA ĐƠN QUA IFRAME ĐỘC LẬP (KHẮC PHỤC LỖI NHẢY 2 TRANG VÀ LỘ NÚT BẤM) ──
   const handlePrintReceipt = () => {
@@ -1693,6 +1697,17 @@ export default function POSPage() {
               <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">
                 {invoicesList.length}
               </span>
+            </button>
+
+            {/* Nút Cài Đặt & Kiểm Tra Máy In (Bluetooth, USB, iPhone, Android) */}
+            <button
+              type="button"
+              onClick={() => setIsPrinterSettingsOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-blue-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-blue-50/60 cursor-pointer"
+              title="Cài đặt & kiểm tra kết nối máy in Bluetooth, USB, iPhone, Android"
+            >
+              <Printer className="w-4 h-4 text-blue-600" />
+              <span className="hidden sm:inline">Máy In</span>
             </button>
 
             {/* Nút Bật/Tắt Âm Thanh Thông Báo */}
@@ -4779,6 +4794,14 @@ export default function POSPage() {
                     ? 'In Phiếu Hẹn'
                     : 'In Hóa Đơn'}
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrinterSettingsOpen(true)}
+                  className="p-2.5 rounded-xl border border-zinc-200 text-zinc-500 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                  title="Cài đặt máy in & kiểm tra kết nối"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
               </div>
               <button
                 onClick={() => {
@@ -5397,6 +5420,12 @@ export default function POSPage() {
         isOpen={isPosStockHistoryOpen}
         onClose={() => setIsPosStockHistoryOpen(false)}
         filterProductId={posStockFilterId}
+      />
+
+      {/* ── MODAL CÀI ĐẶT MÁY IN VÀ KIỂM TRA KẾT NỐI ── */}
+      <PrinterSettingsModal
+        isOpen={isPrinterSettingsOpen}
+        onClose={() => setIsPrinterSettingsOpen(false)}
       />
 
     </div>

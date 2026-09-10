@@ -11,7 +11,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, QrCode, Copy, Check, Building2,
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
-  Send, Bell, History
+  Send, Bell, History, Printer
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -37,6 +37,7 @@ import {
   STOCK_ADJUSTMENT_EVENT,
 } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
+import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -117,6 +118,7 @@ export default function AdminDashboard() {
   const [staffPinInput, setStaffPinInput] = useState(securityConfig.staffPin);
   const [staffNameInput, setStaffNameInput] = useState(securityConfig.staffName);
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
 
   // ── TELEGRAM BOT NOTIFICATION CONFIG STATE (SQL SYNC) ──
   const [adminTgConfig, setAdminTgConfig] = useState<TelegramConfig>({
@@ -1947,13 +1949,24 @@ export default function AdminDashboard() {
     <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200">
-        <div>
-          <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">
-            Phân hệ Quản trị Toàn diện
-          </span>
-          <h1 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight">
-            Quản Lý Tiệm Bánh, Kho & Kế Toán
-          </h1>
+        <div className="flex items-center justify-between sm:justify-start gap-4">
+          <div>
+            <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">
+              Phân hệ Quản trị Toàn diện
+            </span>
+            <h1 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight">
+              Quản Lý Tiệm Bánh, Kho & Kế Toán
+            </h1>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsPrinterSettingsOpen(true)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-stone-200 hover:border-blue-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-blue-50/60 cursor-pointer shrink-0"
+            title="Cài đặt & kiểm tra kết nối máy in Bluetooth, USB, iPhone, Android"
+          >
+            <Printer className="w-4 h-4 text-blue-600" />
+            <span className="hidden sm:inline">Máy In POS</span>
+          </button>
         </div>
 
         {/* Tab Navigation */}
@@ -5116,6 +5129,12 @@ export default function AdminDashboard() {
         isOpen={isStockHistoryModalOpen}
         onClose={() => setIsStockHistoryModalOpen(false)}
         filterProductId={stockHistoryFilterProductId}
+      />
+
+      {/* ── MODAL CÀI ĐẶT & KIỂM TRA MÁY IN POS ── */}
+      <PrinterSettingsModal
+        isOpen={isPrinterSettingsOpen}
+        onClose={() => setIsPrinterSettingsOpen(false)}
       />
     </div>
   );
