@@ -70,45 +70,7 @@ interface KDSOrder {
   items: OrderItem[];
 }
 
-const INITIAL_DEMO_ORDERS: KDSOrder[] = [
-  {
-    id: 'kds-demo-1',
-    order_number: 'BK-PRE-20260908-01',
-    order_type: 'preorder',
-    status: 'pending',
-    created_at: new Date().toISOString(),
-    preorder_pickup_at: '17:30 ngày mai (08/09)',
-    delivery_method: 'shipping',
-    shipping_address: 'Số 45 Lê Lợi, Phường Bến Nghé, Quận 1',
-    shipping_fee: 30000,
-    customer_name: 'Chị Lan Anh',
-    customer_phone: '0912 345 678',
-    cake_message: 'Mừng Sinh Nhật Bé Bắp 3 tuổi',
-    notes: 'Ít ngọt, trang trí vương miện tone hồng ấm, nến số 3',
-    total_amount: 395000,
-    deposit_amount: 150000,
-    remaining_amount: 245000,
-    items: [
-      {
-        id: 'item-demo-1',
-        product_name_snapshot: 'Bánh Bông Lan Trứng Muối (Size 18cm)',
-        quantity: 1,
-        notes: 'Chữ: "Mừng Sinh Nhật Bé Bắp 3 tuổi" | Nến số 3',
-      },
-    ],
-  },
-  {
-    id: 'kds-demo-2',
-    order_number: 'BK-20260907-002',
-    order_type: 'takeaway',
-    status: 'preparing',
-    created_at: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
-    items: [
-      { id: 'item-demo-2', product_name_snapshot: 'Bánh Croissant Bơ Pháp', quantity: 2 },
-      { id: 'item-demo-3', product_name_snapshot: 'Bánh Mì Bơ Tỏi Phô Mai', quantity: 1, notes: 'Nướng vàng giòn, cắt đôi' },
-    ],
-  },
-];
+const INITIAL_DEMO_ORDERS: KDSOrder[] = [];
 
 export interface ActiveOvenBatch {
   id: string;
@@ -1305,24 +1267,36 @@ export default function KitchenPage() {
 
   // Nút xóa sạch đơn mẫu thử nghiệm
   const handleClearDemoOrders = () => {
-    if (confirm('Bạn có chắc muốn xóa 2 đơn mẫu thử nghiệm? Bảng bếp sẽ trở về trạng thái sạch để đón nhận các đơn thực tế từ quầy bán hàng.')) {
+    if (confirm('Bạn có chắc muốn dọn sạch các đơn mẫu / đơn thử nghiệm? Bảng bếp sẽ trở về trạng thái sạch để đón nhận các đơn thực tế từ quầy bán hàng.')) {
       if (typeof window !== 'undefined') {
         try {
           const raw = localStorage.getItem('bakery_orders');
           if (raw) {
             const parsed = JSON.parse(raw);
             if (Array.isArray(parsed)) {
-              const filtered = parsed.filter(
-                (o: any) =>
-                  o.id !== 'kds-demo-1' &&
-                  o.id !== 'kds-demo-2' &&
-                  o.order_number !== 'BK-PRE-20260908-01' &&
-                  o.order_number !== 'BK-20260907-002'
-              );
+              const filtered = parsed.filter((o: any) => {
+                if (!o) return false;
+                const id = String(o.id || '');
+                const orderNum = String(o.order_number || o.orderNumber || '');
+                const name = String(o.customer_name || '');
+                const isDemo =
+                  id.startsWith('kds-demo') ||
+                  id.startsWith('sim-') ||
+                  orderNum === 'BK-PRE-20260908-01' ||
+                  orderNum === 'BK-20260907-002' ||
+                  name === 'Chị Lan Anh' ||
+                  name === 'Chị Minh Thư' ||
+                  name === 'Anh Hoàng Nam' ||
+                  name === 'Cô Thu Hương' ||
+                  name === 'Bác Quang Huy' ||
+                  name === 'Bạn Thùy Trang';
+                return !isDemo;
+              });
               localStorage.setItem('bakery_orders', JSON.stringify(filtered));
             }
           }
           localStorage.setItem('bakery_kds_seeded', 'true');
+          localStorage.removeItem('bakery_auto_demo_enabled');
           window.dispatchEvent(new Event('bakery_orders_updated'));
           loadOrders();
         } catch (e) {

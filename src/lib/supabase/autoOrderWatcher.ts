@@ -6,98 +6,33 @@ import { formatPickupDateTime, parsePreorderFromNotes } from './realtimeSync';
 import { getDeliveryUrgency } from '@/lib/utils/deliveryAlerts';
 import { sendTelegramOrderAlert, sendTelegramUrgentAlert } from '@/lib/utils/telegramNotify';
 
-interface DemoCustomer {
-  name: string;
-  phone: string;
-  cakeName: string;
-  size: string;
-  message: string;
-  price: number;
-}
-
-const DEMO_CUSTOMERS: DemoCustomer[] = [
-  {
-    name: 'Chị Minh Thư',
-    phone: '0938.112.233',
-    cakeName: 'Bánh Mousse Dâu Tây',
-    size: 'Size 16cm',
-    message: 'Chúc mừng sinh nhật mẹ yêu',
-    price: 320000,
-  },
-  {
-    name: 'Anh Hoàng Nam',
-    phone: '0909.887.766',
-    cakeName: 'Bánh Kem Bắp Phô Mai',
-    size: 'Size 20cm',
-    message: 'Happy Birthday My Love',
-    price: 420000,
-  },
-  {
-    name: 'Cô Thu Hương',
-    phone: '0918.334.556',
-    cakeName: 'Bánh Red Velvet Trái Tim',
-    size: 'Size 16cm',
-    message: 'Kỷ niệm 10 năm ngày cưới',
-    price: 390000,
-  },
-  {
-    name: 'Bác Quang Huy',
-    phone: '0982.556.778',
-    cakeName: 'Bánh Bông Lan Trứng Muối',
-    size: 'Size 18cm',
-    message: 'Mừng thọ Bác 70 tuổi',
-    price: 365000,
-  },
-  {
-    name: 'Bạn Thùy Trang',
-    phone: '0977.441.229',
-    cakeName: 'Bánh Tiramisu Ý Hộp Vuông',
-    size: 'Hộp Vuông 15cm',
-    message: 'Chúc mừng tốt nghiệp cử nhân',
-    price: 250000,
-  }
-];
-
 class AutoOrderWatcher {
   private knownOrders: Set<string> = new Set();
   private alertedUrgentMap: Map<string, number> = new Map();
   private isWatching: boolean = false;
   private pollTimer: NodeJS.Timeout | null = null;
   private urgentTimer: NodeJS.Timeout | null = null;
-  private demoTimer: NodeJS.Timeout | null = null;
-  private autoDemoActive: boolean = false;
-  private demoIndex: number = 0;
 
   constructor() {
     if (typeof window !== 'undefined') {
-      const savedDemo = localStorage.getItem('bakery_auto_demo_enabled');
-      this.autoDemoActive = savedDemo === 'true';
+      localStorage.removeItem('bakery_auto_demo_enabled');
       (window as any).bakeryAutoOrderWatcher = this;
     }
   }
 
   public isAutoDemoEnabled(): boolean {
-    return this.autoDemoActive;
+    return false;
   }
 
   public toggleAutoDemo(): boolean {
-    this.autoDemoActive = !this.autoDemoActive;
     if (typeof window !== 'undefined') {
-      localStorage.setItem('bakery_auto_demo_enabled', String(this.autoDemoActive));
-      window.dispatchEvent(new CustomEvent('bakery_auto_demo_toggle', { detail: { enabled: this.autoDemoActive } }));
+      localStorage.removeItem('bakery_auto_demo_enabled');
     }
-    if (this.autoDemoActive) {
-      this.startDemoGenerator();
-      // Tạo ngay 1 đơn đầu tiên sau 2.5 giây để người dùng thấy thông báo tự động ngay lập tức
-      setTimeout(() => this.createSimulatedOrder(), 2500);
-    } else {
-      this.stopDemoGenerator();
-    }
-    return this.autoDemoActive;
+    return false;
   }
 
   /**
-   * Khởi động bộ giám sát tự động toàn hệ thống
+   * Khởi động bộ giám sát tự động đơn hàng thực tế
    */
   public start() {
     if (this.isWatching || typeof window === 'undefined') return;
@@ -116,18 +51,12 @@ class AutoOrderWatcher {
       this.checkUrgentDeliveries();
     }, 15000);
 
-    // 4. Nếu chế độ tự động nhận đơn mẫu đang bật, khởi động bộ tạo đơn
-    if (this.autoDemoActive) {
-      this.startDemoGenerator();
-    }
-
-    console.log('✅ AutoOrderWatcher started - Đang giám sát đơn hàng tự động real-time');
+    console.log('✅ AutoOrderWatcher started - Đang giám sát đơn hàng thực tế real-time');
   }
 
   public stop() {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.urgentTimer) clearInterval(this.urgentTimer);
-    this.stopDemoGenerator();
     this.isWatching = false;
   }
 
@@ -291,135 +220,6 @@ class AutoOrderWatcher {
       }
     } catch (e) {
       console.warn('Urgent check warning:', e);
-    }
-  }
-
-  /**
-   * Tạo đơn mô phỏng tự động vào Supabase để người dùng thấy ứng dụng tự động nhận đơn
-   */
-  public async createSimulatedOrder() {
-    try {
-      const demoCust = DEMO_CUSTOMERS[this.demoIndex % DEMO_CUSTOMERS.length];
-      this.demoIndex++;
-
-      const now = new Date();
-      const orderNum = `BK-PRE-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
-      
-      // Hẹn giao trong 45 phút nữa
-      const pickupDate = new Date(now.getTime() + 45 * 60 * 1000);
-      const isoPickup = pickupDate.toISOString();
-      const pickupStr = `${String(pickupDate.getHours()).padStart(2, '0')}:${String(pickupDate.getMinutes()).padStart(2, '0')} hôm nay`;
-
-      const fullNotes = `[ĐẶT BÁNH KEM] Khách: ${demoCust.name} (${demoCust.phone}) | Hẹn: ${pickupStr} | Bánh: ${demoCust.cakeName} (${demoCust.size}) | Chữ: "${demoCust.message}" | Tổng: ${demoCust.price.toLocaleString('vi-VN')}đ | Đã cọc: ${demoCust.price.toLocaleString('vi-VN')}đ`;
-
-      let insertedId = '';
-
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
-        const { data: insertedOrder, error } = await supabase
-          .from('orders')
-          .insert({
-            order_number: orderNum,
-            order_type: 'preorder',
-            status: 'pending',
-            customer_name: demoCust.name,
-            customer_phone: demoCust.phone,
-            preorder_pickup_at: isoPickup,
-            notes: fullNotes,
-            subtotal: demoCust.price,
-            total_amount: demoCust.price,
-            cake_message: demoCust.message,
-          })
-          .select('id')
-          .single();
-
-        if (!error && insertedOrder) {
-          insertedId = String(insertedOrder.id);
-          await supabase.from('order_items').insert([
-            {
-              order_id: insertedOrder.id,
-              product_name_snapshot: `${demoCust.cakeName} (${demoCust.size})`,
-              quantity: 1,
-              unit_price: demoCust.price,
-              line_total: demoCust.price,
-              notes: `Chữ: "${demoCust.message}"`,
-            }
-          ]);
-        }
-      }
-
-      // Lưu vào local để hiển thị ngay cả khi offline
-      const unified: any = {
-        id: insertedId || `local-${Date.now()}`,
-        order_number: orderNum,
-        orderNumber: orderNum,
-        order_type: 'preorder',
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        preorder_pickup_at: isoPickup,
-        pickupDateTime: isoPickup,
-        delivery_method: 'pickup',
-        customer_name: demoCust.name,
-        customer_phone: demoCust.phone,
-        cake_name: demoCust.cakeName,
-        cake_size: demoCust.size,
-        cake_message: demoCust.message,
-        notes: fullNotes,
-        total_amount: demoCust.price,
-        subtotal: demoCust.price,
-        deposit_amount: demoCust.price,
-        remaining_amount: 0,
-      };
-
-      const raw = localStorage.getItem('bakery_orders');
-      const list = raw ? JSON.parse(raw) : [];
-      list.unshift(unified);
-      localStorage.setItem('bakery_orders', JSON.stringify(list.slice(0, 100)));
-
-      // Ghi nhớ để tránh quét trùng
-      this.knownOrders.add(orderNum);
-      if (insertedId) this.knownOrders.add(insertedId);
-
-      // Kích hoạt ngay thông báo nổi + chuông + rung!
-      phoneNotificationService.triggerOrderNotification({
-        id: 'sim-' + orderNum,
-        type: 'new_order',
-        appTitle: 'TIỆM BÁNH HẠNH PHÚC (TỰ ĐỘNG)',
-        title: `🎂 Đơn Bánh Mới #${orderNum}`,
-        sender: `${demoCust.name} (${demoCust.phone})`,
-        message: `⏰ Hẹn: ${pickupStr} • ${demoCust.cakeName} (${demoCust.size})`,
-        extraDetails: `Ghi chữ: "${demoCust.message}" - ${demoCust.price.toLocaleString('vi-VN')}₫`,
-        orderNumber: orderNum,
-        pickupTime: pickupStr,
-        actionLabel: 'Xem Đơn Ngay',
-        onAction: () => {
-          if (typeof window !== 'undefined') {
-            window.location.href = '/pos';
-          }
-        }
-      });
-
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('bakery_orders_updated'));
-      }
-    } catch (e) {
-      console.warn('Create simulated order notice:', e);
-    }
-  }
-
-  private startDemoGenerator() {
-    this.stopDemoGenerator();
-    // Tạo đơn mới tự động mỗi 30 giây khi bật chế độ nhận đơn mẫu
-    this.demoTimer = setInterval(() => {
-      if (this.autoDemoActive) {
-        this.createSimulatedOrder();
-      }
-    }, 30000);
-  }
-
-  private stopDemoGenerator() {
-    if (this.demoTimer) {
-      clearInterval(this.demoTimer);
-      this.demoTimer = null;
     }
   }
 

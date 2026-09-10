@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { ShoppingBag, ChefHat, BarChart3, Wifi, WifiOff, Cake, Shield, Users, Lock, LogOut, KeyRound, Bell, Sparkles } from 'lucide-react';
+import { ShoppingBag, ChefHat, BarChart3, Wifi, WifiOff, Cake, Shield, Users, Lock, LogOut, KeyRound, Bell } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import LoginModal from '@/components/LoginModal';
@@ -16,7 +16,6 @@ export default function Header() {
   const [isOnline, setIsOnline] = useState(true);
   const [mounted, setMounted] = useState(false);
   const [notifPermission, setNotifPermission] = useState<string>('default');
-  const [autoDemoActive, setAutoDemoActive] = useState(false);
   const [isNotifSettingsOpen, setIsNotifSettingsOpen] = useState(false);
   const [notifModalTab, setNotifModalTab] = useState<'history' | 'pwa' | 'telegram' | 'kiosk'>('history');
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
@@ -33,8 +32,8 @@ export default function Header() {
       window.addEventListener('offline', handleOffline);
       phoneNotificationService.initServiceWorker();
       setNotifPermission(phoneNotificationService.getPermission());
+      localStorage.removeItem('bakery_auto_demo_enabled');
       autoOrderWatcher.start();
-      setAutoDemoActive(autoOrderWatcher.isAutoDemoEnabled());
 
       // Lắng nghe số thông báo chưa đọc
       const updateUnread = () => {
@@ -43,15 +42,9 @@ export default function Header() {
       updateUnread();
       const unsubHistory = subscribeNotificationHistory(updateUnread);
 
-      const handleDemoToggle = (e: any) => {
-        setAutoDemoActive(Boolean(e.detail?.enabled));
-      };
-      window.addEventListener('bakery_auto_demo_toggle', handleDemoToggle);
-
       return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
-        window.removeEventListener('bakery_auto_demo_toggle', handleDemoToggle);
         unsubHistory();
       };
     }
@@ -178,33 +171,6 @@ export default function Header() {
                 <span className="w-2 h-2 rounded-full bg-rose-500"></span>
                 <span className="hidden sm:inline">Offline</span>
               </span>
-            )}
-
-            {/* Nút Bật/Tắt Nhận Đơn Tự Động (Auto-Demo Mode): Ẩn trên mobile để tránh tràn viền */}
-            {mounted && (
-              <button
-                type="button"
-                onClick={() => {
-                  const active = autoOrderWatcher.toggleAutoDemo();
-                  setAutoDemoActive(active);
-                }}
-                className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
-                  autoDemoActive
-                    ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm shadow-emerald-600/30 ring-2 ring-emerald-400/40'
-                    : 'bg-white/80 text-zinc-700 border-amber-200/80 hover:bg-amber-100/60 hover:text-amber-900 shadow-2xs'
-                }`}
-                title={
-                  autoDemoActive
-                    ? 'Chế độ Tự Động Nhận Đơn: ĐANG BẬT (Hệ thống tự nhận đơn mẫu & báo chuông/rung/thông báo nổi mỗi 30s)'
-                    : 'Bật chế độ Tự Động Nhận Đơn (Hệ thống sẽ tự nhận đơn mới để kiểm tra chuông & thông báo)'
-                }
-              >
-                <Sparkles className={`w-3.5 h-3.5 ${autoDemoActive ? 'animate-spin text-amber-200' : 'text-amber-600'}`} />
-                <span className="hidden lg:inline">
-                  {autoDemoActive ? 'Tự Động: BẬT' : 'Tự Động Nhận Đơn'}
-                </span>
-                <span className={`w-1.5 h-1.5 rounded-full ${autoDemoActive ? 'bg-white animate-pulse' : 'bg-zinc-400'}`} />
-              </button>
             )}
 
             {/* Nút Bật & Cài Đặt Thông Báo & Lịch Sử */}
