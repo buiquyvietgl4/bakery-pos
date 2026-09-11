@@ -6,6 +6,7 @@ import {
   Search, Plus, Download, FileSpreadsheet, CheckCircle2, 
   Calendar, RefreshCw, Filter, Banknote, Building2, AlertCircle
 } from 'lucide-react';
+import { isOrderCash } from './AccountingOverview';
 
 export interface DualCashflowLedgerProps {
   orders: any[];
@@ -45,7 +46,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
   const cashSalesIncome = useMemo(() => {
     return orders
       .filter((o) => {
-        const isCash = o.payment_method === 'cash' || o.paymentMethod === 'cash';
+        const isCash = isOrderCash(o);
         if (!isCash) return false;
         const timeStr = o.created_at || o.createdAt || '';
         if (!timeStr) return true;
@@ -74,7 +75,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
   const bankSalesIncome = useMemo(() => {
     return orders
       .filter((o) => {
-        const isBank = o.payment_method !== 'cash' && o.paymentMethod !== 'cash';
+        const isBank = !isOrderCash(o);
         if (!isBank) return false;
         const timeStr = o.created_at || o.createdAt || '';
         if (!timeStr) return true;
@@ -107,7 +108,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
 
     // Hóa đơn POS (Thu tiền)
     orders.forEach((o) => {
-      const isCash = o.payment_method === 'cash' || o.paymentMethod === 'cash';
+      const isCash = isOrderCash(o);
       const amt = Number(o.total_amount || o.totalPrice || 0);
       if (amt <= 0) return;
       const num = o.order_number || o.orderNumber || 'BK';

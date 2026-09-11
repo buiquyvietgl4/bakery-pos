@@ -1012,6 +1012,8 @@ export default function POSPage() {
         cake_message: isPre ? posCakeMessage : undefined,
         preorder_pickup_at: isPre ? new Date(`${posPickupDate}T${posPickupTime}:00`).toISOString() : undefined,
         notes: fullNotes,
+        payment_method: paymentMethod,
+        paymentMethod: paymentMethod,
         total_cogs: 0,
         sync_status: 'synced' as const,
         created_at: now.toISOString(),

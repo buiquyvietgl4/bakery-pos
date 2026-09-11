@@ -33,6 +33,17 @@ const formatVND = (val: number) => {
   return `${prefix}VND ${Math.abs(rounded).toLocaleString('en-US')}`;
 };
 
+export const isOrderCash = (o: any): boolean => {
+  const m = (
+    o?.payment_method ||
+    o?.paymentMethod ||
+    o?.final_payment_method ||
+    o?.payments?.[0]?.method ||
+    ''
+  ).toString().toLowerCase();
+  return m === 'cash' || m === 'tiền mặt' || m === 'tien mat';
+};
+
 export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   orders,
   expenses,
@@ -104,7 +115,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   // Phân tách Doanh thu Tiền mặt & VietQR
   const cashRevenue = useMemo(() => {
     return periodOrders
-      .filter((o) => o.payment_method === 'cash' || o.paymentMethod === 'cash')
+      .filter(isOrderCash)
       .reduce((acc, o) => acc + Number(o.total_amount || o.totalPrice || 0), 0);
   }, [periodOrders]);
 
@@ -999,8 +1010,8 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                     </td>
                     <td className="py-2.5 text-right font-black text-zinc-900">{formatVND(o.total_amount || o.totalPrice || 0)}</td>
                     <td className="py-2.5 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${o.payment_method === 'cash' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
-                        {o.payment_method === 'cash' ? 'Tiền mặt' : 'VietQR'}
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${isOrderCash(o) ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
+                        {isOrderCash(o) ? 'Tiền mặt' : 'VietQR'}
                       </span>
                     </td>
                     <td className="py-2.5 text-center">
