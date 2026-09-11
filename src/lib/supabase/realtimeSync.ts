@@ -603,9 +603,23 @@ export function parsePreorderFromNotes(notes?: string) {
     cakeMessage = msgMatch[1].trim();
   }
 
+  let specialRequest: string | undefined = undefined;
+  const reqMatch = notes.match(/Yêu cầu:\s*([^|]+)/i);
+  if (reqMatch && reqMatch[1]) {
+    specialRequest = reqMatch[1].trim();
+  }
+
+  let totalAmount: number | undefined = undefined;
+  const totalMatch = notes.match(/GIÁ CUỐI:\s*([\d\.\,]+)/i);
+  if (totalMatch && totalMatch[1]) {
+    const cleanNum = parseInt(totalMatch[1].replace(/\D/g, ''), 10);
+    if (!isNaN(cleanNum)) totalAmount = cleanNum;
+  }
+
   return {
     delivery_method: isShip ? ('shipping' as const) : undefined,
     shipping_address: shippingAddress,
+    total_amount: totalAmount,
     deposit_amount: depositAmount,
     remaining_amount: remainingAmount,
     reference_image_url: referenceImageUrl,
@@ -615,15 +629,23 @@ export function parsePreorderFromNotes(notes?: string) {
     customer_phone: customerPhone,
     preorder_pickup_at: pickupTime,
     cake_message: cakeMessage,
+    special_request: specialRequest,
   };
 }
 
 /**
- * Làm sạch chuỗi ghi chú hiển thị ra giao diện (loại bỏ tag hình ảnh Base64 nếu có)
+ * Làm sạch chuỗi ghi chú hiển thị ra giao diện:
+ * - Loại bỏ tag hình ảnh Base64
+ * - Nếu là chuỗi dữ liệu đặt bánh [ĐẶT BÁNH KEM] thì chỉ trích xuất phần 'Yêu cầu:' thực tế
  */
 export function cleanDisplayNotes(notes?: string): string {
   if (!notes || typeof notes !== 'string') return '';
-  return notes.replace(/\[MẪU_ẢNH:[^\]]+\]/g, '').trim();
+  const cleaned = notes.replace(/\[MẪU_ẢNH:[^\]]+\]/g, '').trim();
+  if (cleaned.startsWith('[ĐẶT BÁNH KEM]')) {
+    const reqMatch = cleaned.match(/Yêu cầu:\s*([^|]+)/i);
+    return reqMatch && reqMatch[1] ? reqMatch[1].trim() : '';
+  }
+  return cleaned;
 }
 
 /**

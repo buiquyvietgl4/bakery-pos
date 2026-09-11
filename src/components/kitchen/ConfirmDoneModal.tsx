@@ -25,6 +25,11 @@ export interface KDSOrderSummary {
   delivery_method?: 'pickup' | 'shipping';
   shipping_address?: string;
   notes?: string;
+  remaining_amount?: number;
+  deposit_amount?: number;
+  total_amount?: number;
+  payment_status?: string;
+  final_payment_method?: string;
   items?: OrderItem[];
 }
 
@@ -47,6 +52,7 @@ export function ConfirmDoneModal({
 
   const isShip = order.delivery_method === 'shipping' || (order.notes && order.notes.includes('Giao tận nơi'));
   const isReadyStep = targetStep === 'ready';
+  const isPaid100 = (order.remaining_amount ?? 0) <= 0;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
@@ -65,10 +71,10 @@ export function ConfirmDoneModal({
               <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
                 isReadyStep ? 'bg-blue-950 text-blue-300 border border-blue-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
               }`}>
-                {isReadyStep ? 'Xác Nhận Xong Bước 2' : 'Xác Nhận Hoàn Tất Đơn'}
+                {isReadyStep ? 'Xác Nhận Xong Bước 2' : 'Xác Nhận Hoàn Tất Giao Hàng'}
               </span>
               <h3 className="font-black text-lg sm:text-xl text-white mt-0.5">
-                {isReadyStep ? 'Bánh Đã Làm Xong?' : 'Đã Giao Bánh Xong?'}
+                {isReadyStep ? 'Bánh Đã Làm Xong?' : 'Hoàn Thành Giao Bánh?'}
               </h3>
             </div>
           </div>
@@ -87,9 +93,16 @@ export function ConfirmDoneModal({
             <span className="font-mono font-black text-sm text-amber-400">
               #{order.order_number}
             </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-800 text-zinc-300">
-              {isShip ? '🚚 Ship tận nơi' : '🏪 Nhận tại quầy'}
-            </span>
+            <div className="flex items-center gap-1.5">
+              {!isReadyStep && isPaid100 && (
+                <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-950 text-emerald-300 border border-emerald-700">
+                  ĐÃ THANH TOÁN 100%
+                </span>
+              )}
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-800 text-zinc-300">
+                {isShip ? '🚚 Ship tận nơi' : '🏪 Nhận tại quầy'}
+              </span>
+            </div>
           </div>
 
           {/* Danh sách món / bánh */}
