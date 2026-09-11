@@ -42,6 +42,7 @@ import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { AccountingClosingSection } from '@/components/admin/AccountingClosingSection';
 import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
+import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -80,6 +81,7 @@ interface ExpenseItem {
   amount: number;
   description: string;
   date: string;
+  paymentMethod?: 'cash' | 'bank';
 }
 
 export interface EwalletConfig {
@@ -1511,7 +1513,31 @@ export default function AdminDashboard() {
   };
 
   // ── XỬ LÝ THÊM CHI PHÍ OPEX ──
-  const handleAddExpense = () => {
+  const handleAddExpense = (customItem?: any) => {
+    if (customItem && customItem.amount) {
+      const item: ExpenseItem = {
+        id: generateUUID(),
+        category: customItem.category || 'Chi phí khác',
+        amount: customItem.amount,
+        description: customItem.description || '',
+        date: customItem.date || new Date().toISOString().split('T')[0],
+        paymentMethod: customItem.paymentMethod || 'cash',
+      };
+      setExpenses((prev) => [item, ...prev]);
+      setCashflow((prev) => [
+        {
+          id: generateUUID(),
+          type: 'expense',
+          category: 'opex',
+          amount: item.amount,
+          desc: `${item.category}: ${item.description}`,
+          date: item.date,
+          method: item.paymentMethod || 'cash',
+        },
+        ...prev,
+      ]);
+      return;
+    }
     if (newExpAmount <= 0) return;
     const item: ExpenseItem = {
       id: generateUUID(),
@@ -1519,6 +1545,7 @@ export default function AdminDashboard() {
       amount: newExpAmount,
       description: newExpDesc,
       date: new Date().toISOString().split('T')[0],
+      paymentMethod: 'cash',
     };
     setExpenses((prev) => [item, ...prev]);
 
@@ -1530,12 +1557,30 @@ export default function AdminDashboard() {
         amount: newExpAmount,
         desc: `${newExpCategory}: ${newExpDesc}`,
         date: item.date,
+        method: 'cash',
       },
       ...prev,
     ]);
 
     setNewExpAmount(0);
     setNewExpDesc('');
+  };
+
+  const handleDeleteExpense = (id: string) => {
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  const handleAddCashflowTransaction = (tx: any) => {
+    const item = {
+      id: generateUUID(),
+      type: tx.type,
+      category: tx.category || 'other',
+      amount: tx.amount,
+      desc: tx.desc,
+      date: tx.date || new Date().toISOString().split('T')[0],
+      method: tx.method || 'cash',
+    };
+    setCashflow((prev) => [item, ...prev]);
   };
 
   // ── XỬ LÝ TẢI ẢNH BÁNH (OFFLINE-FIRST: LƯU BASE64 VÀO LOCALSTORAGE TRƯỚC) ──
@@ -1998,17 +2043,15 @@ export default function AdminDashboard() {
         {/* Tab Navigation */}
         <div className="flex items-center gap-1.5 bg-zinc-200/80 p-1 rounded-2xl overflow-x-auto scrollbar-none">
           {[
-            { id: 'overview', label: 'Báo Cáo P&L', icon: BarChart3 },
+            { id: 'overview', label: 'Kế Toán & Tài Chính', icon: BarChart3 },
             { id: 'images', label: 'Quản Lý Bánh & Ảnh', icon: Cake },
             { id: 'inventory', label: 'Kho Xuất Nhập & Vật Tư', icon: Package },
             { id: 'recipes', label: 'Công Thức BOM', icon: BookOpen },
-            { id: 'opex', label: 'Chi Phí OPEX', icon: FileText },
-            { id: 'cashflow', label: 'Sổ Quỹ Thu Chi', icon: DollarSign },
             { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode },
             { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
             { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2 },
             { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield },
-            { id: 'cloud', label: 'Chốt Sổ & Cloud', icon: HardDrive },
+            { id: 'cloud', label: 'Dung Lượng Cloud', icon: HardDrive },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -2029,401 +2072,23 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* ── TAB 1: BÁO CÁO P&L, KẾ TOÁN & XUẤT EXCEL ── */}
+      {/* ── TAB 1: TRUNG TÂM KẾ TOÁN & TÀI CHÍNH (P&L, SỔ QUỸ, OPEX, CHỐT SỔ) ── */}
       {activeTab === 'overview' && (
-        <div className="space-y-6">
-          {/* Header Báo Cáo Kế Toán & Bộ Lọc Thời Gian */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-3xl border border-zinc-200 shadow-xs">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                <span className="text-xs font-bold text-amber-700 uppercase tracking-wider">
-                  Kế Toán Trưởng & Tài Chính Doanh Nghiệp
-                </span>
-              </div>
-              <h2 className="text-xl font-black text-zinc-900 tracking-tight mt-0.5">
-                Báo Cáo Kết Quả Kinh Doanh & Dòng Tiền (P&L)
-              </h2>
-              <p className="text-xs text-zinc-500">
-                Tự động kết nối đơn hàng thực tế tại quầy POS, trừ giá vốn bột bơ sữa và phân bổ chi phí
-              </p>
-            </div>
-
-            {/* Bộ lọc kỳ kế toán */}
-            <div className="flex items-center gap-1.5 bg-zinc-100 p-1.5 rounded-2xl">
-              <button
-                type="button"
-                onClick={() => setAccountingPeriod('today')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                  accountingPeriod === 'today'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                Hôm Nay (Realtime)
-              </button>
-              <button
-                type="button"
-                onClick={() => setAccountingPeriod('month')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                  accountingPeriod === 'month'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                Tháng Này (09/2026)
-              </button>
-              <button
-                type="button"
-                onClick={() => setAccountingPeriod('all')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition ${
-                  accountingPeriod === 'all'
-                    ? 'bg-amber-600 text-white shadow-xs'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                Tất Cả Thời Gian
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveTab('cloud')}
-                className="px-3 py-1.5 rounded-xl text-xs font-bold bg-white text-amber-800 hover:bg-amber-50 border border-amber-300 shadow-2xs transition flex items-center gap-1 cursor-pointer"
-                title="Mở phân hệ chốt sổ kế toán & khóa kỳ"
-              >
-                <Lock className="w-3.5 h-3.5 text-amber-600" />
-                <span>Chốt Sổ Kế Toán</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Thanh Công Cụ Xuất File Excel Chuyên Nghiệp */}
-          <div className="p-4 rounded-3xl bg-gradient-to-r from-emerald-950 via-teal-950 to-zinc-900 text-white border border-emerald-800/60 shadow-md space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 flex items-center justify-center shrink-0">
-                  <FileSpreadsheet className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black text-white flex items-center gap-1.5">
-                    Xuất File Bảng Tính Excel Kế Toán <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.2 rounded-full font-mono font-bold">UTF-8 Không Lỗi Font</span>
-                  </h3>
-                  <p className="text-[11px] text-zinc-300">Xuất dữ liệu mở trực tiếp trên Excel máy tính và điện thoại</p>
-                </div>
-              </div>
-
-              {/* 4 Nút xuất Excel */}
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleExportPL_Excel}
-                  className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer"
-                  title="Tải bảng P&L dạng Excel CSV"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Xuất P&L (Excel)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportSales_Excel}
-                  className="px-3 py-2 rounded-xl bg-teal-700 hover:bg-teal-600 text-white text-xs font-bold flex items-center gap-1.5 transition shadow-sm cursor-pointer"
-                  title="Tải toàn bộ danh sách hóa đơn bán hàng chi tiết"
-                >
-                  <Receipt className="w-3.5 h-3.5" />
-                  <span>Xuất Sổ Doanh Thu (Excel)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportCashflow_Excel}
-                  className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-100 text-xs font-bold flex items-center gap-1.5 transition border border-zinc-700 cursor-pointer"
-                  title="Tải sổ quỹ thu chi tự động"
-                >
-                  <DollarSign className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Xuất Sổ Quỹ (Excel)</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleExportFullAccounting_Excel}
-                  className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-black flex items-center gap-1.5 transition shadow-md shadow-amber-500/25 cursor-pointer"
-                  title="Tải trọn bộ 5 sheet: P&L, Doanh thu, OPEX, Sổ quỹ, Kho vật tư"
-                >
-                  <FileSpreadsheet className="w-4 h-4" />
-                  <span>Trọn Bộ Hồ Sơ (.xls Đa Sheet)</span>
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* 4 Thẻ KPI Tài Chính Đỉnh Cao */}
-          {/* 5 Thẻ KPI Tài Chính Đỉnh Cao */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
-            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-zinc-200 shadow-xs space-y-2 hover:border-amber-300 transition">
-              <span className="text-xs font-bold text-zinc-500">1. Doanh thu thuần</span>
-              <div className="text-xl sm:text-2xl font-black text-zinc-900">
-                {totalRevenue.toLocaleString('vi-VN')}₫
-              </div>
-              <div className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
-                <TrendingUp className="w-3.5 h-3.5" /> {orderCount} đơn hoàn tất
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-zinc-200 shadow-xs space-y-2 hover:border-orange-300 transition">
-              <span className="text-xs font-bold text-zinc-500">2. Giá vốn COGS (BOM)</span>
-              <div className="text-xl sm:text-2xl font-black text-orange-600">
-                -{totalCOGS.toLocaleString('vi-VN')}₫
-              </div>
-              <div className="text-[11px] text-zinc-500">
-                Food Cost: <span className="font-bold text-zinc-800">31.8%</span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-zinc-200 shadow-xs space-y-2 hover:border-rose-300 transition">
-              <span className="text-xs font-bold text-zinc-500">3. Chi phí OPEX</span>
-              <div className="text-xl sm:text-2xl font-black text-rose-600">
-                -{currentPeriodOpex.toLocaleString('vi-VN')}₫
-              </div>
-              <div className="text-[11px] text-zinc-500">{expenses.length} khoản phát sinh</div>
-            </div>
-
-            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-zinc-200 shadow-xs space-y-2 hover:border-purple-300 transition">
-              <span className="text-xs font-bold text-zinc-500">4. Hao hụt & Bánh hủy</span>
-              <div className="text-xl sm:text-2xl font-black text-purple-600">
-                -{currentPeriodSpoilageCost.toLocaleString('vi-VN')}₫
-              </div>
-              <div className="text-[11px] text-purple-700 font-semibold flex items-center gap-1">
-                <Trash2 className="w-3 h-3 text-purple-500" /> {currentPeriodSpoilageQty} bánh ghi nhận POS
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-emerald-600 via-teal-700 to-emerald-800 text-white rounded-3xl p-4 sm:p-5 shadow-lg shadow-emerald-600/20 space-y-2">
-              <span className="text-xs font-bold text-emerald-100">5. Lợi nhuận ròng</span>
-              <div className="text-xl sm:text-2xl font-black text-white">
-                +{netProfit.toLocaleString('vi-VN')}₫
-              </div>
-              <div className="text-[11px] text-emerald-100 font-semibold">
-                Biên ròng: {netMarginPct}%
-              </div>
-            </div>
-          </div>
-
-          {/* Báo Cáo P&L Chi Tiết Chuẩn Kế Toán */}
-          <div className="bg-white rounded-3xl border border-zinc-200 shadow-xs overflow-hidden">
-            <div className="p-5 border-b border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-50/50">
-              <div>
-                <h2 className="font-black text-base text-zinc-900 flex items-center gap-2">
-                  <FileText className="w-5 h-5 text-amber-600" /> Báo Cáo Lãi Lỗ P&L Chi Tiết ({accountingPeriod === 'today' ? 'Hôm nay' : accountingPeriod === 'month' ? 'Tháng 09/2026' : 'Toàn bộ'})
-                </h2>
-                <p className="text-xs text-zinc-500">Chuẩn mực kế toán F&B: Phản ánh trung thực doanh thu, giá vốn BOM và chi phí</p>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleExportPL_Excel}
-                className="text-xs font-bold px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200 transition flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
-              >
-                <Download className="w-3.5 h-3.5 text-emerald-600" /> Tải Excel Báo Cáo Này
-              </button>
-            </div>
-
-            <div className="divide-y divide-zinc-100 text-xs sm:text-sm">
-              <div className="p-4 flex justify-between font-bold bg-zinc-50/90 text-zinc-900">
-                <span className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                  I. DOANH THU THUẦN BÁN HÀNG
-                </span>
-                <span className="font-black text-base">{totalRevenue.toLocaleString('vi-VN')}₫ (100%)</span>
-              </div>
-              <div className="p-3.5 flex justify-between text-orange-700 font-semibold pl-8 bg-orange-50/20">
-                <span>(-) Giá vốn hàng bán COGS (Bột mì, bơ Pháp, trứng, phô mai theo định lượng BOM)</span>
-                <span>-{totalCOGS.toLocaleString('vi-VN')}₫ (31.8%)</span>
-              </div>
-              <div className="p-4 flex justify-between font-black text-zinc-900 bg-amber-50/60 border-t border-b border-amber-200/60">
-                <span>= II. LỢI NHUẬN GỘP (GROSS PROFIT)</span>
-                <span className="text-amber-700 font-black text-base">
-                  +{grossProfit.toLocaleString('vi-VN')}₫ ({grossMarginPct}%)
-                </span>
-              </div>
-              <div className="p-3.5 flex justify-between text-rose-700 font-semibold pl-8 bg-rose-50/20">
-                <span>(-) Chi phí vận hành OPEX (Mặt bằng, điện, nước, gas, lương nhân viên, khấu hao)</span>
-                <span>-{currentPeriodOpex.toLocaleString('vi-VN')}₫ ({((currentPeriodOpex / (totalRevenue || 1)) * 100).toFixed(1)}%)</span>
-              </div>
-              <div className="p-3.5 flex justify-between text-purple-700 font-semibold pl-8 bg-purple-50/30">
-                <span className="flex items-center gap-1.5">
-                  <Trash2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                  <span>(-) Hao hụt & Thiệt hại bánh hỏng ({currentPeriodSpoilageQty} bánh ghi nhận từ quầy POS)</span>
-                </span>
-                <span className="font-bold">-{currentPeriodSpoilageCost.toLocaleString('vi-VN')}₫ ({((currentPeriodSpoilageCost / (totalRevenue || 1)) * 100).toFixed(1)}%)</span>
-              </div>
-              <div className="p-4 flex justify-between font-black text-base text-emerald-800 bg-emerald-50/80 border-t-2 border-emerald-500">
-                <span>= III. LỢI NHUẬN RÒNG CUỐI CÙNG (NET PROFIT)</span>
-                <span className="text-lg text-emerald-700">+{netProfit.toLocaleString('vi-VN')}₫ ({netMarginPct}%)</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Phân Tích Cơ Cấu Chi Phí & Tỷ Trọng Doanh Thu */}
-          <div className="bg-white rounded-3xl p-5 border border-zinc-200 shadow-xs space-y-3">
-            <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-              <span>📊 Cơ Cấu Phân Bổ Chi Phí & Lợi Nhuận (Cứ 100₫ Doanh Thu)</span>
-            </h3>
-
-            <div className="w-full h-4 rounded-full bg-zinc-100 overflow-hidden flex shadow-inner">
-              <div style={{ width: '31.8%' }} className="bg-orange-500" title="Giá vốn nguyên liệu (COGS): 31.8%"></div>
-              <div style={{ width: `${Math.min(40, Math.round((currentPeriodOpex / (totalRevenue || 1)) * 100))}%` }} className="bg-rose-500" title="Chi phí vận hành: OPEX"></div>
-              {currentPeriodSpoilageCost > 0 && (
-                <div style={{ width: `${Math.max(2, Math.min(15, Math.round((currentPeriodSpoilageCost / (totalRevenue || 1)) * 100)))}%` }} className="bg-purple-500" title="Thiệt hại bánh hỏng"></div>
-              )}
-              <div style={{ width: `${Math.max(5, Math.round(parseFloat(netMarginPct)))}%` }} className="bg-emerald-500" title="Lợi nhuận ròng: Net Profit"></div>
-            </div>
-
-            <div className="flex flex-wrap items-center justify-between text-xs text-zinc-600 pt-1 gap-2">
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-orange-500"></span>
-                <span>Giá vốn (COGS): <b>31.8%</b></span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-rose-500"></span>
-                <span>Chi phí (OPEX): <b>{((currentPeriodOpex / (totalRevenue || 1)) * 100).toFixed(1)}%</b></span>
-              </div>
-              {currentPeriodSpoilageCost > 0 && (
-                <div className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-full bg-purple-500"></span>
-                  <span>Bánh hỏng: <b className="text-purple-700">-{currentPeriodSpoilageCost.toLocaleString('vi-VN')}₫ ({((currentPeriodSpoilageCost / (totalRevenue || 1)) * 100).toFixed(1)}%)</b></span>
-                </div>
-              )}
-              <div className="flex items-center gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-                <span>Lợi nhuận ròng: <b className="text-emerald-700">{netMarginPct}%</b></span>
-              </div>
-            </div>
-          </div>
-
-          {/* Sổ Chi Tiết Doanh Thu Hóa Đơn Bán Hàng (Realtime POS Orders) */}
-          <div className="bg-white rounded-3xl border border-zinc-200 shadow-xs overflow-hidden space-y-3 p-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100">
-              <div>
-                <h3 className="font-black text-base text-zinc-900 flex items-center gap-2">
-                  <Receipt className="w-5 h-5 text-amber-600" /> Sổ Chi Tiết Doanh Thu Bán Hàng ({periodOrders.length} hóa đơn phát sinh)
-                </h3>
-                <p className="text-xs text-zinc-500">Dữ liệu đơn bán tại quầy và đơn đặt bánh đồng bộ từ POS</p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                  <input
-                    type="text"
-                    value={accountingSearch}
-                    onChange={(e) => setAccountingSearch(e.target.value)}
-                    placeholder="Tìm mã đơn, tên khách..."
-                    className="pl-8 pr-3 py-1.5 rounded-xl border border-zinc-200 bg-zinc-50 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/20"
-                  />
-                </div>
-                <button
-                  type="button"
-                  onClick={handleExportSales_Excel}
-                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition cursor-pointer"
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" /> Xuất Excel
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-zinc-50 text-zinc-600 uppercase font-extrabold border-b border-zinc-200">
-                  <tr>
-                    <th className="p-3">Mã Hóa Đơn</th>
-                    <th className="p-3">Thời Gian</th>
-                    <th className="p-3">Phân Loại</th>
-                    <th className="p-3">Khách Hàng</th>
-                    <th className="p-3">Món Bánh</th>
-                    <th className="p-3 text-right">Tổng Tiền</th>
-                    <th className="p-3 text-center">Hình Thức</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {periodOrders
-                    .filter((o) => {
-                      if (!accountingSearch.trim()) return true;
-                      const q = accountingSearch.toLowerCase();
-                      const num = String(o.order_number || o.orderNumber || '').toLowerCase();
-                      const name = String(o.customer_name || o.customerName || '').toLowerCase();
-                      return num.includes(q) || name.includes(q);
-                    })
-                    .slice(0, 15)
-                    .map((ord: any) => {
-                      const isPreorder = ord.order_type === 'preorder' || !!ord.pickupDateTime;
-                      const isShip = (ord.delivery_method || ord.deliveryMethod) === 'shipping';
-                      const num = ord.order_number || ord.orderNumber;
-                      const date = ord.created_at ? new Date(ord.created_at).toLocaleTimeString('vi-VN') + ' ' + new Date(ord.created_at).toLocaleDateString('vi-VN') : '';
-                      const cust = ord.customer_name || ord.customerName || 'Khách vãng lai';
-                      const amt = ord.total_amount || ord.totalPrice || 0;
-                      const deposit = ord.deposit_amount !== undefined ? ord.deposit_amount : (ord.depositAmount || 0);
-                      const remaining = ord.remaining_amount !== undefined ? ord.remaining_amount : (ord.remainingAmount || (amt - deposit));
-                      const itemsStr = Array.isArray(ord.items) && ord.items.length > 0
-                        ? ord.items.map((i: any) => `${i.quantity}x ${i.product_name_snapshot || i.name}`).join(', ')
-                        : ord.cakeName || 'Bánh';
-
-                      return (
-                        <tr key={ord.id || num} className="hover:bg-amber-50/30 transition">
-                          <td className="p-3 font-mono font-bold text-amber-700">#{num}</td>
-                          <td className="p-3 text-zinc-500">{date}</td>
-                          <td className="p-3">
-                            <div className="flex flex-wrap items-center gap-1">
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                isPreorder ? 'bg-pink-100 text-pink-700' : 'bg-zinc-100 text-zinc-700'
-                              }`}>
-                                {isPreorder ? 'Bánh đặt' : 'Tại quầy'}
-                              </span>
-                              {isPreorder && (
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                  isShip ? 'bg-blue-100 text-blue-800' : 'bg-zinc-100 text-zinc-600'
-                                }`}>
-                                  {isShip ? '🚚 Ship' : '🏪 Tiệm'}
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-3">
-                            <div className="font-bold text-zinc-900">{cust}</div>
-                            {isShip && (ord.shipping_address || ord.shippingAddress) && (
-                              <div className="text-[10px] text-zinc-500 truncate max-w-[160px]" title={ord.shipping_address || ord.shippingAddress}>
-                                📍 {ord.shipping_address || ord.shippingAddress}
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3 text-zinc-600 max-w-[200px] truncate" title={itemsStr}>{itemsStr}</td>
-                          <td className="p-3 font-black text-right text-zinc-900">
-                            <div>{amt.toLocaleString('vi-VN')}₫</div>
-                            {deposit > 0 && remaining > 0 && (
-                              <div className="text-[10px] font-normal text-rose-600">
-                                Cọc: {deposit.toLocaleString('vi-VN')}đ | Còn: {remaining.toLocaleString('vi-VN')}đ
-                              </div>
-                            )}
-                          </td>
-                          <td className="p-3 text-center">
-                            <span className="text-[10px] bg-zinc-100 px-2 py-0.5 rounded font-semibold text-zinc-600">
-                              {ord.payment_method === 'cash' || ord.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản'}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  {periodOrders.length === 0 && (
-                    <tr>
-                      <td colSpan={7} className="p-6 text-center text-zinc-400">
-                        Chưa có đơn hàng nào phát sinh trong kỳ này. Bán hàng tại POS sẽ tự động cập nhật vào đây.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <AccountingDashboard
+          orders={posOrders}
+          expenses={expenses}
+          spoilageLogs={spoilageLogs}
+          cashflow={cashflow}
+          adminName={adminNameInput || 'Chủ tiệm'}
+          onAddExpense={handleAddExpense}
+          onDeleteExpense={handleDeleteExpense}
+          onAddCashflowTransaction={handleAddCashflowTransaction}
+          onExportPL={handleExportPL_Excel}
+          onExportSales={handleExportSales_Excel}
+          onExportCashflow={handleExportCashflow_Excel}
+          onExportFull={handleExportFullAccounting_Excel}
+          initialSubTab="pnl"
+        />
       )}
 
       {/* ── TAB 2: QUẢN LÝ BÁNH & THÊM MỚI SẢN PHẨM ── */}
@@ -3716,225 +3381,42 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* ── TAB 5: CHI PHÍ VẬN HÀNH (OPEX) & HAO HỤT BÁNH HỎNG ── */}
+      {/* ── TAB 5: CHI PHÍ VẬN HÀNH (OPEX) ── */}
       {activeTab === 'opex' && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="bg-white rounded-3xl border border-zinc-200 p-5 shadow-xs space-y-4">
-              <h2 className="font-black text-base text-zinc-900 pb-2 border-b border-zinc-100">
-                Ghi Nhận Chi Phí Vận Hành
-              </h2>
-
-              <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-zinc-700">Khoản mục chi phí:</label>
-                  <select
-                    value={newExpCategory}
-                    onChange={(e) => setNewExpCategory(e.target.value)}
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
-                  >
-                    <option value="Tiền mặt bằng">Tiền mặt bằng (Cố định)</option>
-                    <option value="Tiền điện & Nước">Tiền điện & Nước (Biến đổi)</option>
-                    <option value="Tiền Gas">Tiền Gas bếp (Biến đổi)</option>
-                    <option value="Lương nhân viên">Lương nhân viên (Cố định)</option>
-                    <option value="Khấu hao thiết bị">Khấu hao máy móc lò nướng</option>
-                    <option value="Quảng cáo & Marketing">Quảng cáo Facebook / Tờ rơi</option>
-                    <option value="Chi phí khác">Chi phí khác</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="font-bold text-zinc-700">Số tiền chi (VND):</label>
-                  <input
-                    type="number"
-                    value={newExpAmount || ''}
-                    onChange={(e) => setNewExpAmount(Number(e.target.value))}
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-rose-600 text-sm"
-                  />
-                </div>
-
-                <div>
-                  <label className="font-bold text-zinc-700">Diễn giải / Ghi chú:</label>
-                  <input
-                    type="text"
-                    value={newExpDesc}
-                    onChange={(e) => setNewExpDesc(e.target.value)}
-                    placeholder="Ví dụ: Đổi bình gas, thanh toán tiền điện..."
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
-                  />
-                </div>
-
-                <button
-                  onClick={handleAddExpense}
-                  className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
-                >
-                  <Plus className="w-4 h-4" /> Lưu Phiếu Chi & Trừ Vào P&L
-                </button>
-              </div>
-            </div>
-
-            <div className="lg:col-span-2 bg-white rounded-3xl border border-zinc-200 p-5 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
-                <h2 className="font-black text-base text-zinc-900">Danh Sách Chi Phí Vận Hành Tháng Này</h2>
-                <span className="font-black text-rose-600 text-sm">
-                  Tổng chi: -{totalOpex.toLocaleString('vi-VN')}₫
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                {expenses.map((exp) => (
-                  <div
-                    key={exp.id}
-                    className="p-3 rounded-2xl bg-zinc-50 border border-zinc-200/70 flex justify-between items-center text-xs"
-                  >
-                    <div>
-                      <span className="font-bold text-zinc-900 block">{exp.category}</span>
-                      <span className="text-zinc-500">{exp.description}</span>
-                      <span className="text-[10px] text-zinc-400 block mt-0.5">{exp.date}</span>
-                    </div>
-                    <span className="font-black text-sm text-rose-600">
-                      -{exp.amount.toLocaleString('vi-VN')}₫
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* ── BẢNG THEO DÕI BÁNH HỎNG & HAO HỤT CUỐI CA (SPOILAGE & LOSS) ── */}
-          <div className="bg-white rounded-3xl border border-zinc-200 p-5 shadow-xs space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 border border-purple-200 flex items-center justify-center">
-                  <Trash2 className="w-5 h-5 text-purple-600" />
-                </div>
-                <div>
-                  <h3 className="font-black text-base text-zinc-900 flex items-center gap-2">
-                    <span>Nhật Ký Bánh Hỏng & Hao Hụt Thực Tế</span>
-                    <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-xs font-bold">
-                      {spoilageLogs.length} lần hủy
-                    </span>
-                  </h3>
-                  <p className="text-xs text-zinc-500">
-                    Ghi nhận trực tiếp từ quầy POS cuối ca, tự động trừ tồn kho và tính thiệt hại vào báo cáo P&L
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <div className="px-3.5 py-1.5 rounded-xl bg-purple-50 border border-purple-200 text-right">
-                  <span className="text-[10px] text-purple-600 font-bold block uppercase">Tổng thiệt hại vốn</span>
-                  <span className="text-base font-black text-purple-900">
-                    -{spoilageLogs.reduce((s, l) => s + (l.totalCostLoss || 0), 0).toLocaleString('vi-VN')}₫
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {spoilageLogs.length === 0 ? (
-              <div className="py-10 text-center text-zinc-400 text-xs italic bg-zinc-50 rounded-2xl border border-dashed border-zinc-200">
-                🎉 Tuyệt vời! Chưa có báo cáo bánh hỏng hay hao hụt nào được ghi nhận.
-                <br />
-                <span className="text-[11px] text-zinc-500 mt-1 block">
-                  (Nhân viên có thể báo bánh hỏng tại màn hình POS ➔ Nút Tồn Kho ➔ Tab &quot;Báo Hủy Bánh&quot;)
-                </span>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-zinc-50 border-b border-zinc-100 text-zinc-600 font-bold uppercase text-[10px]">
-                    <tr>
-                      <th className="py-2.5 px-3">Thời gian</th>
-                      <th className="py-2.5 px-3">Sản phẩm hủy</th>
-                      <th className="py-2.5 px-3 text-center">Số lượng</th>
-                      <th className="py-2.5 px-3">Lý do hủy</th>
-                      <th className="py-2.5 px-3 text-right">Thiệt hại vốn</th>
-                      <th className="py-2.5 px-3">Người báo</th>
-                      <th className="py-2.5 px-3">Ghi chú</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {spoilageLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-purple-50/20 transition">
-                        <td className="py-2.5 px-3 font-mono text-zinc-500 whitespace-nowrap">
-                          {log.loggedAt ? new Date(log.loggedAt).toLocaleDateString('vi-VN') : '—'} <span className="text-zinc-400 font-normal">{log.loggedAt ? new Date(log.loggedAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                        </td>
-                        <td className="py-2.5 px-3 font-bold text-zinc-900">
-                          {log.productName}
-                        </td>
-                        <td className="py-2.5 px-3 text-center font-black text-rose-600">
-                          -{log.quantity} {log.unit}
-                        </td>
-                        <td className="py-2.5 px-3">
-                          <span className="px-2 py-0.5 rounded-md bg-purple-100/70 text-purple-800 font-semibold text-[11px]">
-                            {log.reason}
-                          </span>
-                        </td>
-                        <td className="py-2.5 px-3 text-right font-black text-purple-800 whitespace-nowrap">
-                          -{log.totalCostLoss.toLocaleString('vi-VN')}₫
-                        </td>
-                        <td className="py-2.5 px-3 text-zinc-600 font-medium">
-                          {log.loggedBy}
-                        </td>
-                        <td className="py-2.5 px-3 text-zinc-500 italic max-w-[200px] truncate">
-                          {log.notes || '—'}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        </div>
+        <AccountingDashboard
+          orders={posOrders}
+          expenses={expenses}
+          spoilageLogs={spoilageLogs}
+          cashflow={cashflow}
+          adminName={adminNameInput || 'Chủ tiệm'}
+          onAddExpense={handleAddExpense}
+          onDeleteExpense={handleDeleteExpense}
+          onAddCashflowTransaction={handleAddCashflowTransaction}
+          onExportPL={handleExportPL_Excel}
+          onExportSales={handleExportSales_Excel}
+          onExportCashflow={handleExportCashflow_Excel}
+          onExportFull={handleExportFullAccounting_Excel}
+          initialSubTab="opex"
+        />
       )}
 
       {/* ── TAB 6: SỔ QUỸ THU CHI (CASHFLOW) ── */}
       {activeTab === 'cashflow' && (
-        <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-            <div>
-              <h2 className="font-black text-lg text-zinc-900">Sổ Quỹ Tiền Mặt & Ngân Hàng Tự Động</h2>
-              <p className="text-xs text-zinc-500">Tự động ghi nhận dòng tiền Vào (bán hàng) và Ra (nhập kho, chi phí)</p>
-            </div>
-            <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-emerald-100 text-emerald-800">
-              Số dư quỹ hiện tại: +{(totalRevenue - totalCOGS - totalOpex).toLocaleString('vi-VN')}₫
-            </span>
-          </div>
-
-          <div className="space-y-2 text-xs">
-            {cashflow.map((cf) => (
-              <div
-                key={cf.id}
-                className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200/70 flex items-center justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                      cf.type === 'income'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : 'bg-rose-100 text-rose-700'
-                    }`}
-                  >
-                    {cf.type === 'income' ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-                  </div>
-                  <div>
-                    <span className="font-bold text-zinc-900 block">{cf.desc}</span>
-                    <span className="text-[10px] text-zinc-400">{cf.date}</span>
-                  </div>
-                </div>
-
-                <span
-                  className={`font-black text-sm ${
-                    cf.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
-                  }`}
-                >
-                  {cf.type === 'income' ? '+' : '-'}{cf.amount.toLocaleString('vi-VN')}₫
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
+        <AccountingDashboard
+          orders={posOrders}
+          expenses={expenses}
+          spoilageLogs={spoilageLogs}
+          cashflow={cashflow}
+          adminName={adminNameInput || 'Chủ tiệm'}
+          onAddExpense={handleAddExpense}
+          onDeleteExpense={handleDeleteExpense}
+          onAddCashflowTransaction={handleAddCashflowTransaction}
+          onExportPL={handleExportPL_Excel}
+          onExportSales={handleExportSales_Excel}
+          onExportCashflow={handleExportCashflow_Excel}
+          onExportFull={handleExportFullAccounting_Excel}
+          initialSubTab="cashflow"
+        />
       )}
 
       {/* ── TAB 7: QUẢN LÝ DUNG LƯỢNG CLOUD 500MB & PURGE ── */}
