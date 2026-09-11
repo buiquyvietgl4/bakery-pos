@@ -3090,7 +3090,7 @@ export default function KitchenPage() {
       {/* ── LIGHTBOX: XEM ẢNH MẪU BÁNH CHO BẾP (HD) ── */}
       {referenceImageLightbox && (
         <div
-          className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150"
+          className="fixed inset-0 z-[120] bg-black/90 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-150"
           onClick={() => setReferenceImageLightbox(null)}
         >
           <div className="relative max-w-2xl w-full flex flex-col items-center" onClick={(e) => e.stopPropagation()}>
@@ -3124,13 +3124,6 @@ export default function KitchenPage() {
         isOpen={isNotifSettingsOpen}
         defaultTab={notifModalTab}
         onClose={() => setIsNotifSettingsOpen(false)}
-      />
-
-      {/* ── MODAL IN TEM DÁN HỘP BÁNH (THERMAL BARCODE STICKER 50x30 / 50x40) ── */}
-      <CakeStickerModal
-        isOpen={isStickerModalOpen}
-        onClose={() => setIsStickerModalOpen(false)}
-        data={stickerModalData}
       />
 
       {/* ── MODAL XÁC NHẬN HOÀN THÀNH BÁNH / GIAO XONG (TRÁNH ẤN NHẦM) ── */}
@@ -3179,6 +3172,13 @@ export default function KitchenPage() {
           handleConfirmPaymentAndComplete(order, method);
           setDeliveryPaymentModalOrder(null);
         }}
+      />
+
+      {/* ── MODAL IN TEM DÁN HỘP BÁNH (THERMAL BARCODE STICKER 50x30 / 50x40 - LUÔN HIỆN TRÊN CÙNG) ── */}
+      <CakeStickerModal
+        isOpen={isStickerModalOpen}
+        onClose={() => setIsStickerModalOpen(false)}
+        data={stickerModalData}
       />
 
     </div>
