@@ -16,7 +16,7 @@ export interface StoreBrandingConfig {
 
 const STORAGE_KEY = 'bakery_store_branding';
 export const BRANDING_UPDATED_EVENT = 'bakery_branding_updated';
-const DB_ROW_ID = '00000000-0000-0000-0000-000000000002';
+const DB_ROW_ID = '00000000-0000-0000-0000-000000000003';
 const DB_ROW_NAME = 'SYS_CONFIG_BRANDING';
 
 export const DEFAULT_BRANDING: StoreBrandingConfig = {
@@ -93,7 +93,8 @@ export async function fetchStoreBrandingFromDb(): Promise<StoreBrandingConfig> {
     const { data, error } = await supabase
       .from('recipes')
       .select('notes')
-      .eq('name', DB_ROW_NAME)
+      .or(`id.eq.${DB_ROW_ID},name.eq.${DB_ROW_NAME}`)
+      .limit(1)
       .maybeSingle();
 
     if (!error && data && data.notes) {
@@ -143,23 +144,52 @@ export async function saveStoreBrandingToDb(
     // 1. Lưu cục bộ trước để phản hồi ngay lập tức
     saveStoreBranding(fullConfig);
 
-    // 2. Xóa bản ghi cũ trên SQL để tránh trùng lặp
-    await supabase.from('recipes').delete().eq('name', DB_ROW_NAME);
+    // 2. Dùng upsert với onConflict: 'id' để không bao giờ bị lỗi duplicate key
+    const { error: upsertErr } = await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_ID,
+        name: DB_ROW_NAME,
+        notes: JSON.stringify(fullConfig),
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
 
-    // 3. Chèn bản ghi cấu hình thương hiệu mới vào Supabase SQL
-    const { error: insertErr } = await supabase.from('recipes').insert({
-      id: DB_ROW_ID,
-      name: DB_ROW_NAME,
-      notes: JSON.stringify(fullConfig),
-      is_active: false,
-    });
+    if (upsertErr) {
+      console.warn('Upsert thương hiệu gặp lỗi, thử update trực tiếp:', upsertErr);
 
-    if (insertErr) {
-      console.error('Lỗi khi lưu cấu hình thương hiệu vào Supabase SQL:', insertErr);
-      return { success: false, error: 'Lỗi lưu vào CSDL: ' + insertErr.message };
+      // Cách 2: Thử update trực tiếp theo id
+      const { data: updatedRows, error: updateErr } = await supabase
+        .from('recipes')
+        .update({
+          name: DB_ROW_NAME,
+          notes: JSON.stringify(fullConfig),
+          is_active: false,
+        })
+        .eq('id', DB_ROW_ID)
+        .select('id');
+
+      // Cách 3: Nếu chưa có dòng nào thì xóa dòng cũ và insert mới
+      if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
+        await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_ID},name.eq.${DB_ROW_NAME}`);
+        const { error: insertErr } = await supabase.from('recipes').insert({
+          id: DB_ROW_ID,
+          name: DB_ROW_NAME,
+          notes: JSON.stringify(fullConfig),
+          is_active: false,
+        });
+
+        if (insertErr) {
+          console.error('Lỗi khi lưu cấu hình thương hiệu vào Supabase SQL:', insertErr);
+          return { success: false, error: 'Lỗi lưu vào CSDL: ' + insertErr.message };
+        }
+      } else if (updateErr) {
+        console.error('Lỗi update cấu hình thương hiệu vào Supabase SQL:', updateErr);
+        return { success: false, error: 'Lỗi lưu vào CSDL: ' + updateErr.message };
+      }
     }
 
-    // 4. Phát sóng Realtime cho toàn bộ các thiết bị đang kết nối
+    // 3. Phát sóng Realtime cho toàn bộ các thiết bị đang kết nối
     await broadcastStoreBranding(fullConfig);
 
     return { success: true };
