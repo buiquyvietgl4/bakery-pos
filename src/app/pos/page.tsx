@@ -403,6 +403,9 @@ export default function POSPage() {
   // ── PRINTER SETTINGS MODAL STATE ──
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
 
+  // ── MOBILE UTILITIES MENU STATE ──
+  const [isMobileUtilityMenuOpen, setIsMobileUtilityMenuOpen] = useState(false);
+
   // ── STORE BRANDING STATE (ĐỒNG BỘ TÊN TIỆM & LOGO) ──
   const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
 
@@ -1577,7 +1580,218 @@ export default function POSPage() {
       <div className={`flex-1 w-full lg:min-w-0 p-3 sm:p-6 ${mobileTab === 'cart' ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
         {/* Top Controls: Search, Nút Đặt Bánh Kem & Két tiền ca */}
         <div className="space-y-4 mb-5">
-          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+          {/* ── BỐ CỤC MOBILE (DÀNH RIÊNG CHO ĐIỆN THOẠI < lg): TINH GỌN, KHOA HỌC, KHÔNG TRÙNG LẶP ── */}
+          <div className="lg:hidden space-y-2.5">
+            {/* Tầng 1: Tìm Kiếm Bánh & Nút Tiện Ích Tinh Gọn */}
+            <div className="flex items-center gap-2">
+              {/* Ô Tìm Kiếm */}
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-700/50" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Tìm bánh nhanh (Bông lan, Mousse...)"
+                  className="w-full pl-10 pr-8 py-2 rounded-2xl bg-white border border-stone-200/90 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25 focus:border-amber-500 transition-all shadow-2xs"
+                />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition cursor-pointer p-1"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Nút Cài Đặt & Kết Nối Máy In Nhanh */}
+              <button
+                type="button"
+                onClick={() => setIsPrinterSettingsOpen(true)}
+                className="relative w-9 h-9 rounded-2xl bg-white border border-stone-200/90 flex items-center justify-center text-blue-600 shadow-2xs hover:bg-blue-50/60 active:scale-95 transition shrink-0 cursor-pointer"
+                title="Cài đặt máy in Bluetooth / USB"
+              >
+                <Printer className="w-4 h-4 text-blue-600" />
+                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white"></span>
+              </button>
+
+              {/* Nút Menu Tiện Ích POS (Dropdown Bật/Tắt Chuông, Test PWA, Kho) */}
+              <div className="relative shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsMobileUtilityMenuOpen(!isMobileUtilityMenuOpen)}
+                  className={`w-9 h-9 rounded-2xl border flex items-center justify-center shadow-2xs transition active:scale-95 cursor-pointer ${
+                    isMobileUtilityMenuOpen
+                      ? 'bg-amber-600 border-amber-600 text-white'
+                      : 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
+                  }`}
+                  title="Cài đặt tiện ích & thông báo"
+                >
+                  <Settings className={`w-4 h-4 ${isMobileUtilityMenuOpen ? 'rotate-90' : ''} transition-transform duration-200`} />
+                </button>
+
+                {/* Dropdown Menu Tiện Ích */}
+                {isMobileUtilityMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-40 bg-black/20 backdrop-blur-2xs"
+                      onClick={() => setIsMobileUtilityMenuOpen(false)}
+                    />
+                    <div className="absolute right-0 top-11 z-50 w-60 bg-white rounded-2xl border border-stone-200 shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                      <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-400 border-b border-stone-100 flex items-center justify-between">
+                        <span>Tiện Ích & Cài Đặt</span>
+                        <span className="text-[9px] text-amber-600 font-bold">POS Quầy</span>
+                      </div>
+
+                      {/* Bật/Tắt Âm Thanh */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !soundEnabled;
+                          setSoundEnabled(next);
+                          soundManager.setEnabled(next);
+                          if (next) soundManager.playNewOrderChime();
+                          setIsMobileUtilityMenuOpen(false);
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 hover:bg-amber-50 transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          {soundEnabled ? <Volume2 className="w-4 h-4 text-amber-600" /> : <VolumeX className="w-4 h-4 text-zinc-400" />}
+                          <span>Âm Báo Đơn</span>
+                        </div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                          soundEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
+                        }`}>
+                          {soundEnabled ? 'BẬT' : 'TẮT'}
+                        </span>
+                      </button>
+
+                      {/* Thử Thông Báo PWA */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          phoneNotificationService.triggerOrderNotification({
+                            id: 'pos-test-' + Date.now(),
+                            type: 'new_order',
+                            appTitle: 'TIỆM BÁNH HẠNH PHÚC (POS)',
+                            title: '🎂 Đơn Đặt Bánh Mới #DH-8868',
+                            sender: 'Chị Lan (0987.654.321)',
+                            message: 'Đặt 1 Bánh Kem Bắp Phô Mai 20cm — Giao lúc 16:30 hôm nay',
+                            extraDetails: 'Ghi chữ: "Chúc mừng sinh nhật bé Bắp"',
+                            orderNumber: 'DH-8868',
+                            pickupTime: '16:30 Hôm nay',
+                            actionLabel: 'Xem Chi Tiết',
+                            onAction: () => setIsPreorderListOpen(true),
+                          });
+                          setIsMobileUtilityMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 hover:bg-amber-50 transition cursor-pointer text-left"
+                      >
+                        <Bell className="w-4 h-4 text-amber-600" />
+                        <span>Thử Chuông PWA Mobile</span>
+                      </button>
+
+                      {/* Quản Lý Kho Bánh Sẵn */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsInventoryModalOpen(true);
+                          setIsMobileUtilityMenuOpen(false);
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 hover:bg-amber-50 transition cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Package className="w-4 h-4 text-emerald-600" />
+                          <span>Kho Bánh Sẵn ({products.length})</span>
+                        </div>
+                        {lowStockItems.length > 0 && (
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
+                            {lowStockItems.length} sắp hết
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Cài Đặt Máy In Bluetooth */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsPrinterSettingsOpen(true);
+                          setIsMobileUtilityMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-blue-700 hover:bg-blue-50 transition cursor-pointer text-left border-t border-stone-100"
+                      >
+                        <Printer className="w-4 h-4 text-blue-600" />
+                        <span>Cài Đặt Máy In (Bluetooth/USB)</span>
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Tầng 2: Cặp Thẻ Nghiệp Vụ Cân Đối 50/50 (1 Dòng Duy Nhất) */}
+            <div className="grid grid-cols-2 gap-2">
+              {/* Thẻ Lịch Hẹn Giao Bánh */}
+              <button
+                type="button"
+                onClick={() => setIsPreorderListOpen(true)}
+                className={`p-2.5 rounded-2xl border transition flex items-center justify-between text-left shadow-2xs active:scale-98 cursor-pointer ${
+                  urgentPreorders.length > 0
+                    ? 'bg-rose-50/90 border-rose-300 ring-1 ring-rose-400/40 hover:bg-rose-100/80'
+                    : 'bg-white border-stone-200/90 hover:border-pink-300 hover:bg-pink-50/40'
+                }`}
+                title="Xem danh sách lịch hẹn giao bánh đặt trước"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-xs ${
+                    urgentPreorders.length > 0 ? 'bg-rose-600 text-white' : 'bg-pink-100 text-pink-700'
+                  }`}>
+                    <Calendar className={`w-4 h-4 ${urgentPreorders.length > 0 ? 'animate-bounce' : ''}`} />
+                  </div>
+                  <div className="truncate">
+                    <div className="text-[10px] font-bold text-zinc-500 leading-none">Lịch Hẹn Giao</div>
+                    <div className="text-xs font-black text-zinc-900 mt-1">
+                      {preordersList.length} đơn
+                    </div>
+                  </div>
+                </div>
+                {urgentPreorders.length > 0 ? (
+                  <span className="px-1.5 py-0.5 rounded-full bg-rose-600 text-white text-[9px] font-black animate-pulse shrink-0 ml-1">
+                    {urgentPreorders.length} gấp!
+                  </span>
+                ) : (
+                  <span className="text-zinc-300 font-black text-xs shrink-0 ml-1">›</span>
+                )}
+              </button>
+
+              {/* Thẻ Két Tiền Ca */}
+              <button
+                type="button"
+                onClick={() => {
+                  setClosingCashInput(expectedCashInRegister);
+                  setIsShiftModalOpen(true);
+                }}
+                className="p-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-amber-400 hover:bg-amber-50/40 transition flex items-center justify-between text-left shadow-2xs active:scale-98 cursor-pointer"
+                title="Két tiền ca & Bàn giao ca"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center shrink-0 shadow-xs">
+                    <Wallet className="w-4 h-4 text-amber-700" />
+                  </div>
+                  <div className="truncate">
+                    <div className="text-[10px] font-bold text-zinc-500 leading-none">Tiền Két Quầy</div>
+                    <div className="text-xs font-black text-amber-800 mt-1 truncate">
+                      {(expectedCashInRegister || 0).toLocaleString('vi-VN')}₫
+                    </div>
+                  </div>
+                </div>
+                <span className="text-zinc-300 font-black text-xs shrink-0 ml-1">›</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ── BỐ CỤC DESKTOP (DÀNH CHO MÀN HÌNH LỚN >= lg): GIỮ NGUYÊN TOÀN BỘ THANH CÔNG CỤ TRẢI DÀI ĐẦY ĐỦ ── */}
+          <div className="hidden lg:flex flex-wrap items-center gap-2.5 sm:gap-3">
             {/* Search Box */}
             <div className="relative flex-1 min-w-[220px]">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-amber-700/50" />
