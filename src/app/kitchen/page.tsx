@@ -16,7 +16,7 @@ import {
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
   ShoppingBag, Phone, User, Camera, X, AlertTriangle, Volume2, VolumeX, Bell,
   Package, Search, Plus, Minus, ChevronDown, Timer, Play, Calculator, Scale, BookOpen, CheckCheck, Send, History,
-  Tag, RotateCcw, Eye, Banknote, DollarSign
+  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
@@ -2630,69 +2630,137 @@ export default function KitchenPage() {
                 </div>
                 <div>
                   <h2 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
-                    <span>📖 Công Thức BOM & Kế Hoạch Làm Bánh Bán</span>
+                    <span>📖 Công Thức BOM & Kế Hoạch Làm Bánh</span>
                   </h2>
                   <p className="text-[11px] text-zinc-400">
-                    {selectedRecipe ? `Đang làm: ${selectedRecipe.name}` : 'Bấm chọn loại bánh cần làm để mở công thức và tính khối lượng nguyên liệu'}
+                    {selectedRecipe ? `Đang mở công thức: ${selectedRecipe.name}` : 'Chọn bánh bên dưới để mở công thức và tự động tính khối lượng nguyên liệu'}
                   </p>
                 </div>
               </div>
 
-              {/* Nút bấm chọn loại bánh cần làm */}
-              <button
-                type="button"
-                onClick={() => setIsRecipePickerOpen(true)}
-                className="py-2 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-500/20 cursor-pointer transition active:scale-95 self-start sm:self-auto"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>{selectedRecipe ? '🔄 Đổi Loại Bánh Khác' : '🥐 Chọn Loại Bánh Cần Làm ▾'}</span>
-              </button>
-            </div>
-
-            {/* TRƯỜNG HỢP 1: CHƯA CHỌN BÁNH NÀO -> HIỆN GIAO DIỆN CHỌN BÁNH GỌN GÀNG */}
-            {!selectedRecipe ? (
-              <div className="p-6 sm:p-10 text-center bg-zinc-950/60 rounded-3xl border border-zinc-800/80 flex flex-col items-center justify-center space-y-4">
-                <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shadow-lg">
-                  <BookOpen className="w-8 h-8 text-amber-400" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-base sm:text-lg font-black text-white">Chưa Chọn Loại Bánh Để Làm</h3>
-                  <p className="text-xs text-zinc-400 max-w-md mx-auto">
-                    Vui lòng bấm nút bên dưới để chọn loại bánh bạn muốn sản xuất. Hệ thống sẽ mở công thức BOM và tự động tính khối lượng từng loại nguyên liệu theo số lượng bạn muốn làm!
-                  </p>
-                </div>
-
+              {/* Chỉ hiện nút Đổi Bánh khi ĐÃ CÓ bánh được chọn */}
+              {selectedRecipe && (
                 <button
                   type="button"
-                  onClick={() => setIsRecipePickerOpen(true)}
-                  className="py-3 px-6 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-zinc-950 font-black text-sm flex items-center gap-2 shadow-xl shadow-amber-500/20 cursor-pointer transition active:scale-95"
+                  onClick={() => setSelectedRecipe(null)}
+                  className="py-1.5 px-3.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer self-start sm:self-auto border border-zinc-700"
                 >
-                  <Sparkles className="w-4 h-4" />
-                  <span>Bấm Chọn Loại Bánh Cần Làm</span>
-                  <ChevronDown className="w-4 h-4" />
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Chọn Bánh Khác</span>
                 </button>
+              )}
+            </div>
 
-                {/* Danh sách gợi ý chọn nhanh các loại bánh */}
-                <div className="pt-2 flex flex-col items-center gap-2 max-w-xl">
-                  <span className="text-[11px] text-zinc-500 font-semibold">Hoặc chọn nhanh loại bánh phổ biến:</span>
-                  <div className="flex flex-wrap items-center justify-center gap-2">
-                    {recipes.slice(0, 6).map((r) => (
+            {/* TRƯỜNG HỢP 1: CHƯA CHỌN BÁNH NÀO -> HIỆN TRỰC TIẾP KHÔNG GIAN CHỌN BÁNH KHOA HỌC */}
+            {!selectedRecipe ? (
+              <div className="space-y-3.5">
+                {/* 1. Thanh tìm kiếm & Tabs lọc danh mục */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  {/* Ô tìm kiếm */}
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      type="text"
+                      placeholder="Tìm nhanh công thức bánh (Croissant, Bông lan, Mousse...)"
+                      value={productionSearch}
+                      onChange={(e) => setProductionSearch(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-xs text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                    />
+                    {productionSearch && (
                       <button
-                        key={r.id}
+                        onClick={() => setProductionSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-200 transition cursor-pointer p-0.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Tabs danh mục */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none text-xs">
+                    {recipeCategories.map((cat) => (
+                      <button
+                        key={cat}
                         type="button"
+                        onClick={() => setProductionFilterCat(cat)}
+                        className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition cursor-pointer text-xs shrink-0 ${
+                          productionFilterCat === cat
+                            ? 'bg-amber-500 text-zinc-950 font-black shadow-xs'
+                            : 'bg-zinc-950 text-zinc-400 hover:text-white border border-zinc-800'
+                        }`}
+                      >
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 2. Lưới danh sách bánh (Grid 2 cột trên mobile, 3 cột trên tablet/desktop) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {filteredRecipes.map((r) => {
+                    const curStock = productsStockMap[r.product_id || ''] ?? productsStockMap[r.name.toLowerCase().trim()] ?? null;
+                    const isLowStock = curStock !== null && curStock <= 5;
+
+                    return (
+                      <div
+                        key={r.id}
                         onClick={() => {
                           setSelectedRecipe(r);
                           setTargetBatchQty(r.yield_qty || 10);
                           setCustomBakeMinutes(r.bake_time_minutes || 25);
                           setCustomBakeTemp(r.bake_temp_celsius || 190);
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-xs font-bold text-zinc-300 hover:text-amber-300 border border-zinc-800 transition cursor-pointer"
+                        className="group bg-zinc-950/90 hover:bg-zinc-900 border border-zinc-800/90 hover:border-amber-500/50 p-3 sm:p-3.5 rounded-2xl transition-all duration-200 cursor-pointer flex flex-col justify-between gap-2.5 active:scale-[0.98] shadow-xs hover:shadow-md"
                       >
-                        {r.name}
-                      </button>
-                    ))}
-                  </div>
+                        <div>
+                          {/* Header thẻ: Tag phân loại & Tồn quầy POS */}
+                          <div className="flex items-center justify-between gap-1.5 mb-1.5">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-300 group-hover:bg-amber-500/20 group-hover:text-amber-300 transition">
+                              {r.category || 'Bánh bán'}
+                            </span>
+                            {curStock !== null && (
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                                isLowStock
+                                  ? 'bg-rose-950/90 text-rose-300 border border-rose-800/80 animate-pulse'
+                                  : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
+                              }`}>
+                                {isLowStock ? `⚠️ Quầy còn: ${curStock}` : `Quầy còn: ${curStock}`}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Tên bánh */}
+                          <h4 className="font-black text-sm text-zinc-100 group-hover:text-amber-400 transition leading-snug line-clamp-1">
+                            {r.name}
+                          </h4>
+
+                          {/* Mô tả ngắn */}
+                          {r.description && (
+                            <p className="text-[11px] text-zinc-500 line-clamp-1 mt-0.5">
+                              {r.description}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Footer thẻ: Thông số nướng & Nút bấm */}
+                        <div className="pt-2 border-t border-zinc-800/70 flex items-center justify-between text-[11px] text-zinc-400">
+                          <span title="Thời gian & Nhiệt độ nướng">
+                            ⏱️ {r.bake_time_minutes || 25}p • {r.bake_temp_celsius || 190}°C
+                          </span>
+                          <span className="text-amber-400 font-bold group-hover:translate-x-0.5 transition-transform flex items-center gap-0.5">
+                            Mở BOM ›
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
+
+                {filteredRecipes.length === 0 && (
+                  <div className="text-center py-8 bg-zinc-950/50 rounded-2xl border border-dashed border-zinc-800 text-zinc-500 text-xs">
+                    Không tìm thấy công thức bánh nào phù hợp với từ khóa "{productionSearch}"
+                  </div>
+                )}
               </div>
             ) : (
               /* TRƯỜNG HỢP 2: ĐÃ CHỌN BÁNH -> HIỆN DUY NHẤT CÔNG THỨC & BẢNG TÍNH NGUYÊN LIỆU CHO BÁNH NÀY */
