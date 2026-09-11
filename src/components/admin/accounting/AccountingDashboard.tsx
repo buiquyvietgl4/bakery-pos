@@ -3,7 +3,8 @@
 import React, { useState, useMemo } from 'react';
 import { 
   BarChart3, DollarSign, FileText, Lock, Calendar, 
-  Download, Printer, FileSpreadsheet, Sparkles, ChevronDown, CheckCircle2, ShieldCheck, RefreshCw
+  Download, Printer, FileSpreadsheet, Sparkles, ChevronDown, CheckCircle2, ShieldCheck, RefreshCw,
+  Building2, Store
 } from 'lucide-react';
 import { AccountingOverview } from './AccountingOverview';
 import { DualCashflowLedger } from './DualCashflowLedger';
@@ -26,7 +27,7 @@ export interface AccountingDashboardProps {
   initialSubTab?: 'pnl' | 'cashflow' | 'opex' | 'closing';
 }
 
-export type DatePreset = 'today' | 'yesterday' | '7days' | 'month' | 'prev_month' | 'all' | 'custom';
+export type DatePreset = 'today' | 'month' | 'prev_month' | 'custom';
 
 export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
   orders,
@@ -52,7 +53,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
   const [customStart, setCustomStart] = useState<string>(firstDayOfMonthStr);
   const [customEnd, setCustomEnd] = useState<string>(todayStr);
 
-  // Tính toán khoảng thời gian theo Preset
+  // Tính toán khoảng thời gian theo Preset chuẩn Mockup
   const { startDateMs, endDateMs, periodLabel, prevStartDateMs, prevEndDateMs } = useMemo(() => {
     const now = new Date();
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -67,60 +68,43 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
       const dStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
       start = new Date(`${dStr}T00:00:00`);
       end = new Date(`${dStr}T23:59:59`);
-      label = `Hôm Nay (${pad(now.getDate())}/${pad(now.getMonth() + 1)}/Realtime)`;
+      label = `Hôm nay (${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()})`;
 
       const y = new Date(now);
       y.setDate(now.getDate() - 1);
       const yStr = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
       pStart = new Date(`${yStr}T00:00:00`);
       pEnd = new Date(`${yStr}T23:59:59`);
-    } else if (datePreset === 'yesterday') {
-      const y = new Date(now);
-      y.setDate(now.getDate() - 1);
-      const yStr = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
-      start = new Date(`${yStr}T00:00:00`);
-      end = new Date(`${yStr}T23:59:59`);
-      label = `Hôm Qua (${pad(y.getDate())}/${pad(y.getMonth() + 1)})`;
-    } else if (datePreset === '7days') {
-      const s = new Date(now);
-      s.setDate(now.getDate() - 6);
-      start = new Date(`${s.getFullYear()}-${pad(s.getMonth() + 1)}-${pad(s.getDate())}T00:00:00`);
-      end = new Date(`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T23:59:59`);
-      label = `7 Ngày Gần Nhất`;
-
-      const prevS = new Date(s);
-      prevS.setDate(prevS.getDate() - 7);
-      pStart = prevS;
-      pEnd = new Date(s.getTime() - 1);
-    } else if (datePreset === 'month') {
-      const mStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
-      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-      start = new Date(`${mStr}-01T00:00:00`);
-      end = new Date(`${mStr}-${pad(lastDay)}T23:59:59`);
-      label = `Tháng ${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
-
-      // Tháng trước
-      const prevM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-      const prevLastDay = new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0).getDate();
-      const pmStr = `${prevM.getFullYear()}-${pad(prevM.getMonth() + 1)}`;
-      pStart = new Date(`${pmStr}-01T00:00:00`);
-      pEnd = new Date(`${pmStr}-${pad(prevLastDay)}T23:59:59`);
     } else if (datePreset === 'prev_month') {
       const prevM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const prevLastDay = new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0).getDate();
       const pmStr = `${prevM.getFullYear()}-${pad(prevM.getMonth() + 1)}`;
       start = new Date(`${pmStr}-01T00:00:00`);
       end = new Date(`${pmStr}-${pad(prevLastDay)}T23:59:59`);
-      label = `Tháng Trước (${pad(prevM.getMonth() + 1)}/${prevM.getFullYear()})`;
-    } else if (datePreset === 'all') {
-      start = new Date('2020-01-01T00:00:00');
-      end = new Date('2030-12-31T23:59:59');
-      label = `Toàn Bộ Dữ Liệu Lịch Sử`;
-    } else {
-      // custom
+      label = `Tháng trước (01/${pad(prevM.getMonth() + 1)} - ${pad(prevLastDay)}/${pad(prevM.getMonth() + 1)}/${prevM.getFullYear()})`;
+
+      const prev2M = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      const prev2LastDay = new Date(prev2M.getFullYear(), prev2M.getMonth() + 1, 0).getDate();
+      const p2mStr = `${prev2M.getFullYear()}-${pad(prev2M.getMonth() + 1)}`;
+      pStart = new Date(`${p2mStr}-01T00:00:00`);
+      pEnd = new Date(`${p2mStr}-${pad(prev2LastDay)}T23:59:59`);
+    } else if (datePreset === 'custom') {
       start = new Date(`${customStart}T00:00:00`);
       end = new Date(`${customEnd}T23:59:59`);
-      label = `${customStart} đến ${customEnd}`;
+      label = `${customStart} - ${customEnd}`;
+    } else {
+      // month
+      const mStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`;
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      start = new Date(`${mStr}-01T00:00:00`);
+      end = new Date(`${mStr}-${pad(lastDay)}T23:59:59`);
+      label = `Tháng này (01/${pad(now.getMonth() + 1)} - ${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()})`;
+
+      const prevM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const prevLastDay = new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0).getDate();
+      const pmStr = `${prevM.getFullYear()}-${pad(prevM.getMonth() + 1)}`;
+      pStart = new Date(`${pmStr}-01T00:00:00`);
+      pEnd = new Date(`${pmStr}-${pad(prevLastDay)}T23:59:59`);
     }
 
     return {
@@ -133,225 +117,176 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
   }, [datePreset, customStart, customEnd]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       
-      {/* ── HEADER TRUNG TÂM KẾ TOÁN & BỘ LỌC THỜI GIAN THÔNG MINH ── */}
-      <div className="bg-white rounded-3xl border border-zinc-200/90 p-5 sm:p-6 shadow-xs space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="text-xs font-black text-amber-700 uppercase tracking-wider">
-                Kế Toán Trưởng & Quản Trị Tài Chính F&B
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                🟢 Realtime POS
-              </span>
-            </div>
-            <h1 className="text-xl sm:text-2xl font-black text-zinc-900 tracking-tight mt-0.5">
-              Trung Tâm Báo Cáo Tài Chính, Sổ Quỹ & Lợi Nhuận P&L
-            </h1>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              Tự động hóa 100% doanh thu quầy POS, trừ giá vốn BOM bột bơ sữa, phân bổ OPEX và đối soát két tiền mặt
-            </p>
-          </div>
-
-          {/* Quick Export Actions */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={onExportFull}
-              className="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs flex items-center gap-1.5 transition shadow-sm cursor-pointer"
-              title="Tải trọn bộ 5 sheet kế toán: P&L, Doanh thu, OPEX, Sổ quỹ, Kho"
-            >
-              <FileSpreadsheet className="w-4 h-4" />
-              <span>Trọn Bộ Hồ Sơ (.xls Đa Sheet)</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={onExportPL}
-              className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
-              title="Xuất bảng P&L"
-            >
-              <Download className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Xuất P&L</span>
-            </button>
-          </div>
+      {/* ── TOP HEADER CHUẨN MOCKUP: HỆ THỐNG KẾ TOÁN BAKERY & STORE BRANDING ── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight">
+            Hệ Thống Kế Toán Bakery
+          </h1>
         </div>
 
-        {/* ── BỘ LỌC KỲ HẠN THÔNG MINH (DATE RANGE FILTER) ── */}
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pt-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="text-xs font-bold text-zinc-500 mr-1 flex items-center gap-1">
-              <Calendar className="w-3.5 h-3.5 text-amber-600" /> Kỳ báo cáo:
+        {/* Store Logo Badge & Quick Export Actions */}
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-white rounded-xl border border-zinc-200/80 shadow-2xs">
+            <div className="w-6 h-6 rounded-lg bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-xs">
+              🥖
+            </div>
+            <span className="text-xs font-bold text-zinc-800">
+              {adminName || 'Le Pain Quotidien'}
             </span>
-            <button
-              type="button"
-              onClick={() => setDatePreset('today')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                datePreset === 'today'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/80'
-              }`}
-            >
-              Hôm Nay
-            </button>
-            <button
-              type="button"
-              onClick={() => setDatePreset('yesterday')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                datePreset === 'yesterday'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/80'
-              }`}
-            >
-              Hôm Qua
-            </button>
-            <button
-              type="button"
-              onClick={() => setDatePreset('7days')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                datePreset === '7days'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/80'
-              }`}
-            >
-              7 Ngày Qua
-            </button>
-            <button
-              type="button"
-              onClick={() => setDatePreset('month')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                datePreset === 'month'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/80'
-              }`}
-            >
-              Tháng Này
-            </button>
-            <button
-              type="button"
-              onClick={() => setDatePreset('prev_month')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                datePreset === 'prev_month'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/80'
-              }`}
-            >
-              Tháng Trước
-            </button>
-            <button
-              type="button"
-              onClick={() => setDatePreset('all')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                datePreset === 'all'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/80'
-              }`}
-            >
-              Tất Cả
-            </button>
-            <button
-              type="button"
-              onClick={() => setDatePreset('custom')}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                datePreset === 'custom'
-                  ? 'bg-amber-600 text-white shadow-xs'
-                  : 'bg-zinc-100 text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/80'
-              }`}
-            >
-              Tùy Chọn 📅
-            </button>
           </div>
 
-          {/* Nếu chọn Tùy Chọn -> Hiện Date Picker từ ngày -> đến ngày */}
-          {datePreset === 'custom' && (
-            <div className="flex items-center gap-2 bg-amber-50/80 p-1.5 rounded-2xl border border-amber-200 text-xs">
-              <span className="font-bold text-amber-800 text-[11px] pl-1">Từ:</span>
-              <input
-                type="date"
-                value={customStart}
-                onChange={(e) => setCustomStart(e.target.value)}
-                className="p-1 rounded-lg border border-amber-300 bg-white text-xs font-semibold"
-              />
-              <span className="font-bold text-amber-800 text-[11px]">Đến:</span>
-              <input
-                type="date"
-                value={customEnd}
-                onChange={(e) => setCustomEnd(e.target.value)}
-                className="p-1 rounded-lg border border-amber-300 bg-white text-xs font-semibold"
-              />
-            </div>
-          )}
-
-          <div className="text-xs text-zinc-500 font-semibold self-start lg:self-auto">
-            Đang xem: <strong className="text-zinc-800 bg-zinc-100 px-2.5 py-1 rounded-lg border border-zinc-200">{periodLabel}</strong>
-          </div>
-        </div>
-
-        {/* ── THANH CHUYỂN PHÂN HỆ KẾ TOÁN (SUB-TABS) ── */}
-        <div className="flex items-center gap-1 bg-zinc-100/90 p-1 rounded-2xl overflow-x-auto border border-zinc-200/70 pt-1">
           <button
             type="button"
-            onClick={() => setSubTab('pnl')}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap ${
-              subTab === 'pnl'
-                ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200/80'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60'
-            }`}
+            onClick={onExportFull}
+            className="px-3 py-1.5 bg-white hover:bg-zinc-50 border border-zinc-200/90 rounded-xl text-xs font-bold text-zinc-700 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+            title="Xuất trọn bộ sổ sách kế toán (.xls đa sheet)"
           >
-            <BarChart3 className="w-4 h-4 text-amber-600" />
-            <span>1. Báo Cáo P&L & Chỉ Số Vàng</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden sm:inline">Xuất Excel</span>
           </button>
 
           <button
             type="button"
-            onClick={() => setSubTab('cashflow')}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap ${
-              subTab === 'cashflow'
-                ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200/80'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60'
-            }`}
+            onClick={() => window.print()}
+            className="px-3 py-1.5 bg-white hover:bg-zinc-50 border border-zinc-200/90 rounded-xl text-xs font-bold text-zinc-700 shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+            title="In báo cáo A4"
           >
-            <DollarSign className="w-4 h-4 text-emerald-600" />
-            <span>2. Sổ Quỹ Kép (Tiền Mặt & VietQR)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSubTab('opex')}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap ${
-              subTab === 'opex'
-                ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200/80'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60'
-            }`}
-          >
-            <FileText className="w-4 h-4 text-rose-600" />
-            <span>3. Chi Phí Vận Hành (OPEX)</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSubTab('closing')}
-            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-black transition cursor-pointer whitespace-nowrap ${
-              subTab === 'closing'
-                ? 'bg-white text-zinc-900 shadow-sm border border-zinc-200/80'
-                : 'text-zinc-600 hover:text-zinc-900 hover:bg-zinc-200/60'
-            }`}
-          >
-            <Lock className="w-4 h-4 text-amber-700" />
-            <span>4. Chốt Sổ & Khóa Kỳ Kế Toán</span>
+            <Printer className="w-3.5 h-3.5 text-zinc-600" />
+            <span className="hidden sm:inline">In A4</span>
           </button>
         </div>
       </div>
 
-      {/* ── NỘI DUNG PHÂN HỆ ĐƯỢC CHỌN ── */}
+      {/* ── DATE FILTER BAR & SUB-TABS (CHUẨN MOCKUP) ── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 text-xs">
+        
+        {/* Left: Kỳ báo cáo & Pill Buttons */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-zinc-700">Kỳ báo cáo:</span>
+          <span className="font-bold text-zinc-900">{periodLabel}</span>
+
+          <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-zinc-200/80 shadow-2xs ml-1">
+            <button
+              onClick={() => setDatePreset('today')}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                datePreset === 'today'
+                  ? 'bg-slate-700 text-white font-bold shadow-2xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Hôm nay
+            </button>
+            <button
+              onClick={() => setDatePreset('month')}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                datePreset === 'month'
+                  ? 'bg-slate-700 text-white font-bold shadow-2xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Tháng này
+            </button>
+            <button
+              onClick={() => setDatePreset('prev_month')}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                datePreset === 'prev_month'
+                  ? 'bg-slate-700 text-white font-bold shadow-2xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Tháng trước
+            </button>
+            <button
+              onClick={() => setDatePreset('custom')}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                datePreset === 'custom'
+                  ? 'bg-slate-700 text-white font-bold shadow-2xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Tùy chọn
+            </button>
+          </div>
+
+          {datePreset === 'custom' && (
+            <div className="flex items-center gap-1 bg-white px-2 py-1 rounded-xl border border-zinc-200 text-xs animate-in fade-in">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="px-1 py-0.5 text-zinc-700 border-none font-semibold focus:outline-hidden"
+              />
+              <span className="text-zinc-400">-</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="px-1 py-0.5 text-zinc-700 border-none font-semibold focus:outline-hidden"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Right: Sub-tab Navigator */}
+        <div className="flex items-center gap-1 bg-zinc-200/70 p-1 rounded-xl overflow-x-auto scrollbar-none">
+          <button
+            onClick={() => setSubTab('pnl')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              subTab === 'pnl'
+                ? 'bg-white text-zinc-900 shadow-2xs'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Tổng Quan (P&L)</span>
+          </button>
+          <button
+            onClick={() => setSubTab('cashflow')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              subTab === 'cashflow'
+                ? 'bg-white text-zinc-900 shadow-2xs'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+          >
+            <DollarSign className="w-3.5 h-3.5 text-blue-600" />
+            <span>Sổ Quỹ Kép</span>
+          </button>
+          <button
+            onClick={() => setSubTab('opex')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              subTab === 'opex'
+                ? 'bg-white text-zinc-900 shadow-2xs'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+          >
+            <FileText className="w-3.5 h-3.5 text-rose-600" />
+            <span>Chi Phí OPEX</span>
+          </button>
+          <button
+            onClick={() => setSubTab('closing')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              subTab === 'closing'
+                ? 'bg-white text-zinc-900 shadow-2xs'
+                : 'text-zinc-600 hover:text-zinc-900'
+            }`}
+          >
+            <Lock className="w-3.5 h-3.5 text-amber-600" />
+            <span>Chốt Sổ Ca</span>
+          </button>
+        </div>
+
+      </div>
+
+      {/* ── SUB-TAB CONTENT ── */}
       {subTab === 'pnl' && (
         <AccountingOverview
           orders={orders}
           expenses={expenses}
           spoilageLogs={spoilageLogs}
+          cashflow={cashflow}
           periodLabel={periodLabel}
           startDateMs={startDateMs}
           endDateMs={endDateMs}
@@ -360,6 +295,9 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
           onExportPL={onExportPL}
           onExportSales={onExportSales}
           onExportFull={onExportFull}
+          onOpenCashflow={() => setSubTab('cashflow')}
+          onOpenOpex={() => setSubTab('opex')}
+          onOpenClosing={() => setSubTab('closing')}
         />
       )}
 
@@ -368,27 +306,27 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
           orders={orders}
           expenses={expenses}
           cashflow={cashflow}
-          onAddCashflowTransaction={onAddCashflowTransaction}
-          onExportCashflow={onExportCashflow}
-          periodLabel={periodLabel}
           startDateMs={startDateMs}
           endDateMs={endDateMs}
+          periodLabel={periodLabel}
+          onAddCashflowTransaction={onAddCashflowTransaction}
+          onExportCashflow={onExportCashflow}
         />
       )}
 
       {subTab === 'opex' && (
         <OpexManager
           expenses={expenses}
-          onAddExpense={onAddExpense}
-          onDeleteExpense={onDeleteExpense}
-          periodLabel={periodLabel}
           startDateMs={startDateMs}
           endDateMs={endDateMs}
+          periodLabel={periodLabel}
+          onAddExpense={onAddExpense}
+          onDeleteExpense={onDeleteExpense}
         />
       )}
 
       {subTab === 'closing' && (
-        <div className="bg-white rounded-3xl border border-zinc-200/90 p-5 sm:p-6 shadow-xs space-y-4">
+        <div className="bg-white rounded-2xl p-6 border border-zinc-200/80 shadow-xs">
           <AccountingClosingSection
             orders={orders}
             expenses={expenses}
