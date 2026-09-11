@@ -4,7 +4,8 @@ import React, { useState, useMemo } from 'react';
 import { 
   BarChart3, Package, TrendingUp, ArrowDownRight, ArrowUpRight, 
   ChevronDown, ChevronRight, FileSpreadsheet, Search, Eye, Filter,
-  RefreshCw, DollarSign, Wallet, ShieldCheck, Printer, ArrowRight
+  RefreshCw, DollarSign, Wallet, ShieldCheck, Printer, ArrowRight,
+  Calendar, Sparkles, Award
 } from 'lucide-react';
 
 export interface AccountingOverviewProps {
@@ -12,6 +13,7 @@ export interface AccountingOverviewProps {
   expenses: any[];
   spoilageLogs: any[];
   cashflow: any[];
+  datePreset?: string;
   periodLabel: string;
   startDateMs: number;
   endDateMs: number;
@@ -34,6 +36,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   expenses,
   spoilageLogs,
   cashflow,
+  datePreset,
   periodLabel,
   startDateMs,
   endDateMs,
@@ -49,6 +52,8 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'pos' | 'preorder'>('all');
   const [showOrderDrawer, setShowOrderDrawer] = useState(false);
+  const [showWeeklySection, setShowWeeklySection] = useState(true);
+  const [weeklyViewMode, setWeeklyViewMode] = useState<'days' | 'weeks'>('days');
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
     cogs: true,
     opex: true,
@@ -105,7 +110,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
 
   // 3. Giá vốn hàng bán (COGS BOM ~ 36.5% hoặc 31.8%)
   const totalCOGS = useMemo(() => Math.round(totalRevenue * 0.365), [totalRevenue]);
-  const flourCost = Math.round(totalCOGS * 0.70); // Bột, bơ, trứng, sữa
+  const flourCost = Math.round(totalCOGS * 0.70);
   const milkPackagingCost = totalCOGS - flourCost;
 
   // Lợi nhuận gộp
@@ -184,6 +189,67 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
     return Math.max(0, bankIn - bankOut);
   }, [bankRevenue, periodExpenses]);
 
+  // 8. ── PHÂN RÃ THEO TUẦN (7 NGÀY TRONG TUẦN T2 -> CN) ──
+  const weeklyDayBreakdown = useMemo(() => {
+    const days = [
+      { key: 1, label: 'Thứ 2', short: 'T2', revenue: 0, orders: 0 },
+      { key: 2, label: 'Thứ 3', short: 'T3', revenue: 0, orders: 0 },
+      { key: 3, label: 'Thứ 4', short: 'T4', revenue: 0, orders: 0 },
+      { key: 4, label: 'Thứ 5', short: 'T5', revenue: 0, orders: 0 },
+      { key: 5, label: 'Thứ 6', short: 'T6', revenue: 0, orders: 0 },
+      { key: 6, label: 'Thứ 7', short: 'T7', revenue: 0, orders: 0 },
+      { key: 0, label: 'Chủ Nhật', short: 'CN', revenue: 0, orders: 0 },
+    ];
+
+    periodOrders.forEach((o) => {
+      const timeStr = o.created_at || o.createdAt || '';
+      if (timeStr) {
+        const d = new Date(timeStr);
+        if (!isNaN(d.getTime())) {
+          const dayIdx = d.getDay();
+          const target = days.find((item) => item.key === dayIdx);
+          if (target) {
+            target.revenue += Number(o.total_amount || o.totalPrice || 0);
+            target.orders += 1;
+          }
+        }
+      }
+    });
+
+    const maxRev = Math.max(1, ...days.map((d) => d.revenue));
+    const totalWeekRev = days.reduce((s, d) => s + d.revenue, 0);
+    return { days, maxRev, totalWeekRev };
+  }, [periodOrders]);
+
+  // 9. ── PHÂN RÃ 4 TUẦN TRONG THÁNG (TUẦN 1 -> TUẦN 4) ──
+  const monthWeeksBreakdown = useMemo(() => {
+    const weeks = [
+      { id: 1, label: 'Tuần 1 (01 - 07)', short: 'Tuần 1', startDay: 1, endDay: 7, revenue: 0, orders: 0 },
+      { id: 2, label: 'Tuần 2 (08 - 14)', short: 'Tuần 2', startDay: 8, endDay: 14, revenue: 0, orders: 0 },
+      { id: 3, label: 'Tuần 3 (15 - 21)', short: 'Tuần 3', startDay: 15, endDay: 21, revenue: 0, orders: 0 },
+      { id: 4, label: 'Tuần 4 (22 - Cuối)', short: 'Tuần 4', startDay: 22, endDay: 31, revenue: 0, orders: 0 },
+    ];
+
+    periodOrders.forEach((o) => {
+      const timeStr = o.created_at || o.createdAt || '';
+      if (timeStr) {
+        const d = new Date(timeStr);
+        if (!isNaN(d.getTime())) {
+          const dateNum = d.getDate();
+          const target = weeks.find((w) => dateNum >= w.startDay && dateNum <= w.endDay);
+          if (target) {
+            target.revenue += Number(o.total_amount || o.totalPrice || 0);
+            target.orders += 1;
+          }
+        }
+      }
+    });
+
+    const maxRev = Math.max(1, ...weeks.map((w) => w.revenue));
+    const totalMonthRev = weeks.reduce((s, w) => s + w.revenue, 0);
+    return { weeks, maxRev, totalMonthRev };
+  }, [periodOrders]);
+
   // Lọc đơn hàng cho bảng kê
   const filteredOrders = useMemo(() => {
     return periodOrders.filter((o) => {
@@ -207,8 +273,14 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
     return `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
   }, []);
 
+  const comparisonLabel = useMemo(() => {
+    if (datePreset === 'week' || datePreset === 'prev_week') return 'vs. Tuần trước';
+    if (datePreset === 'today') return 'vs. Hôm qua';
+    return 'vs. Month';
+  }, [datePreset]);
+
   return (
-    <div className="space-y-5 animate-in fade-in duration-200">
+    <div className="space-y-4 animate-in fade-in duration-200">
 
       {/* ── ROW 1: 5 CARDS CHỈ SỐ TÀI CHÍNH CHUẨN MOCKUP ── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
@@ -226,7 +298,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
               {formatVND(totalRevenue)}
             </div>
             <div className="text-[11px] font-bold text-emerald-600 mt-0.5">
-              +{revGrowthPct}% vs. Month
+              +{revGrowthPct}% {comparisonLabel}
             </div>
           </div>
           <div className="h-8 w-full">
@@ -378,6 +450,154 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
 
       </div>
 
+      {/* ── KHỐI BIỂU THỊ THEO TUẦN & THEO NGÀY (WEEKLY & DAILY BREAKDOWN) ── */}
+      <div className="bg-white rounded-2xl p-4 sm:p-5 border border-zinc-200/80 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-zinc-100">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+              <Calendar className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-sm text-zinc-900 flex items-center gap-2">
+                <span>Biểu Thị Doanh Thu Theo Tuần</span>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-600">
+                  {weeklyViewMode === 'days' ? '7 ngày trong tuần' : '4 tuần trong tháng'}
+                </span>
+              </h3>
+              <p className="text-[11px] text-zinc-400">Xem diễn biến bán hàng để lên kế hoạch nướng bánh và nguyên liệu</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center bg-zinc-100 p-0.5 rounded-xl text-xs font-bold">
+              <button
+                onClick={() => setWeeklyViewMode('days')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                  weeklyViewMode === 'days' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                7 Ngày Trong Tuần
+              </button>
+              <button
+                onClick={() => setWeeklyViewMode('weeks')}
+                className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${
+                  weeklyViewMode === 'weeks' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                Các Tuần Trong Tháng
+              </button>
+            </div>
+
+            <button
+              onClick={() => setShowWeeklySection(!showWeeklySection)}
+              className="px-2.5 py-1 text-xs font-semibold text-zinc-500 hover:text-zinc-800 transition cursor-pointer"
+            >
+              {showWeeklySection ? 'Thu gọn' : 'Mở rộng'}
+            </button>
+          </div>
+        </div>
+
+        {showWeeklySection && weeklyViewMode === 'days' && (
+          <div className="animate-in fade-in duration-200">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 pt-1">
+              {weeklyDayBreakdown.days.map((d) => {
+                const isMax = d.revenue > 0 && d.revenue === weeklyDayBreakdown.maxRev;
+                const heightPct = weeklyDayBreakdown.maxRev > 0 
+                  ? Math.max(12, Math.round((d.revenue / weeklyDayBreakdown.maxRev) * 100)) 
+                  : 12;
+                return (
+                  <div
+                    key={d.key}
+                    className={`rounded-xl p-3 border flex flex-col justify-between h-40 transition ${
+                      isMax 
+                        ? 'bg-emerald-50/50 border-emerald-300 ring-1 ring-emerald-400/50' 
+                        : 'bg-zinc-50/70 border-zinc-200/70 hover:bg-zinc-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-bold ${isMax ? 'text-emerald-900' : 'text-zinc-700'}`}>
+                        {d.label}
+                      </span>
+                      {isMax && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500 text-white flex items-center gap-0.5">
+                          ⭐ Max
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="w-full flex items-end justify-center h-16 py-1">
+                      <div className="w-full bg-zinc-200/70 rounded-lg h-full flex items-end p-1">
+                        <div 
+                          className={`w-full rounded-md transition-all duration-500 ${
+                            isMax ? 'bg-emerald-500' : 'bg-slate-700'
+                          }`}
+                          style={{ height: `${heightPct}%` }}
+                        ></div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-extrabold text-xs text-zinc-900 truncate">
+                        {formatVND(d.revenue)}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 font-medium">
+                        {d.orders} đơn hàng
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {showWeeklySection && weeklyViewMode === 'weeks' && (
+          <div className="animate-in fade-in duration-200">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-1">
+              {monthWeeksBreakdown.weeks.map((w) => {
+                const isMax = w.revenue > 0 && w.revenue === monthWeeksBreakdown.maxRev;
+                const pctOfTotal = totalRevenue > 0 ? ((w.revenue / totalRevenue) * 100).toFixed(1) : '0.0';
+                return (
+                  <div
+                    key={w.id}
+                    className={`rounded-xl p-4 border flex flex-col justify-between space-y-3 transition ${
+                      isMax 
+                        ? 'bg-emerald-50/50 border-emerald-300 ring-1 ring-emerald-400/50' 
+                        : 'bg-zinc-50/70 border-zinc-200/70 hover:bg-zinc-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-zinc-800">{w.label}</span>
+                      {isMax && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500 text-white">
+                          ⭐ Cao điểm
+                        </span>
+                      )}
+                    </div>
+
+                    <div>
+                      <div className="text-base font-black text-zinc-900">
+                        {formatVND(w.revenue)}
+                      </div>
+                      <div className="text-[11px] text-zinc-500 font-medium mt-0.5">
+                        {w.orders} đơn hàng • {pctOfTotal}% tháng
+                      </div>
+                    </div>
+
+                    <div className="w-full h-2 bg-zinc-200 rounded-full overflow-hidden">
+                      <div 
+                        className={`h-full rounded-full transition-all duration-500 ${isMax ? 'bg-emerald-500' : 'bg-slate-700'}`}
+                        style={{ width: `${Math.min(100, parseFloat(pctOfTotal))}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* ── ROW 2: 3 CỘT SONG SONG (P&L TABLE + PHÂN BỔ CHI PHÍ + DÒNG TIỀN HIỆN TẠI) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
 
@@ -390,7 +610,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
               </h3>
               <button
                 onClick={onExportPL}
-                className="text-[11px] font-bold text-zinc-500 hover:text-emerald-700 flex items-center gap-1 transition"
+                className="text-[11px] font-bold text-zinc-500 hover:text-emerald-700 flex items-center gap-1 transition cursor-pointer"
                 title="Xuất bảng P&L ra Excel"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
@@ -531,7 +751,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
             <span>* Chuẩn mực kế toán F&B Việt Nam</span>
             <button
               onClick={() => setShowOrderDrawer(!showOrderDrawer)}
-              className="font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 transition"
+              className="font-bold text-emerald-700 hover:text-emerald-800 flex items-center gap-1 transition cursor-pointer"
             >
               <span>{showOrderDrawer ? 'Ẩn danh sách hóa đơn' : 'Xem chi tiết hóa đơn bán hàng'}</span>
               <ArrowRight className="w-3 h-3" />
@@ -722,19 +942,19 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
               <div className="flex items-center gap-1 bg-zinc-100 p-0.5 rounded-xl text-[11px] font-bold">
                 <button
                   onClick={() => setOrderTypeFilter('all')}
-                  className={`px-2.5 py-1 rounded-lg transition ${orderTypeFilter === 'all' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600'}`}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${orderTypeFilter === 'all' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600'}`}
                 >
                   Tất Cả
                 </button>
                 <button
                   onClick={() => setOrderTypeFilter('pos')}
-                  className={`px-2.5 py-1 rounded-lg transition ${orderTypeFilter === 'pos' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600'}`}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${orderTypeFilter === 'pos' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600'}`}
                 >
                   Tại Quầy
                 </button>
                 <button
                   onClick={() => setOrderTypeFilter('preorder')}
-                  className={`px-2.5 py-1 rounded-lg transition ${orderTypeFilter === 'preorder' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600'}`}
+                  className={`px-2.5 py-1 rounded-lg transition cursor-pointer ${orderTypeFilter === 'preorder' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600'}`}
                 >
                   Đặt Bánh
                 </button>
@@ -742,7 +962,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
 
               <button
                 onClick={onExportSales}
-                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5"
+                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Xuất Excel</span>

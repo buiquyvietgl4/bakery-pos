@@ -27,7 +27,7 @@ export interface AccountingDashboardProps {
   initialSubTab?: 'pnl' | 'cashflow' | 'opex' | 'closing';
 }
 
-export type DatePreset = 'today' | 'month' | 'prev_month' | 'custom';
+export type DatePreset = 'today' | 'week' | 'prev_week' | 'month' | 'prev_month' | 'custom';
 
 export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
   orders,
@@ -75,6 +75,53 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
       const yStr = `${y.getFullYear()}-${pad(y.getMonth() + 1)}-${pad(y.getDate())}`;
       pStart = new Date(`${yStr}T00:00:00`);
       pEnd = new Date(`${yStr}T23:59:59`);
+    } else if (datePreset === 'week') {
+      // Tuần này (Thứ 2 đến Chủ Nhật)
+      const day = now.getDay();
+      const diffToMonday = day === 0 ? -6 : 1 - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+
+      const mStr = `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`;
+      const sStr = `${sunday.getFullYear()}-${pad(sunday.getMonth() + 1)}-${pad(sunday.getDate())}`;
+      start = new Date(`${mStr}T00:00:00`);
+      end = new Date(`${sStr}T23:59:59`);
+      label = `Tuần này (${pad(monday.getDate())}/${pad(monday.getMonth() + 1)} - ${pad(sunday.getDate())}/${pad(sunday.getMonth() + 1)}/${sunday.getFullYear()})`;
+
+      // Tuần trước để so sánh
+      const prevMonday = new Date(monday);
+      prevMonday.setDate(monday.getDate() - 7);
+      const prevSunday = new Date(sunday);
+      prevSunday.setDate(sunday.getDate() - 7);
+      const pmStr = `${prevMonday.getFullYear()}-${pad(prevMonday.getMonth() + 1)}-${pad(prevMonday.getDate())}`;
+      const psStr = `${prevSunday.getFullYear()}-${pad(prevSunday.getMonth() + 1)}-${pad(prevSunday.getDate())}`;
+      pStart = new Date(`${pmStr}T00:00:00`);
+      pEnd = new Date(`${psStr}T23:59:59`);
+    } else if (datePreset === 'prev_week') {
+      // Tuần trước
+      const day = now.getDay();
+      const diffToMonday = day === 0 ? -6 : 1 - day;
+      const monday = new Date(now);
+      monday.setDate(now.getDate() + diffToMonday - 7);
+      const sunday = new Date(monday);
+      sunday.setDate(monday.getDate() + 6);
+
+      const mStr = `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(monday.getDate())}`;
+      const sStr = `${sunday.getFullYear()}-${pad(sunday.getMonth() + 1)}-${pad(sunday.getDate())}`;
+      start = new Date(`${mStr}T00:00:00`);
+      end = new Date(`${sStr}T23:59:59`);
+      label = `Tuần trước (${pad(monday.getDate())}/${pad(monday.getMonth() + 1)} - ${pad(sunday.getDate())}/${pad(sunday.getMonth() + 1)}/${sunday.getFullYear()})`;
+
+      const prevMonday = new Date(monday);
+      prevMonday.setDate(monday.getDate() - 7);
+      const prevSunday = new Date(sunday);
+      prevSunday.setDate(sunday.getDate() - 7);
+      const pmStr = `${prevMonday.getFullYear()}-${pad(prevMonday.getMonth() + 1)}-${pad(prevMonday.getDate())}`;
+      const psStr = `${prevSunday.getFullYear()}-${pad(prevSunday.getMonth() + 1)}-${pad(prevSunday.getDate())}`;
+      pStart = new Date(`${pmStr}T00:00:00`);
+      pEnd = new Date(`${psStr}T23:59:59`);
     } else if (datePreset === 'prev_month') {
       const prevM = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const prevLastDay = new Date(prevM.getFullYear(), prevM.getMonth() + 1, 0).getDate();
@@ -171,7 +218,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
           <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-zinc-200/80 shadow-2xs ml-1">
             <button
               onClick={() => setDatePreset('today')}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
                 datePreset === 'today'
                   ? 'bg-slate-700 text-white font-bold shadow-2xs'
                   : 'text-zinc-600 hover:text-zinc-900'
@@ -180,8 +227,28 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
               Hôm nay
             </button>
             <button
+              onClick={() => setDatePreset('week')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                datePreset === 'week'
+                  ? 'bg-slate-700 text-white font-bold shadow-2xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Tuần này
+            </button>
+            <button
+              onClick={() => setDatePreset('prev_week')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+                datePreset === 'prev_week'
+                  ? 'bg-slate-700 text-white font-bold shadow-2xs'
+                  : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Tuần trước
+            </button>
+            <button
               onClick={() => setDatePreset('month')}
-              className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition cursor-pointer ${
                 datePreset === 'month'
                   ? 'bg-slate-700 text-white font-bold shadow-2xs'
                   : 'text-zinc-600 hover:text-zinc-900'
@@ -287,6 +354,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
           expenses={expenses}
           spoilageLogs={spoilageLogs}
           cashflow={cashflow}
+          datePreset={datePreset}
           periodLabel={periodLabel}
           startDateMs={startDateMs}
           endDateMs={endDateMs}
