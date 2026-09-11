@@ -27,6 +27,27 @@ const productListeners = new Set<ProductChangeCallback>();
 const telegramConfigListeners = new Set<TelegramConfigCallback>();
 const storeBrandingListeners = new Set<StoreBrandingCallback>();
 
+const recentlyNotifiedOrders = new Map<string, number>();
+
+function notifyNewOrderToListeners(order: any) {
+  if (!order) return;
+  const orderNum = order.order_number || order.orderNumber;
+  if (orderNum) {
+    const last = recentlyNotifiedOrders.get(orderNum) || 0;
+    // Chống kêu chuông lặp 2 lần nếu cả Broadcast và Database Changes cùng báo về trong 4 giây
+    if (Date.now() - last < 4000) return;
+    recentlyNotifiedOrders.set(orderNum, Date.now());
+  }
+
+  newOrderListeners.forEach((cb) => {
+    try {
+      cb(order);
+    } catch (e) {
+      console.warn('Lỗi newOrderListener:', e);
+    }
+  });
+}
+
 let syncChannelInstance: any = null;
 
 /**
@@ -57,13 +78,9 @@ function ensureSyncChannel() {
         });
       })
       .on('broadcast', { event: 'pos_order_created' }, ({ payload }: any) => {
-        newOrderListeners.forEach((cb) => {
-          try {
-            cb(payload?.order);
-          } catch (e) {
-            console.warn('Lỗi newOrderListener:', e);
-          }
-        });
+        if (payload?.order) {
+          notifyNewOrderToListeners(payload.order);
+        }
       })
       .on('broadcast', { event: 'kds_clear_demo' }, () => {
         clearDemoListeners.forEach((cb) => {
@@ -114,7 +131,8 @@ function ensureSyncChannel() {
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
-        () => {
+        (payload: any) => {
+          // 1. Kích hoạt toàn bộ bộ lắng nghe CSDL (Kitchen loadOrders, POS reloadOrdersData)
           dbChangeListeners.forEach((cb) => {
             try {
               cb();
@@ -122,6 +140,27 @@ function ensureSyncChannel() {
               console.warn('Lỗi dbChangeListener:', e);
             }
           });
+
+          // 2. Nếu có đơn hàng mới vừa được INSERT lên CSDL Supabase
+          if (payload?.eventType === 'INSERT' && payload?.new) {
+            notifyNewOrderToListeners(payload.new);
+          }
+          // 3. Nếu đơn hàng được UPDATE trạng thái trên CSDL Supabase
+          else if (payload?.eventType === 'UPDATE' && payload?.new) {
+            const o = payload.new;
+            statusListeners.forEach((cb) => {
+              try {
+                cb({
+                  order_number: o.order_number,
+                  status: o.status,
+                  updated_at: o.updated_at || new Date().toISOString(),
+                  order_data: o,
+                });
+              } catch (e) {
+                console.warn('Lỗi statusListener từ postgres_changes:', e);
+              }
+            });
+          }
         }
       )
       .subscribe();
@@ -174,22 +213,28 @@ export async function broadcastNewOrder(order: any) {
   try {
     const channel = ensureSyncChannel();
     if (channel) {
-      const doSend = () => {
-        channel.send({
-          type: 'broadcast',
-          event: 'pos_order_created',
-          payload: {
-            order,
-            created_at: new Date().toISOString(),
-          },
-        }).catch((err: any) => {
-          console.warn('Lỗi gửi channel broadcast pos_order_created:', err);
-        });
-      };
+      await channel.send({
+        type: 'broadcast',
+        event: 'pos_order_created',
+        payload: {
+          order,
+          created_at: new Date().toISOString(),
+        },
+      });
 
-      doSend();
       // Gửi nhắc lại sau 350ms đề phòng websocket vừa khởi tạo đang hoàn tất bắt tay
-      setTimeout(doSend, 350);
+      setTimeout(() => {
+        try {
+          channel.send({
+            type: 'broadcast',
+            event: 'pos_order_created',
+            payload: {
+              order,
+              created_at: new Date().toISOString(),
+            },
+          }).catch(() => {});
+        } catch {}
+      }, 350);
     }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastNewOrder:', err);

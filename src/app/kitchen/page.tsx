@@ -753,7 +753,18 @@ export default function KitchenPage() {
                         quantity: Number(it.quantity) || 1,
                         notes: it.notes || '',
                       }))
-                  : (existing?.items || []),
+                  : existing?.items && existing.items.length > 0
+                  ? existing.items
+                  : (sbNotes.cake_name || so.cake_name)
+                  ? [
+                      {
+                        id: 'cake-item-sb',
+                        product_name_snapshot: sbNotes.cake_name || so.cake_name || 'Bánh Đặt Trước',
+                        quantity: 1,
+                        notes: so.cake_message ? `Chữ: "${so.cake_message}"` : '',
+                      }
+                    ]
+                  : [],
               };
               mergedMap.set(so.order_number, merged);
             });
@@ -920,7 +931,18 @@ export default function KitchenPage() {
             cake_message: incomingOrder.cake_message || incomingOrder.cakeMessage || '',
             notes: incomingOrder.notes || '',
             reference_image_url: incomingOrder.reference_image_url || incomingOrder.referenceImageUrl || fromN.reference_image_url || '',
-            items: Array.isArray(incomingOrder.items) ? incomingOrder.items : [],
+            items: Array.isArray(incomingOrder.items) && incomingOrder.items.length > 0 
+              ? incomingOrder.items 
+              : incomingOrder.cake_name || fromN.cake_name
+              ? [
+                  {
+                    id: 'cake-item-auto',
+                    product_name_snapshot: incomingOrder.cake_name || fromN.cake_name || 'Bánh Đặt Trước',
+                    quantity: 1,
+                    notes: incomingOrder.cake_message ? `Chữ: "${incomingOrder.cake_message}"` : '',
+                  }
+                ]
+              : [],
           };
 
           setOrders((prev) => {
@@ -941,6 +963,16 @@ export default function KitchenPage() {
             if (idx >= 0) parsed[idx] = { ...parsed[idx], ...normalizedOrder };
             else parsed.unshift(normalizedOrder);
             localStorage.setItem('bakery_orders', JSON.stringify(parsed));
+
+            // Đồng bộ luôn vào bakery_preorders nếu là đơn đặt bánh
+            if (normalizedOrder.order_type === 'preorder' || normalizedOrder.order_number?.startsWith('BK-PRE') || !!normalizedOrder.preorder_pickup_at) {
+              const rawPo = localStorage.getItem('bakery_preorders');
+              const parsedPo = rawPo ? JSON.parse(rawPo) : [];
+              const pIdx = parsedPo.findIndex((o: any) => (o.order_number || o.orderNumber) === normalizedOrder.order_number);
+              if (pIdx >= 0) parsedPo[pIdx] = { ...parsedPo[pIdx], ...normalizedOrder };
+              else parsedPo.unshift(normalizedOrder);
+              localStorage.setItem('bakery_preorders', JSON.stringify(parsedPo));
+            }
           } catch {}
 
           soundManager.playNewOrderChime();
@@ -975,6 +1007,11 @@ export default function KitchenPage() {
             onAction: () => window.scrollTo({ top: 0, behavior: 'smooth' }),
           });
         }
+        // Trì hoãn 1s trước khi fetch lại Supabase để không bị chèn ép trạng thái đang insert
+        setTimeout(() => loadOrders(), 1000);
+      },
+      onDbChange: () => {
+        // Nhận tín hiệu thay đổi CSDL Postgres từ Supabase (máy khác vừa tạo/sửa đơn)
         loadOrders();
       },
       onClearDemo: () => {
@@ -998,9 +1035,6 @@ export default function KitchenPage() {
             window.dispatchEvent(new Event('bakery_orders_updated'));
           } catch {}
         }
-        loadOrders();
-      },
-      onDbChange: () => {
         loadOrders();
       },
     });

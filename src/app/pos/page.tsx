@@ -1062,7 +1062,6 @@ export default function POSPage() {
           localStorage.setItem('bakery_kds_seeded', 'true');
           setInvoicesList(recentOrders.slice(0, 100));
           window.dispatchEvent(new Event('bakery_orders_updated'));
-          broadcastNewOrder(orderData);
           
           // Bắn thông báo Telegram tức thì
           sendTelegramOrderAlert(orderData).catch(() => {});
@@ -1174,13 +1173,16 @@ export default function POSPage() {
 
       // 4. Đồng bộ tức thì lên CSDL Supabase SQL (chân lý đa thiết bị)
       if (typeof navigator !== 'undefined' && navigator.onLine) {
-        syncOrderToSupabase(orderData, initialStatus)
-          .then(() => {
-            broadcastNewOrder(orderData);
-          })
-          .catch((syncErr) => {
-            console.warn('Lỗi syncOrderToSupabase POS:', syncErr);
-          });
+        try {
+          await syncOrderToSupabase(orderData, initialStatus);
+        } catch (syncErr) {
+          console.warn('Lỗi syncOrderToSupabase POS:', syncErr);
+        }
+        try {
+          await broadcastNewOrder(orderData);
+        } catch (bErr) {
+          console.warn('Lỗi broadcastNewOrder POS:', bErr);
+        }
       }
 
       // Reset form sau khi đặt
@@ -1348,7 +1350,6 @@ export default function POSPage() {
           localStorage.setItem('bakery_preorders', JSON.stringify(recentPos.slice(0, 100)));
 
           window.dispatchEvent(new Event('bakery_orders_updated'));
-          broadcastNewOrder(unifiedPreorder);
           soundManager.playNewOrderChime();
           const pickupFormatted = formatPickupDateTime(unifiedPreorder.preorder_pickup_at);
 
@@ -1463,13 +1464,16 @@ export default function POSPage() {
       // 4. Đồng bộ tức thì lên CSDL Supabase SQL (chân lý đa thiết bị)
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         const initialStatus = preorderForm.isReadyStock ? 'ready' : 'pending';
-        syncOrderToSupabase(unifiedPreorder, initialStatus)
-          .then(() => {
-            broadcastNewOrder(unifiedPreorder);
-          })
-          .catch((syncErr) => {
-            console.warn('Lỗi syncOrderToSupabase Preorder:', syncErr);
-          });
+        try {
+          await syncOrderToSupabase(unifiedPreorder, initialStatus);
+        } catch (syncErr) {
+          console.warn('Lỗi syncOrderToSupabase Preorder:', syncErr);
+        }
+        try {
+          await broadcastNewOrder(unifiedPreorder);
+        } catch (bErr) {
+          console.warn('Lỗi broadcastNewOrder Preorder:', bErr);
+        }
       }
     } catch (err) {
       console.error('Lỗi tạo đơn đặt bánh:', err);
