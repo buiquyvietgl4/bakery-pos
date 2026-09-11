@@ -174,14 +174,22 @@ export async function broadcastNewOrder(order: any) {
   try {
     const channel = ensureSyncChannel();
     if (channel) {
-      await channel.send({
-        type: 'broadcast',
-        event: 'pos_order_created',
-        payload: {
-          order,
-          created_at: new Date().toISOString(),
-        },
-      });
+      const doSend = () => {
+        channel.send({
+          type: 'broadcast',
+          event: 'pos_order_created',
+          payload: {
+            order,
+            created_at: new Date().toISOString(),
+          },
+        }).catch((err: any) => {
+          console.warn('Lỗi gửi channel broadcast pos_order_created:', err);
+        });
+      };
+
+      doSend();
+      // Gửi nhắc lại sau 350ms đề phòng websocket vừa khởi tạo đang hoàn tất bắt tay
+      setTimeout(doSend, 350);
     }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastNewOrder:', err);
@@ -393,26 +401,35 @@ export async function syncOrderToSupabase(
     if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
       const orderPayload: any = {
         order_number: orderNum,
-        order_type: order.order_type || (order.preorder_pickup_at ? 'preorder' : 'takeaway'),
+        order_type: order.order_type || (order.preorder_pickup_at || order.pickupDateTime ? 'preorder' : 'takeaway'),
         status: nextStatus,
         notes: order.notes || '',
-        subtotal: order.total_amount || order.totalPrice || 0,
-        total_amount: order.total_amount || order.totalPrice || 0,
+        subtotal: Number(order.subtotal || order.total_amount || order.totalPrice || 0),
+        total_amount: Number(order.total_amount || order.totalPrice || 0),
       };
+
+      // Nếu có id dạng UUID hợp lệ thì dùng id đó
+      if (order.id && typeof order.id === 'string' && order.id.length === 36 && order.id.includes('-')) {
+        orderPayload.id = order.id;
+      }
 
       // Bảo toàn chính xác giờ hẹn giao ban đầu của khách:
       // Tuyệt đối không fallback về new Date().toISOString() vì sẽ biến giờ hẹn thành giờ ấn nút!
-      if (order.preorder_pickup_at) {
-        const parsedIso = parseToIsoTimestamp(order.preorder_pickup_at);
+      const rawPickup = order.preorder_pickup_at || order.pickupDateTime;
+      if (rawPickup) {
+        const parsedIso = parseToIsoTimestamp(rawPickup);
         if (parsedIso) {
           orderPayload.preorder_pickup_at = parsedIso;
         } else {
-          orderPayload.preorder_pickup_at = order.preorder_pickup_at;
+          orderPayload.preorder_pickup_at = rawPickup;
         }
       }
-      if (order.customer_name) orderPayload.customer_name = order.customer_name;
-      if (order.customer_phone) orderPayload.customer_phone = order.customer_phone;
-      if (order.cake_message) orderPayload.cake_message = order.cake_message;
+      const cName = order.customer_name || order.customerName;
+      if (cName) orderPayload.customer_name = cName;
+      const cPhone = order.customer_phone || order.customerPhone;
+      if (cPhone) orderPayload.customer_phone = cPhone;
+      const cMsg = order.cake_message || order.cakeMessage;
+      if (cMsg) orderPayload.cake_message = cMsg;
 
       const { data: insertedOrder, error: insertErr } = await supabase
         .from('orders')
@@ -420,18 +437,47 @@ export async function syncOrderToSupabase(
         .select('id')
         .single();
 
-      if (!insertErr && insertedOrder && Array.isArray(order.items) && order.items.length > 0) {
-        const itemsToInsert = order.items.map((it: any) => ({
-          order_id: insertedOrder.id,
-          product_name_snapshot: it.product_name_snapshot || it.name || 'Bánh',
-          quantity: it.quantity || 1,
-          unit_price: it.unit_price || 0,
-          notes: it.notes || '',
-        }));
+      if (insertErr) {
+        console.error('Lỗi INSERT đơn lên Supabase SQL:', insertErr);
+      } else if (insertedOrder) {
+        // Ghi các món bánh vào order_items
+        if (Array.isArray(order.items) && order.items.length > 0) {
+          const itemsToInsert = order.items.map((it: any) => ({
+            order_id: insertedOrder.id,
+            product_name_snapshot: it.product_name_snapshot || it.name || it.product?.name || 'Bánh',
+            quantity: Number(it.quantity || 1),
+            unit_price: Number(it.unit_price || it.selling_price || it.product?.selling_price || 0),
+            notes: it.notes || '',
+          }));
 
-        await supabase.from('order_items').insert(itemsToInsert);
+          await supabase.from('order_items').insert(itemsToInsert);
+        }
+
+        // Ghi thanh toán / tiền cọc vào payments
+        if (Array.isArray(order.payments) && order.payments.length > 0) {
+          const paymentsToInsert = order.payments.map((p: any) => ({
+            order_id: insertedOrder.id,
+            method: p.method || 'cash',
+            amount: Number(p.amount || 0),
+            reference_code: p.reference_code || `Thanh toán đơn ${orderNum}`,
+          }));
+
+          await supabase.from('payments').insert(paymentsToInsert);
+        } else if (order.deposit_amount || order.depositAmount) {
+          const depAmt = Number(order.deposit_amount || order.depositAmount || 0);
+          if (depAmt > 0) {
+            await supabase.from('payments').insert({
+              order_id: insertedOrder.id,
+              method: order.payment_method || order.paymentMethod || 'cash',
+              amount: depAmt,
+              reference_code: `Cọc đơn đặt bánh ${orderNum}`,
+            });
+          }
+        }
       }
+      return insertedOrder;
     }
+    return updatedRows?.[0];
   } catch (err) {
     console.warn('Lỗi syncOrderToSupabase:', err);
   }

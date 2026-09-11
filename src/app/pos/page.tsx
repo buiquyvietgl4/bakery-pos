@@ -17,6 +17,7 @@ import { useAuth } from '@/lib/auth/AuthContext';
 import { exportToCSV } from '@/lib/utils/exportExcel';
 import { 
   broadcastNewOrder, 
+  syncOrderToSupabase,
   subscribeCrossDeviceSync, 
   parsePreorderFromNotes, 
   formatPickupDateTime,
@@ -1171,67 +1172,15 @@ export default function POSPage() {
       setCartNotes('');
       setMobileTab('menu');
 
-      // 4. Đồng bộ Supabase nền (non-blocking)
+      // 4. Đồng bộ tức thì lên CSDL Supabase SQL (chân lý đa thiết bị)
       if (typeof navigator !== 'undefined' && navigator.onLine) {
-        (async () => {
-          try {
-            const orderPayload: any = {
-              local_id: localId,
-              order_number: orderNumber,
-              order_type: orderType,
-              status: initialStatus,
-              delivery_method: fulfillmentType === 'shipping' ? 'shipping' : fulfillmentType === 'pickup' ? 'pickup' : undefined,
-              subtotal,
-              discount_amount: discountAmount,
-              discount_pct: discountPct,
-              total_amount: grandTotal,
-              deposit_amount: dueNow,
-              remaining_amount: remainingCOD,
-              shipping_fee: fulfillmentType === 'shipping' ? (posShippingFee || 0) : 0,
-              shipping_address: fulfillmentType === 'shipping' ? posShippingAddress : undefined,
-              total_cogs: 0,
-              notes: fullNotes,
-            };
-
-            if (isPre) {
-              orderPayload.preorder_pickup_at = new Date(`${posPickupDate}T${posPickupTime}:00`).toISOString();
-              if (posCustomerName) orderPayload.customer_name = posCustomerName;
-              if (posCustomerPhone) orderPayload.customer_phone = posCustomerPhone;
-              if (posCakeMessage) orderPayload.cake_message = posCakeMessage;
-            }
-
-            const { data: insertedOrder } = await supabase
-              .from('orders')
-              .insert(orderPayload)
-              .select('id')
-              .single();
-
-            if (insertedOrder) {
-              const itemsToInsert = cart
-                .map((item) => ({
-                  order_id: insertedOrder.id,
-                  product_id: item.product.id.length === 36 ? item.product.id : undefined,
-                  product_name_snapshot: item.product.name,
-                  quantity: item.quantity,
-                  unit_price: item.product.selling_price,
-                  unit_cost: 0,
-                }))
-                .filter((i) => i.product_id);
-
-              if (itemsToInsert.length > 0) {
-                await supabase.from('order_items').insert(itemsToInsert);
-              }
-
-              await supabase.from('payments').insert({
-                order_id: insertedOrder.id,
-                method: paymentMethod,
-                amount: dueNow,
-              });
-            }
-          } catch (syncErr) {
-            console.warn('Sync background notice:', syncErr);
-          }
-        })();
+        syncOrderToSupabase(orderData, initialStatus)
+          .then(() => {
+            broadcastNewOrder(orderData);
+          })
+          .catch((syncErr) => {
+            console.warn('Lỗi syncOrderToSupabase POS:', syncErr);
+          });
       }
 
       // Reset form sau khi đặt
@@ -1511,56 +1460,16 @@ export default function POSPage() {
       });
       setIsCustomCake(false);
 
-      // 4. Đồng bộ nền lên Supabase (không chặn UI)
+      // 4. Đồng bộ tức thì lên CSDL Supabase SQL (chân lý đa thiết bị)
       if (typeof navigator !== 'undefined' && navigator.onLine) {
-        (async () => {
-          try {
-            const { data: insertedOrder } = await supabase
-              .from('orders')
-              .insert({
-                order_number: orderNumber,
-                order_type: 'preorder',
-                status: preorderForm.isReadyStock ? 'ready' : 'pending',
-                delivery_method: preorderForm.deliveryMethod,
-                shipping_address: preorderForm.shippingAddress,
-                shipping_fee: shippingFee,
-                deposit_amount: depositAmount,
-                remaining_amount: remainingAmount,
-                preorder_pickup_at: new Date(`${preorderForm.pickupDate}T${preorderForm.pickupTime}:00`).toISOString(),
-                subtotal: cakePrice,
-                discount_amount: discountAmount,
-                discount_pct: discountPct,
-                total_amount: finalTotal,
-                notes: fullNotes,
-                customer_name: preorderForm.customerName,
-                customer_phone: preorderForm.customerPhone,
-                cake_message: preorderForm.cakeMessage,
-              })
-              .select('id')
-              .single();
-
-            if (insertedOrder) {
-              await supabase.from('order_items').insert({
-                order_id: insertedOrder.id,
-                product_name_snapshot: `${preorderForm.cakeName} (${preorderForm.size})`,
-                quantity: 1,
-                unit_price: preorderForm.totalPrice,
-                notes: `Chữ: "${preorderForm.cakeMessage}" - ${preorderForm.notes}`,
-              });
-
-              if (preorderForm.depositAmount > 0) {
-                await supabase.from('payments').insert({
-                  order_id: insertedOrder.id,
-                  method: preorderForm.paymentMethod,
-                  amount: preorderForm.depositAmount,
-                  reference_code: `Cọc đơn đặt bánh ${orderNumber}`,
-                });
-              }
-            }
-          } catch (syncErr) {
-            console.warn('Preorder sync notice:', syncErr);
-          }
-        })();
+        const initialStatus = preorderForm.isReadyStock ? 'ready' : 'pending';
+        syncOrderToSupabase(unifiedPreorder, initialStatus)
+          .then(() => {
+            broadcastNewOrder(unifiedPreorder);
+          })
+          .catch((syncErr) => {
+            console.warn('Lỗi syncOrderToSupabase Preorder:', syncErr);
+          });
       }
     } catch (err) {
       console.error('Lỗi tạo đơn đặt bánh:', err);

@@ -5,6 +5,7 @@ import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 import { formatPickupDateTime, parsePreorderFromNotes } from './realtimeSync';
 import { getDeliveryUrgency } from '@/lib/utils/deliveryAlerts';
 import { sendTelegramOrderAlert, sendTelegramUrgentAlert } from '@/lib/utils/telegramNotify';
+import { soundManager } from '@/lib/utils/audioAlert';
 
 class AutoOrderWatcher {
   private knownOrders: Set<string> = new Set();
@@ -120,6 +121,10 @@ class AutoOrderWatcher {
           this.saveOrderToLocalStorage(order);
 
           // KÍCH HOẠT THÔNG BÁO NỔI & CHUÔNG BÁO TỰ ĐỘNG 100%!
+          try {
+            soundManager.playNewOrderChime();
+          } catch {}
+
           const fromN = parsePreorderFromNotes(order.notes);
           const isCake = order.order_type === 'preorder' || orderNum.startsWith('BK-PRE') || !!order.preorder_pickup_at;
           const pickupStr = formatPickupDateTime(order.preorder_pickup_at || fromN.preorder_pickup_at);
@@ -132,17 +137,17 @@ class AutoOrderWatcher {
           phoneNotificationService.triggerOrderNotification({
             id: 'auto-' + orderNum,
             type: 'new_order',
-            appTitle: isCake ? 'TIỆM BÁNH HẠNH PHÚC (ĐƠN MỚI)' : 'TIỆM BÁNH HẠNH PHÚC (POS)',
-            title: isCake ? `🎂 Đơn Đặt Bánh Mới #${orderNum}` : `🛒 Đơn Bán Mới #${orderNum}`,
+            appTitle: isCake ? 'BẾP LÀM BÁNH (KDS)' : 'TIỆM BÁNH HẠNH PHÚC (POS)',
+            title: isCake ? `🎂 Bếp Nhận Đơn Bánh Mới #${orderNum}` : `🛒 Đơn Bán Mới #${orderNum}`,
             sender: `${custName}${custPhone ? ' (' + custPhone + ')' : ''}`,
-            message: `${pickupStr ? '⏰ Giao: ' + pickupStr + ' • ' : ''}${cakeDetails}`,
+            message: `${pickupStr ? '⏰ Hẹn: ' + pickupStr + ' • ' : ''}${cakeDetails}`,
             extraDetails: order.cake_message ? `Ghi chữ: "${order.cake_message}"` : (fromN.cake_message ? `Ghi chữ: "${fromN.cake_message}"` : undefined),
             orderNumber: orderNum,
             pickupTime: pickupStr,
-            actionLabel: isCake ? 'Xem Lịch Giao' : 'Xem Chi Tiết',
+            actionLabel: isCake ? 'Vào Bếp Ngay' : 'Xem Chi Tiết',
             onAction: () => {
               if (typeof window !== 'undefined') {
-                window.location.href = '/pos';
+                window.location.href = isCake ? '/kitchen' : '/pos';
               }
             }
           });
