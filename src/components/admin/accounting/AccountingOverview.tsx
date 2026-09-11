@@ -28,7 +28,9 @@ export interface AccountingOverviewProps {
 }
 
 const formatVND = (val: number) => {
-  return `VND ${Math.abs(Math.round(val || 0)).toLocaleString('en-US')}`;
+  const rounded = Math.round(val || 0);
+  const prefix = rounded < 0 ? '-' : '';
+  return `${prefix}VND ${Math.abs(rounded).toLocaleString('en-US')}`;
 };
 
 export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
@@ -677,8 +679,8 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                   <tr className="bg-[#FAF7F0] font-bold text-zinc-900 border-t border-b border-amber-200/50">
                     <td className="py-2.5">Lợi nhuận gộp</td>
                     <td className="py-2.5 text-right text-zinc-900">{formatVND(grossProfit)}</td>
-                    <td className="py-2.5 text-right font-bold">{totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : '36.5'}%</td>
-                    <td className="py-2.5 text-right font-bold text-emerald-700">36.9%</td>
+                    <td className="py-2.5 text-right font-bold">{totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : '0.0'}%</td>
+                    <td className="py-2.5 text-right font-bold text-emerald-700">+{revGrowthPct}%</td>
                   </tr>
 
                   {/* Chi phí bán hàng & QL (collapsible) */}
@@ -699,21 +701,21 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                     <>
                       <tr className="bg-zinc-50/40 text-zinc-600 text-[11px]">
                         <td className="py-1.5 pl-6">Lương NV</td>
-                        <td className="py-1.5 text-right">{formatVND(salaryExpense || 18750000)}</td>
+                        <td className="py-1.5 text-right">{formatVND(salaryExpense)}</td>
                         <td className="py-1.5 text-right">{salaryPct}%</td>
-                        <td className="py-1.5 text-right text-rose-500 font-semibold">-25.9%</td>
+                        <td className="py-1.5 text-right text-zinc-400 font-medium">{salaryExpense > 0 ? '-' : '0₫'}</td>
                       </tr>
                       <tr className="bg-zinc-50/40 text-zinc-600 text-[11px]">
                         <td className="py-1.5 pl-6">Tiền mặt bằng</td>
-                        <td className="py-1.5 text-right">{formatVND(rentExpense || 25280000)}</td>
+                        <td className="py-1.5 text-right">{formatVND(rentExpense)}</td>
                         <td className="py-1.5 text-right">{rentPct}%</td>
-                        <td className="py-1.5 text-right text-rose-500 font-semibold">-5.7%</td>
+                        <td className="py-1.5 text-right text-zinc-400 font-medium">{rentExpense > 0 ? '-' : '0₫'}</td>
                       </tr>
                       <tr className="bg-zinc-50/40 text-zinc-600 text-[11px]">
-                        <td className="py-1.5 pl-6">Điện nước</td>
-                        <td className="py-1.5 text-right">{formatVND(utilityExpense || 18950000)}</td>
+                        <td className="py-1.5 pl-6">Điện, nước, gas</td>
+                        <td className="py-1.5 text-right">{formatVND(utilityExpense)}</td>
                         <td className="py-1.5 text-right">{utilityPct}%</td>
-                        <td className="py-1.5 text-right text-rose-500 font-semibold">-10.2%</td>
+                        <td className="py-1.5 text-right text-zinc-400 font-medium">{utilityExpense > 0 ? '-' : '0₫'}</td>
                       </tr>
                     </>
                   )}
@@ -873,7 +875,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                   Quỹ Tiền Mặt (Cửa Hàng)
                 </span>
                 <span className="text-xl sm:text-2xl font-black text-zinc-900 block mt-1 tracking-tight">
-                  {formatVND(cashBalance || 45670000)}
+                  {formatVND(cashBalance)}
                 </span>
               </div>
 
@@ -884,7 +886,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                   Ngân Hàng VietQR
                 </span>
                 <span className="text-xl sm:text-2xl font-black text-zinc-900 block mt-1 tracking-tight">
-                  {formatVND(bankBalance || 255280000)}
+                  {formatVND(bankBalance)}
                 </span>
               </div>
             </div>

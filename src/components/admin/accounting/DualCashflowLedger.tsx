@@ -68,7 +68,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
       .reduce((acc, e) => acc + Number(e.amount || 0), 0);
   }, [expenses, startDateMs, endDateMs]);
 
-  const cashBalance = 15000000 + cashSalesIncome - cashExpenses; // 15 triệu tồn quỹ đầu kỳ
+  const cashBalance = cashSalesIncome - cashExpenses;
 
   // 2. Tính toán Dòng tiền Ngân Hàng VietQR
   const bankSalesIncome = useMemo(() => {
@@ -96,7 +96,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
       .reduce((acc, e) => acc + Number(e.amount || 0), 0);
   }, [expenses, startDateMs, endDateMs]);
 
-  const bankBalance = 48500000 + bankSalesIncome - bankExpenses; // 48.5 triệu tồn tài khoản đầu kỳ
+  const bankBalance = bankSalesIncome - bankExpenses;
 
   // Tổng tài sản thanh khoản
   const totalLiquidity = cashBalance + bankBalance;
