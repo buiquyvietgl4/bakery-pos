@@ -5,7 +5,7 @@ import { X, Printer, Tag, Check, Copy, Sparkles, Clock, MapPin, Phone, User, Set
 import { printHtml } from '@/lib/utils/printHelper';
 import { formatPickupDateTime } from '@/lib/supabase/realtimeSync';
 import { PrinterSettingsModal } from './PrinterSettingsModal';
-import { getStoreBranding, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 
 export interface CakeStickerData {
   orderNumber?: string;
@@ -39,6 +39,9 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
 
   useEffect(() => {
     setBranding(getStoreBranding());
+    fetchStoreBrandingFromDb().then((b) => {
+      if (b) setBranding(b);
+    });
     const handleUpdate = (e: Event) => {
       const detail = (e as CustomEvent<StoreBrandingConfig>).detail;
       if (detail) setBranding(detail);
@@ -63,34 +66,175 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
     const el = document.getElementById('printable-cake-sticker');
     if (!el) return;
 
+    const is30 = labelSize === '50x30';
+
     printHtml(el.outerHTML, {
       title: `Tem_${orderNum}`,
       pageSize: labelSize,
       customCss: `
+        @page {
+          size: 50mm ${is30 ? '30mm' : '40mm'};
+          margin: 0 !important;
+        }
+        *, *::before, *::after {
+          box-sizing: border-box !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
         html, body {
           width: 50mm !important;
-          height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
+          height: ${is30 ? '30mm' : '40mm'} !important;
           max-width: 50mm !important;
-          max-height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
+          max-height: ${is30 ? '30mm' : '40mm'} !important;
           overflow: hidden !important;
           margin: 0 !important;
           padding: 0 !important;
+          background: #ffffff !important;
+          color: #000000 !important;
         }
         #printable-cake-sticker {
           width: 50mm !important;
-          height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
+          height: ${is30 ? '30mm' : '40mm'} !important;
           max-width: 50mm !important;
-          max-height: ${labelSize === '50x30' ? '30mm' : '40mm'} !important;
+          max-height: ${is30 ? '30mm' : '40mm'} !important;
           box-shadow: none !important;
           border: none !important;
           border-radius: 0 !important;
           margin: 0 !important;
-          padding: 1.5mm 2mm !important;
-          box-sizing: border-box !important;
+          padding: ${is30 ? '0.6mm 1.5mm 0.6mm 1.5mm' : '1.2mm 2mm 1.2mm 2mm'} !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: space-between !important;
+          overflow: hidden !important;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
           page-break-after: avoid !important;
           break-after: avoid !important;
           page-break-inside: avoid !important;
           break-inside: avoid !important;
+        }
+        #printable-cake-sticker .sticker-header {
+          border-bottom: 1px solid #000 !important;
+          padding-bottom: ${is30 ? '1px' : '2px'} !important;
+          margin-bottom: ${is30 ? '1px' : '2px'} !important;
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          line-height: 1 !important;
+        }
+        #printable-cake-sticker .sticker-store-name {
+          font-size: ${is30 ? '7.5pt' : '9pt'} !important;
+          font-weight: 900 !important;
+          text-transform: uppercase !important;
+          color: #000 !important;
+          display: block !important;
+          line-height: 1.1 !important;
+          letter-spacing: -0.2px !important;
+        }
+        #printable-cake-sticker .sticker-hotline {
+          font-size: ${is30 ? '5.5pt' : '6.5pt'} !important;
+          font-weight: 600 !important;
+          color: #333 !important;
+          display: block !important;
+          line-height: 1 !important;
+          margin-top: 0.5px !important;
+        }
+        #printable-cake-sticker .sticker-order-badge {
+          font-family: monospace !important;
+          font-size: ${is30 ? '6.5pt' : '8pt'} !important;
+          font-weight: 900 !important;
+          background-color: #000000 !important;
+          color: #ffffff !important;
+          padding: 1px 3px !important;
+          border-radius: 2px !important;
+          line-height: 1 !important;
+          white-space: nowrap !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
+        #printable-cake-sticker .sticker-body {
+          padding: 0.5px 0 !important;
+          margin: 0 !important;
+          flex: 1 1 auto !important;
+          display: flex !important;
+          flex-direction: column !important;
+          justify-content: space-evenly !important;
+          overflow: hidden !important;
+        }
+        #printable-cake-sticker .sticker-cake-name {
+          font-size: ${is30 ? '7.5pt' : '9pt'} !important;
+          font-weight: 900 !important;
+          text-transform: uppercase !important;
+          line-height: 1.1 !important;
+          color: #000 !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          max-height: ${is30 ? '18px' : '26px'} !important;
+          overflow: hidden !important;
+          display: -webkit-box !important;
+          -webkit-line-clamp: 2 !important;
+          -webkit-box-orient: vertical !important;
+        }
+        #printable-cake-sticker .sticker-cake-msg {
+          font-size: ${is30 ? '5.8pt' : '7pt'} !important;
+          font-weight: bold !important;
+          font-style: italic !important;
+          line-height: 1.1 !important;
+          margin: 0.5px 0 !important;
+          padding-left: 2px !important;
+          border-left: 1.5px solid #000 !important;
+          color: #111 !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+        }
+        #printable-cake-sticker .sticker-info-block {
+          margin-top: 0.5px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          gap: 0.5px !important;
+        }
+        #printable-cake-sticker .sticker-info-line {
+          font-size: ${is30 ? '5.8pt' : '7pt'} !important;
+          line-height: 1.15 !important;
+          color: #000 !important;
+          white-space: nowrap !important;
+          overflow: hidden !important;
+          text-overflow: ellipsis !important;
+          margin: 0 !important;
+        }
+        #printable-cake-sticker .sticker-footer {
+          border-top: 1px solid #000 !important;
+          padding-top: 1px !important;
+          margin-top: 0.5px !important;
+          display: flex !important;
+          flex-direction: column !important;
+          align-items: center !important;
+          width: 100% !important;
+        }
+        #printable-cake-sticker .sticker-barcode-wrapper {
+          width: 100% !important;
+          height: ${is30 ? '9px' : '14px'} !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          overflow: hidden !important;
+        }
+        #printable-cake-sticker .sticker-barcode-svg {
+          width: ${is30 ? '38mm' : '42mm'} !important;
+          height: 100% !important;
+          max-height: 100% !important;
+          display: block !important;
+        }
+        #printable-cake-sticker .sticker-dates {
+          width: 100% !important;
+          display: flex !important;
+          justify-content: space-between !important;
+          align-items: center !important;
+          font-size: ${is30 ? '5pt' : '6pt'} !important;
+          font-weight: 700 !important;
+          color: #222 !important;
+          line-height: 1 !important;
+          margin-top: 0.5px !important;
         }
       `,
     });
@@ -168,49 +312,49 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
             {/* CHÍNH THỨC CON TEM CÓ ID PRINTABLE */}
             <div
               id="printable-cake-sticker"
-              className="w-72 bg-white rounded-xl border border-zinc-300 p-3 shadow-md text-black flex flex-col justify-between font-sans select-none overflow-hidden"
+              className="w-72 bg-white rounded-xl border border-zinc-300 p-2.5 shadow-md text-black flex flex-col justify-between font-sans select-none overflow-hidden"
               style={{
                 aspectRatio: labelSize === '50x30' ? '5 / 3' : '5 / 4',
               }}
             >
               {/* Header tem */}
-              <div className="border-b border-black pb-1 flex justify-between items-center text-[10px] leading-tight">
+              <div className="sticker-header border-b border-black pb-1 flex justify-between items-center text-[10px] leading-tight">
                 <div>
-                  <span className="font-black uppercase tracking-wide">{branding.storeName || 'TIỆM BÁNH HOÀNG GIA'}</span>
-                  <span className="block text-[8px] text-zinc-600 font-medium">Hotline: {branding.phone || '0901.234.567'}</span>
+                  <span className="sticker-store-name font-black uppercase tracking-wide block">{branding.storeName || 'TIỆM BÁNH HOÀNG GIA'}</span>
+                  <span className="sticker-hotline block text-[8px] text-zinc-600 font-medium">Hotline: {branding.phone || '0901.234.567'}</span>
                 </div>
-                <span className="font-mono font-black text-[9px] bg-black text-white px-1.5 py-0.5 rounded">
+                <span className="sticker-order-badge font-mono font-black text-[9px] bg-black text-white px-1.5 py-0.5 rounded shrink-0">
                   #{orderNum}
                 </span>
               </div>
 
               {/* Thân tem: Tên bánh cực to & rõ */}
-              <div className="py-1">
-                <h4 className="font-black text-xs leading-snug line-clamp-2 text-zinc-950 uppercase">
+              <div className="sticker-body py-1 flex-1 flex flex-col justify-evenly">
+                <h4 className="sticker-cake-name font-black text-xs leading-snug line-clamp-2 text-zinc-950 uppercase">
                   {data.cakeName}
                 </h4>
 
                 {/* Lời nhắn / Ghi chữ bánh */}
                 {data.cakeMessage && (
-                  <p className="text-[9px] font-bold text-zinc-800 italic mt-0.5 line-clamp-1 border-l-2 border-black pl-1">
-                    ✍️ "{data.cakeMessage}"
+                  <p className="sticker-cake-msg text-[9px] font-bold text-zinc-800 italic mt-0.5 line-clamp-1 border-l-2 border-black pl-1">
+                    ✍️ &ldquo;{data.cakeMessage}&rdquo;
                   </p>
                 )}
 
                 {/* Khách hàng & Hẹn giờ & Địa chỉ nhận bánh */}
-                <div className="text-[8.5px] mt-1 space-y-0.5 text-zinc-900 leading-tight">
+                <div className="sticker-info-block text-[8.5px] mt-0.5 space-y-0.5 text-zinc-900 leading-tight">
                   {data.customerName && (
-                    <div className="font-semibold truncate">
+                    <div className="sticker-info-line font-semibold truncate">
                       👤 {data.customerName} {data.customerPhone ? `• ${data.customerPhone}` : ''}
                     </div>
                   )}
                   {data.pickupTime && (
-                    <div className="font-black truncate">
+                    <div className="sticker-info-line font-black truncate">
                       ⏰ Hẹn giao: {formatPickupDateTime(data.pickupTime) || data.pickupTime}
                     </div>
                   )}
                   {/* NẾU TẠI TIỆM GHI TẠI TIỆM, NẾU SHIP GHI ĐỊA CHỈ NHẬN */}
-                  <div className={`font-black ${labelSize === '50x30' ? 'truncate text-[8px]' : 'line-clamp-2 text-[8.5px]'} ${isShipping ? 'text-blue-900' : 'text-zinc-950'}`}>
+                  <div className={`sticker-info-line font-black truncate ${isShipping ? 'text-blue-900' : 'text-zinc-950'}`}>
                     {isShipping
                       ? `🚚 Giao: ${data.shippingAddress || 'Theo địa chỉ khách yêu cầu'}`
                       : `🏪 Nhận: Tại tiệm (${branding.address || 'Tại cửa hàng'})`}
@@ -219,10 +363,10 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
               </div>
 
               {/* Footer tem: Barcode SVG + NSX & HSD */}
-              <div className="pt-1 border-t border-black/80 flex flex-col items-center">
+              <div className="sticker-footer pt-1 border-t border-black/80 flex flex-col items-center">
                 {/* Giả lập Barcode SVG sắc nét */}
-                <div className="w-full flex items-center justify-center h-4">
-                  <svg className="w-40 h-full" viewBox="0 0 160 20" preserveAspectRatio="none">
+                <div className="sticker-barcode-wrapper w-full flex items-center justify-center h-4">
+                  <svg className="sticker-barcode-svg w-40 h-full" viewBox="0 0 160 20" preserveAspectRatio="none">
                     <rect x="0" y="0" width="2" height="20" fill="black" />
                     <rect x="4" y="0" width="1" height="20" fill="black" />
                     <rect x="7" y="0" width="3" height="20" fill="black" />
@@ -264,7 +408,7 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
                   </svg>
                 </div>
 
-                <div className="w-full flex justify-between items-center text-[7.5px] font-bold text-zinc-600 mt-0.5">
+                <div className="sticker-dates w-full flex justify-between items-center text-[7.5px] font-bold text-zinc-600 mt-0.5">
                   <span>NSX: {dateStr} {timeStr}</span>
                   <span>HSD: 48 Giờ (Bảo quản 2-5°C)</span>
                 </div>

@@ -17,6 +17,7 @@ export type ProductChangePayload = {
 };
 type ProductChangeCallback = (payload: ProductChangePayload) => void;
 type TelegramConfigCallback = (config: any) => void;
+type StoreBrandingCallback = (branding: any) => void;
 
 const statusListeners = new Set<StatusCallback>();
 const newOrderListeners = new Set<NewOrderCallback>();
@@ -24,6 +25,7 @@ const clearDemoListeners = new Set<ClearDemoCallback>();
 const dbChangeListeners = new Set<DbChangeCallback>();
 const productListeners = new Set<ProductChangeCallback>();
 const telegramConfigListeners = new Set<TelegramConfigCallback>();
+const storeBrandingListeners = new Set<StoreBrandingCallback>();
 
 let syncChannelInstance: any = null;
 
@@ -88,6 +90,23 @@ function ensureSyncChannel() {
               cb(payload.config);
             } catch (e) {
               console.warn('Lỗi telegramConfigListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'store_branding_updated' }, ({ payload }: any) => {
+        if (payload?.branding) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('bakery_store_branding', JSON.stringify(payload.branding));
+              window.dispatchEvent(new CustomEvent('bakery_branding_updated', { detail: payload.branding }));
+            } catch {}
+          }
+          storeBrandingListeners.forEach((cb) => {
+            try {
+              cb(payload.branding);
+            } catch (e) {
+              console.warn('Lỗi storeBrandingListener:', e);
             }
           });
         }
@@ -230,6 +249,27 @@ export async function broadcastTelegramConfig(config: any) {
 }
 
 /**
+ * Phát sóng cập nhật nhận diện thương hiệu (Tên tiệm, Logo, SĐT, Địa chỉ) tới tất cả thiết bị
+ */
+export async function broadcastStoreBranding(branding: any) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'store_branding_updated',
+        payload: {
+          branding,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastStoreBranding:', err);
+  }
+}
+
+/**
  * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác
  * An toàn tuyệt đối với React StrictMode và Remount
  */
@@ -240,10 +280,19 @@ export function subscribeCrossDeviceSync(callbacks: {
   onDbChange?: DbChangeCallback;
   onProductChange?: ProductChangeCallback;
   onTelegramConfigChange?: TelegramConfigCallback;
+  onStoreBrandingChange?: StoreBrandingCallback;
 }) {
   ensureSyncChannel();
 
-  const { onStatusUpdate, onNewOrder, onClearDemo, onDbChange, onProductChange, onTelegramConfigChange } = callbacks;
+  const {
+    onStatusUpdate,
+    onNewOrder,
+    onClearDemo,
+    onDbChange,
+    onProductChange,
+    onTelegramConfigChange,
+    onStoreBrandingChange,
+  } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
   if (onNewOrder) newOrderListeners.add(onNewOrder);
@@ -251,6 +300,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onDbChange) dbChangeListeners.add(onDbChange);
   if (onProductChange) productListeners.add(onProductChange);
   if (onTelegramConfigChange) telegramConfigListeners.add(onTelegramConfigChange);
+  if (onStoreBrandingChange) storeBrandingListeners.add(onStoreBrandingChange);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
@@ -259,7 +309,59 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onDbChange) dbChangeListeners.delete(onDbChange);
     if (onProductChange) productListeners.delete(onProductChange);
     if (onTelegramConfigChange) telegramConfigListeners.delete(onTelegramConfigChange);
+    if (onStoreBrandingChange) storeBrandingListeners.delete(onStoreBrandingChange);
   };
+}
+
+/**
+ * Phân tích chuỗi ngày giờ hẹn giao sang ISO Timestamp chuẩn
+ * Hỗ trợ các định dạng tiếng Việt phổ biến:
+ * - "14:02 ngày 10/09/2026" hoặc "14:02 ngày 2026-09-10"
+ * - "10/09/2026 14:02"
+ * - ISO string: "2026-09-10T14:02:00.000Z"
+ */
+export function parseToIsoTimestamp(dtStr?: string): string | null {
+  if (!dtStr || typeof dtStr !== 'string') return null;
+  const s = dtStr.trim();
+  if (!s) return null;
+
+  // 1. Nếu đã là chuỗi ISO chuẩn
+  if (s.includes('T') || s.includes('Z')) {
+    const d = new Date(s);
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 2. Định dạng: "HH:mm ngày DD/MM/YYYY" hoặc "HH:mm, DD/MM/YYYY"
+  const dmyMatch = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(?:ngày|,)?\s*)(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
+  if (dmyMatch) {
+    const [, h, m, day, mon, yr] = dmyMatch;
+    const d = new Date(parseInt(yr, 10), parseInt(mon, 10) - 1, parseInt(day, 10), parseInt(h, 10), parseInt(m, 10));
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 3. Định dạng: "HH:mm ngày YYYY-MM-DD"
+  const ymdMatch = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(?:ngày|,)?\s*)(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/i);
+  if (ymdMatch) {
+    const [, h, m, yr, mon, day] = ymdMatch;
+    const d = new Date(parseInt(yr, 10), parseInt(mon, 10) - 1, parseInt(day, 10), parseInt(h, 10), parseInt(m, 10));
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 4. Định dạng: "DD/MM/YYYY HH:mm"
+  const revMatch = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s*(?:lúc|,)?\s*(\d{1,2}):(\d{2})/i);
+  if (revMatch) {
+    const [, day, mon, yr, h, m] = revMatch;
+    const d = new Date(parseInt(yr, 10), parseInt(mon, 10) - 1, parseInt(day, 10), parseInt(h, 10), parseInt(m, 10));
+    if (!isNaN(d.getTime())) return d.toISOString();
+  }
+
+  // 5. Thử new Date(s)
+  const directDate = new Date(s);
+  if (!isNaN(directDate.getTime())) {
+    return directDate.toISOString();
+  }
+
+  return null;
 }
 
 /**
@@ -277,6 +379,7 @@ export async function syncOrderToSupabase(
 
   try {
     // 1. Thử cập nhật trạng thái nếu đơn đã tồn tại trong Supabase
+    // LƯU Ý QUAN TRỌNG: Chỉ cập nhật status và updated_at, TUYỆT ĐỐI KHÔNG ghi đè preorder_pickup_at!
     const { data: updatedRows, error: updateErr } = await supabase
       .from('orders')
       .update({
@@ -297,10 +400,15 @@ export async function syncOrderToSupabase(
         total_amount: order.total_amount || order.totalPrice || 0,
       };
 
+      // Bảo toàn chính xác giờ hẹn giao ban đầu của khách:
+      // Tuyệt đối không fallback về new Date().toISOString() vì sẽ biến giờ hẹn thành giờ ấn nút!
       if (order.preorder_pickup_at) {
-        orderPayload.preorder_pickup_at = order.preorder_pickup_at.includes('T')
-          ? order.preorder_pickup_at
-          : new Date().toISOString();
+        const parsedIso = parseToIsoTimestamp(order.preorder_pickup_at);
+        if (parsedIso) {
+          orderPayload.preorder_pickup_at = parsedIso;
+        } else {
+          orderPayload.preorder_pickup_at = order.preorder_pickup_at;
+        }
       }
       if (order.customer_name) orderPayload.customer_name = order.customer_name;
       if (order.customer_phone) orderPayload.customer_phone = order.customer_phone;

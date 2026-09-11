@@ -53,6 +53,7 @@ interface KDSOrder {
   status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   created_at: string;
   preorder_pickup_at?: string;
+  pickupDateTime?: string;
   delivery_method?: 'pickup' | 'shipping';
   shipping_address?: string;
   shipping_fee?: number;
@@ -731,7 +732,7 @@ export default function KitchenPage() {
                 order_type: so.order_type || existing?.order_type || 'takeaway',
                 status: so.status || existing?.status || 'pending',
                 created_at: so.created_at || existing?.created_at || new Date().toISOString(),
-                preorder_pickup_at: so.preorder_pickup_at || existing?.preorder_pickup_at || '',
+                preorder_pickup_at: so.preorder_pickup_at || existing?.preorder_pickup_at || sbNotes.preorder_pickup_at || '',
                 delivery_method: isShip ? ('shipping' as const) : ('pickup' as const),
                 shipping_address: so.shipping_address || existing?.shipping_address || sbNotes.shipping_address || '',
                 shipping_fee: so.shipping_fee || existing?.shipping_fee || 0,
@@ -830,6 +831,7 @@ export default function KitchenPage() {
                   shipping_fee: o.shipping_fee || payload.order_data?.shipping_fee || 0,
                   remaining_amount: o.remaining_amount !== undefined ? o.remaining_amount : (payload.order_data?.remaining_amount !== undefined ? payload.order_data?.remaining_amount : notesParse.remaining_amount),
                   reference_image_url: o.reference_image_url || payload.order_data?.reference_image_url || payload.order_data?.referenceImageUrl || '',
+                  preorder_pickup_at: o.preorder_pickup_at || payload.order_data?.preorder_pickup_at || notesParse.preorder_pickup_at || '',
                 };
               }
               return o;
@@ -885,6 +887,7 @@ export default function KitchenPage() {
                       shipping_address: o.shipping_address || payload.order_data?.shipping_address || fromN.shipping_address || '',
                       remaining_amount: o.remaining_amount !== undefined ? o.remaining_amount : (payload.order_data?.remaining_amount !== undefined ? payload.order_data?.remaining_amount : fromN.remaining_amount),
                       reference_image_url: o.reference_image_url || payload.order_data?.reference_image_url || payload.order_data?.referenceImageUrl || '',
+                      preorder_pickup_at: o.preorder_pickup_at || payload.order_data?.preorder_pickup_at || fromN.preorder_pickup_at || '',
                     };
                   }
                   return o;
@@ -1052,6 +1055,8 @@ export default function KitchenPage() {
                   shipping_address: o.shipping_address || targetOrder?.shipping_address || fromN.shipping_address || '',
                   remaining_amount: o.remaining_amount !== undefined ? o.remaining_amount : (targetOrder?.remaining_amount !== undefined ? targetOrder?.remaining_amount : fromN.remaining_amount),
                   reference_image_url: o.reference_image_url || targetOrder?.reference_image_url || '',
+                  preorder_pickup_at: o.preorder_pickup_at || targetOrder?.preorder_pickup_at || fromN.preorder_pickup_at || '',
+                  pickupDateTime: o.pickupDateTime || targetOrder?.pickupDateTime || o.preorder_pickup_at || fromN.preorder_pickup_at || '',
                 };
               }
               return o;

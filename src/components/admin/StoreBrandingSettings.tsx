@@ -8,6 +8,8 @@ import {
 import { 
   getStoreBranding, 
   saveStoreBranding, 
+  fetchStoreBrandingFromDb,
+  saveStoreBrandingToDb,
   StoreBrandingConfig, 
   BRANDING_UPDATED_EVENT 
 } from '@/lib/utils/storeBranding';
@@ -16,11 +18,16 @@ import { supabase } from '@/lib/supabase/client';
 export const StoreBrandingSettings: React.FC = () => {
   const [config, setConfig] = useState<StoreBrandingConfig>(getStoreBranding());
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setConfig(getStoreBranding());
+    fetchStoreBrandingFromDb().then((loaded) => {
+      if (loaded) setConfig(loaded);
+    });
     const handleUpdate = (e: any) => {
       if (e.detail) setConfig(e.detail);
       else setConfig(getStoreBranding());
@@ -64,11 +71,23 @@ export const StoreBrandingSettings: React.FC = () => {
     setConfig((prev) => ({ ...prev, logoUrl: '' }));
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    saveStoreBranding(config);
-    setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 4000);
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const res = await saveStoreBrandingToDb(config);
+      if (res.success) {
+        setSavedSuccess(true);
+        setTimeout(() => setSavedSuccess(false), 4000);
+      } else {
+        setSaveError(res.error || 'Có lỗi khi lưu lên cơ sở dữ liệu Supabase');
+      }
+    } catch (err: any) {
+      setSaveError(err?.message || 'Có lỗi xảy ra khi lưu');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -85,7 +104,7 @@ export const StoreBrandingSettings: React.FC = () => {
             Cài Đặt Tên Tiệm & Logo Quán
           </h3>
           <p className="text-xs text-zinc-500">
-            Khi thay đổi, toàn bộ Header ứng dụng, Hóa đơn in nhiệt, Tem nhãn dán bánh và Phiếu chốt sổ sẽ tự động đồng bộ theo.
+            Khi thay đổi, toàn bộ Header ứng dụng, Hóa đơn in nhiệt, Tem nhãn dán bánh và Phiếu chốt sổ sẽ tự động đồng bộ theo trên tất cả các máy.
           </p>
         </div>
       </div>
@@ -93,7 +112,13 @@ export const StoreBrandingSettings: React.FC = () => {
       {savedSuccess && (
         <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center gap-2 animate-fade-in">
           <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-          Đã lưu và đồng bộ tên tiệm & logo quán thành công trên toàn bộ hệ thống!
+          Đã lưu lên CSDL Supabase và phát sóng đồng bộ thương hiệu tức thì tới tất cả thiết bị!
+        </div>
+      )}
+
+      {saveError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-xs font-bold text-rose-800 flex items-center gap-2 animate-fade-in">
+          ⚠️ {saveError}
         </div>
       )}
 
@@ -306,10 +331,20 @@ export const StoreBrandingSettings: React.FC = () => {
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            className="px-6 py-3 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg flex items-center gap-2 transition cursor-pointer"
+            disabled={isSaving}
+            className="px-6 py-3 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 hover:from-amber-700 hover:to-orange-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg flex items-center gap-2 transition cursor-pointer"
           >
-            <Save className="w-4 h-4" />
-            Lưu Cài Đặt & Đồng Bộ Toàn Bộ Quán
+            {isSaving ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Đang lưu lên CSDL Supabase...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                Lưu Cài Đặt & Đồng Bộ Toàn Bộ Quán
+              </>
+            )}
           </button>
         </div>
 

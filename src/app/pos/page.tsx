@@ -40,7 +40,7 @@ import {
 import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
-import { getStoreBranding, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 
 interface CartItem {
   product: CachedProduct;
@@ -407,6 +407,9 @@ export default function POSPage() {
 
   useEffect(() => {
     setBranding(getStoreBranding());
+    fetchStoreBrandingFromDb().then((b) => {
+      if (b) setBranding(b);
+    });
     const handleBrandingUpdate = (e: Event) => {
       const detail = (e as CustomEvent<StoreBrandingConfig>).detail;
       if (detail) {
@@ -1288,6 +1291,14 @@ export default function POSPage() {
       const sampleImgTag = preorderForm.referenceImageUrl ? ` | Ảnh mẫu: Có [MẪU_ẢNH:${preorderForm.referenceImageUrl}]` : '';
       const fullNotes = `[ĐẶT BÁNH KEM] Khách: ${preorderForm.customerName} (${preorderForm.customerPhone}) | Hình thức: ${deliveryMethodStr}${isShip ? ` | Đ/C: ${preorderForm.shippingAddress}` : ''} | Hẹn: ${pickupDateTimeStr} | Bánh: ${preorderForm.cakeName} (${preorderForm.size}) | Chữ: "${preorderForm.cakeMessage}" | Yêu cầu: ${preorderForm.notes}${sampleImgTag}${discountAmount > 0 ? ` | Giảm giá: -${discountAmount.toLocaleString('vi-VN')}đ` : ''}${shippingFee > 0 ? ` | Phí ship: +${shippingFee.toLocaleString('vi-VN')}đ` : ''} | GIÁ CUỐI: ${finalTotal.toLocaleString('vi-VN')}đ | Đã cọc: ${depositAmount.toLocaleString('vi-VN')}đ | CÒN THU KHI GIAO: ${remainingAmount.toLocaleString('vi-VN')}đ`;
 
+      const pickupIso = (() => {
+        try {
+          const d = new Date(`${preorderForm.pickupDate}T${preorderForm.pickupTime}:00`);
+          if (!isNaN(d.getTime())) return d.toISOString();
+        } catch {}
+        return pickupDateTimeStr;
+      })();
+
       // 1. Tạo đơn đặt bánh đồng bộ đầy đủ thông tin cho cả Bếp KDS và Lịch Sử Hóa Đơn
       const unifiedPreorder = {
         id: localId,
@@ -1297,8 +1308,9 @@ export default function POSPage() {
         order_type: 'preorder' as const,
         status: preorderForm.isReadyStock ? ('ready' as const) : ('pending' as const),
         created_at: now.toISOString(),
-        preorder_pickup_at: pickupDateTimeStr,
+        preorder_pickup_at: pickupIso,
         pickupDateTime: pickupDateTimeStr,
+        pickupDateTimeStr,
         customer_name: preorderForm.customerName,
         customerName: preorderForm.customerName,
         customer_phone: preorderForm.customerPhone,

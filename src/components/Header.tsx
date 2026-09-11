@@ -10,7 +10,7 @@ import NotificationSettingsModal from '@/components/NotificationSettingsModal';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 import { autoOrderWatcher } from '@/lib/supabase/autoOrderWatcher';
 import { getUnreadNotificationCount, subscribeNotificationHistory } from '@/lib/utils/notificationHistory';
-import { getStoreBranding, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 
 export default function Header() {
   const pathname = usePathname();
@@ -25,6 +25,9 @@ export default function Header() {
 
   useEffect(() => {
     setBranding(getStoreBranding());
+    fetchStoreBrandingFromDb().then((b) => {
+      if (b) setBranding(b);
+    });
     const handleBranding = (e: any) => {
       if (e.detail) setBranding(e.detail);
       else setBranding(getStoreBranding());
