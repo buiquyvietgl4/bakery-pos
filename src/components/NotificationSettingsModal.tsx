@@ -381,97 +381,112 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
           {/* ════════ TAB 0: LỊCH SỬ THÔNG BÁO (NOTIFICATION LOG) ════════ */}
           {activeTab === 'history' && (
             <div className="space-y-3">
-              {/* Thanh bộ lọc và thao tác nhanh */}
-              <div className="bg-white rounded-2xl p-3 border border-amber-200 shadow-xs space-y-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  {/* Category filters */}
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setHistoryFilter('all')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                        historyFilter === 'all'
-                          ? 'bg-amber-600 text-white shadow-xs'
-                          : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/60'
-                      }`}
-                    >
-                      Tất cả ({historyList.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHistoryFilter('unread')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                        historyFilter === 'unread'
-                          ? 'bg-rose-600 text-white shadow-xs'
-                          : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200/60'
-                      }`}
-                    >
-                      <span>Chưa đọc</span>
-                      {counts.unread > 0 && (
-                        <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-                          historyFilter === 'unread' ? 'bg-white/30 text-white' : 'bg-rose-600 text-white'
-                        }`}>
-                          {counts.unread}
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHistoryFilter('orders')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                        historyFilter === 'orders'
-                          ? 'bg-pink-600 text-white shadow-xs'
-                          : 'bg-pink-50 text-pink-800 hover:bg-pink-100 border border-pink-200/60'
-                      }`}
-                    >
-                      <span>🎂 Đơn Hàng</span>
-                      <span className="text-[10px] opacity-80">({counts.orders})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHistoryFilter('kitchen')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                        historyFilter === 'kitchen'
-                          ? 'bg-orange-600 text-white shadow-xs'
-                          : 'bg-orange-50 text-orange-800 hover:bg-orange-100 border border-orange-200/60'
-                      }`}
-                    >
-                      <span>🔥 Bếp & Lò</span>
-                      <span className="text-[10px] opacity-80">({counts.kitchen})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHistoryFilter('urgent')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                        historyFilter === 'urgent'
-                          ? 'bg-red-600 text-white shadow-xs'
-                          : 'bg-red-50 text-red-800 hover:bg-red-100 border border-red-200/60'
-                      }`}
-                    >
-                      <span>🚨 Đơn Gấp</span>
-                      <span className="text-[10px] opacity-80">({counts.urgent})</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setHistoryFilter('push_tele')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                        historyFilter === 'push_tele'
-                          ? 'bg-sky-600 text-white shadow-xs'
-                          : 'bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200/60'
-                      }`}
-                    >
-                      <span>📱 Push & Bot</span>
-                      <span className="text-[10px] opacity-80">({counts.pushTele})</span>
-                    </button>
+              {/* Thanh bộ lọc và thao tác nhanh: TINH GỌN, 1 HÀNG CUỘN NGANG ÊM ÁI */}
+              <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-amber-200/80 shadow-xs space-y-2">
+                {/* 1. Dải nút lọc cuộn ngang êm ái (Single-row Horizontal Scrollable Pills) */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilter('all')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer shrink-0 ${
+                      historyFilter === 'all'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-amber-50 text-amber-900 hover:bg-amber-100 border border-amber-200/60'
+                    }`}
+                  >
+                    Tất cả ({historyList.length})
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilter('unread')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                      historyFilter === 'unread'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-rose-50 text-rose-800 hover:bg-rose-100 border border-rose-200/60'
+                    }`}
+                  >
+                    <span>Chưa đọc</span>
+                    {counts.unread > 0 && (
+                      <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                        historyFilter === 'unread' ? 'bg-white/30 text-white' : 'bg-rose-600 text-white'
+                      }`}>
+                        {counts.unread}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilter('orders')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                      historyFilter === 'orders'
+                        ? 'bg-pink-600 text-white shadow-xs'
+                        : 'bg-pink-50 text-pink-800 hover:bg-pink-100 border border-pink-200/60'
+                    }`}
+                  >
+                    <span>🎂 Đơn Hàng</span>
+                    <span className="text-[10px] opacity-80">({counts.orders})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilter('kitchen')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                      historyFilter === 'kitchen'
+                        ? 'bg-orange-600 text-white shadow-xs'
+                        : 'bg-orange-50 text-orange-800 hover:bg-orange-100 border border-orange-200/60'
+                    }`}
+                  >
+                    <span>🔥 Bếp & Lò</span>
+                    <span className="text-[10px] opacity-80">({counts.kitchen})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilter('urgent')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                      historyFilter === 'urgent'
+                        ? 'bg-red-600 text-white shadow-xs'
+                        : 'bg-red-50 text-red-800 hover:bg-red-100 border border-red-200/60'
+                    }`}
+                  >
+                    <span>🚨 Đơn Gấp</span>
+                    <span className="text-[10px] opacity-80">({counts.urgent})</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setHistoryFilter('push_tele')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                      historyFilter === 'push_tele'
+                        ? 'bg-sky-600 text-white shadow-xs'
+                        : 'bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200/60'
+                    }`}
+                  >
+                    <span>📱 Push & Bot</span>
+                    <span className="text-[10px] opacity-80">({counts.pushTele})</span>
+                  </button>
+                </div>
+
+                {/* 2. Dòng thao tác nhanh & trạng thái siêu gọn gàng */}
+                <div className="flex items-center justify-between pt-1.5 border-t border-stone-100 text-xs">
+                  <div className="text-[11px] text-zinc-500 font-medium">
+                    {historyFilter === 'unread' ? (
+                      <span className="text-rose-600 font-bold">Có {counts.unread} thông báo chưa xem</span>
+                    ) : historyFilter === 'urgent' ? (
+                      <span className="text-red-600 font-bold">{counts.urgent} cảnh báo khẩn cấp</span>
+                    ) : (
+                      <span>Hiển thị <b>{filteredHistory.length}</b> thông báo</span>
+                    )}
                   </div>
 
-                  {/* Nút thao tác nhanh */}
-                  <div className="flex items-center gap-2 shrink-0 ml-auto">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {counts.unread > 0 && (
                       <button
                         type="button"
                         onClick={() => markAllAsRead()}
-                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                        className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300/80 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer active:scale-95 shadow-2xs"
                         title="Đánh dấu toàn bộ thông báo là đã xem"
                       >
                         <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
@@ -487,19 +502,19 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
                             clearNotificationHistory();
                           }
                         }}
-                        className="p-1 px-2 rounded-lg bg-zinc-100 hover:bg-rose-50 text-zinc-600 hover:text-rose-700 border border-zinc-300 hover:border-rose-300 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                        className="p-1 px-2 rounded-lg bg-zinc-50 hover:bg-rose-50 text-zinc-500 hover:text-rose-700 border border-zinc-200 hover:border-rose-300 text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer active:scale-95"
                         title="Xóa toàn bộ danh sách lịch sử"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">Xóa lịch sử</span>
+                        <span className="hidden sm:inline">Xóa</span>
                       </button>
                     )}
                   </div>
                 </div>
               </div>
 
-              {/* Danh sách thẻ thông báo */}
-              <div className="space-y-2.5 max-h-[50vh] overflow-y-auto pr-1">
+              {/* Danh sách thẻ thông báo (Tăng không gian cuộn) */}
+              <div className="space-y-2.5 max-h-[58vh] sm:max-h-[62vh] overflow-y-auto pr-1">
                 {filteredHistory.length === 0 ? (
                   <div className="bg-white rounded-2xl p-8 text-center border border-dashed border-amber-200 space-y-2">
                     <Inbox className="w-12 h-12 text-amber-300 mx-auto" />
