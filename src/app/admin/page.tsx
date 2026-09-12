@@ -1528,6 +1528,11 @@ export default function AdminDashboard() {
 
     try {
       if (navigator.onLine) {
+        const bakeNotes = JSON.stringify({
+          bake_time_minutes: bakeTime,
+          bake_temp_celsius: bakeTemp,
+        });
+
         if (editingRecipeId) {
           await supabase.from('recipes').upsert({
             id: currentId,
@@ -1536,8 +1541,8 @@ export default function AdminDashboard() {
             yield_unit: newRecipeYieldUnit,
             total_material_cost: totalBatchCost,
             cost_per_unit: costPerUnit,
-            bake_time_minutes: bakeTime,
-            bake_temp_celsius: bakeTemp,
+            notes: bakeNotes,
+            is_active: true,
           });
         } else {
           await supabase.from('recipes').insert({
@@ -1547,8 +1552,8 @@ export default function AdminDashboard() {
             yield_unit: newRecipeYieldUnit,
             total_material_cost: totalBatchCost,
             cost_per_unit: costPerUnit,
-            bake_time_minutes: bakeTime,
-            bake_temp_celsius: bakeTemp,
+            notes: bakeNotes,
+            is_active: true,
           });
         }
 

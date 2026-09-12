@@ -174,6 +174,19 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
 
     const fullRecipes: BakeryRecipe[] = cleanRecipes.map((r: any) => {
       const itemsList = itemsByRecipe.get(r.id) || [];
+      let bakeTime = Number(r.bake_time_minutes) || 25;
+      let bakeTemp = Number(r.bake_temp_celsius) || 190;
+      let noteText = r.notes || '';
+
+      if (r.notes && typeof r.notes === 'string' && r.notes.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(r.notes);
+          if (parsed.bake_time_minutes) bakeTime = Number(parsed.bake_time_minutes);
+          if (parsed.bake_temp_celsius) bakeTemp = Number(parsed.bake_temp_celsius);
+          if (parsed.notes !== undefined) noteText = parsed.notes;
+        } catch {}
+      }
+
       return normalizeRecipe({
         id: r.id,
         name: r.name,
@@ -183,10 +196,10 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
         cost_per_unit: Number(r.cost_per_unit) || 0,
         target_food_cost_pct: r.target_food_cost_pct || 35,
         suggested_price: r.suggested_price || Math.round((Number(r.cost_per_unit) || 0) / 0.35),
-        bake_time_minutes: Number(r.bake_time_minutes) || 25,
-        bake_temp_celsius: Number(r.bake_temp_celsius) || 190,
-        description: r.description || r.notes || '',
-        notes: r.notes || '',
+        bake_time_minutes: bakeTime,
+        bake_temp_celsius: bakeTemp,
+        description: r.description || noteText,
+        notes: noteText,
         items: itemsList,
       });
     });

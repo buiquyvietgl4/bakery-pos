@@ -294,6 +294,50 @@ CREATE TABLE IF NOT EXISTS security_config (
     cashier_pin TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS vietqr_config (
+    id TEXT PRIMARY KEY,
+    bank_id TEXT,
+    bank_name TEXT,
+    account_no TEXT,
+    account_name TEXT,
+    template TEXT DEFAULT 'compact2',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS store_branding (
+    id TEXT PRIMARY KEY,
+    store_name TEXT,
+    tagline TEXT,
+    address TEXT,
+    phone TEXT,
+    wifi_password TEXT,
+    logo_url TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS printer_configs (
+    id TEXT PRIMARY KEY,
+    printer_name TEXT,
+    paper_size TEXT DEFAULT '80mm',
+    connection_type TEXT DEFAULT 'usb',
+    auto_print BOOLEAN DEFAULT FALSE,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS ewallet_config (
+    id TEXT PRIMARY KEY,
+    momo_phone TEXT,
+    momo_name TEXT,
+    momo_qr_url TEXT,
+    zalopay_phone TEXT,
+    zalopay_name TEXT,
+    zalopay_qr_url TEXT,
+    viettelmoney_phone TEXT,
+    viettelmoney_name TEXT,
+    viettelmoney_qr_url TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 }
 
@@ -461,9 +505,61 @@ ${generateSchemaSql()}
 -- 10. BẢNG CẤU HÌNH BẢO MẬT (SECURITY_CONFIG)
 -- ----------------------------------------------------------------------------
 `;
-  const sec = data?.security_config || data?.security;
+  const sec = data?.security_config || data?.security || data?.settings?.security;
   if (sec) {
     sql += `INSERT INTO security_config (id, admin_password_hash, cashier_pin, updated_at) VALUES ('primary', ${sqlEscape(sec.adminPasswordHash || sec.admin_password_hash)}, ${sqlEscape(sec.cashierPin || sec.cashier_pin)}, ${sqlEscape(sec.updatedAt || sec.updated_at || new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 11. BẢNG CẤU HÌNH VIETQR (VIETQR_CONFIG)
+  // ----------------------------------------------------------------------------
+  const vq = data?.vietqr_config || data?.vietqr || data?.settings?.vietqr;
+  if (vq) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 11. BẢNG CẤU HÌNH VIETQR (VIETQR_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO vietqr_config (id, bank_id, bank_name, account_no, account_name, template, updated_at) VALUES ('primary', ${sqlEscape(vq.bankId || vq.bank_id)}, ${sqlEscape(vq.bankName || vq.bank_name)}, ${sqlEscape(vq.accountNo || vq.account_no)}, ${sqlEscape(vq.accountName || vq.account_name)}, ${sqlEscape(vq.template || 'compact2')}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 12. BẢNG THÔNG TIN TIỆM BÁNH (STORE_BRANDING)
+  // ----------------------------------------------------------------------------
+  const br = data?.store_branding || data?.branding_config || data?.branding || data?.settings?.branding;
+  if (br) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 12. BẢNG THÔNG TIN TIỆM BÁNH (STORE_BRANDING)
+-- ----------------------------------------------------------------------------
+INSERT INTO store_branding (id, store_name, tagline, address, phone, wifi_password, logo_url, updated_at) VALUES ('primary', ${sqlEscape(br.storeName || br.store_name)}, ${sqlEscape(br.tagline)}, ${sqlEscape(br.address)}, ${sqlEscape(br.phone)}, ${sqlEscape(br.wifiPassword || br.wifi_password)}, ${sqlEscape(br.logoUrl || br.logo_url)}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 13. BẢNG CẤU HÌNH MÁY IN (PRINTER_CONFIGS)
+  // ----------------------------------------------------------------------------
+  const pr = data?.printer_configs || data?.printer || data?.settings?.printer;
+  if (pr) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 13. BẢNG CẤU HÌNH MÁY IN (PRINTER_CONFIGS)
+-- ----------------------------------------------------------------------------
+INSERT INTO printer_configs (id, printer_name, paper_size, connection_type, auto_print, updated_at) VALUES ('primary', ${sqlEscape(pr.printerName || pr.printer_name || 'POS Printer')}, ${sqlEscape(pr.paperSize || pr.paper_size || '80mm')}, ${sqlEscape(pr.connectionType || pr.connection_type || 'usb')}, ${sqlEscape(pr.autoPrint || pr.auto_print || false)}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 14. BẢNG CẤU HÌNH VÍ ĐIỆN TỬ (EWALLET_CONFIG)
+  // ----------------------------------------------------------------------------
+  const ew = data?.ewallet_config || data?.ewallet || data?.settings?.ewallet;
+  if (ew) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 14. BẢNG CẤU HÌNH VÍ ĐIỆN TỬ (EWALLET_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO ewallet_config (id, momo_phone, momo_name, momo_qr_url, zalopay_phone, zalopay_name, zalopay_qr_url, viettelmoney_phone, viettelmoney_name, viettelmoney_qr_url, updated_at) VALUES ('primary', ${sqlEscape(ew.momo?.phone)}, ${sqlEscape(ew.momo?.name)}, ${sqlEscape(ew.momo?.qrUrl)}, ${sqlEscape(ew.zalopay?.phone)}, ${sqlEscape(ew.zalopay?.name)}, ${sqlEscape(ew.zalopay?.qrUrl)}, ${sqlEscape(ew.viettelmoney?.phone)}, ${sqlEscape(ew.viettelmoney?.name)}, ${sqlEscape(ew.viettelmoney?.qrUrl)}, ${sqlEscape(new Date().toISOString())});
 `;
   }
 
@@ -605,20 +701,43 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
 
     if (Array.isArray(data.spoilage_logs)) {
       localSnapshot['bakery_spoilage'] = JSON.stringify(data.spoilage_logs);
+      localSnapshot['bakery_spoilage_logs'] = JSON.stringify(data.spoilage_logs);
     }
 
     if (Array.isArray(data.stock_adjustments)) {
       localSnapshot['bakery_stock_adjustments'] = JSON.stringify(data.stock_adjustments);
+      localSnapshot['bakery_stock_adjustment_logs'] = JSON.stringify(data.stock_adjustments);
     }
 
     const closings = data.accounting_closings || data.closings;
     if (Array.isArray(closings)) {
       localSnapshot['bakery_accounting_closings'] = JSON.stringify(closings);
+      localSnapshot['bakery_closing_records'] = JSON.stringify(closings);
     }
 
-    const sec = data.security_config || data.security;
+    const sec = data.security_config || data.security || data.settings?.security;
     if (sec) {
       localSnapshot['bakery_security_config'] = JSON.stringify(sec);
+    }
+
+    const vietqr = data.vietqr_config || data.vietqr || data.settings?.vietqr;
+    if (vietqr) {
+      localSnapshot['bakery_vietqr_config'] = JSON.stringify(vietqr);
+    }
+
+    const ewallet = data.ewallet_config || data.ewallet || data.settings?.ewallet;
+    if (ewallet) {
+      localSnapshot['bakery_ewallet_config'] = JSON.stringify(ewallet);
+    }
+
+    const printer = data.printer_configs || data.printer || data.settings?.printer;
+    if (printer) {
+      localSnapshot['bakery_printer_config'] = JSON.stringify(printer);
+    }
+
+    const telegram = data.telegram_config || data.telegram || data.settings?.telegram;
+    if (telegram) {
+      localSnapshot['bakery_telegram_config'] = JSON.stringify(telegram);
     }
 
     const branding = data.branding_config || data.branding || data.settings?.branding;
@@ -682,6 +801,10 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let accounting_closings: any[] = [];
     let security_config: any = null;
     let branding_config: any = null;
+    let vietqr_config: any = null;
+    let ewallet_config: any = null;
+    let printer_config: any = null;
+    let telegram_config: any = null;
 
     if (Array.isArray(sysRows)) {
       for (const row of sysRows) {
@@ -695,6 +818,10 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_CLOSINGS' && Array.isArray(parsed)) accounting_closings = parsed;
           if (row.name === 'SYS_CONFIG_SECURITY') security_config = parsed;
           if (row.name === 'SYS_CONFIG_BRANDING') branding_config = parsed;
+          if (row.name === 'SYS_CONFIG_VIETQR') vietqr_config = parsed;
+          if (row.name === 'SYS_CONFIG_EWALLET') ewallet_config = parsed;
+          if (row.name === 'SYS_CONFIG_PRINTER') printer_config = parsed;
+          if (row.name === 'SYS_CONFIG_TELEGRAM') telegram_config = parsed;
         } catch {}
       }
     }
@@ -738,8 +865,19 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       accounting_closings,
       security_config,
       branding_config,
+      vietqr_config,
+      ewallet_config,
+      printer_configs: printer_config,
+      telegram_config,
       images: [],
-      settings: {},
+      settings: {
+        vietqr: vietqr_config,
+        ewallet: ewallet_config,
+        printer: printer_config,
+        telegram: telegram_config,
+        branding: branding_config,
+        security: security_config,
+      },
     };
 
     // Nạp vào Local

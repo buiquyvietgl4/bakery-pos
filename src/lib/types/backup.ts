@@ -103,12 +103,15 @@ export interface BakeryBackupData {
   expenses: BackupExpense[];
   cashflow: BackupCashflow[];
   images: BackupImageItem[];
+  accounting_closings?: any[];
+  security_config?: any;
   settings: {
     vietqr?: any;
     ewallet?: any;
     printer?: any;
     telegram?: any;
     branding?: any;
+    security?: any;
   };
 }
 

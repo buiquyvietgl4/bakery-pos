@@ -500,11 +500,13 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     } catch {}
   }
 
-  // 7. Cấu hình
+  // 7. Cấu hình & Chốt sổ
   let vietqrConfig = null;
   let ewalletConfig = null;
   let printerConfig = null;
   let telegramConfig = null;
+  let securityConfig = null;
+  let accountingClosings: any[] = [];
 
   if (typeof window !== 'undefined') {
     try {
@@ -512,6 +514,10 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawV) vietqrConfig = JSON.parse(rawV);
       const rawW = localStorage.getItem('bakery_ewallet_config');
       if (rawW) ewalletConfig = JSON.parse(rawW);
+      const rawSec = localStorage.getItem('bakery_security_config');
+      if (rawSec) securityConfig = JSON.parse(rawSec);
+      const rawCl = localStorage.getItem('bakery_closing_records') || localStorage.getItem('bakery_accounting_closings');
+      if (rawCl) accountingClosings = JSON.parse(rawCl);
     } catch {}
   }
   printerConfig = getPrinterConfig();
@@ -641,12 +647,15 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     expenses,
     cashflow,
     images,
+    accounting_closings: accountingClosings,
+    security_config: securityConfig,
     settings: {
       vietqr: vietqrConfig,
       ewallet: ewalletConfig,
       printer: printerConfig,
       telegram: telegramConfig,
       branding: getStoreBranding(),
+      security: securityConfig,
     },
   };
 }
