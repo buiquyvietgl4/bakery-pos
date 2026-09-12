@@ -43,6 +43,7 @@ import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
 interface CartItem {
@@ -456,6 +457,14 @@ export default function POSPage() {
     };
     window.addEventListener(BRANDING_UPDATED_EVENT, handleBrandingUpdate);
     return () => window.removeEventListener(BRANDING_UPDATED_EVENT, handleBrandingUpdate);
+  }, []);
+
+  // ── AUTO BACKUP WATCHER CHO QUẦY POS (TỰ ĐỘNG LƯU ĐƠN HÀNG VÀO THƯ MỤC MÁY TÍNH) ──
+  useEffect(() => {
+    startAutoBackupWatcher();
+    return () => {
+      stopAutoBackupWatcher();
+    };
   }, []);
 
   // ── IN HÓA ĐƠN QUA IFRAME ĐỘC LẬP (KHẮC PHỤC LỖI NHẢY 2 TRANG VÀ LỘ NÚT BẤM) ──

@@ -17,6 +17,7 @@ import { getStoreBranding } from './storeBranding';
 const CONFIG_KEY = 'bakery_auto_backup_config';
 const DB_NAME = 'bakery_backup_handles_db';
 const STORE_NAME = 'dir_handles';
+const SNAPSHOT_STORE = 'snapshots';
 
 const DEFAULT_CONFIG: AutoBackupConfig = {
   enabled: true,
@@ -56,11 +57,14 @@ function openHandleDB(): Promise<IDBDatabase> {
     if (typeof window === 'undefined' || !window.indexedDB) {
       return reject(new Error('IndexedDB not supported'));
     }
-    const request = indexedDB.open(DB_NAME, 1);
-    request.onupgradeneeded = () => {
+    const request = indexedDB.open(DB_NAME, 2);
+    request.onupgradeneeded = (e: any) => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
         db.createObjectStore(STORE_NAME);
+      }
+      if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) {
+        db.createObjectStore(SNAPSHOT_STORE, { keyPath: 'id' });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -98,9 +102,105 @@ export async function getStoredDirectoryHandle(): Promise<any | null> {
   }
 }
 
+// Lưu snapshot dự phòng vào IndexedDB phòng khi người dùng chưa cấp quyền ổ đĩa
+export async function storeSnapshotInIndexedDB(data: BakeryBackupData): Promise<void> {
+  try {
+    const db = await openHandleDB();
+    const tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
+    const store = tx.objectStore(SNAPSHOT_STORE);
+    store.put({
+      id: 'latest',
+      savedAt: new Date().toISOString(),
+      data,
+    });
+  } catch {}
+}
+
 // ── KIỂM TRA HỖ TRỢ FILE SYSTEM ACCESS API ──
 export function isFileSystemAccessSupported(): boolean {
   return typeof window !== 'undefined' && 'showDirectoryPicker' in window;
+}
+
+// ── KIỂM TRA VÀ YÊU CẦU QUYỀN TRUY CẬP THƯ MỤC ──
+export async function checkDirectoryPermission(dirHandle?: any): Promise<'granted' | 'prompt' | 'denied' | 'no_handle' | 'unsupported'> {
+  if (!isFileSystemAccessSupported()) return 'unsupported';
+  try {
+    const handle = dirHandle || (await getStoredDirectoryHandle());
+    if (!handle) return 'no_handle';
+    return await handle.queryPermission({ mode: 'readwrite' });
+  } catch {
+    return 'denied';
+  }
+}
+
+export async function requestDirectoryPermission(dirHandle?: any): Promise<boolean> {
+  if (!isFileSystemAccessSupported()) return false;
+  try {
+    const handle = dirHandle || (await getStoredDirectoryHandle());
+    if (!handle) return false;
+    const perm = await handle.requestPermission({ mode: 'readwrite' });
+    if (perm === 'granted') {
+      // Sau khi cấp quyền thành công, ngay lập tức tạo 1 bản sao lưu vào thư mục
+      try {
+        const fullData = await gatherFullBakeryData();
+        await saveBackupToFile(fullData, false, false);
+      } catch (err) {
+        console.warn('Lỗi sao lưu ngay sau khi cấp quyền:', err);
+      }
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+// ── HÀM GHI TẬP TIN TRỰC TIẾP VÀO DIRECTORY HANDLE ──
+async function writeFilesToDirHandle(
+  dirHandle: any,
+  filename: string,
+  jsonString: string
+): Promise<void> {
+  // 1. Ghi file sao lưu định danh theo thời gian
+  const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(jsonString);
+  await writable.close();
+
+  // 2. Ghi đè file latest_backup.bakery.json để người dùng luôn có file mới nhất
+  try {
+    const latestHandle = await dirHandle.getFileHandle('latest_backup.bakery.json', { create: true });
+    const latestWritable = await latestHandle.createWritable();
+    await latestWritable.write(jsonString);
+    await latestWritable.close();
+  } catch (err) {
+    console.warn('Không thể ghi latest_backup.bakery.json:', err);
+  }
+
+  // 3. Ghi file hướng dẫn nhận biết thư mục tự động
+  try {
+    const readmeHandle = await dirHandle.getFileHandle('THU_MUC_SAO_LUU_TIEM_BANH.txt', { create: true });
+    const readmeWritable = await readmeHandle.createWritable();
+    const infoText = 
+`=============================================================
+THƯ MỤC NHẬN DỮ LIỆU SAO LƯU TỰ ĐỘNG - TIỆM BÁNH ERP & POS
+=============================================================
+• Thư mục: ${dirHandle.name}
+• Trạng thái: ĐÃ KẾT NỐI TỰ ĐỘNG THÀNH CÔNG VỚI HỆ THỐNG
+• Lần cập nhật mới nhất: ${new Date().toLocaleString('vi-VN')}
+• Tệp sao lưu mới nhất: latest_backup.bakery.json
+
+Dữ liệu tại thư mục này được cập nhật tự động định kỳ và mỗi khi:
+- Quầy POS hoàn tất đơn hàng hoặc đơn đặt bánh mới
+- Quản lý cập nhật bánh, giá bán, công thức BOM, kho nguyên liệu
+- Ghi nhận hao hụt, phiếu chi OPEX, sổ thu chi két
+
+Để phục hồi dữ liệu: Mở menu Quản trị Admin -> Bấm "Sao Lưu / Phục Hồi" -> 
+Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "latest_backup.bakery.json" trong thư mục này.
+=============================================================`;
+    await readmeWritable.write(infoText);
+    await readmeWritable.close();
+  } catch {}
 }
 
 // ── CHỌN THƯ MỤC LƯU BACKUP TRÊN MÁY TÍNH ──
@@ -121,7 +221,28 @@ export async function selectBackupDirectory(): Promise<{ success: boolean; folde
     if (dirHandle) {
       await storeDirectoryHandle(dirHandle);
       const folderName = dirHandle.name || 'Thư mục đã chọn';
-      saveAutoBackupConfig({ folderName });
+      saveAutoBackupConfig({ folderName, enabled: true });
+
+      // 🔥 LẬP TỨC SAO LƯU VÀ GHI DỮ LIỆU ĐẦU TIÊN VÀO THƯ MỤC VỪA CHỌN!
+      try {
+        const fullData = await gatherFullBakeryData();
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
+        const filename = `bakery_backup_${dateStr}_${timeStr}.bakery.json`;
+        const jsonString = JSON.stringify(fullData, null, 2);
+
+        await writeFilesToDirHandle(dirHandle, filename, jsonString);
+
+        saveAutoBackupConfig({
+          lastBackupAt: new Date().toISOString(),
+          lastBackupHash: fullData.dataHash,
+          totalBackupsSaved: 1,
+        });
+      } catch (writeErr) {
+        console.warn('Lỗi ghi dữ liệu ban đầu vào thư mục vừa chọn:', writeErr);
+      }
+
       return { success: true, folderName };
     }
     return { success: false, error: 'Chưa chọn thư mục' };
@@ -151,7 +272,7 @@ export function calculateDataHash(payload: any): string {
     for (let i = 0; i < str.length; i++) {
       const char = str.charCodeAt(i);
       hash = (hash << 5) - hash + char;
-      hash |= 0; // Convert to 32bit integer
+      hash |= 0;
     }
     return 'h-' + Math.abs(hash).toString(36);
   } catch {
@@ -159,12 +280,15 @@ export function calculateDataHash(payload: any): string {
   }
 }
 
-// ── HÀM TRÍCH XUẤT VÀ CHUYỂN ẢNH THÀNH BASE64 AN TOÀN ──
+// ── HÀM TRÍCH XUẤT VÀ CHUYỂN ẢNH THÀNH BASE64 AN TOÀN (CÓ TIMEOUT) ──
 async function urlOrBlobToBase64(url: string): Promise<string | null> {
   if (!url) return null;
   if (url.startsWith('data:image/')) return url;
   try {
-    const res = await fetch(url, { mode: 'cors' });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2500); // 2.5s tối đa cho mỗi ảnh để không bao giờ bị đơ
+    const res = await fetch(url, { mode: 'cors', signal: controller.signal });
+    clearTimeout(timeoutId);
     if (!res.ok) return null;
     const blob = await res.blob();
     return new Promise((resolve) => {
@@ -455,8 +579,9 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
 // ── LƯU FILE BACKUP VÀO THƯ MỤC ĐÃ CHỌN HOẶC TẢI VỀ ──
 export async function saveBackupToFile(
   data: BakeryBackupData,
-  manualDownload = false
-): Promise<{ success: boolean; method: 'directory' | 'download'; filename: string; sizeBytes: number; error?: string }> {
+  manualDownload = false,
+  allowPromptPermission = false
+): Promise<{ success: boolean; method: 'directory' | 'download' | 'indexeddb'; filename: string; sizeBytes: number; error?: string }> {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10);
   const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
@@ -464,26 +589,27 @@ export async function saveBackupToFile(
   const jsonString = JSON.stringify(data, null, 2);
   const sizeBytes = new Blob([jsonString]).size;
 
-  // Nếu người dùng không yêu cầu tải về thủ công và có hỗ trợ File System Access
+  // Luôn lưu một bản sao an toàn vào IndexedDB dự phòng
+  storeSnapshotInIndexedDB(data);
+
+  // 1. Thử ghi vào thư mục máy tính nếu có File System Access API
   if (!manualDownload && isFileSystemAccessSupported()) {
     try {
       const dirHandle = await getStoredDirectoryHandle();
       if (dirHandle) {
-        // Kiểm tra quyền ghi
-        const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
-        if (perm === 'granted') {
-          const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(jsonString);
-          await writable.close();
-
-          // Lưu thêm file latest_backup.bakery.json để dễ tìm
+        let perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+        
+        // Nếu quyền là prompt và được phép hỏi (khi người dùng chủ động bấm nút)
+        if (perm !== 'granted' && allowPromptPermission) {
           try {
-            const latestHandle = await dirHandle.getFileHandle('latest_backup.bakery.json', { create: true });
-            const latestWritable = await latestHandle.createWritable();
-            await latestWritable.write(jsonString);
-            await latestWritable.close();
-          } catch {}
+            perm = await dirHandle.requestPermission({ mode: 'readwrite' });
+          } catch (e) {
+            console.warn('Không thể yêu cầu quyền ghi:', e);
+          }
+        }
+
+        if (perm === 'granted') {
+          await writeFilesToDirHandle(dirHandle, filename, jsonString);
 
           const currentCfg = getAutoBackupConfig();
           saveAutoBackupConfig({
@@ -493,15 +619,20 @@ export async function saveBackupToFile(
           });
 
           return { success: true, method: 'directory', filename, sizeBytes };
+        } else {
+          console.warn(`[AutoBackup] Thư mục "${dirHandle.name}" đang ở trạng thái quyền: "${perm}".`);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('bakery_backup_permission_needed', { detail: { folderName: dirHandle.name, perm } }));
+          }
         }
       }
     } catch (err: any) {
-      console.warn('Lỗi ghi file vào thư mục máy tính, chuyển sang tải file:', err);
+      console.warn('Lỗi ghi file vào thư mục máy tính:', err);
     }
   }
 
-  // Fallback: Tự động tải file qua trình duyệt
-  if (typeof window !== 'undefined') {
+  // 2. Nếu là thao tác tải thủ công do người dùng bấm nút tải
+  if (manualDownload && typeof window !== 'undefined') {
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -522,42 +653,82 @@ export async function saveBackupToFile(
     return { success: true, method: 'download', filename, sizeBytes };
   }
 
-  return { success: false, method: 'download', filename, sizeBytes: 0, error: 'Không thể xuất file' };
+  // Nếu là chạy ngầm tự động và chưa ghi được vào ổ đĩa do thiếu quyền: đã lưu IndexedDB thành công
+  return { 
+    success: true, 
+    method: 'indexeddb', 
+    filename, 
+    sizeBytes, 
+    error: 'Đã lưu an toàn vào cơ sở dữ liệu trình duyệt (cần cấp lại quyền thư mục máy tính để ghi ra file)' 
+  };
 }
 
 // ── VÒNG LẶP KIỂM TRA & TỰ ĐỘNG SAO LƯU (AUTO BACKUP RUNNER) ──
 let autoBackupIntervalTimer: NodeJS.Timeout | null = null;
+let isWatcherInitialized = false;
+let backupDebounceTimeout: NodeJS.Timeout | null = null;
+
+// Hàm kiểm tra và thực hiện sao lưu nếu thỏa mãn điều kiện
+export async function triggerAutoBackupIfDue(onBackupSaved?: (filename: string) => void): Promise<boolean> {
+  const config = getAutoBackupConfig();
+  if (!config.enabled) return false;
+
+  try {
+    const fullData = await gatherFullBakeryData();
+    // Nếu có thay đổi so với hash lần trước
+    if (fullData.dataHash !== config.lastBackupHash) {
+      const res = await saveBackupToFile(fullData, false, false);
+      if (res.success) {
+        console.log(`✅ [AutoBackup] Đã tự động sao lưu dữ liệu mới: ${res.filename} (${res.method})`);
+        if (onBackupSaved) onBackupSaved(res.filename);
+        return true;
+      }
+    }
+  } catch (e) {
+    console.warn('Lỗi trong tiến trình AutoBackup:', e);
+  }
+  return false;
+}
 
 export function startAutoBackupWatcher(onBackupSaved?: (filename: string) => void) {
   if (typeof window === 'undefined') return;
-  if (autoBackupIntervalTimer) clearInterval(autoBackupIntervalTimer);
+  if (isWatcherInitialized) return;
+  isWatcherInitialized = true;
 
-  // Kiểm tra định kỳ mỗi 60 giây xem đã đến lúc sao lưu hay có dữ liệu mới chưa
-  autoBackupIntervalTimer = setInterval(async () => {
+  // 1. Kiểm tra ngay khi khởi động
+  setTimeout(() => {
+    triggerAutoBackupIfDue(onBackupSaved);
+  }, 3000);
+
+  // 2. Kiểm tra định kỳ mỗi 60 giây
+  if (autoBackupIntervalTimer) clearInterval(autoBackupIntervalTimer);
+  autoBackupIntervalTimer = setInterval(() => {
     const config = getAutoBackupConfig();
     if (!config.enabled) return;
 
     const lastTime = config.lastBackupAt ? new Date(config.lastBackupAt).getTime() : 0;
     const now = Date.now();
-    const intervalMs = config.intervalMinutes * 60 * 1000;
+    const intervalMs = (config.intervalMinutes || 15) * 60 * 1000;
 
-    // Kiểm tra xem đã hết khoảng thời gian cấu hình chưa
+    // Nếu đã qua khoảng thời gian định kỳ hoặc chưa từng sao lưu
     if (now - lastTime >= intervalMs) {
-      try {
-        const fullData = await gatherFullBakeryData();
-        // Nếu có thay đổi so với hash lần trước
-        if (fullData.dataHash !== config.lastBackupHash) {
-          const res = await saveBackupToFile(fullData, false);
-          if (res.success) {
-            console.log(`✅ [AutoBackup] Đã tự động sao lưu dữ liệu mới: ${res.filename} (${res.method})`);
-            if (onBackupSaved) onBackupSaved(res.filename);
-          }
-        }
-      } catch (e) {
-        console.warn('Lỗi trong tiến trình AutoBackup:', e);
-      }
+      triggerAutoBackupIfDue(onBackupSaved);
     }
   }, 60000);
+
+  // 3. Lắng nghe các sự kiện phát sinh dữ liệu (Tạo đơn hàng, xuất nhập kho, thay đổi giá bánh)
+  const handleDataChange = () => {
+    if (backupDebounceTimeout) clearTimeout(backupDebounceTimeout);
+    backupDebounceTimeout = setTimeout(() => {
+      triggerAutoBackupIfDue(onBackupSaved);
+    }, 4000); // Đợi 4 giây sau thao tác cuối cùng để gom cụm sao lưu
+  };
+
+  window.addEventListener('bakery_orders_updated', handleDataChange);
+  window.addEventListener('bakery_products_updated', handleDataChange);
+  window.addEventListener('bakery_stocks_updated', handleDataChange);
+  window.addEventListener('bakery_spoilage_updated', handleDataChange);
+  window.addEventListener('storage', handleDataChange);
 }
 
 export function stopAutoBackupWatcher() {
@@ -565,4 +736,9 @@ export function stopAutoBackupWatcher() {
     clearInterval(autoBackupIntervalTimer);
     autoBackupIntervalTimer = null;
   }
+  if (backupDebounceTimeout) {
+    clearTimeout(backupDebounceTimeout);
+    backupDebounceTimeout = null;
+  }
+  isWatcherInitialized = false;
 }

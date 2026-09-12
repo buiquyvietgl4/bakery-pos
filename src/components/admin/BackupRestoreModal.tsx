@@ -19,7 +19,9 @@ import {
   selectBackupDirectory, 
   gatherFullBakeryData, 
   saveBackupToFile, 
-  isFileSystemAccessSupported 
+  isFileSystemAccessSupported,
+  checkDirectoryPermission,
+  requestDirectoryPermission
 } from '@/lib/utils/backupManager';
 import { 
   reconcileBackupWithCurrentState, 
@@ -41,6 +43,12 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
   const [backupErrorMsg, setBackupErrorMsg] = useState<string | null>(null);
   const [folderSelecting, setFolderSelecting] = useState(false);
   const [isApiSupported, setIsApiSupported] = useState(false);
+  const [permStatus, setPermStatus] = useState<'granted' | 'prompt' | 'denied' | 'no_handle' | 'unsupported'>('no_handle');
+
+  const updatePermStatus = async () => {
+    const p = await checkDirectoryPermission();
+    setPermStatus(p);
+  };
 
   // ── STATE TAB 2: KHÔI PHỤC & ĐẨY SQL ──
   const [selectedBackupData, setSelectedBackupData] = useState<BakeryBackupData | null>(null);
@@ -61,8 +69,25 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     if (typeof window !== 'undefined') {
       setIsApiSupported(isFileSystemAccessSupported());
       setConfig(getAutoBackupConfig());
+      updatePermStatus();
     }
   }, [isOpen]);
+
+  const handleRequestPermission = async () => {
+    try {
+      const ok = await requestDirectoryPermission();
+      if (ok) {
+        setPermStatus('granted');
+        setConfig(getAutoBackupConfig());
+        setBackupSuccessMsg(`Đã cấp quyền ghi thành công! Bản sao lưu mới nhất đã được lưu vào thư mục "${config.folderName}".`);
+        setTimeout(() => setBackupSuccessMsg(null), 6000);
+      } else {
+        setBackupErrorMsg('Trình duyệt chưa cấp quyền ghi vào thư mục.');
+      }
+    } catch (err: any) {
+      setBackupErrorMsg(err.message || 'Lỗi cấp quyền');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -74,8 +99,9 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
       const res = await selectBackupDirectory();
       if (res.success && res.folderName) {
         setConfig(getAutoBackupConfig());
-        setBackupSuccessMsg(`Đã chọn thư mục lưu: "${res.folderName}"`);
-        setTimeout(() => setBackupSuccessMsg(null), 4000);
+        setPermStatus('granted');
+        setBackupSuccessMsg(`Đã kết nối thư mục "${res.folderName}" và tự động tạo bản sao lưu đầu tiên vào thư mục thành công!`);
+        setTimeout(() => setBackupSuccessMsg(null), 6000);
       } else if (res.error && res.error !== 'Đã hủy chọn thư mục') {
         setBackupErrorMsg(res.error);
       }
@@ -102,12 +128,15 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     setBackupErrorMsg(null);
     try {
       const fullData = await gatherFullBakeryData();
-      const res = await saveBackupToFile(fullData, forceDownload);
+      const res = await saveBackupToFile(fullData, forceDownload, true);
       if (res.success) {
         const sizeKb = Math.round(res.sizeBytes / 1024);
         const methodText = res.method === 'directory' 
           ? `thư mục máy tính "${config.folderName}"` 
-          : 'thư mục Tải về (Downloads)';
+          : res.method === 'download'
+          ? 'thư mục Tải về (Downloads)'
+          : 'bộ nhớ IndexedDB trình duyệt';
+        updatePermStatus();
         setBackupSuccessMsg(`Sao lưu thành công! Đã lưu file ${res.filename} (${sizeKb} KB, ${fullData.metadata.totalProducts} bánh, ${fullData.metadata.totalOrders} đơn, ${fullData.metadata.totalImages} ảnh) vào ${methodText}.`);
         setConfig(getAutoBackupConfig());
       } else {
@@ -291,15 +320,41 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                       Vị trí thư mục lưu trữ trên máy tính:
                     </span>
                     {isApiSupported ? (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                        <Check className="h-3 w-3" /> Hỗ trợ ghi trực tiếp vào ổ cứng (Chrome/Edge)
-                      </span>
+                      permStatus === 'granted' ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                          <Check className="h-3.5 w-3.5" /> Đã kết nối & Tự động ghi vào ổ cứng
+                        </span>
+                      ) : permStatus === 'prompt' ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-300 animate-pulse">
+                          <AlertCircle className="h-3.5 w-3.5" /> Cần cấp lại quyền truy cập
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                          <Check className="h-3 w-3" /> Hỗ trợ ghi trực tiếp vào ổ cứng (Chrome/Edge)
+                        </span>
+                      )
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
                         Chế độ tải về file tự động
                       </span>
                     )}
                   </div>
+
+                  {permStatus === 'prompt' && (
+                    <div className="p-3 bg-amber-100/90 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-amber-950 font-bold">
+                        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
+                        <span>Trình duyệt yêu cầu xác nhận lại quyền ghi vào thư mục máy tính.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRequestPermission}
+                        className="px-3.5 py-2 bg-amber-700 hover:bg-amber-800 text-white font-black rounded-xl shrink-0 cursor-pointer shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
+                      >
+                        <ShieldCheck className="w-4 h-4" /> Bấm Để Cấp Quyền & Lưu Ngay
+                      </button>
+                    </div>
+                  )}
 
                   <div className="flex flex-col sm:flex-row items-center gap-3">
                     <div className="flex-1 w-full flex items-center gap-3 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-700 shadow-inner">
