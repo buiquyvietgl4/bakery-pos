@@ -17,11 +17,15 @@ export interface BackupImageItem {
 
 export interface BackupOrderItem {
   id?: string;
+  product_id?: string;
   product_name_snapshot: string;
   quantity: number;
   unit_price?: number;
   unit_cost?: number;
   line_total?: number;
+  line_cost?: number;
+  product_type?: 'produced' | 'imported' | 'custom_cake';
+  supplier_name?: string;
   notes?: string;
 }
 
@@ -43,10 +47,13 @@ export interface BackupOrder {
   cake_message?: string;
   total_amount?: number;
   subtotal?: number;
+  total_cogs?: number;
   deposit_amount?: number;
   remaining_amount?: number;
   notes?: string;
   reference_image_url?: string;
+  cake_costing?: any;
+  custom_cake?: any;
   items?: BackupOrderItem[];
 }
 

@@ -7,6 +7,16 @@ export interface LocalOrder {
   created_by?: string;
   order_type: 'dine_in' | 'takeaway' | 'preorder';
   status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  delivery_method?: 'pickup' | 'shipping';
+  shipping_address?: string;
+  shipping_fee?: number;
+  customer_name?: string;
+  customer_phone?: string;
+  cake_name?: string;
+  cake_message?: string;
+  preorder_pickup_at?: string;
+  notes?: string;
+  custom_cake?: any;
   items: Array<{
     product_id: string;
     variant_id?: string;
@@ -17,6 +27,8 @@ export interface LocalOrder {
     line_total: number;
     line_cost: number;
     notes?: string;
+    product_type?: 'produced' | 'imported' | 'custom_cake';
+    supplier_name?: string;
   }>;
   payments: Array<{
     method: 'cash' | 'transfer' | 'momo' | 'card';
@@ -26,6 +38,8 @@ export interface LocalOrder {
   subtotal: number;
   discount_amount: number;
   total_amount: number;
+  deposit_amount?: number;
+  remaining_amount?: number;
   total_cogs: number;
   shift_id?: string;
   sync_status: 'pending' | 'synced' | 'conflict';

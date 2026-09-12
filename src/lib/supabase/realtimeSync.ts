@@ -586,7 +586,21 @@ export async function syncOrderToSupabase(
         notes: order.notes || '',
         subtotal: Number(order.subtotal || order.total_amount || order.totalPrice || 0),
         total_amount: Number(order.total_amount || order.totalPrice || 0),
+        discount_amount: Number(order.discount_amount ?? order.discountAmount ?? 0),
+        final_amount: Number(order.final_amount ?? order.finalAmount ?? order.total_amount ?? order.totalPrice ?? 0),
+        total_cogs: Number(order.total_cogs ?? order.totalCogs ?? 0),
+        deposit_amount: Number(order.deposit_amount ?? order.depositAmount ?? 0),
+        remaining_amount: Number(order.remaining_amount ?? order.remainingAmount ?? 0),
+        shipping_fee: Number(order.shipping_fee ?? order.shippingFee ?? 0),
+        delivery_method: order.delivery_method || order.deliveryMethod || 'pickup',
       };
+
+      if (order.shipping_address || order.shippingAddress) {
+        orderPayload.shipping_address = order.shipping_address || order.shippingAddress;
+      }
+      if (order.cake_name || order.cakeName) {
+        orderPayload.cake_name = order.cake_name || order.cakeName;
+      }
 
       // Nếu có id dạng UUID hợp lệ thì dùng id đó
       if (order.id && typeof order.id === 'string' && order.id.length === 36 && order.id.includes('-')) {
@@ -622,13 +636,26 @@ export async function syncOrderToSupabase(
       } else if (insertedOrder) {
         // Ghi các món bánh vào order_items
         if (Array.isArray(order.items) && order.items.length > 0) {
-          const itemsToInsert = order.items.map((it: any) => ({
-            order_id: insertedOrder.id,
-            product_name_snapshot: it.product_name_snapshot || it.name || it.product?.name || 'Bánh',
-            quantity: Number(it.quantity || 1),
-            unit_price: Number(it.unit_price || it.selling_price || it.product?.selling_price || 0),
-            notes: it.notes || '',
-          }));
+          const itemsToInsert = order.items.map((it: any) => {
+            const unitPrice = Number(it.unit_price || it.selling_price || it.product?.selling_price || 0);
+            const qty = Number(it.quantity || 1);
+            const unitCost = Number(it.unit_cost ?? it.unitCost ?? it.cost ?? it.product?.base_cost_price ?? 0);
+            const lineCost = Number(it.line_cost ?? it.lineCost ?? Math.round(unitCost * qty));
+            const subtotal = Number(it.subtotal || it.line_total || Math.round(unitPrice * qty));
+            return {
+              order_id: insertedOrder.id,
+              product_id: it.product_id || it.productId || it.product?.id || null,
+              product_name_snapshot: it.product_name_snapshot || it.name || it.product?.name || 'Bánh',
+              quantity: qty,
+              unit_price: unitPrice,
+              unit_cost: unitCost,
+              subtotal: subtotal,
+              line_cost: lineCost,
+              product_type: it.product_type || it.product?.product_type || 'produced',
+              supplier_name: it.supplier_name || it.product?.supplier_name || null,
+              notes: it.notes || '',
+            };
+          });
 
           await supabase.from('order_items').insert(itemsToInsert);
         }

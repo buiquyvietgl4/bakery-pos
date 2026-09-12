@@ -210,13 +210,20 @@ CREATE TABLE IF NOT EXISTS orders (
     total_amount NUMERIC DEFAULT 0,
     discount_amount NUMERIC DEFAULT 0,
     final_amount NUMERIC DEFAULT 0,
+    total_cogs NUMERIC DEFAULT 0,
+    deposit_amount NUMERIC DEFAULT 0,
+    remaining_amount NUMERIC DEFAULT 0,
+    shipping_fee NUMERIC DEFAULT 0,
     payment_status TEXT DEFAULT 'paid',
     payment_method TEXT DEFAULT 'cash',
     notes TEXT,
     customer_name TEXT,
     customer_phone TEXT,
+    cake_name TEXT,
+    cake_message TEXT,
     delivery_method TEXT DEFAULT 'pickup',
     shipping_address TEXT,
+    preorder_pickup_at TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -227,7 +234,12 @@ CREATE TABLE IF NOT EXISTS order_items (
     product_name_snapshot TEXT,
     quantity NUMERIC DEFAULT 1,
     unit_price NUMERIC DEFAULT 0,
-    subtotal NUMERIC DEFAULT 0
+    unit_cost NUMERIC DEFAULT 0,
+    subtotal NUMERIC DEFAULT 0,
+    line_cost NUMERIC DEFAULT 0,
+    product_type TEXT DEFAULT 'produced',
+    supplier_name TEXT,
+    notes TEXT
 );
 
 CREATE TABLE IF NOT EXISTS operating_expenses (
@@ -342,6 +354,12 @@ CREATE TABLE IF NOT EXISTS ewallet_config (
     viettelmoney_qr_url TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS cake_costing_config (
+    id TEXT PRIMARY KEY,
+    config_data TEXT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 }
 
@@ -422,9 +440,17 @@ ${generateSchemaSql()}
     for (const o of data.orders) {
       const discount = o.discount_amount ?? o.discountAmount ?? 0;
       const finalAmt = o.final_amount ?? o.finalAmount ?? o.total_amount ?? o.totalPrice ?? 0;
+      const totalCogs = o.total_cogs ?? o.totalCogs ?? 0;
+      const depositAmt = o.deposit_amount ?? o.depositAmount ?? 0;
+      const remainAmt = o.remaining_amount ?? o.remainingAmount ?? 0;
+      const shipFee = o.shipping_fee ?? o.shippingFee ?? 0;
       const payStatus = o.payment_status ?? o.paymentStatus ?? 'paid';
       const payMethod = o.payment_method ?? o.paymentMethod ?? 'cash';
-      sql += `INSERT INTO orders (id, order_number, order_type, status, total_amount, discount_amount, final_amount, payment_status, payment_method, notes, customer_name, customer_phone, delivery_method, shipping_address, created_at) VALUES (${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.order_type || o.orderType || 'takeaway')}, ${sqlEscape(o.status)}, ${sqlEscape(o.total_amount || o.totalPrice || 0)}, ${sqlEscape(discount)}, ${sqlEscape(finalAmt)}, ${sqlEscape(payStatus)}, ${sqlEscape(payMethod)}, ${sqlEscape(o.notes)}, ${sqlEscape(o.customer_name || o.customerName)}, ${sqlEscape(o.customer_phone || o.customerPhone)}, ${sqlEscape(o.delivery_method || o.deliveryMethod || 'pickup')}, ${sqlEscape(o.shipping_address || o.shippingAddress)}, ${sqlEscape(o.created_at || o.createdAt || new Date().toISOString())});
+      const cakeName = o.cake_name ?? o.cakeName ?? null;
+      const cakeMsg = o.cake_message ?? o.cakeMessage ?? null;
+      const preorderPickup = o.preorder_pickup_at ?? o.preorderPickupAt ?? null;
+
+      sql += `INSERT INTO orders (id, order_number, order_type, status, total_amount, discount_amount, final_amount, total_cogs, deposit_amount, remaining_amount, shipping_fee, payment_status, payment_method, notes, customer_name, customer_phone, cake_name, cake_message, delivery_method, shipping_address, preorder_pickup_at, created_at) VALUES (${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.order_type || o.orderType || 'takeaway')}, ${sqlEscape(o.status)}, ${sqlEscape(o.total_amount || o.totalPrice || 0)}, ${sqlEscape(discount)}, ${sqlEscape(finalAmt)}, ${sqlEscape(totalCogs)}, ${sqlEscape(depositAmt)}, ${sqlEscape(remainAmt)}, ${sqlEscape(shipFee)}, ${sqlEscape(payStatus)}, ${sqlEscape(payMethod)}, ${sqlEscape(o.notes)}, ${sqlEscape(o.customer_name || o.customerName)}, ${sqlEscape(o.customer_phone || o.customerPhone)}, ${sqlEscape(cakeName)}, ${sqlEscape(cakeMsg)}, ${sqlEscape(o.delivery_method || o.deliveryMethod || 'pickup')}, ${sqlEscape(o.shipping_address || o.shippingAddress)}, ${sqlEscape(preorderPickup)}, ${sqlEscape(o.created_at || o.createdAt || new Date().toISOString())});
 `;
       if (Array.isArray(o.items)) {
         for (const item of o.items) {
@@ -432,8 +458,14 @@ ${generateSchemaSql()}
           const pId = item.product_id || item.productId;
           const pName = item.product_name || item.product_name_snapshot || item.name || 'Sản phẩm';
           const unitPrice = item.unit_price || item.unitPrice || item.price || 0;
+          const unitCost = item.unit_cost ?? item.unitCost ?? item.cost ?? 0;
           const subtotal = item.subtotal || (item.quantity * unitPrice);
-          sql += `INSERT INTO order_items (id, order_id, product_id, product_name_snapshot, quantity, unit_price, subtotal) VALUES (${sqlEscape(itemId)}, ${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(pId)}, ${sqlEscape(pName)}, ${sqlEscape(item.quantity || 1)}, ${sqlEscape(unitPrice)}, ${sqlEscape(subtotal)});
+          const lineCost = item.line_cost ?? item.lineCost ?? Math.round(unitCost * (item.quantity || 1));
+          const prodType = item.product_type || item.productType || 'produced';
+          const supName = item.supplier_name || item.supplierName || null;
+          const itemNotes = item.notes || null;
+
+          sql += `INSERT INTO order_items (id, order_id, product_id, product_name_snapshot, quantity, unit_price, unit_cost, subtotal, line_cost, product_type, supplier_name, notes) VALUES (${sqlEscape(itemId)}, ${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(pId)}, ${sqlEscape(pName)}, ${sqlEscape(item.quantity || 1)}, ${sqlEscape(unitPrice)}, ${sqlEscape(unitCost)}, ${sqlEscape(subtotal)}, ${sqlEscape(lineCost)}, ${sqlEscape(prodType)}, ${sqlEscape(supName)}, ${sqlEscape(itemNotes)});
 `;
         }
       }
@@ -566,6 +598,19 @@ INSERT INTO printer_configs (id, printer_name, paper_size, connection_type, auto
 -- 14. BẢNG CẤU HÌNH VÍ ĐIỆN TỬ (EWALLET_CONFIG)
 -- ----------------------------------------------------------------------------
 INSERT INTO ewallet_config (id, momo_phone, momo_name, momo_qr_url, zalopay_phone, zalopay_name, zalopay_qr_url, viettelmoney_phone, viettelmoney_name, viettelmoney_qr_url, updated_at) VALUES ('primary', ${sqlEscape(ew.momo?.phone)}, ${sqlEscape(ew.momo?.name)}, ${sqlEscape(ew.momo?.qrUrl)}, ${sqlEscape(ew.zalopay?.phone)}, ${sqlEscape(ew.zalopay?.name)}, ${sqlEscape(ew.zalopay?.qrUrl)}, ${sqlEscape(ew.viettelmoney?.phone)}, ${sqlEscape(ew.viettelmoney?.name)}, ${sqlEscape(ew.viettelmoney?.qrUrl)}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 15. BẢNG ĐỊNH MỨC GIÁ VỐN BÁNH ĐẶT (CAKE_COSTING_CONFIG)
+  // ----------------------------------------------------------------------------
+  const cakeCosting = data?.cake_costing_config || data?.cake_costing || data?.settings?.cake_costing;
+  if (cakeCosting) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 15. BẢNG ĐỊNH MỨC GIÁ VỐN BÁNH ĐẶT (CAKE_COSTING_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO cake_costing_config (id, config_data, updated_at) VALUES ('primary', ${sqlEscape(typeof cakeCosting === 'string' ? cakeCosting : JSON.stringify(cakeCosting))}, ${sqlEscape(new Date().toISOString())});
 `;
   }
 

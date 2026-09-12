@@ -392,6 +392,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   }
 
   // Lấy thêm từ Supabase nếu online
+  // Lấy thêm từ Supabase nếu online
   if (typeof navigator !== 'undefined' && navigator.onLine) {
     try {
       const { data: dbProducts } = await supabase.from('products').select('*').limit(300);
@@ -403,8 +404,14 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
               name: dp.name,
               category: dp.category || 'Bánh Kem',
               selling_price: Number(dp.selling_price || 0),
+              base_cost_price: Number(dp.base_cost_price || 0),
+              import_price: dp.import_price !== undefined ? Number(dp.import_price) : undefined,
+              product_type: dp.product_type || 'produced',
+              supplier_name: dp.supplier_name,
+              barcode: dp.barcode,
               image_url: dp.image_url,
               is_active: dp.is_active ?? true,
+              stock_qty: dp.stock_qty ?? 10,
             });
           }
         });
@@ -453,9 +460,10 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
         .from('orders')
         .select(`
           id, order_number, order_type, status, created_at, updated_at,
-          preorder_pickup_at, subtotal, total_amount, notes, customer_name,
-          customer_phone, cake_message,
-          order_items (id, product_name_snapshot, quantity, unit_price, notes)
+          preorder_pickup_at, subtotal, total_amount, total_cogs, notes, customer_name,
+          customer_phone, cake_message, delivery_method, shipping_address, shipping_fee,
+          deposit_amount, remaining_amount,
+          order_items (id, product_name_snapshot, quantity, unit_price, unit_cost, line_cost, product_type, supplier_name, notes)
         `)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -479,6 +487,12 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
               cake_message: dbo.cake_message,
               total_amount: Number(dbo.total_amount || 0),
               subtotal: Number(dbo.subtotal || 0),
+              total_cogs: Number(dbo.total_cogs || 0),
+              deposit_amount: Number(dbo.deposit_amount || 0),
+              remaining_amount: Number(dbo.remaining_amount || 0),
+              shipping_fee: Number(dbo.shipping_fee || 0),
+              shipping_address: dbo.shipping_address,
+              delivery_method: dbo.delivery_method,
               notes: dbo.notes,
               items: dbo.order_items || [],
             });

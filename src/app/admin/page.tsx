@@ -859,8 +859,20 @@ export default function AdminDashboard() {
   const totalRevenue = baseRevenue + actualPeriodRevenue;
   const orderCount = (accountingPeriod === 'today' ? 0 : 142) + actualPeriodOrderCount;
   
-  // COGS ước tính ~31.8% theo tỷ lệ định lượng nguyên liệu chuẩn của tiệm bánh
-  const totalCOGS = Math.round(totalRevenue * 0.318);
+  // COGS: Tính giá vốn thực tế từ các đơn hàng phát sinh (total_cogs / line_cost), nếu đơn cũ chưa có COGS thì dùng ~31.8% định lượng chuẩn
+  const actualPeriodCOGS = periodOrders.reduce((s, o: any) => {
+    if (typeof o.total_cogs === 'number' && o.total_cogs > 0) {
+      return s + o.total_cogs;
+    }
+    if (typeof o.totalCogs === 'number' && o.totalCogs > 0) {
+      return s + o.totalCogs;
+    }
+    const orderRev = o.total_amount || o.totalPrice || 0;
+    return s + Math.round(orderRev * 0.318);
+  }, 0);
+
+  const baseCOGS = Math.round(baseRevenue * 0.318);
+  const totalCOGS = baseCOGS + actualPeriodCOGS;
   const grossProfit = totalRevenue - totalCOGS;
   const grossMarginPct = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : '0.0';
 
@@ -896,7 +908,7 @@ export default function AdminDashboard() {
   const handleExportPL_Excel = () => {
     const plData = [
       { chi_tieu: 'I. TỔNG DOANH THU THUẦN', gia_tri: totalRevenue, ty_le: '100.0%', ghi_chu: `Tổng ${orderCount} đơn hàng bán ra` },
-      { chi_tieu: 'II. GIÁ VỐN HÀNG BÁN (COGS)', gia_tri: -totalCOGS, ty_le: '31.8%', ghi_chu: 'Tính theo định lượng công thức bột, bơ, trứng, sữa' },
+      { chi_tieu: 'II. GIÁ VỐN HÀNG BÁN (COGS)', gia_tri: -totalCOGS, ty_le: totalRevenue > 0 ? `${((totalCOGS / totalRevenue) * 100).toFixed(1)}%` : '31.8%', ghi_chu: 'Giá vốn thực tế (BOM bánh tiệm làm, giá nhập hàng bán sẵn & định mức bánh đặt)' },
       { chi_tieu: 'III. LỢI NHUẬN GỘP (GROSS PROFIT)', gia_tri: grossProfit, ty_le: `${grossMarginPct}%`, ghi_chu: 'Lợi nhuận gộp sau khi trừ giá vốn nguyên vật liệu' },
       { chi_tieu: 'IV. CHI PHÍ VẬN HÀNH (OPEX)', gia_tri: -currentPeriodOpex, ty_le: `${((currentPeriodOpex / (totalRevenue || 1)) * 100).toFixed(1)}%`, ghi_chu: `${expenses.length} khoản mục phát sinh` },
       ...expenses.map((e) => ({
@@ -1798,6 +1810,11 @@ export default function AdminDashboard() {
           category: newProdCategory,
           selling_price: newProdPrice,
           base_cost_price: baseCost,
+          import_price: newProductObj.import_price || null,
+          product_type: newProductObj.product_type || 'produced',
+          supplier_name: newProductObj.supplier_name || null,
+          barcode: newProductObj.barcode || null,
+          stock_qty: newProductObj.stock_qty ?? 0,
           image_url: newProductObj.image_url,
           is_preorder_only: isImported ? false : newProdIsPreorder,
           is_active: true,
@@ -1932,6 +1949,20 @@ export default function AdminDashboard() {
         saveCashflowToDb(updated);
         return updated;
       });
+
+      // Cập nhật lên Supabase nếu online và không ở chế độ Local Mode
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
+        try {
+          await supabase.from('products').update({
+            stock_qty: newStock,
+            import_price: unitPrice,
+            base_cost_price: targetProd.product_type === 'imported' ? unitPrice : (targetProd.base_cost_price || unitPrice),
+            supplier_name: poProductSupplier || targetProd.supplier_name || null,
+          }).eq('id', targetProd.id);
+        } catch (err) {
+          console.warn('Lỗi cập nhật PO sản phẩm lên Supabase:', err);
+        }
+      }
 
       // Phát sóng cập nhật
       await broadcastProductChange({
