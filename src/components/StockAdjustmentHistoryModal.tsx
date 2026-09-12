@@ -21,6 +21,7 @@ import { StockAdjustmentLog, COMMON_STOCK_ADJUSTMENT_REASONS } from '@/lib/types
 import {
   getStockAdjustmentLogs,
   clearStockAdjustmentLogs,
+  fetchStockAdjustmentLogsFromDb,
   STOCK_ADJUSTMENT_EVENT,
 } from '@/lib/utils/stockAdjustmentManager';
 
@@ -53,6 +54,9 @@ export const StockAdjustmentHistoryModal: React.FC<StockAdjustmentHistoryModalPr
   // Đọc danh sách log
   const loadLogs = () => {
     setLogs(getStockAdjustmentLogs());
+    fetchStockAdjustmentLogsFromDb().then((dbLogs) => {
+      if (dbLogs && dbLogs.length > 0) setLogs(dbLogs);
+    }).catch(console.error);
   };
 
   useEffect(() => {

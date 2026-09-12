@@ -1,7 +1,10 @@
-﻿import { SpoilageLog } from '@/lib/types/spoilage';
+import { SpoilageLog } from '@/lib/types/spoilage';
 import { generateUUID } from '@/lib/utils/uuid';
+import { supabase } from '@/lib/supabase/client';
 
 const STORAGE_KEY = 'bakery_spoilage_logs';
+const DB_ROW_SPOILAGE_ID = '00000000-0000-0000-0000-000000000008';
+const DB_ROW_SPOILAGE_NAME = 'SYS_CONFIG_SPOILAGE';
 
 export function getSpoilageLogs(): SpoilageLog[] {
   if (typeof window === 'undefined') return [];
@@ -29,6 +32,76 @@ export function saveSpoilageLogs(logs: SpoilageLog[]): void {
   }
 }
 
+export async function fetchSpoilageLogsFromDb(): Promise<SpoilageLog[]> {
+  const fallback = getSpoilageLogs();
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return fallback;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_SPOILAGE_ID},name.eq.${DB_ROW_SPOILAGE_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        saveSpoilageLogs(parsed);
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi khi fetchSpoilageLogsFromDb:', err);
+  }
+  return fallback;
+}
+
+export async function saveSpoilageLogsToDb(logs: SpoilageLog[]): Promise<{ success: boolean; error?: string }> {
+  saveSpoilageLogs(logs);
+
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { success: true };
+  }
+
+  try {
+    const notesContent = JSON.stringify(logs.slice(0, 300));
+    const { error: upsertErr } = await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_SPOILAGE_ID,
+        name: DB_ROW_SPOILAGE_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+
+    if (upsertErr) {
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_SPOILAGE_ID},name.eq.${DB_ROW_SPOILAGE_NAME}`);
+      await supabase.from('recipes').insert({
+        id: DB_ROW_SPOILAGE_ID,
+        name: DB_ROW_SPOILAGE_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      });
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('Lỗi lưu Spoilage lên Supabase:', err);
+    return { success: false, error: err.message };
+  }
+}
+
 export function addSpoilageLog(
   entry: Omit<SpoilageLog, 'id' | 'loggedAt'>
 ): SpoilageLog {
@@ -40,14 +113,14 @@ export function addSpoilageLog(
   };
 
   const updated = [newLog, ...currentLogs];
-  saveSpoilageLogs(updated);
+  saveSpoilageLogsToDb(updated).catch(console.error);
   return newLog;
 }
 
 export function deleteSpoilageLog(id: string): void {
   const currentLogs = getSpoilageLogs();
   const updated = currentLogs.filter((l) => l.id !== id);
-  saveSpoilageLogs(updated);
+  saveSpoilageLogsToDb(updated).catch(console.error);
 }
 
 export function getTodaySpoilageSummary(): {

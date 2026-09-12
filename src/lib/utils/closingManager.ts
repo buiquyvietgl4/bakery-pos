@@ -2,9 +2,13 @@
 
 import { AccountingClosingRecord, ClosingPeriodType } from '@/lib/types/closing';
 import { getStoreBranding } from './storeBranding';
+import { supabase } from '@/lib/supabase/client';
 
 const STORAGE_KEY = 'bakery_closing_records';
 export const CLOSING_UPDATED_EVENT = 'bakery_closing_records_updated';
+
+const DB_ROW_CLOSINGS_ID = '00000000-0000-0000-0000-00000000000a';
+const DB_ROW_CLOSINGS_NAME = 'SYS_CONFIG_CLOSINGS';
 
 /**
  * Lấy toàn bộ danh sách các kỳ đã chốt sổ
@@ -19,6 +23,87 @@ export function getClosingRecords(): AccountingClosingRecord[] {
   } catch (e) {
     console.error('Lỗi khi đọc danh sách chốt sổ:', e);
     return [];
+  }
+}
+
+/**
+ * Tải danh sách chốt sổ từ Supabase Cloud
+ */
+export async function fetchClosingRecordsFromDb(): Promise<AccountingClosingRecord[]> {
+  const fallback = getClosingRecords();
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return fallback;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_CLOSINGS_ID},name.eq.${DB_ROW_CLOSINGS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+            window.dispatchEvent(new CustomEvent(CLOSING_UPDATED_EVENT, { detail: parsed[0] }));
+          } catch {}
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi khi fetchClosingRecordsFromDb:', err);
+  }
+  return fallback;
+}
+
+/**
+ * Lưu danh sách chốt sổ lên Supabase Cloud
+ */
+export async function saveClosingRecordsToDb(
+  records: AccountingClosingRecord[]
+): Promise<{ success: boolean; error?: string }> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { success: true };
+  }
+
+  try {
+    const notesContent = JSON.stringify(records);
+    const { error: upsertErr } = await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_CLOSINGS_ID,
+        name: DB_ROW_CLOSINGS_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+
+    if (upsertErr) {
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_CLOSINGS_ID},name.eq.${DB_ROW_CLOSINGS_NAME}`);
+      await supabase.from('recipes').insert({
+        id: DB_ROW_CLOSINGS_ID,
+        name: DB_ROW_CLOSINGS_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      });
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error('Lỗi lưu Chốt sổ lên Supabase:', err);
+    return { success: false, error: err.message };
   }
 }
 
@@ -39,6 +124,7 @@ export function saveClosingRecord(record: AccountingClosingRecord): void {
     }
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent(CLOSING_UPDATED_EVENT, { detail: record }));
+    saveClosingRecordsToDb(updated).catch(console.error);
   } catch (e) {
     console.error('Lỗi khi lưu phiếu chốt sổ:', e);
   }
@@ -56,6 +142,7 @@ export function reopenClosingRecord(periodKey: string, periodType: ClosingPeriod
     );
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
     window.dispatchEvent(new CustomEvent(CLOSING_UPDATED_EVENT, { detail: null }));
+    saveClosingRecordsToDb(updated).catch(console.error);
   } catch (e) {
     console.error('Lỗi khi mở lại sổ:', e);
   }

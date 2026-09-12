@@ -19,7 +19,7 @@ import { DEFAULT_BAKERY_PRODUCTS } from '@/lib/constants/bakeryData';
 import { db } from '@/lib/db/dexie';
 import { generateUUID } from '@/lib/utils/uuid';
 import { exportToCSV, exportMultiSheetExcel } from '@/lib/utils/exportExcel';
-import { broadcastProductChange, subscribeCrossDeviceSync } from '@/lib/supabase/realtimeSync';
+import { broadcastProductChange, broadcastRecipeChange, subscribeCrossDeviceSync } from '@/lib/supabase/realtimeSync';
 import {
   getTelegramConfig,
   fetchTelegramConfigFromDb,
@@ -29,13 +29,15 @@ import {
   TelegramConfig,
 } from '@/lib/utils/telegramNotify';
 import { SpoilageLog } from '@/lib/types/spoilage';
-import { getSpoilageLogs, getTodaySpoilageSummary } from '@/lib/utils/spoilageManager';
+import { getSpoilageLogs, getTodaySpoilageSummary, fetchSpoilageLogsFromDb } from '@/lib/utils/spoilageManager';
 import { COMMON_STOCK_ADJUSTMENT_REASONS } from '@/lib/types/stockAdjustment';
 import {
   getStockAdjustmentLogs,
   addStockAdjustmentLog,
+  fetchStockAdjustmentLogsFromDb,
   STOCK_ADJUSTMENT_EVENT,
 } from '@/lib/utils/stockAdjustmentManager';
+import { fetchClosingRecordsFromDb } from '@/lib/utils/closingManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
@@ -44,7 +46,19 @@ import { AccountingClosingSection } from '@/components/admin/AccountingClosingSe
 import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
-import { parseRecipeItem, normalizeRecipe } from '@/lib/utils/recipeCalculator';
+import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
+import {
+  ExpenseItem,
+  CashflowTransaction,
+  getExpenses,
+  fetchExpensesFromDb,
+  saveExpensesToDb,
+  getCashflow,
+  fetchCashflowFromDb,
+  saveCashflowToDb,
+  EXPENSES_UPDATED_EVENT,
+  CASHFLOW_UPDATED_EVENT,
+} from '@/lib/utils/accountingSync';
 import {
   fetchVietqrConfigFromDb,
   saveVietqrConfigToDb,
@@ -85,14 +99,7 @@ interface Ingredient {
   wastage_pct: number;
 }
 
-interface ExpenseItem {
-  id: string;
-  category: string;
-  amount: number;
-  description: string;
-  date: string;
-  paymentMethod?: 'cash' | 'bank';
-}
+// ExpenseItem & CashflowTransaction are imported from accountingSync
 
 export type { EwalletConfig } from '@/lib/utils/paymentSync';
 
@@ -289,44 +296,7 @@ export default function AdminDashboard() {
   const [creatingIngredient, setCreatingIngredient] = useState(false);
 
   // ── RECIPES & BOM STATE ──
-  const [recipes, setRecipes] = useState<any[]>([
-    {
-      id: 'rec-1',
-      name: 'Bánh Bông Lan Trứng Muối 18cm',
-      yield_qty: 1,
-      yield_unit: 'chiếc',
-      cost_per_unit: 127495,
-      target_food_cost_pct: 35,
-      suggested_price: 365000,
-      bake_time_minutes: 35,
-      bake_temp_celsius: 165,
-      items: [
-        { name: 'Bột mì số 11', qty: 300, quantity: 300, unit: 'g', cost: 7875 },
-        { name: 'Trứng gà ta', qty: 6, quantity: 6, unit: 'quả', cost: 21420 },
-        { name: 'Bơ lạt Anchor', qty: 150, quantity: 150, unit: 'g', cost: 18000 },
-        { name: 'Đường cát', qty: 200, quantity: 200, unit: 'g', cost: 3600 },
-        { name: 'Trứng muối nướng', qty: 8, quantity: 8, unit: 'quả', cost: 61600 },
-        { name: 'Hộp bánh kraft', qty: 1, quantity: 1, unit: 'cái', cost: 15000 },
-      ]
-    },
-    {
-      id: 'rec-2',
-      name: 'Bánh Croissant Bơ Pháp Thượng Hạng',
-      yield_qty: 10,
-      yield_unit: 'cái',
-      cost_per_unit: 11200,
-      target_food_cost_pct: 32,
-      suggested_price: 35000,
-      bake_time_minutes: 22,
-      bake_temp_celsius: 195,
-      items: [
-        { name: 'Bột mì số 11', qty: 500, quantity: 500, unit: 'g', cost: 13125 },
-        { name: 'Bơ lạt Anchor', qty: 250, quantity: 250, unit: 'g', cost: 30000 },
-        { name: 'Sữa tươi', qty: 200, quantity: 200, unit: 'ml', cost: 7140 },
-        { name: 'Đường cát', qty: 60, quantity: 60, unit: 'g', cost: 1080 },
-      ]
-    },
-  ]);
+  const [recipes, setRecipes] = useState<any[]>(() => getStoredRecipes());
 
   // Modal Thêm Mới & Chỉnh Sửa Công Thức (BOM Builder Modal State)
   const [isAddRecipeModalOpen, setIsAddRecipeModalOpen] = useState(false);
@@ -385,12 +355,7 @@ export default function AdminDashboard() {
   };
 
   // ── OPEX EXPENSES STATE ──
-  const [expenses, setExpenses] = useState<ExpenseItem[]>([
-    { id: '1', category: 'Tiền mặt bằng', amount: 8000000, description: 'Tiền thuê mặt bằng tháng này', date: '2026-09-01' },
-    { id: '2', category: 'Tiền điện & Nước', amount: 2500000, description: 'Điện lò nướng & tủ bảo quản', date: '2026-09-03' },
-    { id: '3', category: 'Lương nhân viên', amount: 12000000, description: 'Lương nhân viên quầy & thợ bánh', date: '2026-09-05' },
-    { id: '4', category: 'Khấu hao thiết bị', amount: 1000000, description: 'Trích khấu hao lò nướng đối lưu', date: '2026-09-05' },
-  ]);
+  const [expenses, setExpenses] = useState<ExpenseItem[]>(() => getExpenses());
   const [newExpCategory, setNewExpCategory] = useState('Tiền Gas');
   const [newExpAmount, setNewExpAmount] = useState(800000);
   const [newExpDesc, setNewExpDesc] = useState('Đổi bình gas công nghiệp 45kg');
@@ -412,11 +377,7 @@ export default function AdminDashboard() {
   }, []);
 
   // ── CASHFLOW TRANSACTIONS STATE ──
-  const [cashflow, setCashflow] = useState<any[]>([
-    { id: '1', type: 'income', category: 'sales', amount: 45000000, desc: 'Tổng thu bán hàng từ quầy POS', date: '2026-09-07' },
-    { id: '2', type: 'expense', category: 'purchase', amount: 14300000, desc: 'Chi nhập nguyên vật liệu bột, bơ, trứng', date: '2026-09-06' },
-    { id: '3', type: 'expense', category: 'opex', amount: 23500000, desc: 'Chi trả tiền nhà, điện nước, lương', date: '2026-09-05' },
-  ]);
+  const [cashflow, setCashflow] = useState<CashflowTransaction[]>(() => getCashflow());
 
   // ── CLOUD STORAGE & CLEANUP (PURGE) STATE ──
   const [dbUsageMB, setDbUsageMB] = useState(28.4);
@@ -937,6 +898,26 @@ export default function AdminDashboard() {
       if (cfg) setEwalletConfig(cfg);
     }).catch(console.error);
 
+    // Tự động kéo dữ liệu Cloud: Công thức BOM, Chi phí OPEX, Sổ quỹ, Bánh hỏng, Kiểm kê, Chốt sổ
+    fetchRecipesFromDb().then((recs) => {
+      if (recs && recs.length > 0) setRecipes(recs);
+    }).catch(console.error);
+
+    fetchExpensesFromDb().then((exps) => {
+      if (exps && exps.length > 0) setExpenses(exps);
+    }).catch(console.error);
+
+    fetchCashflowFromDb().then((cfs) => {
+      if (cfs && cfs.length > 0) setCashflow(cfs);
+    }).catch(console.error);
+
+    fetchSpoilageLogsFromDb().then((logs) => {
+      if (logs && logs.length > 0) setSpoilageLogs(logs);
+    }).catch(console.error);
+
+    fetchStockAdjustmentLogsFromDb().catch(console.error);
+    fetchClosingRecordsFromDb().catch(console.error);
+
     // Lắng nghe đồng bộ sản phẩm & cấu hình thanh toán thời gian thực giữa điện thoại và máy tính
     const unsubscribeSync = subscribeCrossDeviceSync({
       onProductChange: (payload) => {
@@ -978,6 +959,36 @@ export default function AdminDashboard() {
       onEwalletConfigChange: (cfg) => {
         setEwalletConfig(cfg);
       },
+      onRecipeChange: (payload) => {
+        if (!payload || !payload.recipe) return;
+        const { action, recipe } = payload;
+        if (action === 'create') {
+          setRecipes((prev) => {
+            if (prev.some((r) => r.id === recipe.id)) return prev;
+            const updated = [recipe, ...prev];
+            try {
+              localStorage.setItem('bakery_recipes', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
+        } else if (action === 'update') {
+          setRecipes((prev) => {
+            const updated = prev.map((r) => (r.id === recipe.id ? { ...r, ...recipe } : r));
+            try {
+              localStorage.setItem('bakery_recipes', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
+        } else if (action === 'delete') {
+          setRecipes((prev) => {
+            const updated = prev.filter((r) => r.id !== recipe.id);
+            try {
+              localStorage.setItem('bakery_recipes', JSON.stringify(updated));
+            } catch {}
+            return updated;
+          });
+        }
+      },
     });
 
     // Lắng nghe thay đổi tồn kho từ POS hoặc các tab khác
@@ -1001,10 +1012,30 @@ export default function AdminDashboard() {
     window.addEventListener('bakery_stocks_updated', handleStockUpdate);
     window.addEventListener('bakery_products_updated', handleStockUpdate);
 
+    const handleRecipesUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) setRecipes(e.detail);
+      else setRecipes(getStoredRecipes());
+    };
+    const handleExpensesUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) setExpenses(e.detail);
+      else setExpenses(getExpenses());
+    };
+    const handleCashflowUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) setCashflow(e.detail);
+      else setCashflow(getCashflow());
+    };
+
+    window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);
+    window.addEventListener(EXPENSES_UPDATED_EVENT, handleExpensesUpdate);
+    window.addEventListener(CASHFLOW_UPDATED_EVENT, handleCashflowUpdate);
+
     return () => {
       unsubscribeSync();
       window.removeEventListener('bakery_stocks_updated', handleStockUpdate);
       window.removeEventListener('bakery_products_updated', handleStockUpdate);
+      window.removeEventListener('bakery_recipes_updated', handleRecipesUpdate);
+      window.removeEventListener(EXPENSES_UPDATED_EVENT, handleExpensesUpdate);
+      window.removeEventListener(CASHFLOW_UPDATED_EVENT, handleCashflowUpdate);
     };
   }, []);
 
@@ -1218,6 +1249,7 @@ export default function AdminDashboard() {
     if (typeof window !== 'undefined') {
       localStorage.setItem('bakery_recipes', JSON.stringify(updatedRecipes));
     }
+    broadcastRecipeChange(editingRecipeId ? 'update' : 'create', recipeObj);
 
     setTimeout(() => setRecipeSuccess(null), 5000);
     setIsAddRecipeModalOpen(false);
@@ -1241,6 +1273,7 @@ export default function AdminDashboard() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_recipes', JSON.stringify(updated));
       }
+      broadcastRecipeChange('delete', { id });
       try {
         if (navigator.onLine) {
           await supabase.from('recipes').delete().eq('id', id);
@@ -1350,17 +1383,19 @@ export default function AdminDashboard() {
       }
 
       // Ghi nhận vào cashflow hao hụt
-      setCashflow((prev) => [
-        {
-          id: generateUUID(),
-          type: 'expense',
-          category: 'adjustment',
-          amount: lossValue,
-          desc: `Xuất hao hụt: ${qty.toLocaleString()} ${ing.unit} ${ing.name} (${soReason})`,
-          date: new Date().toISOString().split('T')[0],
-        },
-        ...prev,
-      ]);
+      const soCfItem: CashflowTransaction = {
+        id: generateUUID(),
+        type: 'expense',
+        category: 'adjustment',
+        amount: lossValue,
+        desc: `Xuất hao hụt: ${qty.toLocaleString()} ${ing.unit} ${ing.name} (${soReason})`,
+        date: new Date().toISOString().split('T')[0],
+      };
+      setCashflow((prev) => {
+        const updated = [soCfItem, ...prev];
+        saveCashflowToDb(updated);
+        return updated;
+      });
 
       const msg = `Đã xuất kho ${qty.toLocaleString()} ${ing.unit} ${ing.name}. Tồn kho còn lại: ${newQty.toLocaleString()} ${ing.unit}. Giá trị hao hụt: ${lossValue.toLocaleString('vi-VN')}₫.`;
       setPoSuccess(msg);
@@ -1591,17 +1626,19 @@ export default function AdminDashboard() {
       }
 
       const totalCost = qty * unitPrice;
-      setCashflow((prev) => [
-        {
-          id: generateUUID(),
-          type: 'expense',
-          category: 'purchase',
-          amount: totalCost,
-          desc: `Nhập kho ${qty.toLocaleString()} ${ing.unit} ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`,
-          date: new Date().toISOString().split('T')[0],
-        },
-        ...prev,
-      ]);
+      const poCfItem: CashflowTransaction = {
+        id: generateUUID(),
+        type: 'expense',
+        category: 'purchase',
+        amount: totalCost,
+        desc: `Nhập kho ${qty.toLocaleString()} ${ing.unit} ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`,
+        date: new Date().toISOString().split('T')[0],
+      };
+      setCashflow((prev) => {
+        const updated = [poCfItem, ...prev];
+        saveCashflowToDb(updated);
+        return updated;
+      });
 
       const msg = `Đã nhập kho thành công! Thêm +${qty.toLocaleString()} ${ing.unit} ${ing.name} (Tồn mới: ${newQty.toLocaleString()} ${ing.unit}). Đơn giá bình quân (WAC) tự động tính lại: ${newAvgCost.toLocaleString('vi-VN')}₫/${ing.unit}!`;
       setPoSuccess(msg);
@@ -1623,19 +1660,22 @@ export default function AdminDashboard() {
         date: customItem.date || new Date().toISOString().split('T')[0],
         paymentMethod: customItem.paymentMethod || 'cash',
       };
-      setExpenses((prev) => [item, ...prev]);
-      setCashflow((prev) => [
-        {
-          id: generateUUID(),
-          type: 'expense',
-          category: 'opex',
-          amount: item.amount,
-          desc: `${item.category}: ${item.description}`,
-          date: item.date,
-          method: item.paymentMethod || 'cash',
-        },
-        ...prev,
-      ]);
+      const updatedExp = [item, ...expenses];
+      setExpenses(updatedExp);
+      saveExpensesToDb(updatedExp);
+
+      const cfItem: CashflowTransaction = {
+        id: generateUUID(),
+        type: 'expense',
+        category: 'opex',
+        amount: item.amount,
+        desc: `${item.category}: ${item.description}`,
+        date: item.date,
+        method: item.paymentMethod || 'cash',
+      };
+      const updatedCf = [cfItem, ...cashflow];
+      setCashflow(updatedCf);
+      saveCashflowToDb(updatedCf);
       return;
     }
     if (newExpAmount <= 0) return;
@@ -1647,31 +1687,35 @@ export default function AdminDashboard() {
       date: new Date().toISOString().split('T')[0],
       paymentMethod: 'cash',
     };
-    setExpenses((prev) => [item, ...prev]);
+    const updatedExp = [item, ...expenses];
+    setExpenses(updatedExp);
+    saveExpensesToDb(updatedExp);
 
-    setCashflow((prev) => [
-      {
-        id: generateUUID(),
-        type: 'expense',
-        category: 'opex',
-        amount: newExpAmount,
-        desc: `${newExpCategory}: ${newExpDesc}`,
-        date: item.date,
-        method: 'cash',
-      },
-      ...prev,
-    ]);
+    const cfItem: CashflowTransaction = {
+      id: generateUUID(),
+      type: 'expense',
+      category: 'opex',
+      amount: newExpAmount,
+      desc: `${newExpCategory}: ${newExpDesc}`,
+      date: item.date,
+      method: 'cash',
+    };
+    const updatedCf = [cfItem, ...cashflow];
+    setCashflow(updatedCf);
+    saveCashflowToDb(updatedCf);
 
     setNewExpAmount(0);
     setNewExpDesc('');
   };
 
   const handleDeleteExpense = (id: string) => {
-    setExpenses((prev) => prev.filter((e) => e.id !== id));
+    const updatedExp = expenses.filter((e) => e.id !== id);
+    setExpenses(updatedExp);
+    saveExpensesToDb(updatedExp);
   };
 
   const handleAddCashflowTransaction = (tx: any) => {
-    const item = {
+    const item: CashflowTransaction = {
       id: generateUUID(),
       type: tx.type,
       category: tx.category || 'other',
@@ -1680,7 +1724,9 @@ export default function AdminDashboard() {
       date: tx.date || new Date().toISOString().split('T')[0],
       method: tx.method || 'cash',
     };
-    setCashflow((prev) => [item, ...prev]);
+    const updatedCf = [item, ...cashflow];
+    setCashflow(updatedCf);
+    saveCashflowToDb(updatedCf);
   };
 
   // ── XỬ LÝ TẢI ẢNH BÁNH (OFFLINE-FIRST: LƯU BASE64 VÀO LOCALSTORAGE TRƯỚC) ──

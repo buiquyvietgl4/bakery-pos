@@ -38,6 +38,7 @@ import {
   addSpoilageLog,
   deleteSpoilageLog,
   getTodaySpoilageSummary,
+  fetchSpoilageLogsFromDb,
 } from '@/lib/utils/spoilageManager';
 import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
@@ -570,6 +571,10 @@ export default function POSPage() {
   };
 
   useEffect(() => {
+    fetchSpoilageLogsFromDb().then((logs) => {
+      if (logs && logs.length > 0) setSpoilageLogs(logs);
+    }).catch(console.error);
+
     const handleSpoilageUpdate = () => reloadSpoilage();
     window.addEventListener('bakery_spoilage_updated', handleSpoilageUpdate);
     return () => window.removeEventListener('bakery_spoilage_updated', handleSpoilageUpdate);

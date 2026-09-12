@@ -39,7 +39,7 @@ import { CancelRemakeModal } from '@/components/kitchen/CancelRemakeModal';
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { DeliveryPaymentModal } from '@/components/kitchen/DeliveryPaymentModal';
 import { addSpoilageLog } from '@/lib/utils/spoilageManager';
-import { parseRecipeItem, formatScaledQty, normalizeRecipe } from '@/lib/utils/recipeCalculator';
+import { parseRecipeItem, formatScaledQty, normalizeRecipe, fetchRecipesFromDb } from '@/lib/utils/recipeCalculator';
 import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 
 interface OrderItem {
@@ -1091,11 +1091,29 @@ export default function KitchenPage() {
       onVietqrConfigChange: (cfg) => {
         setVietqrConfig(cfg);
       },
+      onRecipeChange: (payload) => {
+        fetchRecipesFromDb().then((recs) => {
+          if (recs && recs.length > 0) setRecipes(recs);
+        });
+      },
     });
+
+    // Tự động kéo danh sách công thức mới nhất từ Supabase Cloud
+    fetchRecipesFromDb().then((recs) => {
+      if (recs && recs.length > 0) setRecipes(recs);
+    }).catch(console.error);
+
+    const handleRecipesUpdate = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setRecipes(e.detail);
+      }
+    };
+    window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);
 
     return () => {
       window.removeEventListener('bakery_orders_updated', handleLocalUpdate);
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('bakery_recipes_updated', handleRecipesUpdate);
       clearInterval(pollTimer);
       unsubscribeSync();
     };

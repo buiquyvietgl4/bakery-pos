@@ -1,6 +1,7 @@
 'use client';
 
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase/client';
 
 export type UserRole = 'staff' | 'admin';
 
@@ -39,6 +40,74 @@ const DEFAULT_STAFF_USER: CurrentUser = {
   role: 'staff',
   email: 'nhanvien@tiembanh.local',
 };
+
+const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
+const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';
+
+export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig | null> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return null;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (parsed && typeof parsed === 'object') {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('bakery_security_config', JSON.stringify(parsed));
+          } catch {}
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi khi fetchSecurityConfigFromDb:', err);
+  }
+  return null;
+}
+
+export async function saveSecurityConfigToDb(cfg: SecurityConfig): Promise<void> {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    const notesContent = JSON.stringify(cfg);
+    const { error: upsertErr } = await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_SECURITY_ID,
+        name: DB_ROW_SECURITY_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+
+    if (upsertErr) {
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`);
+      await supabase.from('recipes').insert({
+        id: DB_ROW_SECURITY_ID,
+        name: DB_ROW_SECURITY_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi khi saveSecurityConfigToDb:', err);
+  }
+}
 
 interface AuthContextType {
   user: CurrentUser;
@@ -85,6 +154,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return DEFAULT_SECURITY_CONFIG;
   });
 
+  useEffect(() => {
+    fetchSecurityConfigFromDb().then((cfg) => {
+      if (cfg) setSecurityConfig(cfg);
+    }).catch(console.error);
+  }, []);
+
   const [user, setUserState] = useState<CurrentUser>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -103,6 +178,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       localStorage.setItem('bakery_security_config', JSON.stringify(cfg));
     }
+    saveSecurityConfigToDb(cfg).catch(console.error);
   };
 
   const saveCurrentUser = (u: CurrentUser) => {

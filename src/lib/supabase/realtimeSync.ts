@@ -15,7 +15,13 @@ export type ProductChangePayload = {
   action: 'create' | 'update' | 'delete';
   product: any;
 };
+export type RecipeChangePayload = {
+  action: 'create' | 'update' | 'delete';
+  recipe?: any;
+  id?: string;
+};
 type ProductChangeCallback = (payload: ProductChangePayload) => void;
+type RecipeChangeCallback = (payload: RecipeChangePayload) => void;
 type TelegramConfigCallback = (config: any) => void;
 type StoreBrandingCallback = (branding: any) => void;
 type VietqrConfigCallback = (config: any) => void;
@@ -26,6 +32,7 @@ const newOrderListeners = new Set<NewOrderCallback>();
 const clearDemoListeners = new Set<ClearDemoCallback>();
 const dbChangeListeners = new Set<DbChangeCallback>();
 const productListeners = new Set<ProductChangeCallback>();
+const recipeListeners = new Set<RecipeChangeCallback>();
 const telegramConfigListeners = new Set<TelegramConfigCallback>();
 const storeBrandingListeners = new Set<StoreBrandingCallback>();
 const vietqrConfigListeners = new Set<VietqrConfigCallback>();
@@ -162,6 +169,17 @@ function ensureSyncChannel() {
               cb(payload.config);
             } catch (e) {
               console.warn('Lỗi ewalletConfigListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'recipe_updated' }, ({ payload }: any) => {
+        if (payload) {
+          recipeListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi recipeListener:', e);
             }
           });
         }
@@ -403,6 +421,29 @@ export async function broadcastEwalletConfig(config: any) {
 }
 
 /**
+ * Phát sóng cập nhật công thức bánh BOM tới tất cả thiết bị (Admin, Kitchen)
+ */
+export async function broadcastRecipeChange(action: 'create' | 'update' | 'delete', recipe: any) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'recipe_updated',
+        payload: {
+          action,
+          recipe,
+          id: recipe?.id,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastRecipeChange:', err);
+  }
+}
+
+/**
  * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác
  * An toàn tuyệt đối với React StrictMode và Remount
  */
@@ -412,6 +453,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   onClearDemo?: ClearDemoCallback;
   onDbChange?: DbChangeCallback;
   onProductChange?: ProductChangeCallback;
+  onRecipeChange?: RecipeChangeCallback;
   onTelegramConfigChange?: TelegramConfigCallback;
   onStoreBrandingChange?: StoreBrandingCallback;
   onVietqrConfigChange?: VietqrConfigCallback;
@@ -425,6 +467,7 @@ export function subscribeCrossDeviceSync(callbacks: {
     onClearDemo,
     onDbChange,
     onProductChange,
+    onRecipeChange,
     onTelegramConfigChange,
     onStoreBrandingChange,
     onVietqrConfigChange,
@@ -436,6 +479,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onClearDemo) clearDemoListeners.add(onClearDemo);
   if (onDbChange) dbChangeListeners.add(onDbChange);
   if (onProductChange) productListeners.add(onProductChange);
+  if (onRecipeChange) recipeListeners.add(onRecipeChange);
   if (onTelegramConfigChange) telegramConfigListeners.add(onTelegramConfigChange);
   if (onStoreBrandingChange) storeBrandingListeners.add(onStoreBrandingChange);
   if (onVietqrConfigChange) vietqrConfigListeners.add(onVietqrConfigChange);
@@ -447,6 +491,7 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onClearDemo) clearDemoListeners.delete(onClearDemo);
     if (onDbChange) dbChangeListeners.delete(onDbChange);
     if (onProductChange) productListeners.delete(onProductChange);
+    if (onRecipeChange) recipeListeners.delete(onRecipeChange);
     if (onTelegramConfigChange) telegramConfigListeners.delete(onTelegramConfigChange);
     if (onStoreBrandingChange) storeBrandingListeners.delete(onStoreBrandingChange);
     if (onVietqrConfigChange) vietqrConfigListeners.delete(onVietqrConfigChange);

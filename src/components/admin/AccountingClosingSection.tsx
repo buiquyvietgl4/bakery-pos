@@ -14,6 +14,7 @@ import {
   calculateClosingMetrics, 
   printClosingReceipt, 
   exportClosingToCSV,
+  fetchClosingRecordsFromDb,
   CLOSING_UPDATED_EVENT 
 } from '@/lib/utils/closingManager';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
@@ -44,9 +45,12 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
   const [closingNotes, setClosingNotes] = useState<string>('');
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string | null>(null);
 
-  // Tải danh sách chốt sổ từ LocalStorage
+  // Tải danh sách chốt sổ từ LocalStorage & Supabase
   const loadRecords = () => {
     setClosingRecords(getClosingRecords());
+    fetchClosingRecordsFromDb().then((dbRecords) => {
+      if (dbRecords && dbRecords.length > 0) setClosingRecords(dbRecords);
+    }).catch(console.error);
   };
 
   useEffect(() => {

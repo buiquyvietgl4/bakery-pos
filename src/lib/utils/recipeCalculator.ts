@@ -1,5 +1,11 @@
 // src/lib/utils/recipeCalculator.ts
 
+import { supabase } from '@/lib/supabase/client';
+import { DEFAULT_BAKERY_RECIPES, BakeryRecipe } from '@/lib/constants/bakeryData';
+
+export const RECIPES_UPDATED_EVENT = 'bakery_recipes_updated';
+const STORAGE_KEY_RECIPES = 'bakery_recipes';
+
 export interface ParsedRecipeItem {
   numericQty: number;
   unit: string;
@@ -88,4 +94,111 @@ export function normalizeRecipe<T = any>(recipe: T): T {
     ...rec,
     items,
   };
+}
+
+/**
+ * Lấy danh sách công thức đang lưu trong bộ nhớ cục bộ
+ */
+export function getStoredRecipes(): BakeryRecipe[] {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_RECIPES);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed.map(normalizeRecipe);
+        }
+      }
+    } catch {}
+  }
+  return DEFAULT_BAKERY_RECIPES.map(normalizeRecipe);
+}
+
+/**
+ * Tải toàn bộ công thức BOM và định lượng từ Supabase Cloud
+ */
+export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
+  const fallback = getStoredRecipes();
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return fallback;
+  }
+
+  try {
+    const [recipesRes, itemsRes, ingsRes] = await Promise.all([
+      supabase
+        .from('recipes')
+        .select('*')
+        .eq('is_active', true)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('recipe_items')
+        .select('*'),
+      supabase
+        .from('ingredients')
+        .select('id, name, unit, avg_cost')
+    ]);
+
+    if (recipesRes.error || !recipesRes.data) {
+      console.warn('Lỗi tải recipes từ Supabase:', recipesRes.error);
+      return fallback;
+    }
+
+    const cleanRecipes = recipesRes.data.filter(
+      (r: any) => !r.name?.startsWith('SYS_') && r.is_active !== false
+    );
+
+    if (cleanRecipes.length === 0) {
+      return fallback;
+    }
+
+    const ings = ingsRes.data || [];
+    const ingMap = new Map(ings.map((i: any) => [i.id, i]));
+
+    const items = itemsRes.data || [];
+    const itemsByRecipe = new Map<string, any[]>();
+    items.forEach((it: any) => {
+      if (!itemsByRecipe.has(it.recipe_id)) itemsByRecipe.set(it.recipe_id, []);
+      const ing = ingMap.get(it.ingredient_id);
+      itemsByRecipe.get(it.recipe_id)!.push({
+        id: it.id,
+        ingredient_id: it.ingredient_id,
+        name: ing?.name || it.ingredient_name || 'Nguyên liệu',
+        quantity: Number(it.quantity) || 0,
+        qty: Number(it.quantity) || 0,
+        unit: it.unit || ing?.unit || 'g',
+        cost: Number(it.line_cost) || 0,
+      });
+    });
+
+    const fullRecipes: BakeryRecipe[] = cleanRecipes.map((r: any) => {
+      const itemsList = itemsByRecipe.get(r.id) || [];
+      return normalizeRecipe({
+        id: r.id,
+        name: r.name,
+        category: r.category || 'Bánh tươi',
+        yield_qty: Number(r.yield_qty) || 1,
+        yield_unit: r.yield_unit || 'chiếc',
+        cost_per_unit: Number(r.cost_per_unit) || 0,
+        target_food_cost_pct: r.target_food_cost_pct || 35,
+        suggested_price: r.suggested_price || Math.round((Number(r.cost_per_unit) || 0) / 0.35),
+        bake_time_minutes: Number(r.bake_time_minutes) || 25,
+        bake_temp_celsius: Number(r.bake_temp_celsius) || 190,
+        description: r.description || r.notes || '',
+        notes: r.notes || '',
+        items: itemsList,
+      });
+    });
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(STORAGE_KEY_RECIPES, JSON.stringify(fullRecipes));
+        window.dispatchEvent(new CustomEvent(RECIPES_UPDATED_EVENT, { detail: fullRecipes }));
+      } catch {}
+    }
+
+    return fullRecipes;
+  } catch (err) {
+    console.error('Lỗi khi fetchRecipesFromDb:', err);
+    return fallback;
+  }
 }
