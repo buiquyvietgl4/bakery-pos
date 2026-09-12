@@ -18,6 +18,8 @@ export interface OrderDetailModalProps {
   actionIcon?: React.ReactNode;
   actionColorClass?: string;
   onOpenLightbox?: (imgUrl: string) => void;
+  zIndexClass?: string;
+  showNavigationButtons?: boolean;
 }
 
 export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
@@ -30,6 +32,8 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   actionIcon,
   actionColorClass,
   onOpenLightbox,
+  zIndexClass,
+  showNavigationButtons,
 }) => {
   if (!isOpen || !order) return null;
 
@@ -72,7 +76,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const statusInfo = statusLabels[order.status] || { text: order.status, bg: 'bg-zinc-800', textCol: 'text-zinc-300' };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+    <div className={`fixed inset-0 ${zIndexClass || 'z-[10000005]'} bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150`}>
       <div className="bg-zinc-900 border border-zinc-700/80 rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 text-white animate-in zoom-in-95 duration-150 my-auto">
         
         {/* Header Modal */}
@@ -278,7 +282,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
         </div>
 
         {/* Footer Modal Actions */}
-        <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
+        <div className="flex items-center gap-2 pt-2 border-t border-zinc-800 flex-wrap sm:flex-nowrap">
           {onPrintSticker && (
             <button
               type="button"
@@ -288,6 +292,35 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               <Tag className="w-4 h-4 text-amber-400" />
               <span>In Tem Hộp</span>
             </button>
+          )}
+
+          {showNavigationButtons && (
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  window.location.href = `/kitchen?order=${order.order_number || order.id}`;
+                }}
+                className="px-3 py-2.5 rounded-2xl bg-orange-950/70 hover:bg-orange-900 border border-orange-700/80 text-orange-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
+                title="Mở trong Màn hình Bếp (KDS)"
+              >
+                <Flame className="w-4 h-4 text-orange-400" />
+                <span>Mở Bếp</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  window.location.href = `/pos?order=${order.order_number || order.id}`;
+                }}
+                className="px-3 py-2.5 rounded-2xl bg-blue-950/70 hover:bg-blue-900 border border-blue-700/80 text-blue-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
+                title="Mở trong Quầy Bán Hàng (POS)"
+              >
+                <ExternalLink className="w-4 h-4 text-blue-400" />
+                <span>Mở POS</span>
+              </button>
+            </>
           )}
 
           {onAction && actionText && (
@@ -309,7 +342,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs transition cursor-pointer shrink-0 active:scale-95"
+            className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs transition cursor-pointer shrink-0 active:scale-95 ml-auto"
           >
             Đóng
           </button>

@@ -5,8 +5,11 @@ import {
   X, Bell, Send, CheckCircle2, AlertCircle, Smartphone, HelpCircle,
   Sparkles, Database, Trash2, RefreshCw, Radio, Check, ShieldCheck,
   History, Clock, CheckCheck, ExternalLink, Cake, Flame, Inbox, Package,
-  AlertTriangle, MessageSquare, Settings, ArrowLeft
+  AlertTriangle, MessageSquare, Settings, ArrowLeft, Eye
 } from 'lucide-react';
+import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
+import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerModal';
+import { parsePreorderFromNotes, cleanDisplayNotes } from '@/lib/supabase/realtimeSync';
 import {
   getTelegramConfig,
   fetchTelegramConfigFromDb,
@@ -72,6 +75,12 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
 
   // Kiosk WakeLock state
   const [isWakeLockActive, setIsWakeLockActive] = useState(false);
+
+  // States mở chi tiết đơn hàng / mẻ nướng / thông báo trực tiếp
+  const [viewingOrderDetail, setViewingOrderDetail] = useState<any | null>(null);
+  const [viewingBakeDetail, setViewingBakeDetail] = useState<NotificationLogItem | null>(null);
+  const [viewingGeneralDetail, setViewingGeneralDetail] = useState<NotificationLogItem | null>(null);
+  const [stickerModalData, setStickerModalData] = useState<CakeStickerData | null>(null);
 
   // Load status on modal open
   useEffect(() => {
@@ -153,6 +162,135 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
     } finally {
       setIsPushLoading(false);
     }
+  };
+
+  const handlePrintStickerFromOrder = (order: any) => {
+    const fromN = parsePreorderFromNotes(order.notes);
+    const mainItem = order.items?.[0];
+    const cakeFullName = mainItem?.product_name_snapshot || order.cake_name || fromN.cake_name || 'Bánh Kem';
+
+    setStickerModalData({
+      orderNumber: order.order_number || order.id || 'BK-NEW',
+      cakeName: cakeFullName,
+      customerName: order.customer_name || fromN.customer_name || 'Khách Hàng',
+      customerPhone: order.customer_phone || fromN.customer_phone,
+      cakeMessage: order.cake_message || fromN.cake_message,
+      pickupTime: order.preorder_pickup_at || order.pickupDateTime || fromN.pickup_time,
+      deliveryMethod: order.delivery_method || fromN.delivery_method,
+      shippingAddress: order.shipping_address || fromN.shipping_address,
+      createdAt: order.created_at,
+      price: order.total_amount || fromN.total_amount,
+      notes: cleanDisplayNotes(order.notes) || fromN.special_request,
+    });
+  };
+
+  const handleViewDetail = (item: NotificationLogItem) => {
+    markAsRead(item.id);
+
+    const lowerTitle = (item.title || '').toLowerCase();
+    const lowerMsg = (item.message || '').toLowerCase();
+
+    // 1. Kiểm tra xem có phải thông báo lò nướng / làm bánh
+    const isBake = 
+      item.type === 'bake_start' || 
+      item.type === 'bake_done' || 
+      item.type === 'bake_discharge' ||
+      lowerTitle.includes('lò') || 
+      lowerTitle.includes('nướng') || 
+      lowerTitle.includes('ra lò') || 
+      lowerTitle.includes('chín');
+
+    // 2. Kiểm tra xem có phải thông báo đơn hàng
+    const isOrder = 
+      item.type === 'new_order' || 
+      item.type === 'urgent_alert' || 
+      !!item.orderNumber || 
+      lowerTitle.includes('đơn') || 
+      lowerTitle.includes('giao gấp') ||
+      lowerMsg.includes('đơn hàng') ||
+      lowerMsg.includes('bánh kem') ||
+      lowerMsg.includes('khách:');
+
+    if (isOrder) {
+      // Trích xuất mã đơn nếu có
+      const orderNum = item.orderNumber || 
+        (item.title + ' ' + item.message).match(/#([A-Za-z0-9-]+)/)?.[1] ||
+        (item.title + ' ' + item.message).match(/(BK-[A-Za-z0-9-]+)/i)?.[1];
+
+      let foundOrder: any = null;
+      try {
+        const rawOrders = localStorage.getItem('bakery_orders');
+        if (rawOrders) {
+          const orders = JSON.parse(rawOrders);
+          if (Array.isArray(orders)) {
+            foundOrder = orders.find((o: any) => 
+              (orderNum && (o.order_number === orderNum || o.id === orderNum)) ||
+              (item.orderNumber && (o.order_number === item.orderNumber || o.id === item.orderNumber))
+            );
+          }
+        }
+        if (!foundOrder) {
+          const rawPre = localStorage.getItem('bakery_preorders');
+          if (rawPre) {
+            const pres = JSON.parse(rawPre);
+            if (Array.isArray(pres)) {
+              foundOrder = pres.find((o: any) => 
+                (orderNum && (o.order_number === orderNum || o.id === orderNum)) ||
+                (item.orderNumber && (o.order_number === item.orderNumber || o.id === item.orderNumber))
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error finding order for notification:', e);
+      }
+
+      if (!foundOrder) {
+        // Tự động tái tạo đơn hàng tổng thể từ nội dung thông báo nếu không có sẵn trong local
+        const phoneMatch = (item.title + ' ' + item.message).match(/(0\d{9,10})/);
+        const custMatch = (item.title + ' ' + item.message).match(/Khách:\s*([^(,\n]+)/i);
+        let cakeName = '';
+        if (item.title.includes(':')) {
+          cakeName = item.title.split(':').slice(1).join(':').trim();
+        } else {
+          cakeName = item.title.replace(/^[^a-zA-Z0-9À-ỹ]+/g, '').trim();
+        }
+
+        foundOrder = {
+          id: orderNum || `NOTIF-${item.id}`,
+          order_number: orderNum || `BK-${item.id.slice(-6).toUpperCase()}`,
+          order_type: 'preorder',
+          status: item.type === 'urgent_alert' ? 'preparing' : 'pending',
+          customer_name: custMatch ? custMatch[1].trim() : (item.sender || 'Khách Hàng'),
+          customer_phone: phoneMatch ? phoneMatch[1] : '',
+          cake_name: cakeName || 'Bánh Kem Theo Yêu Cầu',
+          notes: item.message + (item.extraDetails ? `\n${item.extraDetails}` : ''),
+          items: [
+            {
+              product_name_snapshot: cakeName || 'Bánh Kem Theo Yêu Cầu',
+              quantity: 1,
+              unit_price: 0,
+            },
+          ],
+          total_amount: 0,
+          deposit_amount: 0,
+          remaining_amount: 0,
+          created_at: new Date(item.timestamp).toISOString(),
+          delivery_method: 'pickup',
+        };
+      }
+
+      setViewingOrderDetail(foundOrder);
+      return;
+    }
+
+    if (isBake) {
+      setViewingBakeDetail(item);
+      return;
+    }
+
+    // Thông báo chung / hệ thống / telegram
+    setViewingGeneralDetail(item);
   };
 
   if (!isOpen) return null;
@@ -611,12 +749,18 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
                           </div>
 
                           {/* Tiêu đề */}
-                          <h4 className={`text-xs sm:text-sm font-bold leading-snug ${item.isRead ? 'text-zinc-800' : 'text-zinc-950 font-black'}`}>
+                          <h4 
+                            onClick={() => handleViewDetail(item)}
+                            className={`text-xs sm:text-sm font-bold leading-snug cursor-pointer hover:text-amber-700 transition ${item.isRead ? 'text-zinc-800' : 'text-zinc-950 font-black'}`}
+                          >
                             {item.title}
                           </h4>
 
                           {/* Nội dung thông báo */}
-                          <p className="text-xs text-zinc-600 leading-relaxed break-words whitespace-pre-line">
+                          <p 
+                            onClick={() => handleViewDetail(item)}
+                            className="text-xs text-zinc-600 leading-relaxed break-words whitespace-pre-line cursor-pointer hover:text-zinc-900 transition"
+                          >
                             {item.message}
                           </p>
 
@@ -644,22 +788,15 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
                           {/* Hàng nút bấm xem chi tiết / đổi trạng thái */}
                           <div className="pt-2 flex items-center justify-between border-t border-zinc-100 mt-2">
                             <div className="flex items-center gap-2">
-                              {item.url && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    markAsRead(item.id);
-                                    onClose();
-                                    if (typeof window !== 'undefined' && item.url) {
-                                      window.location.href = item.url;
-                                    }
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  <span>Xem chi tiết</span>
-                                </button>
-                              )}
+                              <button
+                                type="button"
+                                onClick={() => handleViewDetail(item)}
+                                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs active:scale-95"
+                                title="Xem thông tin chi tiết"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>Xem chi tiết</span>
+                              </button>
 
                               <button
                                 type="button"
@@ -1049,6 +1186,196 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
           </button>
         </div>
       </div>
+
+      {/* ── MODAL XEM CHI TIẾT ĐƠN HÀNG TRỰC TIẾP ── */}
+      {viewingOrderDetail && (
+        <OrderDetailModal
+          isOpen={!!viewingOrderDetail}
+          onClose={() => setViewingOrderDetail(null)}
+          order={viewingOrderDetail}
+          onPrintSticker={handlePrintStickerFromOrder}
+          showNavigationButtons={true}
+        />
+      )}
+
+      {/* ── MODAL IN TEM BÁNH TỪ CHI TIẾT ── */}
+      {stickerModalData && (
+        <CakeStickerModal
+          isOpen={!!stickerModalData}
+          onClose={() => setStickerModalData(null)}
+          data={stickerModalData}
+        />
+      )}
+
+      {/* ── MODAL XEM CHI TIẾT MẺ NƯỚNG / LÒ BẾP ── */}
+      {viewingBakeDetail && (
+        <div className="fixed inset-0 z-[10000005] bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-zinc-900 border border-zinc-700/80 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-white animate-in zoom-in-95 duration-150 my-auto">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-zinc-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-orange-950/80 text-orange-400 border border-orange-800/80 flex items-center justify-center shadow-xs">
+                  <Flame className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-zinc-100">Chi Tiết Mẻ Nướng & Lò Bếp</h3>
+                  <p className="text-xs text-zinc-400">Thông báo từ bộ phận sản xuất & KDS</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingBakeDetail(null)}
+                className="text-zinc-400 hover:text-white p-1.5 rounded-xl hover:bg-zinc-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="space-y-3 bg-zinc-950/90 rounded-2xl p-4 border border-zinc-800/90">
+              <div className="flex items-center justify-between gap-2">
+                <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-md border ${
+                  viewingBakeDetail.type === 'bake_done'
+                    ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                    : viewingBakeDetail.type === 'bake_start'
+                    ? 'bg-amber-950 text-amber-300 border-amber-800'
+                    : 'bg-blue-950 text-blue-300 border-blue-800'
+                }`}>
+                  {viewingBakeDetail.type === 'bake_done' ? '🍞 BÁNH ĐÃ CHÍN' : viewingBakeDetail.type === 'bake_start' ? '🔥 ĐANG NƯỚNG' : '✨ RA LÒ'}
+                </span>
+                <span className="text-[11px] text-zinc-400 font-medium">
+                  {formatRelativeNotificationTime(viewingBakeDetail.timestamp)} ({viewingBakeDetail.createdAtFormatted})
+                </span>
+              </div>
+
+              <h4 className="font-black text-base text-amber-400 leading-snug">
+                {viewingBakeDetail.title}
+              </h4>
+
+              <div className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line bg-zinc-900 p-3 rounded-xl border border-zinc-800">
+                {viewingBakeDetail.message}
+              </div>
+
+              {viewingBakeDetail.sender && (
+                <div className="flex items-center gap-2 text-xs text-zinc-400">
+                  <span className="font-semibold text-zinc-300">Vị trí / Thiết bị:</span>
+                  <span className="bg-zinc-800 px-2 py-0.5 rounded text-zinc-200 font-mono font-bold">
+                    {viewingBakeDetail.sender}
+                  </span>
+                </div>
+              )}
+
+              {viewingBakeDetail.extraDetails && (
+                <div className="text-xs text-zinc-400 italic bg-zinc-900/50 p-2.5 rounded-xl border border-zinc-800/50">
+                  {viewingBakeDetail.extraDetails}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center gap-2 pt-2 border-t border-zinc-800">
+              <button
+                type="button"
+                onClick={() => {
+                  setViewingBakeDetail(null);
+                  onClose();
+                  window.location.href = '/kitchen';
+                }}
+                className="flex-1 py-2.5 rounded-2xl bg-orange-600 hover:bg-orange-500 font-black text-xs sm:text-sm text-white flex items-center justify-center gap-2 transition shadow-lg cursor-pointer active:scale-95"
+              >
+                <Flame className="w-4 h-4" />
+                <span>Vào Màn Hình Bếp / Lò Nướng</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewingBakeDetail(null)}
+                className="px-4 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs transition cursor-pointer active:scale-95"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL XEM CHI TIẾT THÔNG BÁO HỆ THỐNG / CHUNG ── */}
+      {viewingGeneralDetail && (
+        <div className="fixed inset-0 z-[10000005] bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-zinc-900 animate-in zoom-in-95 duration-150 my-auto">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-zinc-100 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-zinc-900">Chi Tiết Thông Báo</h3>
+                  <p className="text-xs text-zinc-500">{viewingGeneralDetail.createdAtFormatted}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingGeneralDetail(null)}
+                className="text-zinc-400 hover:text-zinc-700 p-1.5 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="space-y-3 bg-zinc-50 rounded-2xl p-4 border border-zinc-200/80">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-200">
+                  {viewingGeneralDetail.sender || 'Hệ Thống'}
+                </span>
+                <span className="text-[11px] text-zinc-500">
+                  {formatRelativeNotificationTime(viewingGeneralDetail.timestamp)}
+                </span>
+              </div>
+
+              <h4 className="font-black text-sm text-zinc-950 leading-snug">
+                {viewingGeneralDetail.title}
+              </h4>
+
+              <p className="text-xs text-zinc-700 leading-relaxed whitespace-pre-line bg-white p-3 rounded-xl border border-zinc-200 shadow-2xs">
+                {viewingGeneralDetail.message}
+              </p>
+
+              {viewingGeneralDetail.extraDetails && (
+                <p className="text-xs text-zinc-500 italic bg-amber-50/50 p-2.5 rounded-xl border border-amber-100">
+                  {viewingGeneralDetail.extraDetails}
+                </p>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
+              {viewingGeneralDetail.url && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const u = viewingGeneralDetail.url;
+                    setViewingGeneralDetail(null);
+                    onClose();
+                    if (u) window.location.href = u;
+                  }}
+                  className="flex-1 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 font-bold text-xs sm:text-sm text-white flex items-center justify-center gap-2 transition shadow-sm cursor-pointer active:scale-95"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Mở liên kết ({viewingGeneralDetail.url})</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setViewingGeneralDetail(null)}
+                className="px-4 py-2.5 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs transition cursor-pointer active:scale-95 ml-auto"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

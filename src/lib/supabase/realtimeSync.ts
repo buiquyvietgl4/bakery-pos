@@ -528,18 +528,30 @@ export async function syncOrderToSupabase(
   }
 }
 
+export interface ParsedPreorderNotes {
+  delivery_method?: 'shipping';
+  shipping_address?: string;
+  total_amount?: number;
+  deposit_amount?: number;
+  remaining_amount?: number;
+  reference_image_url?: string;
+  cake_name?: string;
+  cake_size?: string;
+  customer_name?: string;
+  customer_phone?: string;
+  preorder_pickup_at?: string;
+  pickup_time?: string;
+  cake_message?: string;
+  special_request?: string;
+}
+
 /**
  * Trích xuất thông tin đặt bánh từ trường ghi chú (notes)
  * Làm chốt an toàn khi dữ liệu đồng bộ qua các hệ thống hoặc thiết bị khác nhau
  */
-export function parsePreorderFromNotes(notes?: string) {
+export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
   if (!notes || typeof notes !== 'string') {
-    return {
-      delivery_method: undefined,
-      shipping_address: undefined,
-      deposit_amount: undefined,
-      remaining_amount: undefined,
-    };
+    return {};
   }
 
   const isShip =
@@ -628,6 +640,7 @@ export function parsePreorderFromNotes(notes?: string) {
     customer_name: customerName,
     customer_phone: customerPhone,
     preorder_pickup_at: pickupTime,
+    pickup_time: pickupTime,
     cake_message: cakeMessage,
     special_request: specialRequest,
   };

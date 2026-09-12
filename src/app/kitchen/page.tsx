@@ -218,6 +218,22 @@ export default function KitchenPage() {
     const unsub = subscribeNotificationHistory(updateUnread);
     return () => unsub();
   }, []);
+
+  // ── XỬ LÝ DEEP LINK XEM CHI TIẾT ĐƠN HÀNG TỪ THÔNG BÁO / URL (?order=...) ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const orderParam = params.get('order');
+    if (orderParam && orders.length > 0) {
+      const target = orders.find(
+        (o) => o.order_number === orderParam || o.id === orderParam || o.order_number?.includes(orderParam)
+      );
+      if (target) {
+        setOrderDetailModalData(target);
+      }
+    }
+  }, [orders]);
+
   const [kdsToast, setKdsToast] = useState<{
     id: string;
     title: string;

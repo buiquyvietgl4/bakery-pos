@@ -29,6 +29,7 @@ import { getDeliveryUrgency, getUrgentPreorders, sortPreordersByUrgency } from '
 import { sendTelegramOrderAlert } from '@/lib/utils/telegramNotify';
 import { triggerServerPush } from '@/lib/utils/webPushManager';
 import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerModal';
+import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { ManagerPinModal } from '@/components/pos/ManagerPinModal';
 import { printHtml } from '@/lib/utils/printHelper';
 import { SpoilageLog, SPOILAGE_REASONS } from '@/lib/types/spoilage';
@@ -399,6 +400,36 @@ export default function POSPage() {
     setStickerModalData(data);
     setIsStickerModalOpen(true);
   };
+
+  // ── MODAL XEM CHI TIẾT ĐƠN HÀNG TỪ THÔNG BÁO HOẶC DEEP LINK (?order=...) ──
+  const [posViewingOrderDetail, setPosViewingOrderDetail] = useState<any | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const orderParam = params.get('order');
+    if (orderParam) {
+      let found = preordersList.find(
+        (p: any) => p.order_number === orderParam || p.orderNumber === orderParam || p.id === orderParam
+      );
+      if (!found) {
+        try {
+          const raw = localStorage.getItem('bakery_orders');
+          if (raw) {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              found = list.find(
+                (o: any) => o.order_number === orderParam || o.orderNumber === orderParam || o.id === orderParam
+              );
+            }
+          }
+        } catch {}
+      }
+      if (found) {
+        setPosViewingOrderDetail(found);
+      }
+    }
+  }, [preordersList]);
 
   // ── PRINTER SETTINGS MODAL STATE ──
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
@@ -5566,6 +5597,32 @@ export default function POSPage() {
         onClose={() => setIsStickerModalOpen(false)}
         data={stickerModalData}
       />
+
+      {/* ── MODAL XEM CHI TIẾT ĐƠN HÀNG KHI MỞ QUA URL / THÔNG BÁO (?order=...) ── */}
+      {posViewingOrderDetail && (
+        <OrderDetailModal
+          isOpen={!!posViewingOrderDetail}
+          onClose={() => setPosViewingOrderDetail(null)}
+          order={posViewingOrderDetail}
+          onPrintSticker={(ord) => {
+            const fromN = parsePreorderFromNotes(ord.notes);
+            openStickerModal({
+              orderNumber: ord.order_number || ord.orderNumber || ord.id,
+              cakeName: ord.cake_name || fromN.cake_name || ord.items?.[0]?.product_name_snapshot || 'Bánh Kem',
+              customerName: ord.customer_name || ord.customerName || fromN.customer_name,
+              customerPhone: ord.customer_phone || ord.customerPhone || fromN.customer_phone,
+              cakeMessage: ord.cake_message || fromN.cake_message,
+              pickupTime: ord.preorder_pickup_at || ord.pickupDateTime || fromN.pickup_time,
+              deliveryMethod: ord.delivery_method || fromN.delivery_method,
+              shippingAddress: ord.shipping_address || fromN.shipping_address,
+              createdAt: ord.created_at,
+              price: ord.total_amount || fromN.total_amount,
+              notes: cleanDisplayNotes(ord.notes) || fromN.special_request,
+            });
+          }}
+          showNavigationButtons={true}
+        />
+      )}
 
       {/* ── MODAL XÁC THỰC MÃ PIN QUẢN LÝ ── */}
       {pinActionData && (
