@@ -11,7 +11,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, QrCode, Copy, Check, Building2,
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
-  Send, Bell, History, Printer
+  Send, Bell, History, Printer, Flame, Edit
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -308,6 +308,8 @@ export default function AdminDashboard() {
       cost_per_unit: 127495,
       target_food_cost_pct: 35,
       suggested_price: 365000,
+      bake_time_minutes: 35,
+      bake_temp_celsius: 165,
       items: [
         { name: 'Bột mì số 11', qty: 300, quantity: 300, unit: 'g', cost: 7875 },
         { name: 'Trứng gà ta', qty: 6, quantity: 6, unit: 'quả', cost: 21420 },
@@ -325,6 +327,8 @@ export default function AdminDashboard() {
       cost_per_unit: 11200,
       target_food_cost_pct: 32,
       suggested_price: 35000,
+      bake_time_minutes: 22,
+      bake_temp_celsius: 195,
       items: [
         { name: 'Bột mì số 11', qty: 500, quantity: 500, unit: 'g', cost: 13125 },
         { name: 'Bơ lạt Anchor', qty: 250, quantity: 250, unit: 'g', cost: 30000 },
@@ -334,12 +338,15 @@ export default function AdminDashboard() {
     },
   ]);
 
-  // Modal Thêm Mới Công Thức (BOM Builder Modal State)
+  // Modal Thêm Mới & Chỉnh Sửa Công Thức (BOM Builder Modal State)
   const [isAddRecipeModalOpen, setIsAddRecipeModalOpen] = useState(false);
+  const [editingRecipeId, setEditingRecipeId] = useState<string | null>(null);
   const [newRecipeName, setNewRecipeName] = useState('');
   const [newRecipeYield, setNewRecipeYield] = useState<number>(1);
   const [newRecipeYieldUnit, setNewRecipeYieldUnit] = useState('chiếc');
   const [newRecipeFoodCostPct, setNewRecipeFoodCostPct] = useState<number>(35);
+  const [newRecipeBakeTime, setNewRecipeBakeTime] = useState<number | string>(25);
+  const [newRecipeBakeTemp, setNewRecipeBakeTemp] = useState<number | string>(190);
   const [newRecipeItems, setNewRecipeItems] = useState<
     { ingredient_id: string; quantity: number }[]
   >([
@@ -347,6 +354,45 @@ export default function AdminDashboard() {
   ]);
   const [savingRecipe, setSavingRecipe] = useState(false);
   const [recipeSuccess, setRecipeSuccess] = useState<string | null>(null);
+
+  const handleOpenAddRecipe = () => {
+    setEditingRecipeId(null);
+    setNewRecipeName('');
+    setNewRecipeYield(1);
+    setNewRecipeYieldUnit('chiếc');
+    setNewRecipeFoodCostPct(35);
+    setNewRecipeBakeTime(25);
+    setNewRecipeBakeTemp(190);
+    setNewRecipeItems([{ ingredient_id: ingredients[0]?.id || '1', quantity: 200 }]);
+    setIsAddRecipeModalOpen(true);
+  };
+
+  const handleOpenEditRecipe = (rec: any) => {
+    setEditingRecipeId(rec.id);
+    setNewRecipeName(rec.name || '');
+    setNewRecipeYield(rec.yield_qty || 1);
+    setNewRecipeYieldUnit(rec.yield_unit || 'chiếc');
+    setNewRecipeFoodCostPct(rec.target_food_cost_pct || 35);
+    setNewRecipeBakeTime(rec.bake_time_minutes || 25);
+    setNewRecipeBakeTemp(rec.bake_temp_celsius || 190);
+
+    if (Array.isArray(rec.items) && rec.items.length > 0) {
+      const mapped = rec.items.map((it: any) => {
+        const p = parseRecipeItem(it);
+        const matchedIng = ingredients.find(
+          (ing) => ing.id === it.ingredient_id || ing.name.toLowerCase() === it.name.toLowerCase()
+        );
+        return {
+          ingredient_id: matchedIng ? matchedIng.id : (it.ingredient_id || ingredients[0]?.id || '1'),
+          quantity: p.numericQty || 100,
+        };
+      });
+      setNewRecipeItems(mapped);
+    } else {
+      setNewRecipeItems([{ ingredient_id: ingredients[0]?.id || '1', quantity: 200 }]);
+    }
+    setIsAddRecipeModalOpen(true);
+  };
 
   // ── OPEX EXPENSES STATE ──
   const [expenses, setExpenses] = useState<ExpenseItem[]>([
@@ -1087,56 +1133,88 @@ export default function AdminDashboard() {
     const costPerUnit = Math.round(totalBatchCost / (newRecipeYield || 1));
     const suggestedPrice = Math.round((costPerUnit / ((newRecipeFoodCostPct || 35) / 100)) / 1000) * 1000;
 
-    const newRecipeObj = {
-      id: newId,
+    const bakeTime = Number(newRecipeBakeTime) > 0 ? Number(newRecipeBakeTime) : 25;
+    const bakeTemp = Number(newRecipeBakeTemp) > 0 ? Number(newRecipeBakeTemp) : 190;
+    const currentId = editingRecipeId || newId;
+
+    const recipeObj = {
+      id: currentId,
       name: newRecipeName,
       yield_qty: newRecipeYield,
       yield_unit: newRecipeYieldUnit,
       cost_per_unit: costPerUnit,
       target_food_cost_pct: newRecipeFoodCostPct,
       suggested_price: suggestedPrice,
+      bake_time_minutes: bakeTime,
+      bake_temp_celsius: bakeTemp,
       items: formattedItems,
     };
 
     try {
       if (navigator.onLine) {
-        await supabase.from('recipes').insert({
-          id: newId,
-          name: newRecipeName,
-          yield_qty: newRecipeYield,
-          yield_unit: newRecipeYieldUnit,
-          total_material_cost: totalBatchCost,
-          cost_per_unit: costPerUnit,
-        });
+        if (editingRecipeId) {
+          await supabase.from('recipes').upsert({
+            id: currentId,
+            name: newRecipeName,
+            yield_qty: newRecipeYield,
+            yield_unit: newRecipeYieldUnit,
+            total_material_cost: totalBatchCost,
+            cost_per_unit: costPerUnit,
+            bake_time_minutes: bakeTime,
+            bake_temp_celsius: bakeTemp,
+          });
+        } else {
+          await supabase.from('recipes').insert({
+            id: currentId,
+            name: newRecipeName,
+            yield_qty: newRecipeYield,
+            yield_unit: newRecipeYieldUnit,
+            total_material_cost: totalBatchCost,
+            cost_per_unit: costPerUnit,
+            bake_time_minutes: bakeTime,
+            bake_temp_celsius: bakeTemp,
+          });
+        }
 
         const itemsToInsert = formattedItems.map((it) => ({
-          recipe_id: newId,
+          recipe_id: currentId,
           ingredient_id: it.ingredient_id,
           quantity: it.quantity,
           unit: it.unit,
           line_cost: it.cost,
         }));
+        await supabase.from('recipe_items').delete().eq('recipe_id', currentId);
         await supabase.from('recipe_items').insert(itemsToInsert);
       }
     } catch (err) {
-      console.error('Supabase recipe insert:', err);
+      console.error('Supabase recipe save:', err);
     }
 
-    const updatedRecipes = [newRecipeObj, ...recipes];
+    let updatedRecipes: any[];
+    if (editingRecipeId) {
+      updatedRecipes = recipes.map((r) => (r.id === editingRecipeId ? recipeObj : r));
+      setRecipeSuccess(`Đã cập nhật công thức BOM "${newRecipeName}" (Nướng: ${bakeTime} phút, ${bakeTemp}°C)! Giá vốn: ${costPerUnit.toLocaleString('vi-VN')}₫/${newRecipeYieldUnit}.`);
+    } else {
+      updatedRecipes = [recipeObj, ...recipes];
+      setRecipeSuccess(`Đã lưu công thức BOM mới cho "${newRecipeName}" thành công (Nướng: ${bakeTime} phút, ${bakeTemp}°C)! Giá vốn: ${costPerUnit.toLocaleString('vi-VN')}₫/${newRecipeYieldUnit}.`);
+    }
+
     setRecipes(updatedRecipes);
     if (typeof window !== 'undefined') {
       localStorage.setItem('bakery_recipes', JSON.stringify(updatedRecipes));
     }
 
-    setRecipeSuccess(`Đã lưu công thức BOM cho "${newRecipeName}" thành công! Giá vốn: ${costPerUnit.toLocaleString('vi-VN')}₫/${newRecipeYieldUnit}.`);
     setTimeout(() => setRecipeSuccess(null), 5000);
     setIsAddRecipeModalOpen(false);
 
     // Reset form
+    setEditingRecipeId(null);
     setNewRecipeName('');
     setNewRecipeYield(1);
     setNewRecipeYieldUnit('chiếc');
     setNewRecipeFoodCostPct(35);
+    setNewRecipeBakeTime(25);
+    setNewRecipeBakeTemp(190);
     setNewRecipeItems([{ ingredient_id: ingredients[0]?.id || '1', quantity: 200 }]);
     setSavingRecipe(false);
   };
@@ -3106,7 +3184,7 @@ export default function AdminDashboard() {
                   alert('Kho chưa có nguyên liệu nào. Vui lòng thêm nguyên liệu ở Tab "Kho Xuất Nhập & Vật Tư" trước!');
                   return;
                 }
-                setIsAddRecipeModalOpen(true);
+                handleOpenAddRecipe();
               }}
               className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/25 cursor-pointer transition shrink-0"
             >
@@ -3129,7 +3207,7 @@ export default function AdminDashboard() {
                 Bấm nút "Thêm Công Thức Bánh Mới" để khai báo định mức nguyên liệu và tự động tính toán giá vốn chính xác.
               </p>
               <button
-                onClick={() => setIsAddRecipeModalOpen(true)}
+                onClick={handleOpenAddRecipe}
                 className="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700"
               >
                 Tạo công thức đầu tiên
@@ -3142,11 +3220,15 @@ export default function AdminDashboard() {
                   <div className="flex justify-between items-start">
                     <div>
                       <h3 className="font-black text-base text-zinc-900">{rec.name}</h3>
-                      <span className="text-xs text-zinc-500">
-                        Định lượng mẻ: <b>{rec.yield_qty} {rec.yield_unit || 'chiếc'}</b>
-                      </span>
+                      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-zinc-500">
+                        <span>Định lượng mẻ: <b>{rec.yield_qty} {rec.yield_unit || 'chiếc'}</b></span>
+                        <span className="text-zinc-300">•</span>
+                        <span className="inline-flex items-center gap-1 font-bold text-orange-700 bg-orange-50 px-2.5 py-0.5 rounded-lg border border-orange-200/80 text-[11px]">
+                          ⏱️ {rec.bake_time_minutes || 25} phút • 🌡️ {rec.bake_temp_celsius || 190}°C
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-start gap-3">
+                    <div className="flex items-start gap-2">
                       <div className="text-right">
                         <span className="block font-black text-base text-orange-600">
                           {rec.cost_per_unit.toLocaleString('vi-VN')}₫ / {rec.yield_unit || 'chiếc'}
@@ -3156,8 +3238,17 @@ export default function AdminDashboard() {
                         </span>
                       </div>
                       <button
+                        type="button"
+                        onClick={() => handleOpenEditRecipe(rec)}
+                        className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-700 hover:bg-amber-50 transition cursor-pointer"
+                        title="Chỉnh sửa công thức & thông số nướng"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => handleDeleteRecipe(rec.id, rec.name)}
-                        className="p-1 rounded-lg text-zinc-300 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                        className="p-1.5 rounded-lg text-zinc-300 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
                         title="Xóa công thức này"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -3202,8 +3293,10 @@ export default function AdminDashboard() {
                   <BookOpen className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-lg text-zinc-900">Thêm Mới Công Thức Bánh (BOM)</h3>
-                  <p className="text-[11px] text-zinc-500">Khai báo định mức nguyên liệu để hệ thống tự động tính giá vốn COGS</p>
+                  <h3 className="font-black text-lg text-zinc-900">
+                    {editingRecipeId ? 'Chỉnh Sửa Công Thức Bánh (BOM)' : 'Thêm Mới Công Thức Bánh (BOM)'}
+                  </h3>
+                  <p className="text-[11px] text-zinc-500">Khai báo định mức nguyên liệu & thông số nướng lò để tự động tính giá vốn và kết nối Bếp KDS</p>
                 </div>
               </div>
               <button onClick={() => setIsAddRecipeModalOpen(false)} className="text-zinc-400 hover:text-zinc-600">
@@ -3279,6 +3372,52 @@ export default function AdminDashboard() {
                     onChange={(e) => setNewRecipeFoodCostPct(Number(e.target.value))}
                     className="w-full p-2 bg-white border border-zinc-200 rounded-xl font-black text-center text-sm text-amber-700"
                   />
+                </div>
+              </div>
+
+              {/* 3. 🔥 THỜI GIAN VÀ NHIỆT ĐỘ NƯỚNG LÒ (KẾT NỐI MÀN HÌNH BẾP KDS) */}
+              <div className="p-3.5 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50/60 rounded-2xl border border-orange-200/80 space-y-2">
+                <div className="flex items-center gap-1.5 font-bold text-orange-950 text-xs">
+                  <Flame className="w-4 h-4 text-orange-600" />
+                  <span>Thông số nướng chuẩn (Tự động nạp vào bộ đếm giờ Lò nướng tại Màn hình Bếp):</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[11px] font-bold text-zinc-700 block mb-1">
+                      ⏱️ Thời gian nướng (phút):
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={1}
+                        max={300}
+                        required
+                        value={newRecipeBakeTime}
+                        onChange={(e) => setNewRecipeBakeTime(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full p-2 pr-12 bg-white border border-orange-300 rounded-xl font-black text-center text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        placeholder="25"
+                      />
+                      <span className="absolute right-3 top-2.5 text-[11px] font-bold text-zinc-400 pointer-events-none">phút</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-[11px] font-bold text-zinc-700 block mb-1">
+                      🌡️ Nhiệt độ lò nướng (°C):
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={50}
+                        max={350}
+                        required
+                        value={newRecipeBakeTemp}
+                        onChange={(e) => setNewRecipeBakeTemp(e.target.value === '' ? '' : Number(e.target.value))}
+                        className="w-full p-2 pr-10 bg-white border border-orange-300 rounded-xl font-black text-center text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-orange-400"
+                        placeholder="190"
+                      />
+                      <span className="absolute right-3 top-2.5 text-[11px] font-bold text-zinc-400 pointer-events-none">°C</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
