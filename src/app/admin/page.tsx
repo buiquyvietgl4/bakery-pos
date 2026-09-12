@@ -460,6 +460,35 @@ export default function AdminDashboard() {
   const [localSqlNotice, setLocalSqlNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const localBackupFileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── PHÂN KHU SUB-TAB CSDL (CHUNG / ONLINE / LOCAL) & CHỐNG TÍCH NHẦM CHẾ ĐỘ ──
+  const [dbSubTab, setDbSubTab] = useState<'common' | 'online' | 'local'>('common');
+  const [pendingDbMode, setPendingDbMode] = useState<'online' | 'local'>(() => getSqlModeConfig().mode);
+
+  useEffect(() => {
+    setPendingDbMode(sqlModeConfig.mode);
+  }, [sqlModeConfig.mode]);
+
+  const handleSaveDbModeConfig = async () => {
+    if (pendingDbMode === sqlModeConfig.mode) {
+      setLocalSqlNotice({
+        type: 'info',
+        text: `Hệ thống hiện tại đã đang hoạt động ở Chế độ ${pendingDbMode === 'local' ? 'Local SQL Cục bộ' : 'Online Cloud SQL'}.`,
+      });
+      setTimeout(() => setLocalSqlNotice(null), 4000);
+      return;
+    }
+    await handleSwitchDbMode(pendingDbMode);
+  };
+
+  const handleCancelDbModeSelection = () => {
+    setPendingDbMode(sqlModeConfig.mode);
+    setLocalSqlNotice({
+      type: 'info',
+      text: 'Đã hủy bỏ lựa chọn và giữ nguyên chế độ CSDL đang chạy.',
+    });
+    setTimeout(() => setLocalSqlNotice(null), 3000);
+  };
+
   const updateLocalSqlPermStatus = async () => {
     try {
       const p = await checkLocalSqlDirPermission();
@@ -3956,18 +3985,101 @@ export default function AdminDashboard() {
 
       {/* ── TAB 7: QUẢN TRỊ CƠ SỞ DỮ LIỆU: CLOUD SQL & LOCAL SQL CỤC BỘ ── */}
       {activeTab === 'cloud' && (
-        <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-6 max-w-3xl">
-          <div className="pb-3 border-b border-zinc-100">
-            <h2 className="font-black text-lg text-zinc-900 flex items-center gap-2">
-              <Database className="w-5 h-5 text-amber-600" /> Quản Trị Cơ Sở Dữ Liệu & Lưu Trữ SQL
-            </h2>
-            <p className="text-xs text-zinc-500">
-              Tùy chọn linh hoạt: Chạy Online đồng bộ qua Supabase Cloud hoặc Chạy Cục bộ Local SQL (Lưu vào thư mục máy tính, không cần kết nối SQL ngoài).
-            </p>
+        <div className="max-w-5xl w-full mx-auto space-y-6">
+          {/* HEADER CHÍNH CỦA TRANG CSDL */}
+          <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-700 flex items-center justify-center font-bold">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="font-black text-xl text-zinc-900 flex items-center gap-2">
+                    Quản Trị Cơ Sở Dữ Liệu & Lưu Trữ SQL
+                  </h2>
+                  <p className="text-xs text-zinc-500">
+                    Lựa chọn linh hoạt giữa Chạy Online (Cloud SQL) và Chạy Cục bộ (Local SQL máy tính) với dữ liệu cô lập tuyệt đối.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* CHỈ BÁO HUY HIỆU TRẠNG THÁI HIỆN TẠI */}
+            <div className="flex items-center gap-2 shrink-0">
+              <div className={`px-3.5 py-2 rounded-2xl border flex items-center gap-2 text-xs font-bold ${
+                sqlModeConfig.mode === 'online'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                  : 'bg-amber-50 border-amber-200 text-amber-800'
+              }`}>
+                <span className={`w-2.5 h-2.5 rounded-full ${
+                  sqlModeConfig.mode === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'
+                }`} />
+                <span>
+                  Đang chạy:{' '}
+                  <b>{sqlModeConfig.mode === 'online' ? '1. Online Cloud SQL' : '2. Local SQL Cục Bộ'}</b>
+                </span>
+              </div>
+            </div>
           </div>
 
+          {/* THANH ĐIỀU HƯỚNG PHÂN NHÁNH 3 PHÂN KHU (SUB-TABS SEGMENTED PILL BAR) */}
+          <div className="bg-zinc-100 p-1.5 rounded-2xl border border-zinc-200/80 flex items-center gap-2 overflow-x-auto scrollbar-none">
+            <button
+              type="button"
+              onClick={() => setDbSubTab('common')}
+              className={`flex-1 min-w-[200px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-black transition cursor-pointer ${
+                dbSubTab === 'common'
+                  ? 'bg-white text-zinc-900 shadow-xs border border-zinc-200'
+                  : 'text-zinc-600 hover:text-zinc-900 hover:bg-white/60'
+              }`}
+            >
+              <Sliders className="w-4 h-4 text-amber-600" />
+              <span>1. Cài Đặt Chung & Chế Độ</span>
+              {pendingDbMode !== sqlModeConfig.mode && (
+                <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping" title="Có thay đổi chưa lưu" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDbSubTab('online')}
+              className={`flex-1 min-w-[200px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-black transition cursor-pointer ${
+                dbSubTab === 'online'
+                  ? 'bg-white text-zinc-900 shadow-xs border border-zinc-200'
+                  : 'text-zinc-600 hover:text-zinc-900 hover:bg-white/60'
+              }`}
+            >
+              <Globe className="w-4 h-4 text-emerald-600" />
+              <span>2. Cài Đặt Cho Online (Cloud SQL)</span>
+              {sqlModeConfig.mode === 'online' && (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
+                  Đang dùng
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setDbSubTab('local')}
+              className={`flex-1 min-w-[200px] flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-xs font-black transition cursor-pointer ${
+                dbSubTab === 'local'
+                  ? 'bg-white text-zinc-900 shadow-xs border border-zinc-200'
+                  : 'text-zinc-600 hover:text-zinc-900 hover:bg-white/60'
+              }`}
+            >
+              <HardDrive className="w-4 h-4 text-amber-600" />
+              <span>3. Cài Đặt Cho Local (Máy Tính)</span>
+              {sqlModeConfig.mode === 'local' && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                  Đang dùng
+                </span>
+              )}
+            </button>
+          </div>
+
+          {/* THÔNG BÁO TRẠNG THÁI CHUNG */}
           {localSqlNotice && (
-            <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-2 ${
+            <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-2.5 transition-all shadow-2xs ${
               localSqlNotice.type === 'success'
                 ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
                 : localSqlNotice.type === 'error'
@@ -3975,387 +4087,649 @@ export default function AdminDashboard() {
                 : 'bg-blue-50 border-blue-200 text-blue-800'
             }`}>
               {localSqlNotice.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+              ) : localSqlNotice.type === 'error' ? (
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                <HelpCircle className="w-5 h-5 text-blue-600 shrink-0" />
               )}
-              <span>{localSqlNotice.text}</span>
+              <span className="leading-snug">{localSqlNotice.text}</span>
             </div>
           )}
 
-          {/* ── MỤC 1: BỘ CHUYỂN ĐỔI CHẾ ĐỘ CSDL (ONLINE VS LOCAL) ── */}
-          <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-amber-600" /> Chọn Chế Độ Cơ Sở Dữ Liệu
-                </h3>
-                <p className="text-xs text-zinc-500">
-                  Dữ liệu Online và Local được cô lập hoàn toàn, không gây xung đột hoặc đè nhầm dữ liệu của nhau.
-                </p>
-              </div>
-            </div>
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* PHÂN KHU 1: CÀI ĐẶT CHUNG & LỰA CHỌN CHẾ ĐỘ (dbSubTab === 'common') */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {dbSubTab === 'common' && (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              {/* KHỐI CHỌN CHẾ ĐỘ VỚI CƠ CHẾ CHỐNG TÍCH NHẦM & NÚT LƯU CÀI ĐẶT */}
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-5">
+                <div>
+                  <div className="flex items-center gap-2 font-black text-base text-zinc-900">
+                    <Sliders className="w-5 h-5 text-amber-600" />
+                    Chọn Chế Độ Cơ Sở Dữ Liệu
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Bấm vào một trong hai chế độ dưới đây để chọn. Lựa chọn của bạn sẽ chỉ có hiệu lực khi bấm <b>&quot;Lưu & Áp Dụng Cài Đặt&quot;</b> để tránh bấm nhầm.
+                  </p>
+                </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* NÚT CHẾ ĐỘ 1: ONLINE CLOUD SQL */}
-              <button
-                type="button"
-                onClick={() => handleSwitchDbMode('online')}
-                className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between cursor-pointer ${
-                  sqlModeConfig.mode === 'online'
-                    ? 'bg-emerald-500/10 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
-                    : 'bg-white border-zinc-200 hover:border-zinc-300'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full mb-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                      sqlModeConfig.mode === 'online' ? 'bg-emerald-500 text-white' : 'bg-zinc-100 text-zinc-600'
-                    }`}>
-                      <Globe className="w-4 h-4" />
+                {/* LƯỚI 2 THẺ CHẾ ĐỘ */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* THẺ 1: ONLINE CLOUD SQL */}
+                  <div
+                    onClick={() => setPendingDbMode('online')}
+                    className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-4 relative ${
+                      pendingDbMode === 'online'
+                        ? 'border-emerald-500 bg-emerald-50/40 ring-4 ring-emerald-500/15 shadow-sm'
+                        : 'border-zinc-200 bg-zinc-50/50 hover:border-zinc-300 hover:bg-white'
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold transition ${
+                            pendingDbMode === 'online' ? 'bg-emerald-500 text-white shadow-xs' : 'bg-zinc-200 text-zinc-600'
+                          }`}>
+                            <Globe className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <span className="font-black text-sm text-zinc-900 block">1. Online Cloud SQL</span>
+                            <span className="text-xs text-zinc-500">Supabase Cloud PostgreSQL</span>
+                          </div>
+                        </div>
+
+                        {/* BADGE TRẠNG THÁI */}
+                        {sqlModeConfig.mode === 'online' ? (
+                          <span className="px-2.5 py-1 rounded-full bg-emerald-600 text-white font-black text-[10px] tracking-wide uppercase">
+                            ĐANG HOẠT ĐỘNG
+                          </span>
+                        ) : pendingDbMode === 'online' ? (
+                          <span className="px-2.5 py-1 rounded-full bg-amber-500 text-white font-black text-[10px] tracking-wide uppercase animate-pulse">
+                            ĐÃ CHỌN (CHỜ LƯU)
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <p className="text-xs text-zinc-600 leading-relaxed">
+                        Phù hợp vận hành tiệm hàng ngày với nhiều thiết bị. Đồng bộ tức thì thời gian thực (~50ms) giữa máy tính quầy POS thu ngân, máy tính bảng thợ làm bánh trong bếp và điện thoại chủ tiệm.
+                      </p>
+
+                      <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-zinc-600 pt-1">
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100/70 text-emerald-800">✓ Đa thiết bị</span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100/70 text-emerald-800">✓ Realtime Sync</span>
+                        <span className="px-2 py-0.5 rounded-md bg-emerald-100/70 text-emerald-800">✓ Tự sao lưu đám mây</span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="font-black text-xs text-zinc-900 block">1. Online Cloud SQL</span>
-                      <span className="text-[10px] text-zinc-500">Supabase Cloud Postgres</span>
+
+                    <div className="pt-2 border-t border-zinc-200/60 flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-500">
+                        {pendingDbMode === 'online' ? '● Đang chọn chế độ này' : 'Bấm vào thẻ để chọn'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDbSubTab('online');
+                        }}
+                        className="text-xs font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+                      >
+                        Mở cài đặt Online →
+                      </button>
                     </div>
                   </div>
-                  {sqlModeConfig.mode === 'online' && (
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white font-black text-[10px]">
-                      ĐANG BẬT
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-zinc-600 leading-snug">
-                  Đồng bộ tức thì thời gian thực (~50ms) giữa tất cả máy: PC quầy, tablet bếp, điện thoại. Cần có mạng Internet.
-                </p>
-              </button>
 
-              {/* NÚT CHẾ ĐỘ 2: LOCAL SQL CỤC BỘ */}
-              <button
-                type="button"
-                onClick={() => handleSwitchDbMode('local')}
-                className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between cursor-pointer ${
-                  sqlModeConfig.mode === 'local'
-                    ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
-                    : 'bg-white border-zinc-200 hover:border-zinc-300'
-                }`}
-              >
-                <div className="flex items-center justify-between w-full mb-2">
-                  <div className="flex items-center gap-2.5">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
-                      sqlModeConfig.mode === 'local' ? 'bg-amber-600 text-white' : 'bg-zinc-100 text-zinc-600'
-                    }`}>
-                      <HardDrive className="w-4 h-4" />
+                  {/* THẺ 2: LOCAL SQL CỤC BỘ */}
+                  <div
+                    onClick={() => setPendingDbMode('local')}
+                    className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between space-y-4 relative ${
+                      pendingDbMode === 'local'
+                        ? 'border-amber-500 bg-amber-50/40 ring-4 ring-amber-500/15 shadow-sm'
+                        : 'border-zinc-200 bg-zinc-50/50 hover:border-zinc-300 hover:bg-white'
+                    }`}
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold transition ${
+                            pendingDbMode === 'local' ? 'bg-amber-600 text-white shadow-xs' : 'bg-zinc-200 text-zinc-600'
+                          }`}>
+                            <HardDrive className="w-6 h-6" />
+                          </div>
+                          <div>
+                            <span className="font-black text-sm text-zinc-900 block">2. Local SQL Cục Bộ</span>
+                            <span className="text-xs text-zinc-500">Thư mục máy tính / Chạy Offline</span>
+                          </div>
+                        </div>
+
+                        {/* BADGE TRẠNG THÁI */}
+                        {sqlModeConfig.mode === 'local' ? (
+                          <span className="px-2.5 py-1 rounded-full bg-amber-600 text-white font-black text-[10px] tracking-wide uppercase">
+                            ĐANG HOẠT ĐỘNG
+                          </span>
+                        ) : pendingDbMode === 'local' ? (
+                          <span className="px-2.5 py-1 rounded-full bg-amber-500 text-white font-black text-[10px] tracking-wide uppercase animate-pulse">
+                            ĐÃ CHỌN (CHỜ LƯU)
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <p className="text-xs text-zinc-600 leading-relaxed">
+                        Phù hợp khi mất mạng Internet hoặc muốn chạy độc lập 100% trên một máy tính. Dữ liệu lưu thẳng vào thư mục ổ cứng máy tính dạng tệp SQL chuẩn (`bakery_master.sql`). Không gửi lên Cloud.
+                      </p>
+
+                      <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-zinc-600 pt-1">
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100/70 text-amber-900">✓ Hoàn toàn Offline</span>
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100/70 text-amber-900">✓ Không sợ đứt cáp</span>
+                        <span className="px-2 py-0.5 rounded-md bg-amber-100/70 text-amber-900">✓ Tự quản lý tệp .sql</span>
+                      </div>
                     </div>
-                    <div>
-                      <span className="font-black text-xs text-zinc-900 block">2. Local SQL Cục Bộ</span>
-                      <span className="text-[10px] text-zinc-500">Thư mục máy tính / Offline</span>
+
+                    <div className="pt-2 border-t border-zinc-200/60 flex items-center justify-between">
+                      <span className="text-[11px] text-zinc-500">
+                        {pendingDbMode === 'local' ? '● Đang chọn chế độ này' : 'Bấm vào thẻ để chọn'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDbSubTab('local');
+                        }}
+                        className="text-xs font-bold text-amber-700 hover:text-amber-900 underline cursor-pointer"
+                      >
+                        Mở cài đặt Local →
+                      </button>
                     </div>
                   </div>
-                  {sqlModeConfig.mode === 'local' && (
-                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white font-black text-[10px]">
-                      ĐANG BẬT
-                    </span>
-                  )}
                 </div>
-                <p className="text-[11px] text-zinc-600 leading-snug">
-                  Chạy hoàn toàn độc lập trên máy tính. Dữ liệu lưu thẳng vào thư mục máy tính. Không gửi lên Cloud, không sợ mất mạng.
-                </p>
-              </button>
-            </div>
-          </div>
 
-          {/* ── MỤC 2: QUẢN LÝ THƯ MỤC CSDL LOCAL SQL & TỆP TIN ── */}
-          <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-200 space-y-4">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-200/60">
-              <div>
-                <h3 className="font-black text-sm text-amber-950 flex items-center gap-2">
-                  <Folder className="w-4 h-4 text-amber-600" /> Thư Mục Lưu Trữ & Chạy CSDL Local SQL
-                </h3>
-                <p className="text-xs text-zinc-600">
-                  Thư mục này chứa 100% dữ liệu: bánh, kho nguyên liệu, công thức BOM, đơn hàng, sổ quỹ.
-                </p>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 ${
-                  sqlModeConfig.localFolderName || sqlModeConfig.localFolderPath
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-zinc-200 text-zinc-700'
+                {/* ── THANH HÀNH ĐỘNG XÁC NHẬN / LƯU CÀI ĐẶT (ACTION BAR CHỐNG BẤM NHẦM) ── */}
+                <div className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-center justify-between gap-3 ${
+                  pendingDbMode !== sqlModeConfig.mode
+                    ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-300/40 shadow-xs'
+                    : 'bg-zinc-50 border-zinc-200'
                 }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    sqlModeConfig.localFolderName || sqlModeConfig.localFolderPath ? 'bg-emerald-600' : 'bg-zinc-500'
-                  }`} />
-                  {sqlModeConfig.localFolderName || (sqlModeConfig.localFolderPath ? 'Đã có đường dẫn' : 'Chưa chọn thư mục')}
-                </span>
-              </div>
-            </div>
-
-            {/* THÔNG TIN THƯ MỤC & CÁC TỆP TRONG THƯ MỤC */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
-              <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
-                <div className="font-bold text-zinc-800 flex items-center gap-1.5">
-                  <FileCode className="w-3.5 h-3.5 text-blue-600" /> bakery_master.sql
-                </div>
-                <p className="text-[11px] text-zinc-500 leading-snug">
-                  Lệnh SQL chuẩn gồm CREATE TABLE và INSERT INTO của 12 bảng, chạy được với SQLite, PostgreSQL, MySQL.
-                </p>
-              </div>
-              <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
-                <div className="font-bold text-zinc-800 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-emerald-600" /> bakery_local_db.json
-                </div>
-                <p className="text-[11px] text-zinc-500 leading-snug">
-                  Dữ liệu CSDL JSON đầy đủ phục vụ nạp và khôi phục tức thì mà không cần mạng.
-                </p>
-              </div>
-              <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
-                <div className="font-bold text-zinc-800 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" /> Cập nhật mới nhất
-                </div>
-                <p className="text-[11px] text-zinc-600 font-medium">
-                  {sqlModeConfig.lastLocalSyncAt ? new Date(sqlModeConfig.lastLocalSyncAt).toLocaleString('vi-VN') : 'Chưa có bản ghi'}
-                </p>
-              </div>
-            </div>
-
-            {/* CÁC NÚT THAO TÁC THƯ MỤC */}
-            <div className="flex flex-wrap items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={handleChooseLocalFolder}
-                disabled={isSyncingLocalSql}
-                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-50"
-              >
-                <Folder className="w-4 h-4" />
-                <span>{sqlModeConfig.localFolderName ? 'Đổi Thư Mục Khác...' : 'Chọn Thư Mục Trên Máy Tính...'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleSyncToLocalFolderNow}
-                disabled={isSyncingLocalSql}
-                className="px-4 py-2.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-50 text-amber-900 font-bold text-xs flex items-center gap-2 shadow-2xs transition cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-4 h-4 ${isSyncingLocalSql ? 'animate-spin' : ''}`} />
-                <span>Xuất & Cập Nhật CSDL Ngay</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleDownloadMasterSql}
-                className="px-4 py-2.5 rounded-xl bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition cursor-pointer ml-auto"
-                title="Tải tệp bakery_master.sql về máy"
-              >
-                <Download className="w-4 h-4 text-zinc-600" />
-                <span>Tải File .SQL Về Máy</span>
-              </button>
-            </div>
-
-            {/* NHẬP ĐƯỜNG DẪN Ổ ĐĨA MÁY CHỦ LOCAL */}
-            <div className="pt-2 border-t border-amber-200/60 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-              <div className="text-[11px] text-zinc-500 shrink-0 font-medium">
-                Hoặc nhập đường dẫn ổ đĩa:
-              </div>
-              <input
-                type="text"
-                value={serverDirPathInput}
-                onChange={(e) => setServerDirPathInput(e.target.value)}
-                placeholder="Ví dụ: D:\CSDL_TiemBanh hoặc C:\BakerySQL"
-                className="flex-1 px-3 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-amber-500 font-mono"
-              />
-              <button
-                type="button"
-                onClick={handleApplyServerPath}
-                disabled={isSyncingLocalSql || !serverDirPathInput.trim()}
-                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-900 text-white font-bold text-xs shrink-0 cursor-pointer disabled:opacity-40"
-              >
-                Áp Dụng & Tạo Thư Mục
-              </button>
-            </div>
-          </div>
-
-          {/* ── MỤC 3: CÔNG CỤ KHÔI PHỤC DỮ LIỆU CHO LOCAL SQL ── */}
-          <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-4">
-            <div className="pb-2 border-b border-zinc-200">
-              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-                <Download className="w-4 h-4 text-blue-600" /> Khôi Phục Dữ Liệu Cho Chế Độ Local
-              </h3>
-              <p className="text-xs text-zinc-500">
-                Cho phép nạp dữ liệu từ thư mục máy tính, nạp từ file sao lưu của SQL Online, hoặc clone 1-click trực tiếp từ Cloud về Local.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {/* CÁCH 1: NẠP TỪ THƯ MỤC ĐÃ CHỌN */}
-              <div className="p-4 bg-white rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
-                <div className="space-y-1">
-                  <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
-                    <FolderCheck className="w-4 h-4 text-amber-600" /> Từ Thư Mục CSDL
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    {pendingDbMode !== sqlModeConfig.mode ? (
+                      <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0">
+                        <AlertCircle className="w-5 h-5 animate-bounce" />
+                      </div>
+                    ) : (
+                      <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                        <CheckCircle2 className="w-5 h-5" />
+                      </div>
+                    )}
+                    <div>
+                      {pendingDbMode !== sqlModeConfig.mode ? (
+                        <>
+                          <div className="text-xs font-black text-amber-950">
+                            Bạn đã chọn chuyển sang: {pendingDbMode === 'online' ? '1. Online Cloud SQL' : '2. Local SQL Cục Bộ'}
+                          </div>
+                          <p className="text-[11px] text-amber-800">
+                            Hệ thống <b>chưa</b> chuyển đổi cho đến khi bạn bấm nút Lưu bên phải.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <div className="text-xs font-black text-zinc-800">
+                            Chế độ hiện hành: {sqlModeConfig.mode === 'online' ? '1. Online Cloud SQL' : '2. Local SQL Cục Bộ'}
+                          </div>
+                          <p className="text-[11px] text-zinc-500">
+                            Hệ thống đang hoạt động ổn định và an toàn.
+                          </p>
+                        </>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-[11px] text-zinc-500 leading-snug">
-                    Đọc tệp bakery_local_db.json trong thư mục đã chọn để nạp lại vào phần mềm.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRestoreFromLocalFolder}
-                  disabled={isRestoringLocalSql}
-                  className="w-full py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs border border-amber-200 transition cursor-pointer disabled:opacity-50"
-                >
-                  {isRestoringLocalSql ? 'Đang đọc...' : 'Nạp Lại Từ Thư Mục'}
-                </button>
-              </div>
 
-              {/* CÁCH 2: NẠP TỪ FILE BACKUP ONLINE */}
-              <div className="p-4 bg-white rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
-                <div className="space-y-1">
-                  <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-blue-600" /> Từ File Backup Online
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                    {pendingDbMode !== sqlModeConfig.mode && (
+                      <button
+                        type="button"
+                        onClick={handleCancelDbModeSelection}
+                        className="px-3.5 py-2 rounded-xl bg-white border border-zinc-300 hover:bg-zinc-100 text-zinc-700 font-bold text-xs transition cursor-pointer shadow-2xs"
+                      >
+                        Hủy Bỏ
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleSaveDbModeConfig}
+                      disabled={pendingDbMode === sqlModeConfig.mode}
+                      className={`px-5 py-2.5 rounded-xl font-black text-xs flex items-center gap-2 transition shadow-xs cursor-pointer ${
+                        pendingDbMode !== sqlModeConfig.mode
+                          ? 'bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white ring-2 ring-amber-500/50'
+                          : 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                      }`}
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{pendingDbMode !== sqlModeConfig.mode ? 'Lưu & Áp Dụng Cài Đặt' : 'Đã Lưu (Đang Chạy)'}</span>
+                    </button>
                   </div>
-                  <p className="text-[11px] text-zinc-500 leading-snug">
-                    Chọn bất kỳ tệp sao lưu (.bakery.json / .json) tải từ Online để nạp thẳng vào Local.
-                  </p>
                 </div>
-                <input
-                  type="file"
-                  ref={localBackupFileInputRef}
-                  accept=".json,.bakery.json"
-                  onChange={handleSelectOnlineBackupFile}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => localBackupFileInputRef.current?.click()}
-                  disabled={isRestoringLocalSql}
-                  className="w-full py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold text-xs border border-blue-200 transition cursor-pointer disabled:opacity-50"
-                >
-                  Chọn File Backup...
-                </button>
               </div>
 
-              {/* CÁCH 3: TẢI TRỰC TIẾP TỪ CLOUD VỀ LOCAL */}
-              <div className="p-4 bg-white rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
-                <div className="space-y-1">
-                  <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
-                    <Globe className="w-4 h-4 text-emerald-600" /> 1-Click Clone Cloud
+              {/* BẢNG ĐỐI CHIẾU NGUYÊN TẮC AN TOÀN & CÔ LẬP DỮ LIỆU */}
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 font-black text-sm text-zinc-900">
+                  <Shield className="w-4 h-4 text-emerald-600" />
+                  Cam Kết An Toàn & Cô Lập Dữ Liệu Tuyệt Đối Giữa Online và Local
+                </div>
+                <p className="text-xs text-zinc-600 leading-relaxed">
+                  Để đảm bảo công việc bán hàng không bị xáo trộn, hệ thống sử dụng 2 bộ nhớ Snapshot riêng biệt:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-1.5">
+                    <div className="font-bold text-zinc-900 flex items-center gap-1.5">
+                      <Globe className="w-4 h-4 text-emerald-600" /> Không Ghi Đè Chéo
+                    </div>
+                    <p className="text-[11px] text-zinc-500 leading-snug">
+                      Dữ liệu tạo ở chế độ Local (đơn hàng, công thức) sẽ chỉ lưu vào máy bạn, không bao giờ tự ý đẩy lên Cloud đè mất dữ liệu thực tế.
+                    </p>
                   </div>
-                  <p className="text-[11px] text-zinc-500 leading-snug">
-                    Kéo 100% dữ liệu từ Supabase Cloud về máy làm CSDL Local (không làm ảnh hưởng Cloud).
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCloneCloudToLocal}
-                  disabled={isCloningCloudToLocal}
-                  className="w-full py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs border border-emerald-200 transition cursor-pointer disabled:opacity-50"
-                >
-                  {isCloningCloudToLocal ? 'Đang kéo dữ liệu...' : 'Clone Cloud Về Local'}
-                </button>
-              </div>
-            </div>
-          </div>
 
-          {cloudMsg && (
-            <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              {cloudMsg}
+                  <div className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-1.5">
+                    <div className="font-bold text-zinc-900 flex items-center gap-1.5">
+                      <FolderCheck className="w-4 h-4 text-amber-600" /> Tách Biệt Bộ Nhớ
+                    </div>
+                    <p className="text-[11px] text-zinc-500 leading-snug">
+                      Khi chuyển đổi qua lại, phần mềm tự động lưu snapshot chế độ cũ và nạp snapshot chế độ mới, bảo toàn nguyên vẹn 100%.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-1.5">
+                    <div className="font-bold text-zinc-900 flex items-center gap-1.5">
+                      <Download className="w-4 h-4 text-blue-600" /> Khôi Phục Linh Hoạt
+                    </div>
+                    <p className="text-[11px] text-zinc-500 leading-snug">
+                      Ở chế độ Local, bạn có thể lấy file sao lưu của Cloud Online nạp vào máy bất cứ khi nào cần cập nhật danh mục mới.
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 
-          <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-4">
-            {/* 1. THANH TỔNG DUNG LƯỢNG DATABASE ĐÃ DÙNG */}
-            <div className="space-y-2">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1">
-                <span>Tổng dung lượng Database đã dùng:</span>
-                <span className="text-emerald-700">{dbUsageMB} MB / 500 MB (Mức an toàn tuyệt đối)</span>
-              </div>
-              <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.max(2, (dbUsageMB / 500) * 100)}%` }}
-                ></div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-zinc-200 text-xs">
-                <div className="text-zinc-600">
-                  📄 Dữ liệu đơn & kế toán: <b>~28.4 MB</b>
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* PHÂN KHU 2: CÀI ĐẶT CHO ONLINE (CLOUD SQL) (dbSubTab === 'online') */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {dbSubTab === 'online' && (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              {/* BANNER THÔNG TIN TRẠNG THÁI ONLINE */}
+              {sqlModeConfig.mode === 'local' && (
+                <div className="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-xs text-blue-900 flex items-center gap-2.5 font-medium">
+                  <HelpCircle className="w-5 h-5 text-blue-600 shrink-0" />
+                  <span>
+                    Hệ thống hiện đang hoạt động ở chế độ <b>Local SQL</b>. Bạn vẫn có thể kiểm tra dung lượng và cấu hình hệ thống Online bình thường tại đây.
+                  </span>
                 </div>
-                <div className="text-emerald-700 font-bold">
-                  ⚡ Trạng thái DB: Rất nhẹ & an toàn
+              )}
+
+              {/* KHỐI 1: TRẠNG THÁI KẾT NỐI MÁY CHỦ CLOUD */}
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-100">
+                  <div>
+                    <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                      <Globe className="w-4 h-4 text-emerald-600" /> Kết Nối Máy Chủ Supabase Cloud
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Hệ quản trị cơ sở dữ liệu PostgreSQL đám mây với đồng bộ thời gian thực Realtime.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
+                    Máy Chủ Online Đang Sẵn Sàng
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1">
+                    <div className="text-zinc-500 font-bold">Giao Thức Đồng Bộ</div>
+                    <div className="font-black text-zinc-900">PostgreSQL WebSocket Realtime</div>
+                    <div className="text-[11px] text-zinc-500">Độ trễ trung bình ~50ms</div>
+                  </div>
+                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1">
+                    <div className="text-zinc-500 font-bold">Số Bảng Đồng Bộ</div>
+                    <div className="font-black text-zinc-900">12 Bảng Hoạt Động</div>
+                    <div className="text-[11px] text-zinc-500">Menu bánh, kho, BOM, đơn, sổ quỹ</div>
+                  </div>
+                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1">
+                    <div className="text-zinc-500 font-bold">Bảo Mật & Phân Quyền</div>
+                    <div className="font-black text-emerald-700">Row Level Security (RLS)</div>
+                    <div className="text-[11px] text-zinc-500">Mã hóa kết nối SSL / HTTPS</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* KHỐI 2: THEO DÕI DUNG LƯỢNG CLOUD (DATABASE & KHO ẢNH) */}
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-5">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                  <div>
+                    <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                      <Database className="w-4 h-4 text-emerald-600" /> Dung Lượng Cơ Sở Dữ Liệu & Lưu Trữ Đám Mây
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Giám sát tài nguyên hệ thống đám mây để đảm bảo vận hành ổn định và không vượt gói miễn phí.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={refreshImageStorageStats}
+                    disabled={calculatingStorage}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${calculatingStorage ? 'animate-spin' : ''}`} />
+                    <span>{calculatingStorage ? 'Đang quét...' : 'Quét Lại'}</span>
+                  </button>
+                </div>
+
+                {/* THANH 1: TỔNG DUNG LƯỢNG DATABASE ĐÃ DÙNG (500 MB) */}
+                <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1">
+                    <span className="text-zinc-800">Dung lượng Database PostgreSQL đã dùng:</span>
+                    <span className="text-emerald-700 font-black">{dbUsageMB} MB / 500 MB (An toàn tuyệt đối)</span>
+                  </div>
+                  <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.max(2, (dbUsageMB / 500) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
+                    <span>📄 Dữ liệu thực tế: Đơn hàng, sổ quỹ, BOM nguyên liệu (~28.4 MB)</span>
+                    <span className="text-emerald-700 font-bold">⚡ Trạng thái: Rất nhẹ & tối ưu</span>
+                  </div>
+                </div>
+
+                {/* THANH 2: DUNG LƯỢNG STORE LƯU TRỮ ẢNH (GÓI 1 GB) */}
+                <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1">
+                    <span className="text-zinc-800 flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-violet-600" />
+                      Dung lượng Store lưu trữ ảnh (Gói 1 GB):
+                    </span>
+                    <span className="text-emerald-700 font-black">
+                      {formatBytes(imageStats.totalBytes)} / 1 GB (Còn trống rất nhiều)
+                    </span>
+                  </div>
+                  <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
+                    <div
+                      className="h-full bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.max(1.5, (imageStats.totalBytes / (1024 * 1024 * 1024)) * 100)}%` }}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1 border-t border-zinc-200/60">
+                    <div className="text-zinc-600">
+                      🍰 Menu bánh: <b className="text-zinc-900">{formatBytes(imageStats.productImagesBytes)}</b> ({imageStats.productImagesCount} ảnh)
+                    </div>
+                    <div className="text-zinc-600">
+                      📸 Ảnh khách gửi: <b className="text-zinc-900">{formatBytes(imageStats.preorderImagesBytes)}</b> ({imageStats.preorderImagesCount} ảnh)
+                    </div>
+                    <div className="text-zinc-600">
+                      💳 Mã QR ví: <b className="text-zinc-900">{formatBytes(imageStats.qrImagesBytes)}</b> ({imageStats.qrImagesCount} ảnh)
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-zinc-500">
+                    ✨ Sức chứa còn lại ước tính: <b className="text-emerald-700 font-bold">~{imageStats.estimatedRemainingImages.toLocaleString('vi-VN')} ảnh</b> nữa trước khi chạm mức 1 GB.
+                  </div>
+                </div>
+              </div>
+
+              {/* KHỐI 3: SAO LƯU & ĐẨY ĐỐI SOÁT LÊN CLOUD */}
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                      <Shield className="w-4 h-4 text-amber-600" />
+                      Công Cụ Sao Lưu Tự Động & Đối Soát Đẩy Lên Cloud SQL
+                    </h3>
+                    <p className="text-xs text-zinc-500 max-w-xl">
+                      Tự động kiểm tra dữ liệu mới, lưu file sao lưu vào máy tính tùy chọn, đóng gói 100% dữ liệu kèm toàn bộ hình ảnh và đẩy ngược lên SQL với thuật toán đối soát thông minh tránh trùng lặp.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsBackupModalOpen(true)}
+                    className="px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-black text-xs shrink-0 flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+                  >
+                    <Database className="w-4 h-4" />
+                    <span>Mở Công Cụ Sao Lưu & Đối Soát SQL</span>
+                  </button>
                 </div>
               </div>
             </div>
+          )}
 
-            {/* 2. THANH DUNG LƯỢNG STORE LƯU TRỮ ẢNH (GÓI 1 GB) */}
-            <div className="pt-3 border-t border-zinc-200 space-y-2">
-              <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1">
-                <span className="text-zinc-900 flex items-center gap-1.5">
-                  <Camera className="w-3.5 h-3.5 text-violet-600" />
-                  <span>Dung lượng Store lưu trữ ảnh (Gói 1 GB):</span>
-                </span>
-                <span className="text-emerald-700">
-                  {formatBytes(imageStats.totalBytes)} / 1 GB (Mức an toàn tuyệt đối)
-                </span>
-              </div>
-              <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
-                <div
-                  className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.max(1.5, (imageStats.totalBytes / (1024 * 1024 * 1024)) * 100)}%` }}
-                ></div>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-zinc-200 text-xs">
-                <div className="text-zinc-600">
-                  🍰 Ảnh menu bánh: <b className="text-zinc-900">{formatBytes(imageStats.productImagesBytes)}</b> ({imageStats.productImagesCount} ảnh)
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {/* PHÂN KHU 3: CÀI ĐẶT CHO LOCAL (MÁY TÍNH) (dbSubTab === 'local') */}
+          {/* ══════════════════════════════════════════════════════════════ */}
+          {dbSubTab === 'local' && (
+            <div className="space-y-6 animate-in fade-in duration-300">
+              {/* BANNER THÔNG TIN TRẠNG THÁI LOCAL */}
+              {sqlModeConfig.mode === 'online' && (
+                <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-2.5 font-medium">
+                  <HelpCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <span>
+                    Hệ thống hiện đang chạy chế độ <b>Online Cloud SQL</b>. Các cài đặt thư mục và công cụ Local bên dưới sẵn sàng hoạt động ngay khi bạn chuyển sang Chế độ Local.
+                  </span>
                 </div>
-                <div className="text-zinc-600">
-                  📸 Ảnh mẫu khách gửi: <b className="text-zinc-900">{formatBytes(imageStats.preorderImagesBytes)}</b> ({imageStats.preorderImagesCount} ảnh)
+              )}
+
+              {/* KHỐI 1: QUẢN LÝ THƯ MỤC CSDL TRÊN Ổ CỨNG MÁY TÍNH */}
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-100">
+                  <div>
+                    <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                      <Folder className="w-4 h-4 text-amber-600" /> Thư Mục Lưu Trữ CSDL Trên Máy Tính
+                    </h3>
+                    <p className="text-xs text-zinc-500">
+                      Thư mục này lưu trữ trực tiếp các tệp SQL và JSON chứa toàn bộ dữ liệu tiệm bánh của bạn.
+                    </p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
+                    sqlModeConfig.localFolderName || sqlModeConfig.localFolderPath
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-zinc-200 text-zinc-700'
+                  }`}>
+                    <span className={`w-2 h-2 rounded-full ${
+                      sqlModeConfig.localFolderName || sqlModeConfig.localFolderPath ? 'bg-emerald-600' : 'bg-zinc-500'
+                    }`} />
+                    {sqlModeConfig.localFolderName ? `Thư mục: ${sqlModeConfig.localFolderName}` : (sqlModeConfig.localFolderPath ? 'Đã có đường dẫn' : 'Chưa chọn thư mục')}
+                  </span>
                 </div>
-                <div className="text-zinc-600">
-                  💳 Mã QR ví: <b className="text-zinc-900">{formatBytes(imageStats.qrImagesBytes)}</b> ({imageStats.qrImagesCount} ảnh)
+
+                {/* NÚT CHỌN THƯ MỤC & NHẬP ĐƯỜNG DẪN */}
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleChooseLocalFolder}
+                      disabled={isSyncingLocalSql}
+                      className="px-5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-50"
+                    >
+                      <Folder className="w-4 h-4" />
+                      <span>{sqlModeConfig.localFolderName ? 'Đổi Thư Mục Khác...' : 'Chọn Thư Mục Trên Máy Tính...'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleSyncToLocalFolderNow}
+                      disabled={isSyncingLocalSql}
+                      className="px-4 py-2.5 rounded-2xl bg-white border border-amber-300 hover:bg-amber-50 text-amber-900 font-bold text-xs flex items-center gap-2 shadow-2xs transition cursor-pointer disabled:opacity-50"
+                    >
+                      <RefreshCw className={`w-4 h-4 ${isSyncingLocalSql ? 'animate-spin' : ''}`} />
+                      <span>Xuất & Cập Nhật CSDL Ngay</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleDownloadMasterSql}
+                      className="px-4 py-2.5 rounded-2xl bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition cursor-pointer ml-auto"
+                      title="Tải tệp bakery_master.sql về máy"
+                    >
+                      <Download className="w-4 h-4 text-zinc-600" />
+                      <span>Tải File .SQL Về Máy</span>
+                    </button>
+                  </div>
+
+                  {/* NHẬP ĐƯỜNG DẪN Ổ ĐĨA WINDOWS */}
+                  <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                    <span className="text-xs text-zinc-600 font-medium shrink-0">
+                      Hoặc nhập đường dẫn thư mục:
+                    </span>
+                    <input
+                      type="text"
+                      value={serverDirPathInput}
+                      onChange={(e) => setServerDirPathInput(e.target.value)}
+                      placeholder="VD: D:\CSDL_TiemBanh hoặc C:\BakerySQL"
+                      className="flex-1 px-3 py-1.5 text-xs bg-white border border-zinc-300 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-amber-500 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleApplyServerPath}
+                      disabled={isSyncingLocalSql || !serverDirPathInput.trim()}
+                      className="px-4 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-900 text-white font-bold text-xs shrink-0 cursor-pointer disabled:opacity-40"
+                    >
+                      Áp Dụng & Tạo Thư Mục
+                    </button>
+                  </div>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-200/60 gap-2">
-                <span>✨ Sức chứa còn lại: <b className="text-emerald-700 font-bold">~{imageStats.estimatedRemainingImages.toLocaleString('vi-VN')} ảnh</b> nữa trước khi chạm mốc 1 GB</span>
-                <button
-                  type="button"
-                  onClick={refreshImageStorageStats}
-                  disabled={calculatingStorage}
-                  className="text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50 ml-auto"
-                >
-                  <RefreshCw className={`w-3 h-3 ${calculatingStorage ? 'animate-spin' : ''}`} />
-                  {calculatingStorage ? 'Đang quét...' : 'Quét & Cập nhật'}
-                </button>
+
+              {/* KHỐI 2: DANH SÁCH 4 TỆP DỮ LIỆU CSDL LOCAL */}
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
+                <div className="pb-2 border-b border-zinc-100">
+                  <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                    <FileCode className="w-4 h-4 text-blue-600" /> Các Tệp Dữ Liệu Tạo Trong Thư Mục Máy Tính
+                  </h3>
+                  <p className="text-xs text-zinc-500">
+                    Hệ thống tự động đồng bộ đầy đủ các tệp sau để bạn có thể mở bằng SQLite, DBeaver hoặc nạp lại khi cần.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
+                    <div className="font-black text-zinc-900 flex items-center gap-1.5">
+                      <FileCode className="w-4 h-4 text-blue-600" /> bakery_master.sql
+                    </div>
+                    <p className="text-[11px] text-zinc-500 leading-snug">
+                      DDL tạo 12 bảng & câu lệnh INSERT chứa 100% dữ liệu thực tế. Tương thích SQLite, Postgres, MySQL.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
+                    <div className="font-black text-zinc-900 flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-emerald-600" /> bakery_local_db.json
+                    </div>
+                    <p className="text-[11px] text-zinc-500 leading-snug">
+                      Dữ liệu JSON đóng gói hoàn chỉnh để nạp và khôi phục tức thì mà không cần mạng.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
+                    <div className="font-black text-zinc-900 flex items-center gap-1.5">
+                      <FileCode className="w-4 h-4 text-purple-600" /> bakery_schema.sql
+                    </div>
+                    <p className="text-[11px] text-zinc-500 leading-snug">
+                      Khung cấu trúc bảng chuẩn để lập trình viên hoặc kỹ thuật viên kiểm tra định dạng.
+                    </p>
+                  </div>
+
+                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
+                    <div className="font-black text-zinc-900 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-amber-600" /> Lần Xuất Gần Nhất
+                    </div>
+                    <p className="text-[11px] text-zinc-600 font-bold">
+                      {sqlModeConfig.lastLocalSyncAt ? new Date(sqlModeConfig.lastLocalSyncAt).toLocaleString('vi-VN') : 'Chưa có bản ghi'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* KHỐI 3: BỘ KHÔI PHỤC DỮ LIỆU CHO LOCAL (3 NGUỒN NẠP) */}
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
+                <div className="pb-2 border-b border-zinc-100">
+                  <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                    <Download className="w-4 h-4 text-blue-600" /> Khôi Phục Dữ Liệu Cho Chế Độ Local
+                  </h3>
+                  <p className="text-xs text-zinc-500">
+                    Tùy chọn khôi phục độc lập dành riêng cho Local, không can thiệp hay ảnh hưởng tới dữ liệu Online Cloud.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* CÁCH 1: NẠP TỪ THƯ MỤC CSDL */}
+                  <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
+                        <FolderCheck className="w-4 h-4 text-amber-600" /> 1. Từ Thư Mục CSDL
+                      </div>
+                      <p className="text-[11px] text-zinc-500 leading-snug">
+                        Đọc tệp `bakery_local_db.json` trong thư mục máy tính đã chọn để nạp lại vào phần mềm.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleRestoreFromLocalFolder}
+                      disabled={isRestoringLocalSql}
+                      className="w-full py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-black text-xs border border-amber-200 transition cursor-pointer disabled:opacity-50"
+                    >
+                      {isRestoringLocalSql ? 'Đang đọc...' : 'Nạp Lại Từ Thư Mục'}
+                    </button>
+                  </div>
+
+                  {/* CÁCH 2: NẠP TỪ FILE BACKUP ONLINE */}
+                  <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
+                        <FileText className="w-4 h-4 text-blue-600" /> 2. Từ File Backup Online
+                      </div>
+                      <p className="text-[11px] text-zinc-500 leading-snug">
+                        Chọn bất kỳ file sao lưu (.bakery.json / .json) tải từ Online để nạp thẳng vào Local.
+                      </p>
+                    </div>
+                    <input
+                      type="file"
+                      ref={localBackupFileInputRef}
+                      accept=".json,.bakery.json"
+                      onChange={handleSelectOnlineBackupFile}
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => localBackupFileInputRef.current?.click()}
+                      disabled={isRestoringLocalSql}
+                      className="w-full py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 font-black text-xs border border-blue-200 transition cursor-pointer disabled:opacity-50"
+                    >
+                      Chọn File Backup Online...
+                    </button>
+                  </div>
+
+                  {/* CÁCH 3: 1-CLICK CLONE CLOUD VỀ LOCAL */}
+                  <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
+                    <div className="space-y-1.5">
+                      <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
+                        <Globe className="w-4 h-4 text-emerald-600" /> 3. 1-Click Clone Cloud
+                      </div>
+                      <p className="text-[11px] text-zinc-500 leading-snug">
+                        Kéo 100% dữ liệu từ Supabase Cloud về máy làm CSDL Local (hoàn toàn không ảnh hưởng Cloud).
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCloneCloudToLocal}
+                      disabled={isCloningCloudToLocal}
+                      className="w-full py-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-black text-xs border border-emerald-200 transition cursor-pointer disabled:opacity-50"
+                    >
+                      {isCloningCloudToLocal ? 'Đang kéo dữ liệu...' : 'Clone Cloud Về Local'}
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
-          </div>
-
-          {/* BANNER TỰ ĐỘNG SAO LƯU & PHỤC HỒI SQL */}
-          <div className="p-5 rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 text-sm font-black text-amber-900">
-                <Database className="w-5 h-5 text-amber-600" />
-                Hệ Thống Tự Động Sao Lưu Toàn Diện & Phục Hồi SQL
-              </div>
-              <p className="text-xs text-zinc-600 leading-relaxed max-w-xl">
-                Tự động kiểm tra dữ liệu mới, lưu vào thư mục máy tính tùy chọn, đóng gói 100% dữ liệu tiệm bánh kèm toàn bộ hình ảnh và đẩy ngược lên SQL với cơ chế đối soát thông minh tránh trùng lặp.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsBackupModalOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-bold text-xs shrink-0 flex items-center justify-center gap-2 shadow-sm hover:shadow transition cursor-pointer"
-            >
-              <Database className="w-4 h-4" />
-              Mở Cấu Hình & Phục Hồi
-            </button>
-          </div>
-
-          {/* PHÂN HỆ CHỐT SỔ KẾ TOÁN THIẾT THỰC (NGÀY / TUẦN / THÁNG / NĂM) */}
-          <AccountingClosingSection
-            orders={posOrders}
-            expenses={expenses}
-            spoilageLogs={spoilageLogs}
-            adminName={adminNameInput || 'Chủ tiệm'}
-          />
+          )}
         </div>
       )}
 
