@@ -44,10 +44,13 @@ import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '
 
 interface OrderItem {
   id: string;
+  product_id?: string;
   product_name_snapshot: string;
   quantity: number;
   notes?: string;
   unit_price?: number;
+  product_type?: string;
+  supplier_name?: string;
 }
 
 interface KDSOrder {
@@ -66,6 +69,7 @@ interface KDSOrder {
   customer_phone?: string;
   cake_name?: string;
   cake_message?: string;
+  custom_cake?: any;
   total_amount?: number;
   deposit_amount?: number;
   remaining_amount?: number;
@@ -876,9 +880,19 @@ export default function KitchenPage() {
 
       // 3. Chỉ hiển thị các đơn còn đang cần làm: pending, preparing, ready
       // Các đơn completed hoặc cancelled sẽ hoàn toàn không xuất hiện trên bảng bếp
-      const activeOrders = (localOrders || []).filter(
-        (o) => o && (o.status === 'pending' || o.status === 'preparing' || o.status === 'ready')
-      );
+      // Bỏ qua đơn mang về thuần túy 100% là bánh/hàng bán sẵn nhập quầy không cần thợ bếp chế biến
+      const activeOrders = (localOrders || []).filter((o) => {
+        if (!o || !(o.status === 'pending' || o.status === 'preparing' || o.status === 'ready')) return false;
+        const items = o.items || [];
+        if (items.length > 0) {
+          const isTakeawayNoBake = !o.preorder_pickup_at && !o.custom_cake && (!o.notes || !o.notes.includes('PREORDER:'));
+          const allImported = items.every((it: any) => it.product_type === 'imported');
+          if (allImported && isTakeawayNoBake && o.status === 'ready') {
+            return false;
+          }
+        }
+        return true;
+      });
 
       setOrders(activeOrders);
       setLastUpdated(new Date().toLocaleTimeString('vi-VN'));
@@ -2290,6 +2304,11 @@ export default function KitchenPage() {
                                 <span className="font-bold text-zinc-200">
                                   <span className="text-blue-400 font-extrabold mr-1.5">{item.quantity}x</span>
                                   {item.product_name_snapshot}
+                                  {(item.product_type === 'imported' || (item as any).product_type === 'imported') && (
+                                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 text-[10px] font-bold border border-blue-700/50">
+                                      📦 Hàng sẵn quầy
+                                    </span>
+                                  )}
                                 </span>
                               </div>
                               {item.notes && (
@@ -2434,8 +2453,13 @@ export default function KitchenPage() {
                     ) : (
                       <div className="space-y-1 py-1 border-t border-b border-zinc-800/80 text-xs">
                         {(order.items || []).map((item, idx) => (
-                          <div key={idx} className="font-semibold text-zinc-300">
-                            {item.quantity}x {item.product_name_snapshot}
+                          <div key={idx} className="font-semibold text-zinc-300 flex items-center justify-between">
+                            <span>{item.quantity}x {item.product_name_snapshot}</span>
+                            {(item.product_type === 'imported' || (item as any).product_type === 'imported') && (
+                              <span className="px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 text-[10px] font-bold border border-blue-700/50">
+                                📦 Hàng sẵn quầy
+                              </span>
+                            )}
                           </div>
                         ))}
                       </div>

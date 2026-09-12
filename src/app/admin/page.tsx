@@ -293,14 +293,22 @@ export default function AdminDashboard() {
 
   // Inventory Sub-Tab: 'import' (Nhập kho) vs 'export' (Xuất kho / Hỏng)
   const [inventoryActionType, setInventoryActionType] = useState<'import' | 'export'>('import');
+  // Phân loại nhập kho: 'ingredient' (Nguyên vật liệu bột, bơ...) vs 'product' (Bánh / Hàng bán sẵn nhập về)
+  const [poCategory, setPoCategory] = useState<'ingredient' | 'product'>('ingredient');
 
-  // Form Nhập Kho (Purchase Order)
+  // Form Nhập Kho (Purchase Order) - Nguyên Vật Liệu
   const [poIngredientId, setPoIngredientId] = useState<string>('');
   const [poQty, setPoQty] = useState<number>(1000);
   const [poUnitPrice, setPoUnitPrice] = useState<number>(30);
   const [poSupplier, setPoSupplier] = useState<string>('Đại lý Bột Mì Nhất Hương');
   const [poSuccess, setPoSuccess] = useState<string | null>(null);
   const [isSubmittingPo, setIsSubmittingPo] = useState<boolean>(false);
+
+  // Form Nhập Kho (Purchase Order) - Bánh & Hàng Bán Sẵn (Thành phẩm nhập)
+  const [poProductId, setPoProductId] = useState<string>('');
+  const [poProductQty, setPoProductQty] = useState<number>(10);
+  const [poProductUnitPrice, setPoProductUnitPrice] = useState<number>(50000);
+  const [poProductSupplier, setPoProductSupplier] = useState<string>('');
 
   // Form Xuất Kho / Báo Hỏng
   const [soIngredientId, setSoIngredientId] = useState<string>('');
@@ -776,16 +784,20 @@ export default function AdminDashboard() {
 
   // ── THÊM MỚI SẢN PHẨM BÁNH STATE ──
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
-  const [addProductMode, setAddProductMode] = useState<'free' | 'bom'>('free');
+  const [addProductMode, setAddProductMode] = useState<'free' | 'bom' | 'imported'>('free');
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
   const [newProdName, setNewProdName] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('Bánh kem & Bánh đặt');
   const [newProdPrice, setNewProdPrice] = useState<number>(380000);
   const [newProdBaseCost, setNewProdBaseCost] = useState<number | null>(null);
+  const [newProdImportPrice, setNewProdImportPrice] = useState<number>(100000);
+  const [newProdSupplierName, setNewProdSupplierName] = useState('');
+  const [newProdBarcode, setNewProdBarcode] = useState('');
   const [newProdIsPreorder, setNewProdIsPreorder] = useState(false);
   const [newProdImageUrl, setNewProdImageUrl] = useState('');
   const [newProdStockQty, setNewProdStockQty] = useState<number>(10);
   const [creatingProduct, setCreatingProduct] = useState(false);
+  const [productOriginFilter, setProductOriginFilter] = useState<'all' | 'produced' | 'imported'>('all');
 
   // ── KẾ TOÁN & TÀI CHÍNH STATE ──
   const [accountingPeriod, setAccountingPeriod] = useState<'month' | 'today' | 'all'>('month');
@@ -1742,24 +1754,35 @@ export default function AdminDashboard() {
     }
   };
 
-  // ── XỬ LÝ TẠO MỚI SẢN PHẨM BÁNH ──
+  // ── XỬ LÝ TẠO MỚI SẢN PHẨM BÁNH (HỖ TRỢ CẢ BÁNH TỰ LÀM & HÀNG NHẬP VỀ BÁN) ──
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProdName) return;
 
     setCreatingProduct(true);
     const newId = generateUUID();
-    const baseCost = newProdBaseCost !== null ? newProdBaseCost : Math.round(newProdPrice * 0.33);
+    const isImported = addProductMode === 'imported';
+    const prodType = isImported ? 'imported' : 'produced';
+    const baseCost = isImported
+      ? (Number(newProdImportPrice) || 0)
+      : (newProdBaseCost !== null ? newProdBaseCost : Math.round(newProdPrice * 0.33));
     const foodCostPct = newProdPrice > 0 ? Math.round((baseCost / newProdPrice) * 100 * 100) / 100 : 33.0;
+
     const newProductObj: any = {
       id: newId,
       name: newProdName,
       category: newProdCategory,
       selling_price: newProdPrice,
       base_cost_price: baseCost,
+      import_price: isImported ? baseCost : undefined,
+      product_type: prodType,
+      supplier_name: isImported ? (newProdSupplierName || 'Hàng nhập ngoài') : undefined,
+      barcode: newProdBarcode || undefined,
       food_cost_pct: foodCostPct,
-      image_url: newProdImageUrl || 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop',
-      is_preorder_only: newProdIsPreorder,
+      image_url: newProdImageUrl || (isImported 
+        ? 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&auto=format&fit=crop'
+        : 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop'),
+      is_preorder_only: isImported ? false : newProdIsPreorder,
       stock_qty: Math.max(0, Number(newProdStockQty) || 0),
       is_active: true,
     };
@@ -1774,9 +1797,9 @@ export default function AdminDashboard() {
           name: newProdName,
           category: newProdCategory,
           selling_price: newProdPrice,
-          base_cost_price: Math.round(newProdPrice * 0.33),
+          base_cost_price: baseCost,
           image_url: newProductObj.image_url,
-          is_preorder_only: newProdIsPreorder,
+          is_preorder_only: isImported ? false : newProdIsPreorder,
           is_active: true,
         });
       }
@@ -1800,7 +1823,7 @@ export default function AdminDashboard() {
       // Đồng bộ thời gian thực sang Máy tính và Điện thoại khác ngay lập tức (< 50ms)
       await broadcastProductChange({ action: 'create', product: newProductObj });
 
-      setUploadSuccess(`Đã thêm sản phẩm "${newProdName}" thành công! Menu quầy POS đã tự động cập nhật.`);
+      setUploadSuccess(`Đã thêm sản phẩm "${newProdName}" (${isImported ? 'Hàng nhập về bán' : 'Bánh tiệm làm'}) thành công!`);
       setTimeout(() => setUploadSuccess(null), 5000);
       setIsAddProductModalOpen(false);
 
@@ -1812,6 +1835,9 @@ export default function AdminDashboard() {
       setAddProductMode('free');
       setSelectedRecipeId(null);
       setNewProdBaseCost(null);
+      setNewProdImportPrice(100000);
+      setNewProdSupplierName('');
+      setNewProdBarcode('');
     } catch (err) {
       console.error('Lỗi thêm sản phẩm:', err);
       const fallbackUpdated = [newProductObj, ...products];
@@ -1830,6 +1856,102 @@ export default function AdminDashboard() {
       setIsAddProductModalOpen(false);
     } finally {
       setCreatingProduct(false);
+    }
+  };
+
+  // ── XỬ LÝ NHẬP KHO BÁNH & HÀNG BÁN SẴN (THÀNH PHẨM NHẬP) ──
+  const handleCreateProductPurchaseOrder = async () => {
+    const targetProd = products.find((p) => p.id === poProductId) || products.find((p) => p.product_type === 'imported');
+    if (!targetProd) {
+      alert('Vui lòng chọn sản phẩm bánh/hàng bán sẵn cần nhập kho!');
+      return;
+    }
+    const qty = Number(poProductQty);
+    const unitPrice = Number(poProductUnitPrice);
+    if (!qty || qty <= 0) {
+      alert('Vui lòng nhập số lượng hợp lệ (> 0)!');
+      return;
+    }
+    if (unitPrice < 0) {
+      alert('Vui lòng nhập đơn giá nhập hợp lệ (>= 0)!');
+      return;
+    }
+
+    setIsSubmittingPo(true);
+    try {
+      const curStock = targetProd.stock_qty || 0;
+      const newStock = curStock + qty;
+      const totalPurchaseValue = qty * unitPrice;
+
+      const updatedProducts = products.map((p) => {
+        if (p.id === targetProd.id) {
+          return {
+            ...p,
+            stock_qty: newStock,
+            import_price: unitPrice,
+            base_cost_price: p.product_type === 'imported' ? unitPrice : (p.base_cost_price || unitPrice),
+            supplier_name: poProductSupplier || p.supplier_name,
+          };
+        }
+        return p;
+      });
+
+      setProducts(updatedProducts);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_products', JSON.stringify(updatedProducts));
+        const rawStocks = localStorage.getItem('bakery_stocks') || '{}';
+        const stockMap = JSON.parse(rawStocks);
+        stockMap[targetProd.id] = newStock;
+        if (targetProd.name) stockMap[targetProd.name.toLowerCase().trim()] = newStock;
+        localStorage.setItem('bakery_stocks', JSON.stringify(stockMap));
+        window.dispatchEvent(new Event('bakery_products_updated'));
+        window.dispatchEvent(new Event('bakery_stocks_updated'));
+      }
+
+      try {
+        await db.products.put({
+          ...targetProd,
+          stock_qty: newStock,
+          import_price: unitPrice,
+          base_cost_price: targetProd.product_type === 'imported' ? unitPrice : (targetProd.base_cost_price || unitPrice),
+          supplier_name: poProductSupplier || targetProd.supplier_name,
+        } as any);
+      } catch {}
+
+      // Ghi nhận giao dịch chi tiền nhập hàng vào Sổ Quỹ Cashflow
+      const cfItem: CashflowTransaction = {
+        id: generateUUID(),
+        type: 'expense',
+        category: 'purchase',
+        amount: totalPurchaseValue,
+        desc: `Nhập kho +${qty} ${targetProd.unit || 'cái'} ${targetProd.name} từ ${poProductSupplier || targetProd.supplier_name || 'Nhà cung cấp'}`,
+        date: new Date().toISOString().split('T')[0],
+      };
+      setCashflow((prev) => {
+        const updated = [cfItem, ...prev];
+        saveCashflowToDb(updated);
+        return updated;
+      });
+
+      // Phát sóng cập nhật
+      await broadcastProductChange({
+        action: 'update',
+        product: {
+          ...targetProd,
+          stock_qty: newStock,
+          import_price: unitPrice,
+          base_cost_price: targetProd.product_type === 'imported' ? unitPrice : (targetProd.base_cost_price || unitPrice),
+        },
+      });
+
+      const msg = `✅ Đã nhập kho thành công! Thêm +${qty.toLocaleString()} ${targetProd.unit || 'cái'} ${targetProd.name} (Tồn mới: ${newStock.toLocaleString()}). Chi phí: ${totalPurchaseValue.toLocaleString('vi-VN')}₫ đã ghi vào Sổ Quỹ!`;
+      setPoSuccess(msg);
+      alert(msg);
+      setTimeout(() => setPoSuccess(null), 7000);
+    } catch (err: any) {
+      alert('Lỗi nhập kho thành phẩm: ' + (err.message || String(err)));
+    } finally {
+      setIsSubmittingPo(false);
     }
   };
 
@@ -2602,7 +2724,23 @@ export default function AdminDashboard() {
                 onClick={() => setIsAddProductModalOpen(true)}
                 className="px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition hover:scale-102 cursor-pointer"
               >
-                <Plus className="w-4 h-4" /> Thêm Loại Bánh Mới
+                <Plus className="w-4 h-4" /> Thêm Bánh Tự Làm
+              </button>
+
+              <button
+                onClick={() => {
+                  setAddProductMode('imported');
+                  setNewProdCategory('Bánh nhập & Đóng gói');
+                  setNewProdName('');
+                  setNewProdPrice(50000);
+                  setNewProdImportPrice(30000);
+                  setNewProdSupplierName('');
+                  setNewProdBarcode('');
+                  setIsAddProductModalOpen(true);
+                }}
+                className="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/30 flex items-center justify-center gap-1.5 transition hover:scale-102 cursor-pointer"
+              >
+                <Plus className="w-4 h-4" /> Thêm Hàng Nhập Về Bán
               </button>
             </div>
           </div>
@@ -2670,8 +2808,61 @@ export default function AdminDashboard() {
             className="hidden"
           />
 
+          {/* ── BỘ LỌC NGUỒN GỐC SẢN PHẨM: TẤT CẢ / BÁNH TIỆM LÀM / HÀNG NHẬP VỀ BÁN ── */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-2xl border border-zinc-200">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-bold text-zinc-500">Phân loại nguồn hàng:</span>
+              <div className="flex rounded-xl bg-zinc-100 p-1 gap-1 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setProductOriginFilter('all')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    productOriginFilter === 'all'
+                      ? 'bg-white text-zinc-900 shadow-xs border border-zinc-200'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  Tất cả ({products.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductOriginFilter('produced')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                    productOriginFilter === 'produced'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-amber-700'
+                  }`}
+                >
+                  🥖 Bánh Tiệm Làm ({products.filter((p) => p.product_type !== 'imported').length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setProductOriginFilter('imported')}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1 ${
+                    productOriginFilter === 'imported'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-blue-700'
+                  }`}
+                >
+                  📦 Hàng Nhập Về Bán ({products.filter((p) => p.product_type === 'imported').length})
+                </button>
+              </div>
+            </div>
+            {productOriginFilter === 'imported' && (
+              <span className="text-[11px] text-blue-700 bg-blue-50 px-2.5 py-1 rounded-lg border border-blue-200 font-medium">
+                💡 Hàng nhập về bán có giá vốn nhập trực tiếp từ NCC, không cần cấu hình công thức làm bánh (BOM).
+              </span>
+            )}
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {products.map((p) => (
+            {products
+              .filter((p) => {
+                if (productOriginFilter === 'produced') return p.product_type !== 'imported';
+                if (productOriginFilter === 'imported') return p.product_type === 'imported';
+                return true;
+              })
+              .map((p) => (
               <div
                 key={p.id}
                 className="bg-white rounded-3xl border border-zinc-200 p-4 shadow-xs hover:shadow-md transition space-y-3 flex flex-col justify-between"
@@ -2686,6 +2877,15 @@ export default function AdminDashboard() {
                       </div>
                     )}
                     <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
+                      {p.product_type === 'imported' ? (
+                        <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-[10px] font-bold shadow-xs flex items-center gap-1">
+                          📦 Hàng nhập
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-600/90 text-white text-[10px] font-bold shadow-xs">
+                          🥖 Tiệm làm
+                        </span>
+                      )}
                       {p.is_preorder_only && (
                         <span className="px-2 py-0.5 rounded-md bg-pink-500 text-white text-[10px] font-bold shadow-xs">
                           🎂 Nhận đặt trước
@@ -2720,9 +2920,21 @@ export default function AdminDashboard() {
                     <span className="font-bold text-amber-600">{p.selling_price.toLocaleString('vi-VN')}₫</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
-                    <span className="text-zinc-500">Giá vốn COGS:</span>
-                    <span className="font-bold text-zinc-700">{(p.base_cost_price || 0).toLocaleString('vi-VN')}₫</span>
+                    <span className="text-zinc-500">{p.product_type === 'imported' ? 'Giá vốn nhập (NCC):' : 'Giá vốn COGS:'}</span>
+                    <span className="font-bold text-zinc-700">{(p.product_type === 'imported' ? (p.import_price || p.base_cost_price || 0) : (p.base_cost_price || 0)).toLocaleString('vi-VN')}₫</span>
                   </div>
+                  {p.product_type === 'imported' && (
+                    <div className="flex justify-between items-center text-[11px] text-zinc-500 pt-1 border-t border-zinc-100">
+                      <span>Nhà cung cấp:</span>
+                      <span className="font-semibold text-blue-700 truncate max-w-[150px]">{p.supplier_name || 'Hàng nhập ngoài'}</span>
+                    </div>
+                  )}
+                  {p.barcode && (
+                    <div className="flex justify-between items-center text-[10px] text-zinc-400">
+                      <span>Mã vạch (Barcode):</span>
+                      <span className="font-mono text-zinc-600">{p.barcode}</span>
+                    </div>
+                  )}
 
                   {/* ── CÀI ĐẶT SỐ LƯỢNG BÁNH CÓ SẴN (CHỈ HIỂN THỊ KHI BẤM NÚT, TRÁNH ẤN NHẦM) ── */}
                   {editingStockProductId !== p.id ? (
@@ -2944,7 +3156,9 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
                 <Cake className="w-5 h-5 text-amber-600" />
-                <h3 className="font-black text-lg text-zinc-900">Thêm Loại Bánh Mới</h3>
+                <h3 className="font-black text-lg text-zinc-900">
+                  {addProductMode === 'imported' ? 'Thêm Hàng Nhập Về Bán (Resale)' : 'Thêm Loại Bánh Mới'}
+                </h3>
               </div>
               <button onClick={() => { setIsAddProductModalOpen(false); setAddProductMode('free'); setSelectedRecipeId(null); setNewProdBaseCost(null); }} className="text-zinc-400 hover:text-zinc-600 cursor-pointer">
                 <X className="w-5 h-5" />
@@ -2955,25 +3169,58 @@ export default function AdminDashboard() {
             <div className="flex rounded-xl bg-zinc-100 p-1 gap-1">
               <button
                 type="button"
-                onClick={() => { setAddProductMode('free'); setSelectedRecipeId(null); setNewProdBaseCost(null); setNewProdName(''); setNewProdPrice(380000); }}
+                onClick={() => {
+                  setAddProductMode('free');
+                  setSelectedRecipeId(null);
+                  setNewProdBaseCost(null);
+                  setNewProdName('');
+                  setNewProdPrice(380000);
+                  setNewProdCategory('Bánh kem & Bánh đặt');
+                }}
                 className={`flex-1 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
                   addProductMode === 'free'
                     ? 'bg-white text-amber-700 shadow-sm border border-amber-200'
                     : 'text-zinc-500 hover:text-zinc-700'
                 }`}
               >
-                ✏️ Nhập tự do
+                ✏️ Tiệm tự làm
               </button>
               <button
                 type="button"
-                onClick={() => { setAddProductMode('bom'); setSelectedRecipeId(null); setNewProdBaseCost(null); setNewProdName(''); setNewProdPrice(380000); }}
+                onClick={() => {
+                  setAddProductMode('bom');
+                  setSelectedRecipeId(null);
+                  setNewProdBaseCost(null);
+                  setNewProdName('');
+                  setNewProdPrice(380000);
+                  setNewProdCategory('Bánh kem & Bánh đặt');
+                }}
                 className={`flex-1 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
                   addProductMode === 'bom'
                     ? 'bg-white text-emerald-700 shadow-sm border border-emerald-200'
                     : 'text-zinc-500 hover:text-zinc-700'
                 }`}
               >
-                📋 Chọn từ Công thức BOM
+                📋 Theo BOM
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAddProductMode('imported');
+                  setSelectedRecipeId(null);
+                  setNewProdBaseCost(null);
+                  setNewProdName('');
+                  setNewProdPrice(50000);
+                  setNewProdImportPrice(30000);
+                  setNewProdCategory('Bánh nhập & Đóng gói');
+                }}
+                className={`flex-1 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  addProductMode === 'imported'
+                    ? 'bg-white text-blue-700 shadow-sm border border-blue-200'
+                    : 'text-zinc-500 hover:text-zinc-700'
+                }`}
+              >
+                📦 Hàng Nhập Bán
               </button>
             </div>
 
@@ -3042,13 +3289,15 @@ export default function AdminDashboard() {
 
             <form onSubmit={handleCreateProduct} className="space-y-3 text-xs">
               <div>
-                <label className="font-bold text-zinc-700">Tên sản phẩm bánh *</label>
+                <label className="font-bold text-zinc-700">
+                  {addProductMode === 'imported' ? 'Tên bánh / Hàng hóa nhập về bán *' : 'Tên sản phẩm bánh *'}
+                </label>
                 <input
                   type="text"
                   required
                   value={newProdName}
                   onChange={(e) => setNewProdName(e.target.value)}
-                  placeholder="Ví dụ: Bánh Mousse Dâu Tây 16cm..."
+                  placeholder={addProductMode === 'imported' ? 'Ví dụ: Bánh Mochi Đậu Đỏ Nhật Bản, Nước Ép Cam...' : 'Ví dụ: Bánh Mousse Dâu Tây 16cm...'}
                   className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-zinc-900"
                 />
               </div>
@@ -3061,10 +3310,13 @@ export default function AdminDashboard() {
                     onChange={(e) => setNewProdCategory(e.target.value)}
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
                   >
+                    <option value="Bánh nhập & Đóng gói">Bánh nhập & Đóng gói</option>
                     <option value="Bánh kem & Bánh đặt">Bánh kem & Bánh đặt</option>
                     <option value="Bánh mì & Bánh tươi">Bánh mì & Bánh tươi</option>
                     <option value="Cookie & Bánh khô">Cookie & Bánh khô</option>
                     <option value="Bánh ngọt Mini">Bánh ngọt Mini</option>
+                    <option value="Đồ uống & Trà">Đồ uống & Trà</option>
+                    <option value="Phụ kiện & Nến">Phụ kiện & Nến</option>
                   </select>
                 </div>
                 <div>
@@ -3081,8 +3333,62 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              {/* Hiển thị giá gốc BOM nếu có */}
-              {newProdBaseCost !== null && newProdBaseCost > 0 && (
+              {/* Chế độ nhập hàng: Giá vốn nhập từ NCC */}
+              {addProductMode === 'imported' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="font-bold text-zinc-700">Giá vốn nhập từ NCC (VND) *</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      required
+                      value={formatCurrencyInput(newProdImportPrice)}
+                      onChange={(e) => setNewProdImportPrice(parseCurrencyInput(e.target.value))}
+                      placeholder="VD: 25.000"
+                      className="w-full mt-1 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 font-black text-blue-700 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="font-bold text-zinc-700">Nhà cung cấp (NCC):</label>
+                    <input
+                      type="text"
+                      value={newProdSupplierName}
+                      onChange={(e) => setNewProdSupplierName(e.target.value)}
+                      placeholder="VD: Xưởng bánh Orion, NCC ABC..."
+                      className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-zinc-800"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Biên lợi nhuận cho hàng nhập */}
+              {addProductMode === 'imported' && newProdPrice > 0 && (
+                <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-200 flex items-center justify-between text-xs">
+                  <span className="text-blue-900 font-bold">
+                    💰 Lợi nhuận gộp: <b className="text-emerald-700">{(newProdPrice - (newProdImportPrice || 0)).toLocaleString('vi-VN')}₫/cái</b>
+                  </span>
+                  <span className="font-black px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                    Biên lãi: {(((newProdPrice - (newProdImportPrice || 0)) / newProdPrice) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              )}
+
+              {/* Mã vạch Barcode */}
+              {addProductMode === 'imported' && (
+                <div>
+                  <label className="font-bold text-zinc-700">Mã vạch Barcode (nếu có để quẹt máy quét POS):</label>
+                  <input
+                    type="text"
+                    value={newProdBarcode}
+                    onChange={(e) => setNewProdBarcode(e.target.value)}
+                    placeholder="VD: 8935001234567"
+                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-mono font-bold text-zinc-900"
+                  />
+                </div>
+              )}
+
+              {/* Hiển thị giá gốc BOM nếu có (cho chế độ BOM) */}
+              {addProductMode === 'bom' && newProdBaseCost !== null && newProdBaseCost > 0 && (
                 <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-200 flex items-center justify-between text-[11px]">
                   <span className="text-blue-800">📊 Giá gốc nguyên liệu (BOM): <b>{newProdBaseCost.toLocaleString('vi-VN')}₫</b></span>
                   <span className={`font-bold px-2 py-0.5 rounded-full ${
@@ -3125,18 +3431,20 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="p-3 bg-pink-50 rounded-xl border border-pink-100 flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="preorder_toggle"
-                  checked={newProdIsPreorder}
-                  onChange={(e) => setNewProdIsPreorder(e.target.checked)}
-                  className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
-                />
-                <label htmlFor="preorder_toggle" className="font-bold text-pink-800 cursor-pointer">
-                  Đây là mẫu bánh sinh nhật / bánh kem nhận đặt trước
-                </label>
-              </div>
+              {addProductMode !== 'imported' && (
+                <div className="p-3 bg-pink-50 rounded-xl border border-pink-100 flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    id="preorder_toggle"
+                    checked={newProdIsPreorder}
+                    onChange={(e) => setNewProdIsPreorder(e.target.checked)}
+                    className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
+                  />
+                  <label htmlFor="preorder_toggle" className="font-bold text-pink-800 cursor-pointer">
+                    Đây là mẫu bánh sinh nhật / bánh kem nhận đặt trước
+                  </label>
+                </div>
+              )}
 
               <div className="flex gap-2 pt-2">
                 <button
@@ -3152,7 +3460,7 @@ export default function AdminDashboard() {
                   className="flex-2 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  {creatingProduct ? 'Đang lưu...' : 'Lưu Bánh Vào Thực Đơn'}
+                  {creatingProduct ? 'Đang lưu...' : (addProductMode === 'imported' ? 'Lưu Hàng Nhập Vào Thực Đơn' : 'Lưu Bánh Vào Thực Đơn')}
                 </button>
               </div>
             </form>
@@ -3201,81 +3509,199 @@ export default function AdminDashboard() {
             {/* FORM 1: NHẬP KHO (PURCHASE ORDER) */}
             {inventoryActionType === 'import' ? (
               <div className="space-y-3 text-xs">
-                <div>
-                  <label className="font-bold text-zinc-700">Chọn nguyên vật liệu nhập:</label>
-                  <select
-                    value={poIngredientId || (visibleIngredients[0]?.id ?? '')}
-                    onChange={(e) => {
-                      const newId = e.target.value;
-                      setPoIngredientId(newId);
-                      const ing = visibleIngredients.find((i: Ingredient) => i.id === newId);
-                      if (ing && ing.avg_cost !== undefined) {
-                        setPoUnitPrice(ing.avg_cost);
+                {/* Chọn loại mặt hàng nhập kho */}
+                <div className="flex rounded-xl bg-zinc-100 p-1 gap-1 font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setPoCategory('ingredient')}
+                    className={`flex-1 py-2 rounded-lg transition cursor-pointer flex items-center justify-center gap-1 text-[11px] ${
+                      poCategory === 'ingredient'
+                        ? 'bg-white text-zinc-900 shadow-xs border border-zinc-200'
+                        : 'text-zinc-600 hover:text-zinc-900'
+                    }`}
+                  >
+                    🌾 Nguyên Liệu
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPoCategory('product');
+                      const imp = products.find((p) => p.product_type === 'imported') || products[0];
+                      if (imp) {
+                        setPoProductId(imp.id);
+                        setPoProductUnitPrice(imp.import_price || imp.base_cost_price || 30000);
+                        if (imp.supplier_name) setPoProductSupplier(imp.supplier_name);
                       }
                     }}
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
+                    className={`flex-1 py-2 rounded-lg transition cursor-pointer flex items-center justify-center gap-1 text-[11px] ${
+                      poCategory === 'product'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'text-zinc-600 hover:text-blue-700'
+                    }`}
                   >
-                    {visibleIngredients.map((ing: Ingredient) => (
-                      <option key={ing.id} value={ing.id}>
-                        {ing.name} ({ing.unit}) — Tồn: {ing.stock_qty.toLocaleString()}
-                      </option>
-                    ))}
-                  </select>
+                    📦 Hàng Bán Sẵn (Thành phẩm)
+                  </button>
                 </div>
 
-                <div>
-                  <label className="font-bold text-zinc-700">Nhà cung cấp:</label>
-                  <input
-                    type="text"
-                    value={poSupplier}
-                    onChange={(e) => setPoSupplier(e.target.value)}
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-medium"
-                  />
-                </div>
+                {poCategory === 'ingredient' ? (
+                  <>
+                    <div>
+                      <label className="font-bold text-zinc-700">Chọn nguyên vật liệu nhập:</label>
+                      <select
+                        value={poIngredientId || (visibleIngredients[0]?.id ?? '')}
+                        onChange={(e) => {
+                          const newId = e.target.value;
+                          setPoIngredientId(newId);
+                          const ing = visibleIngredients.find((i: Ingredient) => i.id === newId);
+                          if (ing && ing.avg_cost !== undefined) {
+                            setPoUnitPrice(ing.avg_cost);
+                          }
+                        }}
+                        className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
+                      >
+                        {visibleIngredients.map((ing: Ingredient) => (
+                          <option key={ing.id} value={ing.id}>
+                            {ing.name} ({ing.unit}) — Tồn: {ing.stock_qty.toLocaleString()}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <label className="font-bold text-zinc-700">Số lượng nhập:</label>
-                    <input
-                      type="number"
-                      value={poQty || ''}
-                      onChange={(e) => setPoQty(Number(e.target.value))}
-                      placeholder="Nhập số lượng..."
-                      className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
-                    />
-                  </div>
-                  <div>
-                    <label className="font-bold text-zinc-700">Đơn giá nhập (VND):</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(poUnitPrice)}
-                      onChange={(e) => setPoUnitPrice(parseCurrencyInput(e.target.value))}
-                      placeholder="Nhập đơn giá (VD: 50.000)..."
-                      className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
-                    />
-                  </div>
-                </div>
+                    <div>
+                      <label className="font-bold text-zinc-700">Nhà cung cấp:</label>
+                      <input
+                        type="text"
+                        value={poSupplier}
+                        onChange={(e) => setPoSupplier(e.target.value)}
+                        className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-medium"
+                      />
+                    </div>
 
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex justify-between font-bold">
-                  <span>Thành tiền phiếu nhập:</span>
-                  <span className="text-amber-700">{((poQty || 0) * (poUnitPrice || 0)).toLocaleString('vi-VN')}₫</span>
-                </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="font-bold text-zinc-700">Số lượng nhập:</label>
+                        <input
+                          type="number"
+                          value={poQty || ''}
+                          onChange={(e) => setPoQty(Number(e.target.value))}
+                          placeholder="Nhập số lượng..."
+                          className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="font-bold text-zinc-700">Đơn giá nhập (VND):</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatCurrencyInput(poUnitPrice)}
+                          onChange={(e) => setPoUnitPrice(parseCurrencyInput(e.target.value))}
+                          placeholder="Nhập đơn giá (VD: 50.000)..."
+                          className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
+                        />
+                      </div>
+                    </div>
 
-                <button
-                  type="button"
-                  disabled={isSubmittingPo}
-                  onClick={handleCreatePurchaseOrder}
-                  className="w-full py-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 disabled:opacity-50"
-                >
-                  {isSubmittingPo ? (
-                    <span>Đang cập nhật kho...</span>
-                  ) : (
-                    <>
-                      <Plus className="w-4 h-4" /> Xác Nhận Nhập Kho & Tính Giá WAC
-                    </>
-                  )}
-                </button>
+                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex justify-between font-bold">
+                      <span>Thành tiền phiếu nhập:</span>
+                      <span className="text-amber-700">{((poQty || 0) * (poUnitPrice || 0)).toLocaleString('vi-VN')}₫</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isSubmittingPo}
+                      onClick={handleCreatePurchaseOrder}
+                      className="w-full py-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 disabled:opacity-50"
+                    >
+                      {isSubmittingPo ? (
+                        <span>Đang cập nhật kho...</span>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" /> Xác Nhận Nhập Kho & Tính Giá WAC
+                        </>
+                      )}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div>
+                      <label className="font-bold text-zinc-700">Chọn bánh / hàng bán sẵn nhập kho:</label>
+                      <select
+                        value={poProductId || (products.find((p) => p.product_type === 'imported')?.id || products[0]?.id || '')}
+                        onChange={(e) => {
+                          const newId = e.target.value;
+                          setPoProductId(newId);
+                          const prod = products.find((p) => p.id === newId);
+                          if (prod) {
+                            setPoProductUnitPrice(prod.import_price || prod.base_cost_price || 30000);
+                            if (prod.supplier_name) setPoProductSupplier(prod.supplier_name);
+                          }
+                        }}
+                        className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
+                      >
+                        {products.map((prod) => (
+                          <option key={prod.id} value={prod.id}>
+                            {prod.product_type === 'imported' ? '📦 [Hàng nhập]' : '🥖 [Tiệm làm]'} {prod.name} — Tồn: {(prod.stock_qty || 0).toLocaleString()} cái
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="font-bold text-zinc-700">Nhà cung cấp / Nguồn nhập:</label>
+                      <input
+                        type="text"
+                        value={poProductSupplier}
+                        onChange={(e) => setPoProductSupplier(e.target.value)}
+                        placeholder="VD: Xưởng Bánh Mochi Nhật Bản, Đại lý Orion..."
+                        className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-medium"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="font-bold text-zinc-700">Số lượng nhập (cái/hộp):</label>
+                        <input
+                          type="number"
+                          value={poProductQty || ''}
+                          onChange={(e) => setPoProductQty(Number(e.target.value))}
+                          placeholder="Nhập số lượng..."
+                          className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="font-bold text-zinc-700">Đơn giá nhập từ NCC (VND):</label>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatCurrencyInput(poProductUnitPrice)}
+                          onChange={(e) => setPoProductUnitPrice(parseCurrencyInput(e.target.value))}
+                          placeholder="Nhập đơn giá (VD: 30.000)..."
+                          className="w-full mt-1 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 font-bold text-blue-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 flex justify-between font-bold">
+                      <span className="text-blue-900">Thành tiền phiếu nhập:</span>
+                      <span className="text-blue-800 text-sm font-black">{((poProductQty || 0) * (poProductUnitPrice || 0)).toLocaleString('vi-VN')}₫</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={isSubmittingPo}
+                      onClick={handleCreateProductPurchaseOrder}
+                      className="w-full py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 disabled:opacity-50"
+                    >
+                      {isSubmittingPo ? (
+                        <span>Đang cập nhật kho...</span>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" /> Xác Nhận Nhập Kho Thành Phẩm & Ghi Sổ Quỹ
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
 
                 {poSuccess && (
                   <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-800 flex items-start gap-1.5 animate-in fade-in">

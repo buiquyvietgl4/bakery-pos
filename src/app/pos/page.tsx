@@ -988,7 +988,12 @@ export default function POSPage() {
 
   const filteredProducts = products.filter((p) => {
     const matchCat = selectedCategory === 'Tất cả' || p.category === selectedCategory;
-    const matchSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase().trim();
+    const matchSearch =
+      !q ||
+      p.name.toLowerCase().includes(q) ||
+      (p.barcode && p.barcode.toLowerCase().includes(q)) ||
+      (p.supplier_name && p.supplier_name.toLowerCase().includes(q));
     return matchCat && matchSearch;
   });
 
@@ -1149,6 +1154,26 @@ export default function POSPage() {
       // - Nếu pickup (Khách hẹn giờ lấy) hoặc shipping (Ship tận nơi) -> 'ready' (Bánh ĐÃ CÓ SẴN tại tiệm, nhảy thẳng vào mục Chờ Giao / Sẵn sàng giao, KHÔNG đẩy vào hàng chờ làm từ đầu!)
       const initialStatus = fulfillmentType === 'takeaway' ? ('completed' as const) : ('ready' as const);
 
+      // Tính toán giá vốn hàng bán COGS chính xác theo từng sản phẩm (bánh tự làm hoặc hàng nhập bán)
+      const itemsWithCost = cart.map((item) => {
+        const unitCost = Number(item.product.import_price ?? item.product.base_cost_price ?? Math.round(item.product.selling_price * 0.33)) || 0;
+        const lineCost = Math.round(unitCost * item.quantity);
+        return {
+          product_id: item.product.id,
+          product_name_snapshot: item.product.name,
+          quantity: item.quantity,
+          unit_price: item.product.selling_price,
+          unit_cost: unitCost,
+          line_total: item.product.selling_price * item.quantity,
+          line_cost: lineCost,
+          notes: item.notes || '',
+          product_type: item.product.product_type || 'produced',
+          supplier_name: item.product.supplier_name,
+        };
+      });
+
+      const orderTotalCogs = itemsWithCost.reduce((sum, it) => sum + (it.line_cost || 0), 0);
+
       const orderData = {
         local_id: localId,
         order_number: orderNumber,
@@ -1170,20 +1195,11 @@ export default function POSPage() {
         notes: fullNotes,
         payment_method: paymentMethod,
         paymentMethod: paymentMethod,
-        total_cogs: 0,
+        total_cogs: orderTotalCogs,
         sync_status: 'synced' as const,
         created_at: now.toISOString(),
         items: [
-          ...cart.map((item) => ({
-            product_id: item.product.id,
-            product_name_snapshot: item.product.name,
-            quantity: item.quantity,
-            unit_price: item.product.selling_price,
-            unit_cost: 0,
-            line_total: item.product.selling_price * item.quantity,
-            line_cost: 0,
-            notes: item.notes || '',
-          })),
+          ...itemsWithCost,
           ...(fulfillmentType === 'shipping' && (posShippingFee || 0) > 0 ? [
             {
               product_id: generateUUID(),
@@ -2252,6 +2268,11 @@ export default function POSPage() {
                       {product.is_preorder_only && (
                         <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-xl bg-rose-500/95 text-white text-[10px] font-black shadow-md shadow-rose-500/25 flex items-center gap-1 backdrop-blur-xs z-10">
                           <Cake className="w-3 h-3" /> Nhận đặt
+                        </span>
+                      )}
+                      {product.product_type === 'imported' && (
+                        <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-xl bg-blue-600/95 text-white text-[10px] font-black shadow-md shadow-blue-600/25 flex items-center gap-1 backdrop-blur-xs z-10">
+                          <Package className="w-3 h-3" /> Hàng nhập
                         </span>
                       )}
 

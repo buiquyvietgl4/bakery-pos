@@ -48,6 +48,11 @@ export interface CachedProduct {
   image_url?: string;
   selling_price: number;
   price?: number;
+  base_cost_price?: number;
+  import_price?: number;
+  product_type?: 'produced' | 'imported' | 'custom_cake';
+  supplier_name?: string;
+  barcode?: string;
   is_active: boolean;
   is_preorder_only?: boolean;
   stock_qty?: number;

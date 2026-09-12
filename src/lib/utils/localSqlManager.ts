@@ -154,6 +154,10 @@ CREATE TABLE IF NOT EXISTS products (
     category TEXT,
     selling_price NUMERIC DEFAULT 0,
     base_cost_price NUMERIC DEFAULT 0,
+    import_price NUMERIC DEFAULT 0,
+    product_type TEXT DEFAULT 'produced',
+    supplier_name TEXT,
+    barcode TEXT,
     food_cost_pct NUMERIC DEFAULT 35,
     stock_qty NUMERIC DEFAULT 10,
     unit TEXT DEFAULT 'cái',
@@ -363,7 +367,9 @@ ${generateSchemaSql()}
       const price = p.selling_price ?? p.price ?? 0;
       const cost = p.base_cost_price ?? p.cost_price ?? Math.round(price * 0.35);
       const foodCostPct = p.food_cost_pct ?? 35;
-      sql += `INSERT INTO products (id, name, category, selling_price, base_cost_price, food_cost_pct, stock_qty, unit, is_preorder_only, image_url) VALUES (${sqlEscape(p.id)}, ${sqlEscape(p.name)}, ${sqlEscape(p.category)}, ${sqlEscape(price)}, ${sqlEscape(cost)}, ${sqlEscape(foodCostPct)}, ${sqlEscape(p.stock_qty ?? 10)}, ${sqlEscape(p.unit || 'cái')}, ${sqlEscape(p.is_preorder_only || false)}, ${sqlEscape(p.image_url)});
+      const importPrice = p.import_price ?? cost;
+      const prodType = p.product_type || 'produced';
+      sql += `INSERT INTO products (id, name, category, selling_price, base_cost_price, import_price, product_type, supplier_name, barcode, food_cost_pct, stock_qty, unit, is_preorder_only, image_url) VALUES (${sqlEscape(p.id)}, ${sqlEscape(p.name)}, ${sqlEscape(p.category)}, ${sqlEscape(price)}, ${sqlEscape(cost)}, ${sqlEscape(importPrice)}, ${sqlEscape(prodType)}, ${sqlEscape(p.supplier_name)}, ${sqlEscape(p.barcode)}, ${sqlEscape(foodCostPct)}, ${sqlEscape(p.stock_qty ?? 10)}, ${sqlEscape(p.unit || 'cái')}, ${sqlEscape(p.is_preorder_only || false)}, ${sqlEscape(p.image_url)});
 `;
     }
   }

@@ -1,3 +1,5 @@
+export type ProductType = 'produced' | 'imported' | 'custom_cake';
+
 export interface BakeryProduct {
   id: string;
   name: string;
@@ -6,6 +8,10 @@ export interface BakeryProduct {
   selling_price: number;
   price?: number;
   base_cost_price?: number;
+  import_price?: number; // Giá vốn nhập hàng từ NCC (dành cho hàng nhập về bán)
+  supplier_name?: string; // Tên nhà cung cấp / Nơi nhập sỉ
+  barcode?: string; // Mã vạch sản phẩm (EAN / Barcode)
+  product_type?: ProductType; // 'produced' (bánh tiệm tự làm) | 'imported' (hàng nhập về bán) | 'custom_cake'
   food_cost_pct?: number;
   is_active: boolean;
   is_preorder_only?: boolean;
@@ -221,6 +227,60 @@ export const DEFAULT_BAKERY_PRODUCTS: BakeryProduct[] = [
     min_stock_alert: 3,
     unit: 'hộp 500g',
     is_semi_finished: true,
+  },
+  {
+    id: 'prod-imp-1',
+    name: 'Bánh Mì Hoa Cúc Harrys Nhập Khẩu 515g',
+    category: 'Bánh mì & Bánh tươi',
+    image_url: 'https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=600&auto=format&fit=crop',
+    selling_price: 135000,
+    base_cost_price: 95000,
+    import_price: 95000,
+    product_type: 'imported',
+    supplier_name: 'An Nam Fine Food',
+    barcode: '3256540001234',
+    food_cost_pct: 70.4,
+    is_active: true,
+    is_preorder_only: false,
+    stock_qty: 15,
+    min_stock_alert: 5,
+    unit: 'ổ',
+  },
+  {
+    id: 'prod-imp-2',
+    name: 'Bánh Quy Bơ Danisa Hộp Thiếc 454g',
+    category: 'Cookie & Bánh khô',
+    image_url: 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&auto=format&fit=crop',
+    selling_price: 145000,
+    base_cost_price: 110000,
+    import_price: 110000,
+    product_type: 'imported',
+    supplier_name: 'NPP Bánh Kẹo Hữu Nghị',
+    barcode: '8992775112233',
+    food_cost_pct: 75.9,
+    is_active: true,
+    is_preorder_only: false,
+    stock_qty: 20,
+    min_stock_alert: 5,
+    unit: 'hộp',
+  },
+  {
+    id: 'prod-imp-3',
+    name: 'Hộp Nến Số Sinh Nhật Nghệ Thuật (Gold)',
+    category: 'Phụ kiện sinh nhật',
+    image_url: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=600&auto=format&fit=crop',
+    selling_price: 25000,
+    base_cost_price: 8000,
+    import_price: 8000,
+    product_type: 'imported',
+    supplier_name: 'Xưởng Phụ Kiện Tiệc Sài Gòn',
+    barcode: '8936001234567',
+    food_cost_pct: 32.0,
+    is_active: true,
+    is_preorder_only: false,
+    stock_qty: 50,
+    min_stock_alert: 10,
+    unit: 'hộp',
   },
 ];
 
