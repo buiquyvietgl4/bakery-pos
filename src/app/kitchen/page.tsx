@@ -232,17 +232,57 @@ export default function KitchenPage() {
     return () => unsub();
   }, []);
 
+  // Quản lý deep link (?order=...): Chỉ mở 1 lần duy nhất khi người dùng mở link hoặc bấm từ thông báo
+  // Tuyệt đối không mở lại khi hệ thống polling loadOrders định kỳ mỗi 3 giây hoặc đồng bộ realtime
+  const handledOrderParamRef = useRef<string | null>(null);
+  const dismissedOrderParamsRef = useRef<Set<string>>(new Set());
+
   // ── XỬ LÝ DEEP LINK XEM CHI TIẾT ĐƠN HÀNG TỪ THÔNG BÁO / URL (?order=...) ──
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const orderParam = params.get('order');
-    if (orderParam && orders.length > 0) {
-      const target = orders.find(
+
+    if (!orderParam) return;
+
+    // Đã xử lý hoặc người dùng đã chủ động tắt modal đơn này -> Không bao giờ tự mở lại
+    if (handledOrderParamRef.current === orderParam || dismissedOrderParamsRef.current.has(orderParam)) {
+      return;
+    }
+
+    if (orders.length > 0) {
+      let target = orders.find(
         (o) => o.order_number === orderParam || o.id === orderParam || o.order_number?.includes(orderParam)
       );
+
+      // Dự phòng tìm kiếm trong đơn lưu offline nếu đơn đã hoàn thành hoặc nằm ngoài bộ lọc bếp
+      if (!target) {
+        try {
+          const raw = localStorage.getItem('bakery_orders');
+          if (raw) {
+            const list = JSON.parse(raw);
+            if (Array.isArray(list)) {
+              target = list.find(
+                (o: any) => o.order_number === orderParam || o.id === orderParam || o.order_number?.includes(orderParam)
+              );
+            }
+          }
+        } catch {}
+      }
+
       if (target) {
+        handledOrderParamRef.current = orderParam;
         setOrderDetailModalData(target);
+
+        // Tự động dọn sạch ?order= khỏi thanh URL ngay khi mở để tránh vòng lặp re-open
+        try {
+          const url = new URL(window.location.href);
+          if (url.searchParams.has('order')) {
+            url.searchParams.delete('order');
+            const cleanUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+            window.history.replaceState({}, '', cleanUrl);
+          }
+        } catch {}
       }
     }
   }, [orders]);
@@ -3272,7 +3312,21 @@ export default function KitchenPage() {
       {/* ── MODAL XEM CHI TIẾT ĐƠN ĐẶT BÁNH ── */}
       <OrderDetailModal
         isOpen={!!orderDetailModalData}
-        onClose={() => setOrderDetailModalData(null)}
+        onClose={() => {
+          if (orderDetailModalData) {
+            const num = orderDetailModalData.order_number || orderDetailModalData.id;
+            if (num) dismissedOrderParamsRef.current.add(String(num));
+          }
+          setOrderDetailModalData(null);
+          try {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('order')) {
+              url.searchParams.delete('order');
+              const cleanUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+              window.history.replaceState({}, '', cleanUrl);
+            }
+          } catch {}
+        }}
         order={orderDetailModalData}
         onPrintSticker={(order) => {
           handleOpenCakeSticker(order);

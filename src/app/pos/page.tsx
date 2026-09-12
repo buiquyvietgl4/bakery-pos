@@ -432,31 +432,46 @@ export default function POSPage() {
 
   // ── MODAL XEM CHI TIẾT ĐƠN HÀNG TỪ THÔNG BÁO HOẶC DEEP LINK (?order=...) ──
   const [posViewingOrderDetail, setPosViewingOrderDetail] = useState<any | null>(null);
+  const posHandledOrderParamRef = useRef<string | null>(null);
+  const posDismissedOrderParamsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const orderParam = params.get('order');
-    if (orderParam) {
-      let found = preordersList.find(
-        (p: any) => p.order_number === orderParam || p.orderNumber === orderParam || p.id === orderParam
-      );
-      if (!found) {
-        try {
-          const raw = localStorage.getItem('bakery_orders');
-          if (raw) {
-            const list = JSON.parse(raw);
-            if (Array.isArray(list)) {
-              found = list.find(
-                (o: any) => o.order_number === orderParam || o.orderNumber === orderParam || o.id === orderParam
-              );
-            }
+
+    if (!orderParam) return;
+    if (posHandledOrderParamRef.current === orderParam || posDismissedOrderParamsRef.current.has(orderParam)) {
+      return;
+    }
+
+    let found = preordersList.find(
+      (p: any) => p.order_number === orderParam || p.orderNumber === orderParam || p.id === orderParam
+    );
+    if (!found) {
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const list = JSON.parse(raw);
+          if (Array.isArray(list)) {
+            found = list.find(
+              (o: any) => o.order_number === orderParam || o.orderNumber === orderParam || o.id === orderParam
+            );
           }
-        } catch {}
-      }
-      if (found) {
-        setPosViewingOrderDetail(found);
-      }
+        }
+      } catch {}
+    }
+    if (found) {
+      posHandledOrderParamRef.current = orderParam;
+      setPosViewingOrderDetail(found);
+      try {
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('order')) {
+          url.searchParams.delete('order');
+          const cleanUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+          window.history.replaceState({}, '', cleanUrl);
+        }
+      } catch {}
     }
   }, [preordersList]);
 
@@ -5980,7 +5995,21 @@ export default function POSPage() {
       {posViewingOrderDetail && (
         <OrderDetailModal
           isOpen={!!posViewingOrderDetail}
-          onClose={() => setPosViewingOrderDetail(null)}
+          onClose={() => {
+            if (posViewingOrderDetail) {
+              const num = posViewingOrderDetail.order_number || posViewingOrderDetail.orderNumber || posViewingOrderDetail.id;
+              if (num) posDismissedOrderParamsRef.current.add(String(num));
+            }
+            setPosViewingOrderDetail(null);
+            try {
+              const url = new URL(window.location.href);
+              if (url.searchParams.has('order')) {
+                url.searchParams.delete('order');
+                const cleanUrl = url.pathname + (url.search ? url.search : '') + url.hash;
+                window.history.replaceState({}, '', cleanUrl);
+              }
+            } catch {}
+          }}
           order={posViewingOrderDetail}
           onPrintSticker={(ord) => {
             const fromN = parsePreorderFromNotes(ord.notes);
