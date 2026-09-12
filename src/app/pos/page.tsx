@@ -45,6 +45,16 @@ import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
+import {
+  fetchVietqrConfigFromDb,
+  getVietqrConfig,
+  fetchEwalletConfigFromDb,
+  getEwalletConfig,
+  VIETQR_UPDATED_EVENT,
+  EWALLET_UPDATED_EVENT,
+  VietqrConfig,
+  EwalletConfig,
+} from '@/lib/utils/paymentSync';
 
 interface CartItem {
   product: CachedProduct;
@@ -246,38 +256,13 @@ export default function POSPage() {
   };
 
   // VietQR Config State
-  const [vietqrConfig, setVietqrConfig] = useState({
-    bankId: 'MB',
-    bankName: 'MBBank (Ngân hàng Quân Đội)',
-    accountNo: '0988888888',
-    accountName: 'TIEM BANH HOANG GIA',
-    template: 'compact2',
-    transferSyntax: 'DH',
-  });
+  const [vietqrConfig, setVietqrConfig] = useState<VietqrConfig>(() => getVietqrConfig());
   const [copiedAccount, setCopiedAccount] = useState(false);
   const [copiedPreorderAccount, setCopiedPreorderAccount] = useState(false);
 
   // E-Wallet Config State
-  const [ewalletConfig, setEwalletConfig] = useState({
-    activeWallet: 'momo' as 'momo' | 'zalopay' | 'viettelmoney',
-    momo: {
-      phone: '0988888888',
-      name: 'TIEM BANH HOANG GIA',
-      qrUrl: '',
-    },
-    zalopay: {
-      phone: '0988888888',
-      name: 'TIEM BANH HOANG GIA',
-      qrUrl: '',
-    },
-    viettelmoney: {
-      phone: '0988888888',
-      name: 'TIEM BANH HOANG GIA',
-      qrUrl: '',
-    },
-    transferSyntax: 'VIMO',
-  });
-  const [selectedWalletType, setSelectedWalletType] = useState<'momo' | 'zalopay' | 'viettelmoney'>('momo');
+  const [ewalletConfig, setEwalletConfig] = useState<EwalletConfig>(() => getEwalletConfig());
+  const [selectedWalletType, setSelectedWalletType] = useState<'momo' | 'zalopay' | 'viettelmoney'>(() => getEwalletConfig().activeWallet || 'momo');
   const [copiedWalletPhone, setCopiedWalletPhone] = useState(false);
   const [copiedPreorderWalletPhone, setCopiedPreorderWalletPhone] = useState(false);
 
@@ -766,9 +751,35 @@ export default function POSPage() {
       }
     }
 
+    // Tự động tải cấu hình VietQR và Ví điện tử từ Supabase Cloud
+    fetchVietqrConfigFromDb().then((cfg) => {
+      if (cfg) setVietqrConfig(cfg);
+    }).catch(console.error);
+
+    fetchEwalletConfigFromDb().then((cfg) => {
+      if (cfg) {
+        setEwalletConfig(cfg);
+        if (cfg.activeWallet) setSelectedWalletType(cfg.activeWallet);
+      }
+    }).catch(console.error);
+
+    const handleVietqrEvt = (e: any) => {
+      if (e.detail) setVietqrConfig(e.detail);
+    };
+    const handleEwalletEvt = (e: any) => {
+      if (e.detail) {
+        setEwalletConfig(e.detail);
+        if (e.detail.activeWallet) setSelectedWalletType(e.detail.activeWallet);
+      }
+    };
+    window.addEventListener(VIETQR_UPDATED_EVENT, handleVietqrEvt);
+    window.addEventListener(EWALLET_UPDATED_EVENT, handleEwalletEvt);
+
     return () => {
       window.removeEventListener('bakery_products_updated', handleProductsUpdated);
       window.removeEventListener('bakery_stocks_updated', handleProductsUpdated);
+      window.removeEventListener(VIETQR_UPDATED_EVENT, handleVietqrEvt);
+      window.removeEventListener(EWALLET_UPDATED_EVENT, handleEwalletEvt);
     };
   }, []);
 
@@ -884,6 +895,13 @@ export default function POSPage() {
             return updated;
           });
         }
+      },
+      onVietqrConfigChange: (cfg) => {
+        setVietqrConfig(cfg);
+      },
+      onEwalletConfigChange: (cfg) => {
+        setEwalletConfig(cfg);
+        if (cfg.activeWallet) setSelectedWalletType(cfg.activeWallet);
       },
     });
 

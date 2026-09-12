@@ -18,6 +18,8 @@ export type ProductChangePayload = {
 type ProductChangeCallback = (payload: ProductChangePayload) => void;
 type TelegramConfigCallback = (config: any) => void;
 type StoreBrandingCallback = (branding: any) => void;
+type VietqrConfigCallback = (config: any) => void;
+type EwalletConfigCallback = (config: any) => void;
 
 const statusListeners = new Set<StatusCallback>();
 const newOrderListeners = new Set<NewOrderCallback>();
@@ -26,6 +28,8 @@ const dbChangeListeners = new Set<DbChangeCallback>();
 const productListeners = new Set<ProductChangeCallback>();
 const telegramConfigListeners = new Set<TelegramConfigCallback>();
 const storeBrandingListeners = new Set<StoreBrandingCallback>();
+const vietqrConfigListeners = new Set<VietqrConfigCallback>();
+const ewalletConfigListeners = new Set<EwalletConfigCallback>();
 
 const recentlyNotifiedOrders = new Map<string, number>();
 
@@ -124,6 +128,40 @@ function ensureSyncChannel() {
               cb(payload.branding);
             } catch (e) {
               console.warn('Lỗi storeBrandingListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'vietqr_config_updated' }, ({ payload }: any) => {
+        if (payload?.config) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('bakery_vietqr_config', JSON.stringify(payload.config));
+              window.dispatchEvent(new CustomEvent('bakery_vietqr_updated', { detail: payload.config }));
+            } catch {}
+          }
+          vietqrConfigListeners.forEach((cb) => {
+            try {
+              cb(payload.config);
+            } catch (e) {
+              console.warn('Lỗi vietqrConfigListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'ewallet_config_updated' }, ({ payload }: any) => {
+        if (payload?.config) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('bakery_ewallet_config', JSON.stringify(payload.config));
+              window.dispatchEvent(new CustomEvent('bakery_ewallet_updated', { detail: payload.config }));
+            } catch {}
+          }
+          ewalletConfigListeners.forEach((cb) => {
+            try {
+              cb(payload.config);
+            } catch (e) {
+              console.warn('Lỗi ewalletConfigListener:', e);
             }
           });
         }
@@ -323,6 +361,48 @@ export async function broadcastStoreBranding(branding: any) {
 }
 
 /**
+ * Phát sóng cập nhật cấu hình VietQR tới tất cả thiết bị (POS, Kitchen, Admin trên mọi máy khác)
+ */
+export async function broadcastVietqrConfig(config: any) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'vietqr_config_updated',
+        payload: {
+          config,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastVietqrConfig:', err);
+  }
+}
+
+/**
+ * Phát sóng cập nhật cấu hình Ví điện tử (Momo, ZaloPay, ViettelMoney) tới tất cả thiết bị
+ */
+export async function broadcastEwalletConfig(config: any) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'ewallet_config_updated',
+        payload: {
+          config,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastEwalletConfig:', err);
+  }
+}
+
+/**
  * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác
  * An toàn tuyệt đối với React StrictMode và Remount
  */
@@ -334,6 +414,8 @@ export function subscribeCrossDeviceSync(callbacks: {
   onProductChange?: ProductChangeCallback;
   onTelegramConfigChange?: TelegramConfigCallback;
   onStoreBrandingChange?: StoreBrandingCallback;
+  onVietqrConfigChange?: VietqrConfigCallback;
+  onEwalletConfigChange?: EwalletConfigCallback;
 }) {
   ensureSyncChannel();
 
@@ -345,6 +427,8 @@ export function subscribeCrossDeviceSync(callbacks: {
     onProductChange,
     onTelegramConfigChange,
     onStoreBrandingChange,
+    onVietqrConfigChange,
+    onEwalletConfigChange,
   } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
@@ -354,6 +438,8 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onProductChange) productListeners.add(onProductChange);
   if (onTelegramConfigChange) telegramConfigListeners.add(onTelegramConfigChange);
   if (onStoreBrandingChange) storeBrandingListeners.add(onStoreBrandingChange);
+  if (onVietqrConfigChange) vietqrConfigListeners.add(onVietqrConfigChange);
+  if (onEwalletConfigChange) ewalletConfigListeners.add(onEwalletConfigChange);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
@@ -363,6 +449,8 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onProductChange) productListeners.delete(onProductChange);
     if (onTelegramConfigChange) telegramConfigListeners.delete(onTelegramConfigChange);
     if (onStoreBrandingChange) storeBrandingListeners.delete(onStoreBrandingChange);
+    if (onVietqrConfigChange) vietqrConfigListeners.delete(onVietqrConfigChange);
+    if (onEwalletConfigChange) ewalletConfigListeners.delete(onEwalletConfigChange);
   };
 }
 

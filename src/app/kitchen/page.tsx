@@ -40,6 +40,7 @@ import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { DeliveryPaymentModal } from '@/components/kitchen/DeliveryPaymentModal';
 import { addSpoilageLog } from '@/lib/utils/spoilageManager';
 import { parseRecipeItem, formatScaledQty, normalizeRecipe } from '@/lib/utils/recipeCalculator';
+import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 
 interface OrderItem {
   id: string;
@@ -150,7 +151,7 @@ export default function KitchenPage() {
   const [deliveryPaymentModalOrder, setDeliveryPaymentModalOrder] = useState<KDSOrder | null>(null);
 
   // ── CẤU HÌNH VIETQR CHO THANH TOÁN BẾP ──
-  const [vietqrConfig, setVietqrConfig] = useState<any>(null);
+  const [vietqrConfig, setVietqrConfig] = useState<any>(() => getVietqrConfig());
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -159,6 +160,17 @@ export default function KitchenPage() {
         if (raw) setVietqrConfig(JSON.parse(raw));
       } catch {}
     }
+    fetchVietqrConfigFromDb().then((cfg) => {
+      if (cfg) setVietqrConfig(cfg);
+    }).catch(console.error);
+
+    const handleVietqrEvt = (e: any) => {
+      if (e.detail) setVietqrConfig(e.detail);
+    };
+    window.addEventListener(VIETQR_UPDATED_EVENT, handleVietqrEvt);
+    return () => {
+      window.removeEventListener(VIETQR_UPDATED_EVENT, handleVietqrEvt);
+    };
   }, []);
 
   // ── CHẾ ĐỘ MÀN HÌNH BẾP: 'orders' (Đơn Khách & Bán Quầy) vs 'production' (Làm Bánh Bán Theo BOM) ──
@@ -1075,6 +1087,9 @@ export default function KitchenPage() {
           } catch {}
         }
         loadOrders();
+      },
+      onVietqrConfigChange: (cfg) => {
+        setVietqrConfig(cfg);
       },
     });
 

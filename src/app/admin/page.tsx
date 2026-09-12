@@ -45,6 +45,14 @@ import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings'
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe } from '@/lib/utils/recipeCalculator';
+import {
+  fetchVietqrConfigFromDb,
+  saveVietqrConfigToDb,
+  fetchEwalletConfigFromDb,
+  saveEwalletConfigToDb,
+  VietqrConfig,
+  EwalletConfig,
+} from '@/lib/utils/paymentSync';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -86,25 +94,7 @@ interface ExpenseItem {
   paymentMethod?: 'cash' | 'bank';
 }
 
-export interface EwalletConfig {
-  activeWallet: 'momo' | 'zalopay' | 'viettelmoney';
-  momo: {
-    phone: string;
-    name: string;
-    qrUrl: string;
-  };
-  zalopay: {
-    phone: string;
-    name: string;
-    qrUrl: string;
-  };
-  viettelmoney: {
-    phone: string;
-    name: string;
-    qrUrl: string;
-  };
-  transferSyntax: string;
-}
+export type { EwalletConfig } from '@/lib/utils/paymentSync';
 
 export default function AdminDashboard() {
   const {
@@ -938,7 +928,16 @@ export default function AdminDashboard() {
       }
     }
 
-    // Lắng nghe đồng bộ sản phẩm thời gian thực giữa điện thoại và máy tính
+    // Tự động kéo cấu hình thanh toán VietQR & Ví điện tử mới nhất từ Supabase Cloud
+    fetchVietqrConfigFromDb().then((cfg) => {
+      if (cfg) setVietqrConfig(cfg);
+    }).catch(console.error);
+
+    fetchEwalletConfigFromDb().then((cfg) => {
+      if (cfg) setEwalletConfig(cfg);
+    }).catch(console.error);
+
+    // Lắng nghe đồng bộ sản phẩm & cấu hình thanh toán thời gian thực giữa điện thoại và máy tính
     const unsubscribeSync = subscribeCrossDeviceSync({
       onProductChange: (payload) => {
         if (!payload || !payload.product) return;
@@ -972,6 +971,12 @@ export default function AdminDashboard() {
             return updated;
           });
         }
+      },
+      onVietqrConfigChange: (cfg) => {
+        setVietqrConfig(cfg);
+      },
+      onEwalletConfigChange: (cfg) => {
+        setEwalletConfig(cfg);
       },
     });
 
@@ -1019,19 +1024,29 @@ export default function AdminDashboard() {
     }
   }, [ingredients, poIngredientId, soIngredientId]);
 
-  const handleSaveVietqr = (e?: React.FormEvent) => {
+  const handleSaveVietqr = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (typeof window !== 'undefined') {
       localStorage.setItem('bakery_vietqr_config', JSON.stringify(vietqrConfig));
+    }
+    try {
+      await saveVietqrConfigToDb(vietqrConfig, securityConfig.adminName || 'Admin');
+    } catch (err) {
+      console.error('Lỗi đồng bộ cấu hình VietQR lên máy chủ:', err);
     }
     setVietqrSaved(true);
     setTimeout(() => setVietqrSaved(false), 3500);
   };
 
-  const handleSaveEwallet = (e?: React.FormEvent) => {
+  const handleSaveEwallet = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (typeof window !== 'undefined') {
       localStorage.setItem('bakery_ewallet_config', JSON.stringify(ewalletConfig));
+    }
+    try {
+      await saveEwalletConfigToDb(ewalletConfig, securityConfig.adminName || 'Admin');
+    } catch (err) {
+      console.error('Lỗi đồng bộ cấu hình Ví điện tử lên máy chủ:', err);
     }
     setEwalletSaved(true);
     setTimeout(() => setEwalletSaved(false), 3500);
