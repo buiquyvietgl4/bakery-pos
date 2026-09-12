@@ -2495,25 +2495,6 @@ export default function AdminDashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {/* HUY HIỆU TRẠNG THÁI CHẾ ĐỘ CSDL (ONLINE CLOUD VS LOCAL SQL) */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('cloud')}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-2xs border cursor-pointer ${
-                sqlModeConfig.mode === 'local'
-                  ? 'bg-amber-500/10 text-amber-900 border-amber-300 hover:bg-amber-500/20'
-                  : 'bg-emerald-500/10 text-emerald-900 border-emerald-300 hover:bg-emerald-500/20'
-              }`}
-              title={
-                sqlModeConfig.mode === 'local'
-                  ? `Đang chạy CSDL Local SQL (Thư mục: ${sqlModeConfig.localFolderName || 'Chưa chọn'}). Bấm để quản lý.`
-                  : 'Đang chạy CSDL Supabase Cloud Online. Bấm để quản lý.'
-              }
-            >
-              <span className={`w-2 h-2 rounded-full ${sqlModeConfig.mode === 'local' ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
-              <span className="hidden md:inline">{sqlModeConfig.mode === 'local' ? 'CSDL: Local SQL' : 'CSDL: Cloud SQL'}</span>
-            </button>
-
             <button
               type="button"
               onClick={() => setIsPrinterSettingsOpen(true)}
@@ -2522,15 +2503,6 @@ export default function AdminDashboard() {
             >
               <Printer className="w-4 h-4 text-blue-600" />
               <span className="hidden sm:inline">Máy In POS</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsBackupModalOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-xs font-bold text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
-              title="Tự động sao lưu toàn bộ dữ liệu & phục hồi đẩy lên SQL đối soát thông minh"
-            >
-              <Database className="w-4 h-4 text-white" />
-              <span>Sao Lưu & SQL</span>
             </button>
           </div>
         </div>
@@ -2546,7 +2518,7 @@ export default function AdminDashboard() {
             { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
             { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2 },
             { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield },
-            { id: 'cloud', label: 'CSDL & Cloud SQL', icon: Database },
+            { id: 'cloud', label: 'CSDL & Sao Lưu SQL', icon: Database },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -4004,8 +3976,8 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* CHỈ BÁO HUY HIỆU TRẠNG THÁI HIỆN TẠI */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* CHỈ BÁO HUY HIỆU TRẠNG THÁI HIỆN TẠI & NÚT SAO LƯU SQL GOM VÀO ĐÂY */}
+            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
               <div className={`px-3.5 py-2 rounded-2xl border flex items-center gap-2 text-xs font-bold ${
                 sqlModeConfig.mode === 'online'
                   ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
@@ -4019,6 +3991,16 @@ export default function AdminDashboard() {
                   <b>{sqlModeConfig.mode === 'online' ? '1. Online Cloud SQL' : '2. Local SQL Cục Bộ'}</b>
                 </span>
               </div>
+
+              <button
+                type="button"
+                onClick={() => setIsBackupModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-xs font-black text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
+                title="Tự động sao lưu toàn bộ dữ liệu & phục hồi đẩy lên SQL đối soát thông minh"
+              >
+                <Database className="w-4 h-4 text-white" />
+                <span>Sao Lưu & Phục Hồi SQL</span>
+              </button>
             </div>
           </div>
 
