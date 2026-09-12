@@ -162,4 +162,6 @@ export interface AutoBackupConfig {
   lastBackupHash?: string;
   totalBackupsSaved: number;
   autoSaveImages: boolean;
+  keepOnlyLatest?: boolean; // Tự động xóa file cũ, chỉ giữ 1 file duy nhất gần nhất
 }
+

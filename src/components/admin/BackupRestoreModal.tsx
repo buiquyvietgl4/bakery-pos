@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Database, HardDrive, Download, Upload, RefreshCw, CheckCircle2, 
   AlertTriangle, X, Folder, Clock, ShieldCheck, FileText, Image as ImageIcon,
-  Check, ArrowRight, Layers, HelpCircle, AlertCircle
+  Check, ArrowRight, Layers, HelpCircle, AlertCircle, Trash2
 } from 'lucide-react';
 import { 
   BakeryBackupData, 
@@ -21,7 +21,8 @@ import {
   saveBackupToFile, 
   isFileSystemAccessSupported,
   checkDirectoryPermission,
-  requestDirectoryPermission
+  requestDirectoryPermission,
+  cleanOldBackupsNow
 } from '@/lib/utils/backupManager';
 import { 
   reconcileBackupWithCurrentState, 
@@ -42,6 +43,27 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
   const [backupSuccessMsg, setBackupSuccessMsg] = useState<string | null>(null);
   const [backupErrorMsg, setBackupErrorMsg] = useState<string | null>(null);
   const [folderSelecting, setFolderSelecting] = useState(false);
+  const [isCleaningOldFiles, setIsCleaningOldFiles] = useState(false);
+
+  const handleCleanOldBackups = async () => {
+    setIsCleaningOldFiles(true);
+    setBackupSuccessMsg(null);
+    setBackupErrorMsg(null);
+    try {
+      const res = await cleanOldBackupsNow();
+      if (res.success) {
+        setBackupSuccessMsg(res.message);
+        updatePermStatus();
+        setTimeout(() => setBackupSuccessMsg(null), 6000);
+      } else {
+        setBackupErrorMsg(res.message);
+      }
+    } catch (e: any) {
+      setBackupErrorMsg(e.message || 'Lỗi khi dọn dẹp thư mục');
+    } finally {
+      setIsCleaningOldFiles(false);
+    }
+  };
   const [isApiSupported, setIsApiSupported] = useState(false);
   const [permStatus, setPermStatus] = useState<'granted' | 'prompt' | 'denied' | 'no_handle' | 'unsupported'>('no_handle');
 
@@ -375,6 +397,29 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                   <p className="text-xs text-gray-500">
                     💡 Bạn có thể chọn bất kỳ thư mục nào trên ổ đĩa máy tính (ví dụ: <code className="bg-gray-100 px-1 py-0.5 rounded text-amber-900 font-mono">D:\SaoLuu_TiemBanh</code> hoặc thư mục Google Drive/Dropbox trên PC).
                   </p>
+
+                  {/* CƠ CHẾ TIẾT KIỆM BỘ NHỚ: CHỈ GIỮ 1 BẢN MỚI NHẤT & NÚT DỌN DẸP */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-emerald-50/80 border border-emerald-200 rounded-xl text-xs text-emerald-900">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <div>
+                        <span className="font-bold text-emerald-950">Cơ chế lưu trữ: </span>
+                        <span>Tự động dọn dẹp file cũ, luôn chỉ giữ duy nhất <strong>1 tệp data đầy đủ gần nhất</strong> (<code className="font-mono text-emerald-800 bg-white px-1 py-0.5 rounded border border-emerald-200">latest_backup.bakery.json</code>) để tránh bị nở dung lượng ổ cứng.</span>
+                      </div>
+                    </div>
+                    {isApiSupported && (
+                      <button
+                        type="button"
+                        onClick={handleCleanOldBackups}
+                        disabled={isCleaningOldFiles}
+                        className="px-3 py-1.5 bg-white hover:bg-emerald-100 text-emerald-800 font-bold rounded-lg border border-emerald-300 shadow-sm shrink-0 flex items-center justify-center gap-1.5 transition active:scale-95 disabled:opacity-60 cursor-pointer"
+                        title="Xóa tất cả các file sao lưu cũ tích tụ trước đó trong thư mục"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-emerald-700" />
+                        {isCleaningOldFiles ? 'Đang dọn dẹp...' : 'Dọn dẹp file cũ ngay'}
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* CHU KỲ SAO LƯU */}

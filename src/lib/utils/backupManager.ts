@@ -25,6 +25,7 @@ const DEFAULT_CONFIG: AutoBackupConfig = {
   folderName: 'Mặc định (Tải về máy tính)',
   totalBackupsSaved: 0,
   autoSaveImages: true,
+  keepOnlyLatest: true,
 };
 
 // ── QUẢN LÝ CẤU HÌNH AUTO BACKUP ──
@@ -155,52 +156,130 @@ export async function requestDirectoryPermission(dirHandle?: any): Promise<boole
   }
 }
 
-// ── HÀM GHI TẬP TIN TRỰC TIẾP VÀO DIRECTORY HANDLE ──
+// ── HÀM QUÉT VÀ XÓA CÁC TỆP SAO LƯU CŨ ĐỂ TIẾT KIỆM BỘ NHỚ Ổ ĐĨA ──
+export async function cleanupOldBackupsInDirectory(
+  dirHandle: any,
+  keepFile = 'latest_backup.bakery.json'
+): Promise<{ deletedCount: number; deletedFiles: string[] }> {
+  const deletedFiles: string[] = [];
+  try {
+    const fileNames: string[] = [];
+    if (typeof dirHandle.values === 'function') {
+      for await (const entry of dirHandle.values()) {
+        if (entry.kind === 'file') {
+          fileNames.push(entry.name);
+        }
+      }
+    } else if (typeof dirHandle.entries === 'function') {
+      for await (const [name, entry] of dirHandle.entries()) {
+        if (entry.kind === 'file') {
+          fileNames.push(name);
+        }
+      }
+    }
+
+    for (const name of fileNames) {
+      // Chỉ giữ lại keepFile và file README hướng dẫn. Xóa tất cả các file sao lưu cũ khác
+      if (
+        name !== keepFile &&
+        name !== 'THU_MUC_SAO_LUU_TIEM_BANH.txt' &&
+        (name.endsWith('.bakery.json') || name.startsWith('bakery_backup_') || name.includes('.temp.'))
+      ) {
+        try {
+          await dirHandle.removeEntry(name, { recursive: false });
+          deletedFiles.push(name);
+          console.log(`[AutoBackup] Đã tự động xóa file cũ: ${name}`);
+        } catch (delErr) {
+          console.warn(`[AutoBackup] Không thể xóa file ${name}:`, delErr);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AutoBackup] Lỗi khi dọn dẹp thư mục sao lưu:', err);
+  }
+  return { deletedCount: deletedFiles.length, deletedFiles };
+}
+
+// ── HÀNH ĐỘNG DỌN DẸP FILE CŨ CHỦ ĐỘNG TỪ GIAO DIỆN ──
+export async function cleanOldBackupsNow(): Promise<{ success: boolean; deletedCount: number; message: string }> {
+  if (!isFileSystemAccessSupported()) {
+    return { success: false, deletedCount: 0, message: 'Trình duyệt không hỗ trợ thao tác trực tiếp trên thư mục máy tính.' };
+  }
+  try {
+    const dirHandle = await getStoredDirectoryHandle();
+    if (!dirHandle) {
+      return { success: false, deletedCount: 0, message: 'Chưa có thư mục nào được liên kết.' };
+    }
+    const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+    if (perm !== 'granted') {
+      const newPerm = await dirHandle.requestPermission({ mode: 'readwrite' });
+      if (newPerm !== 'granted') {
+        return { success: false, deletedCount: 0, message: 'Chưa được cấp quyền truy cập thư mục.' };
+      }
+    }
+    const res = await cleanupOldBackupsInDirectory(dirHandle, 'latest_backup.bakery.json');
+    return {
+      success: true,
+      deletedCount: res.deletedCount,
+      message: res.deletedCount > 0
+        ? `Đã dọn dẹp thành công ${res.deletedCount} tệp sao lưu cũ. Thư mục hiện chỉ giữ duy nhất 1 file dữ liệu mới nhất!`
+        : `Thư mục đã sạch sẽ! Hiện chỉ lưu duy nhất 1 bản sao lưu mới nhất.`,
+    };
+  } catch (err: any) {
+    return { success: false, deletedCount: 0, message: err.message || 'Lỗi khi quét thư mục' };
+  }
+}
+
+// ── HÀM GHI TẬP TIN TRỰC TIẾP VÀO DIRECTORY HANDLE (CHỈ GIỮ 1 BẢN MỚI NHẤT, TỰ ĐỘNG XÓA FILE CŨ) ──
 async function writeFilesToDirHandle(
   dirHandle: any,
-  filename: string,
-  jsonString: string
-): Promise<void> {
-  // 1. Ghi file sao lưu định danh theo thời gian
-  const fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+  jsonString: string,
+  fullData?: BakeryBackupData
+): Promise<string> {
+  const targetFilename = 'latest_backup.bakery.json';
+
+  // 1. Ghi đè vào file sao lưu duy nhất latest_backup.bakery.json
+  const fileHandle = await dirHandle.getFileHandle(targetFilename, { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write(jsonString);
   await writable.close();
 
-  // 2. Ghi đè file latest_backup.bakery.json để người dùng luôn có file mới nhất
-  try {
-    const latestHandle = await dirHandle.getFileHandle('latest_backup.bakery.json', { create: true });
-    const latestWritable = await latestHandle.createWritable();
-    await latestWritable.write(jsonString);
-    await latestWritable.close();
-  } catch (err) {
-    console.warn('Không thể ghi latest_backup.bakery.json:', err);
-  }
+  // 2. 🔥 Tự động quét và xóa sạch các file sao lưu cũ để dung lượng KHÔNG bị phình to
+  await cleanupOldBackupsInDirectory(dirHandle, targetFilename);
 
-  // 3. Ghi file hướng dẫn nhận biết thư mục tự động
+  // 3. Cập nhật file hướng dẫn nhận biết thư mục tự động
   try {
     const readmeHandle = await dirHandle.getFileHandle('THU_MUC_SAO_LUU_TIEM_BANH.txt', { create: true });
     const readmeWritable = await readmeHandle.createWritable();
+    const sizeKb = Math.round(new Blob([jsonString]).size / 1024);
+    const prodCount = fullData?.metadata?.totalProducts ?? '---';
+    const orderCount = fullData?.metadata?.totalOrders ?? '---';
+    const imgCount = fullData?.metadata?.totalImages ?? '---';
+
     const infoText = 
 `=============================================================
 THƯ MỤC NHẬN DỮ LIỆU SAO LƯU TỰ ĐỘNG - TIỆM BÁNH ERP & POS
 =============================================================
 • Thư mục: ${dirHandle.name}
-• Trạng thái: ĐÃ KẾT NỐI TỰ ĐỘNG THÀNH CÔNG VỚI HỆ THỐNG
+• Trạng thái: ĐÃ KẾT NỐI & TỰ ĐỘNG CẬP NHẬT LIÊN TỤC
+• Cơ chế lưu trữ: CHỈ GIỮ 1 FILE MỚI NHẤT (Tự động xóa các file cũ để tối ưu bộ nhớ)
+• Tệp sao lưu gần nhất: ${targetFilename} (${sizeKb} KB)
 • Lần cập nhật mới nhất: ${new Date().toLocaleString('vi-VN')}
-• Tệp sao lưu mới nhất: latest_backup.bakery.json
+• Thống kê dữ liệu: ${prodCount} loại bánh, ${orderCount} đơn hàng, ${imgCount} hình ảnh
 
-Dữ liệu tại thư mục này được cập nhật tự động định kỳ và mỗi khi:
+Dữ liệu được cập nhật tự động định kỳ và mỗi khi:
 - Quầy POS hoàn tất đơn hàng hoặc đơn đặt bánh mới
 - Quản lý cập nhật bánh, giá bán, công thức BOM, kho nguyên liệu
 - Ghi nhận hao hụt, phiếu chi OPEX, sổ thu chi két
 
 Để phục hồi dữ liệu: Mở menu Quản trị Admin -> Bấm "Sao Lưu / Phục Hồi" -> 
-Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "latest_backup.bakery.json" trong thư mục này.
+Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" trong thư mục này.
 =============================================================`;
     await readmeWritable.write(infoText);
     await readmeWritable.close();
   } catch {}
+
+  return targetFilename;
 }
 
 // ── CHỌN THƯ MỤC LƯU BACKUP TRÊN MÁY TÍNH ──
@@ -223,16 +302,12 @@ export async function selectBackupDirectory(): Promise<{ success: boolean; folde
       const folderName = dirHandle.name || 'Thư mục đã chọn';
       saveAutoBackupConfig({ folderName, enabled: true });
 
-      // 🔥 LẬP TỨC SAO LƯU VÀ GHI DỮ LIỆU ĐẦU TIÊN VÀO THƯ MỤC VỪA CHỌN!
+      // 🔥 LẬP TỨC SAO LƯU VÀ GHI DỮ LIỆU ĐẦU TIÊN VÀO THƯ MỤC VỪA CHỌN (CHỈ GIỮ 1 FILE MỚI NHẤT, XÓA CŨ)!
       try {
         const fullData = await gatherFullBakeryData();
-        const now = new Date();
-        const dateStr = now.toISOString().slice(0, 10);
-        const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-        const filename = `bakery_backup_${dateStr}_${timeStr}.bakery.json`;
         const jsonString = JSON.stringify(fullData, null, 2);
 
-        await writeFilesToDirHandle(dirHandle, filename, jsonString);
+        await writeFilesToDirHandle(dirHandle, jsonString, fullData);
 
         saveAutoBackupConfig({
           lastBackupAt: new Date().toISOString(),
@@ -576,16 +651,13 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   };
 }
 
-// ── LƯU FILE BACKUP VÀO THƯ MỤC ĐÃ CHỌN HOẶC TẢI VỀ ──
+// ── LƯU FILE BACKUP VÀO THƯ MỤC ĐÃ CHỌN HOẶC TẢI VỀ (TỰ ĐỘNG XÓA FILE CŨ, CHỈ GIỮ 1 BẢN MỚI NHẤT) ──
 export async function saveBackupToFile(
   data: BakeryBackupData,
   manualDownload = false,
   allowPromptPermission = false
 ): Promise<{ success: boolean; method: 'directory' | 'download' | 'indexeddb'; filename: string; sizeBytes: number; error?: string }> {
-  const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const timeStr = `${String(now.getHours()).padStart(2, '0')}-${String(now.getMinutes()).padStart(2, '0')}-${String(now.getSeconds()).padStart(2, '0')}`;
-  const filename = `bakery_backup_${dateStr}_${timeStr}.bakery.json`;
+  const filename = 'latest_backup.bakery.json';
   const jsonString = JSON.stringify(data, null, 2);
   const sizeBytes = new Blob([jsonString]).size;
 
@@ -609,7 +681,7 @@ export async function saveBackupToFile(
         }
 
         if (perm === 'granted') {
-          await writeFilesToDirHandle(dirHandle, filename, jsonString);
+          const writtenFilename = await writeFilesToDirHandle(dirHandle, jsonString, data);
 
           const currentCfg = getAutoBackupConfig();
           saveAutoBackupConfig({
@@ -618,7 +690,7 @@ export async function saveBackupToFile(
             totalBackupsSaved: (currentCfg.totalBackupsSaved || 0) + 1,
           });
 
-          return { success: true, method: 'directory', filename, sizeBytes };
+          return { success: true, method: 'directory', filename: writtenFilename, sizeBytes };
         } else {
           console.warn(`[AutoBackup] Thư mục "${dirHandle.name}" đang ở trạng thái quyền: "${perm}".`);
           if (typeof window !== 'undefined') {
