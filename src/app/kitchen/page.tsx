@@ -39,6 +39,7 @@ import { CancelRemakeModal } from '@/components/kitchen/CancelRemakeModal';
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { DeliveryPaymentModal } from '@/components/kitchen/DeliveryPaymentModal';
 import { addSpoilageLog } from '@/lib/utils/spoilageManager';
+import { parseRecipeItem, formatScaledQty, normalizeRecipe } from '@/lib/utils/recipeCalculator';
 
 interface OrderItem {
   id: string;
@@ -170,11 +171,11 @@ export default function KitchenPage() {
         const saved = localStorage.getItem('bakery_recipes');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed.map(normalizeRecipe);
         }
       } catch {}
     }
-    return DEFAULT_BAKERY_RECIPES;
+    return DEFAULT_BAKERY_RECIPES.map(normalizeRecipe);
   });
 
   const [selectedRecipe, setSelectedRecipe] = useState<BakeryRecipe | null>(null);
@@ -2721,7 +2722,7 @@ export default function KitchenPage() {
                       <div
                         key={r.id}
                         onClick={() => {
-                          setSelectedRecipe(r);
+                          setSelectedRecipe(normalizeRecipe(r));
                           setTargetBatchQty(r.yield_qty || 10);
                           setCustomBakeMinutes(r.bake_time_minutes || 25);
                           setCustomBakeTemp(r.bake_temp_celsius || 190);
@@ -2953,23 +2954,23 @@ export default function KitchenPage() {
                       <tbody className="divide-y divide-zinc-800/60">
                         {(selectedRecipe.items || []).map((item: any, idx: number) => {
                           const currentQty = Math.max(1, Number(targetBatchQty) || 1);
-                          const mult = currentQty / (selectedRecipe.yield_qty || 1);
-                          const scaledVal = (item.qty || 0) * mult;
-                          let displayVal: string | number;
-                          if (scaledVal >= 10 || item.unit === 'g' || item.unit === 'ml') {
-                            displayVal = Number.isInteger(scaledVal) ? scaledVal : Number(scaledVal.toFixed(1));
-                          } else {
-                            displayVal = Number(scaledVal.toFixed(2));
-                          }
+                          const baseYield = Math.max(1, Number(selectedRecipe.yield_qty) || 1);
+                          const mult = currentQty / baseYield;
+
+                          const parsed = parseRecipeItem(item);
+                          const scaledVal = parsed.numericQty * mult;
+                          const displayVal = formatScaledQty(scaledVal);
 
                           return (
                             <tr key={idx} className="hover:bg-zinc-900/40 transition">
                               <td className="py-2.5 px-3 font-bold text-zinc-200">{item.name}</td>
-                              <td className="py-2.5 px-3 text-right text-zinc-400">{item.qty}</td>
+                              <td className="py-2.5 px-3 text-right text-zinc-400 font-medium">
+                                {parsed.baseDisplay}
+                              </td>
                               <td className="py-2.5 px-3 text-right font-black text-amber-300 bg-amber-950/30 text-sm">
                                 {displayVal}
                               </td>
-                              <td className="py-2.5 px-3 text-center text-zinc-300 font-semibold">{item.unit}</td>
+                              <td className="py-2.5 px-3 text-center text-zinc-300 font-semibold">{parsed.unit}</td>
                               <td className="py-2.5 px-3 text-zinc-400 text-[11px] hidden sm:table-cell">{item.note || '—'}</td>
                             </tr>
                           );
@@ -3119,7 +3120,7 @@ export default function KitchenPage() {
                   <div
                     key={recipe.id}
                     onClick={() => {
-                      setSelectedRecipe(recipe);
+                      setSelectedRecipe(normalizeRecipe(recipe));
                       setTargetBatchQty(recipe.yield_qty || 10);
                       setCustomBakeMinutes(recipe.bake_time_minutes || 25);
                       setCustomBakeTemp(recipe.bake_temp_celsius || 190);

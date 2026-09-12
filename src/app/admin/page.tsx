@@ -44,6 +44,7 @@ import { AccountingClosingSection } from '@/components/admin/AccountingClosingSe
 import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
+import { parseRecipeItem, normalizeRecipe } from '@/lib/utils/recipeCalculator';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -303,30 +304,32 @@ export default function AdminDashboard() {
       id: 'rec-1',
       name: 'Bánh Bông Lan Trứng Muối 18cm',
       yield_qty: 1,
+      yield_unit: 'chiếc',
       cost_per_unit: 127495,
       target_food_cost_pct: 35,
       suggested_price: 365000,
       items: [
-        { name: 'Bột mì số 11', qty: '300g', cost: 7875 },
-        { name: 'Trứng gà ta', qty: '6 quả', cost: 21420 },
-        { name: 'Bơ lạt Anchor', qty: '150g', cost: 18000 },
-        { name: 'Đường cát', qty: '200g', cost: 3600 },
-        { name: 'Trứng muối nướng', qty: '8 quả', cost: 61600 },
-        { name: 'Hộp bánh kraft', qty: '1 cái', cost: 15000 },
+        { name: 'Bột mì số 11', qty: 300, quantity: 300, unit: 'g', cost: 7875 },
+        { name: 'Trứng gà ta', qty: 6, quantity: 6, unit: 'quả', cost: 21420 },
+        { name: 'Bơ lạt Anchor', qty: 150, quantity: 150, unit: 'g', cost: 18000 },
+        { name: 'Đường cát', qty: 200, quantity: 200, unit: 'g', cost: 3600 },
+        { name: 'Trứng muối nướng', qty: 8, quantity: 8, unit: 'quả', cost: 61600 },
+        { name: 'Hộp bánh kraft', qty: 1, quantity: 1, unit: 'cái', cost: 15000 },
       ]
     },
     {
       id: 'rec-2',
       name: 'Bánh Croissant Bơ Pháp Thượng Hạng',
       yield_qty: 10,
+      yield_unit: 'cái',
       cost_per_unit: 11200,
       target_food_cost_pct: 32,
       suggested_price: 35000,
       items: [
-        { name: 'Bột mì số 11', qty: '500g', cost: 13125 },
-        { name: 'Bơ lạt Anchor', qty: '250g', cost: 30000 },
-        { name: 'Sữa tươi', qty: '200ml', cost: 7140 },
-        { name: 'Đường cát', qty: '60g', cost: 1080 },
+        { name: 'Bột mì số 11', qty: 500, quantity: 500, unit: 'g', cost: 13125 },
+        { name: 'Bơ lạt Anchor', qty: 250, quantity: 250, unit: 'g', cost: 30000 },
+        { name: 'Sữa tươi', qty: 200, quantity: 200, unit: 'ml', cost: 7140 },
+        { name: 'Đường cát', qty: 60, quantity: 60, unit: 'g', cost: 1080 },
       ]
     },
   ]);
@@ -879,7 +882,10 @@ export default function AdminDashboard() {
       const savedRecipes = localStorage.getItem('bakery_recipes');
       if (savedRecipes) {
         try {
-          setRecipes(JSON.parse(savedRecipes));
+          const parsed = JSON.parse(savedRecipes);
+          if (Array.isArray(parsed)) {
+            setRecipes(parsed.map(normalizeRecipe));
+          }
         } catch (e) {
           console.error(e);
         }
@@ -1070,7 +1076,7 @@ export default function AdminDashboard() {
       return {
         ingredient_id: item.ingredient_id,
         name: ing ? ing.name : 'Nguyên liệu',
-        qty: `${item.quantity}${ing ? ing.unit : ''}`,
+        qty: item.quantity,
         cost: lineCost,
         quantity: item.quantity,
         unit: ing ? ing.unit : 'g',
@@ -3160,14 +3166,17 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="bg-zinc-50 rounded-2xl p-3 divide-y divide-zinc-200/60 text-xs">
-                    {rec.items.map((it: any, i: number) => (
-                      <div key={i} className="py-1.5 flex justify-between items-center">
-                        <span className="text-zinc-700">
-                          {it.name} <span className="text-zinc-400 font-mono">({it.qty || `${it.quantity}${it.unit || ''}`})</span>
-                        </span>
-                        <span className="font-bold text-zinc-900">{it.cost.toLocaleString('vi-VN')}₫</span>
-                      </div>
-                    ))}
+                    {(rec.items || []).map((it: any, i: number) => {
+                      const p = parseRecipeItem(it);
+                      return (
+                        <div key={i} className="py-1.5 flex justify-between items-center">
+                          <span className="text-zinc-700">
+                            {it.name} <span className="text-zinc-400 font-mono">({p.baseDisplay}{p.unit})</span>
+                          </span>
+                          <span className="font-bold text-zinc-900">{it.cost.toLocaleString('vi-VN')}₫</span>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/60 flex justify-between items-center text-xs font-bold">
