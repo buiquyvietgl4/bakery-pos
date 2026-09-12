@@ -2,6 +2,8 @@
 // Đồng bộ 2 chiều Chi phí vận hành OPEX và Sổ quỹ thu chi dòng tiền qua Supabase Cloud
 
 import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 export interface ExpenseItem {
   id: string;
@@ -72,6 +74,7 @@ export function saveExpensesLocally(list: ExpenseItem[]): void {
 
 export async function fetchExpensesFromDb(): Promise<ExpenseItem[]> {
   const fallback = getExpenses();
+  if (isLocalMode()) return fallback;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return fallback;
   }
@@ -102,6 +105,11 @@ export async function saveExpensesToDb(
   updatedBy: string = 'Admin'
 ): Promise<{ success: boolean; error?: string }> {
   saveExpensesLocally(list);
+
+  if (isLocalMode()) {
+    autoSyncToLocalSqlFolder().catch(() => {});
+    return { success: true };
+  }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { success: true };
@@ -169,6 +177,7 @@ export function saveCashflowLocally(list: CashflowTransaction[]): void {
 
 export async function fetchCashflowFromDb(): Promise<CashflowTransaction[]> {
   const fallback = getCashflow();
+  if (isLocalMode()) return fallback;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return fallback;
   }
@@ -199,6 +208,11 @@ export async function saveCashflowToDb(
   updatedBy: string = 'Admin'
 ): Promise<{ success: boolean; error?: string }> {
   saveCashflowLocally(list);
+
+  if (isLocalMode()) {
+    autoSyncToLocalSqlFolder().catch(() => {});
+    return { success: true };
+  }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { success: true };

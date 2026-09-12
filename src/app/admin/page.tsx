@@ -11,7 +11,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, QrCode, Copy, Check, Building2,
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
-  Send, Bell, History, Printer, Flame, Edit
+  Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -43,6 +43,29 @@ import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { AccountingClosingSection } from '@/components/admin/AccountingClosingSection';
+import {
+  getSqlModeConfig,
+  saveSqlModeConfig,
+  switchDatabaseMode,
+  isLocalMode,
+  isOnlineMode,
+  copyOnlineSnapshotToLocal,
+  SqlModeConfig,
+  DB_MODE_CHANGED_EVENT,
+} from '@/lib/utils/sqlModeManager';
+import {
+  selectLocalSqlDirectory,
+  getStoredLocalSqlDirHandle,
+  checkLocalSqlDirPermission,
+  requestLocalSqlDirPermission,
+  writeLocalSqlFiles,
+  restoreLocalFromFolder,
+  restoreLocalFromBackupData,
+  cloneOnlineSqlToLocal,
+  downloadLocalMasterSql,
+  autoSyncToLocalSqlFolder,
+} from '@/lib/utils/localSqlManager';
+import { gatherFullBakeryData } from '@/lib/utils/backupManager';
 import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
@@ -426,6 +449,284 @@ export default function AdminDashboard() {
       window.removeEventListener(STOCK_ADJUSTMENT_EVENT, handleStockLogsUpdated);
     };
   }, []);
+
+  // ── CẤU HÌNH CHẾ ĐỘ CSDL & THƯ MỤC LOCAL SQL STATE ──
+  const [sqlModeConfig, setSqlModeConfig] = useState<SqlModeConfig>(() => getSqlModeConfig());
+  const [serverDirPathInput, setServerDirPathInput] = useState<string>(() => getSqlModeConfig().localFolderPath || '');
+  const [localSqlPerm, setLocalSqlPerm] = useState<'granted' | 'prompt' | 'denied' | 'no_handle'>('no_handle');
+  const [isSyncingLocalSql, setIsSyncingLocalSql] = useState<boolean>(false);
+  const [isCloningCloudToLocal, setIsCloningCloudToLocal] = useState<boolean>(false);
+  const [isRestoringLocalSql, setIsRestoringLocalSql] = useState<boolean>(false);
+  const [localSqlNotice, setLocalSqlNotice] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const localBackupFileInputRef = useRef<HTMLInputElement>(null);
+
+  const updateLocalSqlPermStatus = async () => {
+    try {
+      const p = await checkLocalSqlDirPermission();
+      setLocalSqlPerm(p);
+    } catch {}
+  };
+
+  useEffect(() => {
+    updateLocalSqlPermStatus();
+    const handleModeChange = (e: any) => {
+      if (e.detail) setSqlModeConfig(e.detail);
+      else setSqlModeConfig(getSqlModeConfig());
+    };
+    window.addEventListener(DB_MODE_CHANGED_EVENT, handleModeChange);
+    return () => window.removeEventListener(DB_MODE_CHANGED_EVENT, handleModeChange);
+  }, []);
+
+  // ── CÁC HÀM XỬ LÝ CHẾ ĐỘ CSDL & LOCAL SQL ──
+  const handleSwitchDbMode = async (targetMode: 'online' | 'local') => {
+    if (targetMode === sqlModeConfig.mode) return;
+    const res = switchDatabaseMode(targetMode);
+    setSqlModeConfig(res);
+    setLocalSqlNotice({
+      type: 'success',
+      text: targetMode === 'local'
+        ? 'Đã chuyển sang Chế độ Local SQL Cục bộ (Hoàn toàn Offline, dữ liệu lưu trong thư mục máy tính, không gửi lên Cloud)!'
+        : 'Đã chuyển sang Chế độ Online Cloud SQL (Kết nối Supabase Cloud, đồng bộ Internet đa thiết bị)!',
+    });
+    setTimeout(() => setLocalSqlNotice(null), 7000);
+    loadData();
+  };
+
+  const handleChooseLocalFolder = async () => {
+    setIsSyncingLocalSql(true);
+    setLocalSqlNotice(null);
+    try {
+      const res = await selectLocalSqlDirectory();
+      if (res.success) {
+        setSqlModeConfig(getSqlModeConfig());
+        await updateLocalSqlPermStatus();
+        setLocalSqlNotice({
+          type: 'success',
+          text: `Đã liên kết thành công thư mục CSDL: "${res.folderName}"! Hệ thống đã tạo các file bakery_master.sql và bakery_local_db.json vào thư mục này.`,
+        });
+      } else if (res.error) {
+        setLocalSqlNotice({ type: 'error', text: res.error });
+      }
+    } catch (e: any) {
+      setLocalSqlNotice({ type: 'error', text: e.message || 'Lỗi chọn thư mục' });
+    } finally {
+      setIsSyncingLocalSql(false);
+      setTimeout(() => setLocalSqlNotice(null), 8000);
+    }
+  };
+
+  const handleApplyServerPath = async () => {
+    if (!serverDirPathInput.trim()) {
+      setLocalSqlNotice({ type: 'error', text: 'Vui lòng nhập đường dẫn thư mục (ví dụ D:\\CSDL_TiemBanh hoặc C:\\BakerySQL).' });
+      return;
+    }
+    setIsSyncingLocalSql(true);
+    setLocalSqlNotice(null);
+    try {
+      const fullData = await gatherFullBakeryData();
+      const res = await fetch('/api/local-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_sql',
+          dirPath: serverDirPathInput.trim(),
+          data: fullData,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        saveSqlModeConfig({
+          localFolderPath: data.path,
+          localFolderName: data.path.split(/[/\\]/).pop() || 'Thư mục Local SQL',
+          lastLocalSyncAt: new Date().toISOString(),
+        });
+        setSqlModeConfig(getSqlModeConfig());
+        setLocalSqlNotice({
+          type: 'success',
+          text: `Đã thiết lập thư mục máy chủ: "${data.path}" và lưu 100% tệp CSDL SQL thành công!`,
+        });
+      } else {
+        setLocalSqlNotice({ type: 'error', text: data.error || 'Lỗi lưu vào đường dẫn máy chủ' });
+      }
+    } catch (e: any) {
+      setLocalSqlNotice({ type: 'error', text: e.message || 'Lỗi kết nối API máy chủ' });
+    } finally {
+      setIsSyncingLocalSql(false);
+      setTimeout(() => setLocalSqlNotice(null), 8000);
+    }
+  };
+
+  const handleSyncToLocalFolderNow = async () => {
+    setIsSyncingLocalSql(true);
+    setLocalSqlNotice(null);
+    try {
+      const fullData = await gatherFullBakeryData();
+      let done = false;
+
+      // 1. Ghi vào Directory Handle nếu có
+      const dirHandle = await getStoredLocalSqlDirHandle();
+      if (dirHandle) {
+        const p = await dirHandle.queryPermission({ mode: 'readwrite' });
+        if (p === 'granted') {
+          await writeLocalSqlFiles(dirHandle, fullData);
+          done = true;
+        } else {
+          const req = await dirHandle.requestPermission({ mode: 'readwrite' });
+          if (req === 'granted') {
+            await writeLocalSqlFiles(dirHandle, fullData);
+            done = true;
+          }
+        }
+      }
+
+      // 2. Ghi vào server path nếu có
+      if (sqlModeConfig.localFolderPath) {
+        const res = await fetch('/api/local-sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'save_sql',
+            dirPath: sqlModeConfig.localFolderPath,
+            data: fullData,
+          }),
+        });
+        const resData = await res.json();
+        if (resData.success) done = true;
+      }
+
+      if (done) {
+        saveSqlModeConfig({ lastLocalSyncAt: new Date().toISOString() });
+        setSqlModeConfig(getSqlModeConfig());
+        setLocalSqlNotice({
+          type: 'success',
+          text: 'Đã xuất và cập nhật 100% CSDL vào thư mục máy tính thành công (bakery_master.sql, bakery_local_db.json)!',
+        });
+      } else {
+        setLocalSqlNotice({
+          type: 'error',
+          text: 'Chưa có thư mục nào được liên kết hoặc chưa cấp quyền. Vui lòng bấm "Chọn thư mục" hoặc nhập đường dẫn.',
+        });
+      }
+    } catch (e: any) {
+      setLocalSqlNotice({ type: 'error', text: e.message || 'Lỗi đồng bộ vào thư mục' });
+    } finally {
+      setIsSyncingLocalSql(false);
+      setTimeout(() => setLocalSqlNotice(null), 7000);
+    }
+  };
+
+  const handleDownloadMasterSql = async () => {
+    try {
+      const fullData = await gatherFullBakeryData();
+      downloadLocalMasterSql(fullData);
+      setLocalSqlNotice({
+        type: 'success',
+        text: 'Đã xuất và bắt đầu tải tệp bakery_master.sql về máy tính!',
+      });
+      setTimeout(() => setLocalSqlNotice(null), 5000);
+    } catch (e: any) {
+      setLocalSqlNotice({ type: 'error', text: e.message || 'Lỗi xuất file SQL' });
+    }
+  };
+
+  const handleRestoreFromLocalFolder = async () => {
+    if (!confirm('Bạn có chắc chắn muốn nạp lại dữ liệu từ thư mục CSDL Local này không? Dữ liệu trên màn hình sẽ được cập nhật theo tệp trong thư mục.')) {
+      return;
+    }
+    setIsRestoringLocalSql(true);
+    setLocalSqlNotice(null);
+    try {
+      let res: any = null;
+      // 1. Thử đọc từ DirectoryHandle
+      const dirHandle = await getStoredLocalSqlDirHandle();
+      if (dirHandle) {
+        res = await restoreLocalFromFolder(dirHandle);
+      } else if (sqlModeConfig.localFolderPath) {
+        const resp = await fetch('/api/local-sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'read_sql', dirPath: sqlModeConfig.localFolderPath }),
+        });
+        const d = await resp.json();
+        if (d.success && d.data) {
+          res = await restoreLocalFromBackupData(d.data);
+        } else {
+          res = { success: false, message: d.error || 'Lỗi đọc từ máy chủ' };
+        }
+      } else {
+        res = { success: false, message: 'Chưa có thư mục CSDL nào được liên kết.' };
+      }
+
+      if (res && res.success) {
+        setLocalSqlNotice({ type: 'success', text: res.message });
+        loadData();
+      } else {
+        setLocalSqlNotice({ type: 'error', text: res?.message || 'Không thể khôi phục từ thư mục' });
+      }
+    } catch (e: any) {
+      setLocalSqlNotice({ type: 'error', text: e.message || 'Lỗi khôi phục CSDL' });
+    } finally {
+      setIsRestoringLocalSql(false);
+      setTimeout(() => setLocalSqlNotice(null), 8000);
+    }
+  };
+
+  const handleSelectOnlineBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const text = event.target?.result as string;
+        if (!text) return;
+        setIsRestoringLocalSql(true);
+        const parsed = JSON.parse(text);
+        const res = await restoreLocalFromBackupData(parsed);
+        if (res.success) {
+          setLocalSqlNotice({
+            type: 'success',
+            text: `Đã khôi phục thành công từ file sao lưu "${file.name}" vào Chế độ Local! Dữ liệu hoạt động độc lập và không ảnh hưởng đến Cloud.`,
+          });
+          loadData();
+        } else {
+          setLocalSqlNotice({ type: 'error', text: res.message });
+        }
+      } catch (err: any) {
+        setLocalSqlNotice({ type: 'error', text: 'Tệp không đúng định dạng sao lưu (.bakery.json hoặc .json hợp lệ).' });
+      } finally {
+        setIsRestoringLocalSql(false);
+        setTimeout(() => setLocalSqlNotice(null), 8000);
+        if (localBackupFileInputRef.current) localBackupFileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleCloneCloudToLocal = async () => {
+    if (!confirm('Bạn có chắc chắn muốn TẢI 100% DỮ LIỆU TỪ CLOUD SQL về làm CSDL Local không? Toàn bộ danh mục bánh, công thức BOM, đơn hàng từ Cloud sẽ được sao chép sang máy bạn để chạy Offline độc lập.')) {
+      return;
+    }
+    setIsCloningCloudToLocal(true);
+    setLocalSqlNotice(null);
+    try {
+      const res = await cloneOnlineSqlToLocal();
+      if (res.success) {
+        setLocalSqlNotice({
+          type: 'success',
+          text: res.message + ' (Dữ liệu đã được nạp an toàn vào Chế độ Local, không làm thay đổi gì trên Cloud SQL).',
+        });
+        loadData();
+      } else {
+        setLocalSqlNotice({ type: 'error', text: res.message });
+      }
+    } catch (e: any) {
+      setLocalSqlNotice({ type: 'error', text: e.message || 'Lỗi khi clone từ Cloud SQL' });
+    } finally {
+      setIsCloningCloudToLocal(false);
+      setTimeout(() => setLocalSqlNotice(null), 8000);
+    }
+  };
 
   // ── DUNG LƯỢNG DATABASE LƯU ẢNH STATE ──
   const [imageStats, setImageStats] = useState({
@@ -813,7 +1114,7 @@ export default function AdminDashboard() {
         }
       } catch {}
 
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         const { data: prodData } = await supabase
           .from('products')
           .select('id, name, category, image_url, selling_price, base_cost_price, food_cost_pct, is_preorder_only')
@@ -1374,7 +1675,7 @@ export default function AdminDashboard() {
       );
 
       // Cập nhật Supabase
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           await supabase.from('ingredients').update({ stock_qty: newQty }).eq('id', ing.id);
         } catch (err) {
@@ -1432,7 +1733,7 @@ export default function AdminDashboard() {
     }
 
     try {
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         await supabase.from('products').insert({
           id: newId,
           name: newProdName,
@@ -1508,7 +1809,7 @@ export default function AdminDashboard() {
       try {
         await db.products.delete(id);
       } catch {}
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         await supabase.from('products').delete().eq('id', id);
       }
 
@@ -1617,7 +1918,7 @@ export default function AdminDashboard() {
         )
       );
 
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           await supabase.from('ingredients').update({ stock_qty: newQty, avg_cost: newAvgCost }).eq('id', ing.id);
         } catch (err) {
@@ -1930,7 +2231,7 @@ export default function AdminDashboard() {
         } catch {}
       }
 
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           const { data: dbOrders } = await supabase
             .from('orders')
@@ -1975,7 +2276,7 @@ export default function AdminDashboard() {
       }
 
       // 4. Quét trực tiếp Supabase Storage bucket (Gói Store 1 GB)
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           const buckets = ['bakery-images', 'product-images'];
           const folders = ['', 'products', 'preorders', 'qrcodes'];
@@ -2165,6 +2466,25 @@ export default function AdminDashboard() {
             </h1>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            {/* HUY HIỆU TRẠNG THÁI CHẾ ĐỘ CSDL (ONLINE CLOUD VS LOCAL SQL) */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('cloud')}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition shadow-2xs border cursor-pointer ${
+                sqlModeConfig.mode === 'local'
+                  ? 'bg-amber-500/10 text-amber-900 border-amber-300 hover:bg-amber-500/20'
+                  : 'bg-emerald-500/10 text-emerald-900 border-emerald-300 hover:bg-emerald-500/20'
+              }`}
+              title={
+                sqlModeConfig.mode === 'local'
+                  ? `Đang chạy CSDL Local SQL (Thư mục: ${sqlModeConfig.localFolderName || 'Chưa chọn'}). Bấm để quản lý.`
+                  : 'Đang chạy CSDL Supabase Cloud Online. Bấm để quản lý.'
+              }
+            >
+              <span className={`w-2 h-2 rounded-full ${sqlModeConfig.mode === 'local' ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+              <span className="hidden md:inline">{sqlModeConfig.mode === 'local' ? 'CSDL: Local SQL' : 'CSDL: Cloud SQL'}</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setIsPrinterSettingsOpen(true)}
@@ -2197,7 +2517,7 @@ export default function AdminDashboard() {
             { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
             { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2 },
             { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield },
-            { id: 'cloud', label: 'Dung Lượng Cloud', icon: HardDrive },
+            { id: 'cloud', label: 'CSDL & Cloud SQL', icon: Database },
           ].map((tab) => {
             const Icon = tab.icon;
             return (
@@ -3634,16 +3954,305 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* ── TAB 7: QUẢN LÝ DUNG LƯỢNG CLOUD 500MB & PURGE ── */}
+      {/* ── TAB 7: QUẢN TRỊ CƠ SỞ DỮ LIỆU: CLOUD SQL & LOCAL SQL CỤC BỘ ── */}
       {activeTab === 'cloud' && (
         <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-6 max-w-3xl">
           <div className="pb-3 border-b border-zinc-100">
             <h2 className="font-black text-lg text-zinc-900 flex items-center gap-2">
-              <HardDrive className="w-5 h-5 text-amber-600" /> Quản Trị Dung Lượng Cloud Supabase 500MB
+              <Database className="w-5 h-5 text-amber-600" /> Quản Trị Cơ Sở Dữ Liệu & Lưu Trữ SQL
             </h2>
             <p className="text-xs text-zinc-500">
-              Cơ chế dọn dẹp thông minh giúp tiệm bánh sử dụng gói Supabase Free Tier vĩnh viễn không bị tràn dung lượng
+              Tùy chọn linh hoạt: Chạy Online đồng bộ qua Supabase Cloud hoặc Chạy Cục bộ Local SQL (Lưu vào thư mục máy tính, không cần kết nối SQL ngoài).
             </p>
+          </div>
+
+          {localSqlNotice && (
+            <div className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-2 ${
+              localSqlNotice.type === 'success'
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                : localSqlNotice.type === 'error'
+                ? 'bg-rose-50 border-rose-200 text-rose-800'
+                : 'bg-blue-50 border-blue-200 text-blue-800'
+            }`}>
+              {localSqlNotice.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              ) : (
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              )}
+              <span>{localSqlNotice.text}</span>
+            </div>
+          )}
+
+          {/* ── MỤC 1: BỘ CHUYỂN ĐỔI CHẾ ĐỘ CSDL (ONLINE VS LOCAL) ── */}
+          <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                  <Sliders className="w-4 h-4 text-amber-600" /> Chọn Chế Độ Cơ Sở Dữ Liệu
+                </h3>
+                <p className="text-xs text-zinc-500">
+                  Dữ liệu Online và Local được cô lập hoàn toàn, không gây xung đột hoặc đè nhầm dữ liệu của nhau.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* NÚT CHẾ ĐỘ 1: ONLINE CLOUD SQL */}
+              <button
+                type="button"
+                onClick={() => handleSwitchDbMode('online')}
+                className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between cursor-pointer ${
+                  sqlModeConfig.mode === 'online'
+                    ? 'bg-emerald-500/10 border-emerald-500 ring-2 ring-emerald-500/20 shadow-xs'
+                    : 'bg-white border-zinc-200 hover:border-zinc-300'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full mb-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                      sqlModeConfig.mode === 'online' ? 'bg-emerald-500 text-white' : 'bg-zinc-100 text-zinc-600'
+                    }`}>
+                      <Globe className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-black text-xs text-zinc-900 block">1. Online Cloud SQL</span>
+                      <span className="text-[10px] text-zinc-500">Supabase Cloud Postgres</span>
+                    </div>
+                  </div>
+                  {sqlModeConfig.mode === 'online' && (
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white font-black text-[10px]">
+                      ĐANG BẬT
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-zinc-600 leading-snug">
+                  Đồng bộ tức thì thời gian thực (~50ms) giữa tất cả máy: PC quầy, tablet bếp, điện thoại. Cần có mạng Internet.
+                </p>
+              </button>
+
+              {/* NÚT CHẾ ĐỘ 2: LOCAL SQL CỤC BỘ */}
+              <button
+                type="button"
+                onClick={() => handleSwitchDbMode('local')}
+                className={`p-4 rounded-2xl border text-left transition flex flex-col justify-between cursor-pointer ${
+                  sqlModeConfig.mode === 'local'
+                    ? 'bg-amber-500/10 border-amber-500 ring-2 ring-amber-500/20 shadow-xs'
+                    : 'bg-white border-zinc-200 hover:border-zinc-300'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full mb-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                      sqlModeConfig.mode === 'local' ? 'bg-amber-600 text-white' : 'bg-zinc-100 text-zinc-600'
+                    }`}>
+                      <HardDrive className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <span className="font-black text-xs text-zinc-900 block">2. Local SQL Cục Bộ</span>
+                      <span className="text-[10px] text-zinc-500">Thư mục máy tính / Offline</span>
+                    </div>
+                  </div>
+                  {sqlModeConfig.mode === 'local' && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white font-black text-[10px]">
+                      ĐANG BẬT
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-zinc-600 leading-snug">
+                  Chạy hoàn toàn độc lập trên máy tính. Dữ liệu lưu thẳng vào thư mục máy tính. Không gửi lên Cloud, không sợ mất mạng.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {/* ── MỤC 2: QUẢN LÝ THƯ MỤC CSDL LOCAL SQL & TỆP TIN ── */}
+          <div className="p-5 rounded-2xl bg-amber-500/5 border border-amber-200 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-200/60">
+              <div>
+                <h3 className="font-black text-sm text-amber-950 flex items-center gap-2">
+                  <Folder className="w-4 h-4 text-amber-600" /> Thư Mục Lưu Trữ & Chạy CSDL Local SQL
+                </h3>
+                <p className="text-xs text-zinc-600">
+                  Thư mục này chứa 100% dữ liệu: bánh, kho nguyên liệu, công thức BOM, đơn hàng, sổ quỹ.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className={`px-2.5 py-1 rounded-full text-[11px] font-bold flex items-center gap-1 ${
+                  sqlModeConfig.localFolderName || sqlModeConfig.localFolderPath
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : 'bg-zinc-200 text-zinc-700'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${
+                    sqlModeConfig.localFolderName || sqlModeConfig.localFolderPath ? 'bg-emerald-600' : 'bg-zinc-500'
+                  }`} />
+                  {sqlModeConfig.localFolderName || (sqlModeConfig.localFolderPath ? 'Đã có đường dẫn' : 'Chưa chọn thư mục')}
+                </span>
+              </div>
+            </div>
+
+            {/* THÔNG TIN THƯ MỤC & CÁC TỆP TRONG THƯ MỤC */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+              <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
+                <div className="font-bold text-zinc-800 flex items-center gap-1.5">
+                  <FileCode className="w-3.5 h-3.5 text-blue-600" /> bakery_master.sql
+                </div>
+                <p className="text-[11px] text-zinc-500 leading-snug">
+                  Lệnh SQL chuẩn gồm CREATE TABLE và INSERT INTO của 12 bảng, chạy được với SQLite, PostgreSQL, MySQL.
+                </p>
+              </div>
+              <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
+                <div className="font-bold text-zinc-800 flex items-center gap-1.5">
+                  <FileText className="w-3.5 h-3.5 text-emerald-600" /> bakery_local_db.json
+                </div>
+                <p className="text-[11px] text-zinc-500 leading-snug">
+                  Dữ liệu CSDL JSON đầy đủ phục vụ nạp và khôi phục tức thì mà không cần mạng.
+                </p>
+              </div>
+              <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-1">
+                <div className="font-bold text-zinc-800 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" /> Cập nhật mới nhất
+                </div>
+                <p className="text-[11px] text-zinc-600 font-medium">
+                  {sqlModeConfig.lastLocalSyncAt ? new Date(sqlModeConfig.lastLocalSyncAt).toLocaleString('vi-VN') : 'Chưa có bản ghi'}
+                </p>
+              </div>
+            </div>
+
+            {/* CÁC NÚT THAO TÁC THƯ MỤC */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={handleChooseLocalFolder}
+                disabled={isSyncingLocalSql}
+                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-50"
+              >
+                <Folder className="w-4 h-4" />
+                <span>{sqlModeConfig.localFolderName ? 'Đổi Thư Mục Khác...' : 'Chọn Thư Mục Trên Máy Tính...'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSyncToLocalFolderNow}
+                disabled={isSyncingLocalSql}
+                className="px-4 py-2.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-50 text-amber-900 font-bold text-xs flex items-center gap-2 shadow-2xs transition cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncingLocalSql ? 'animate-spin' : ''}`} />
+                <span>Xuất & Cập Nhật CSDL Ngay</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadMasterSql}
+                className="px-4 py-2.5 rounded-xl bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition cursor-pointer ml-auto"
+                title="Tải tệp bakery_master.sql về máy"
+              >
+                <Download className="w-4 h-4 text-zinc-600" />
+                <span>Tải File .SQL Về Máy</span>
+              </button>
+            </div>
+
+            {/* NHẬP ĐƯỜNG DẪN Ổ ĐĨA MÁY CHỦ LOCAL */}
+            <div className="pt-2 border-t border-amber-200/60 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+              <div className="text-[11px] text-zinc-500 shrink-0 font-medium">
+                Hoặc nhập đường dẫn ổ đĩa:
+              </div>
+              <input
+                type="text"
+                value={serverDirPathInput}
+                onChange={(e) => setServerDirPathInput(e.target.value)}
+                placeholder="Ví dụ: D:\CSDL_TiemBanh hoặc C:\BakerySQL"
+                className="flex-1 px-3 py-1.5 text-xs bg-white border border-zinc-300 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-amber-500 font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleApplyServerPath}
+                disabled={isSyncingLocalSql || !serverDirPathInput.trim()}
+                className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-900 text-white font-bold text-xs shrink-0 cursor-pointer disabled:opacity-40"
+              >
+                Áp Dụng & Tạo Thư Mục
+              </button>
+            </div>
+          </div>
+
+          {/* ── MỤC 3: CÔNG CỤ KHÔI PHỤC DỮ LIỆU CHO LOCAL SQL ── */}
+          <div className="p-5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-4">
+            <div className="pb-2 border-b border-zinc-200">
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                <Download className="w-4 h-4 text-blue-600" /> Khôi Phục Dữ Liệu Cho Chế Độ Local
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Cho phép nạp dữ liệu từ thư mục máy tính, nạp từ file sao lưu của SQL Online, hoặc clone 1-click trực tiếp từ Cloud về Local.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* CÁCH 1: NẠP TỪ THƯ MỤC ĐÃ CHỌN */}
+              <div className="p-4 bg-white rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
+                <div className="space-y-1">
+                  <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
+                    <FolderCheck className="w-4 h-4 text-amber-600" /> Từ Thư Mục CSDL
+                  </div>
+                  <p className="text-[11px] text-zinc-500 leading-snug">
+                    Đọc tệp bakery_local_db.json trong thư mục đã chọn để nạp lại vào phần mềm.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleRestoreFromLocalFolder}
+                  disabled={isRestoringLocalSql}
+                  className="w-full py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-bold text-xs border border-amber-200 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isRestoringLocalSql ? 'Đang đọc...' : 'Nạp Lại Từ Thư Mục'}
+                </button>
+              </div>
+
+              {/* CÁCH 2: NẠP TỪ FILE BACKUP ONLINE */}
+              <div className="p-4 bg-white rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
+                <div className="space-y-1">
+                  <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-blue-600" /> Từ File Backup Online
+                  </div>
+                  <p className="text-[11px] text-zinc-500 leading-snug">
+                    Chọn bất kỳ tệp sao lưu (.bakery.json / .json) tải từ Online để nạp thẳng vào Local.
+                  </p>
+                </div>
+                <input
+                  type="file"
+                  ref={localBackupFileInputRef}
+                  accept=".json,.bakery.json"
+                  onChange={handleSelectOnlineBackupFile}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => localBackupFileInputRef.current?.click()}
+                  disabled={isRestoringLocalSql}
+                  className="w-full py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 font-bold text-xs border border-blue-200 transition cursor-pointer disabled:opacity-50"
+                >
+                  Chọn File Backup...
+                </button>
+              </div>
+
+              {/* CÁCH 3: TẢI TRỰC TIẾP TỪ CLOUD VỀ LOCAL */}
+              <div className="p-4 bg-white rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
+                <div className="space-y-1">
+                  <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
+                    <Globe className="w-4 h-4 text-emerald-600" /> 1-Click Clone Cloud
+                  </div>
+                  <p className="text-[11px] text-zinc-500 leading-snug">
+                    Kéo 100% dữ liệu từ Supabase Cloud về máy làm CSDL Local (không làm ảnh hưởng Cloud).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloneCloudToLocal}
+                  disabled={isCloningCloudToLocal}
+                  className="w-full py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs border border-emerald-200 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isCloningCloudToLocal ? 'Đang kéo dữ liệu...' : 'Clone Cloud Về Local'}
+                </button>
+              </div>
+            </div>
           </div>
 
           {cloudMsg && (

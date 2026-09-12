@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export type UserRole = 'staff' | 'admin';
 
@@ -45,6 +46,7 @@ const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
 const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';
 
 export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig | null> {
+  if (isLocalMode()) return null;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return null;
   }
@@ -74,6 +76,7 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig | null
 }
 
 export async function saveSecurityConfigToDb(cfg: SecurityConfig): Promise<void> {
+  if (isLocalMode()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   try {
     const notesContent = JSON.stringify(cfg);

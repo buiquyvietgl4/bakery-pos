@@ -2,6 +2,7 @@
 
 import { supabase } from '@/lib/supabase/client';
 import { broadcastVietqrConfig, broadcastEwalletConfig } from '@/lib/supabase/realtimeSync';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export interface VietqrConfig {
   bankId: string;
@@ -93,6 +94,7 @@ export function saveVietqrConfigLocally(config: Partial<VietqrConfig>): VietqrCo
 }
 
 export async function fetchVietqrConfigFromDb(): Promise<VietqrConfig> {
+  if (isLocalMode()) return getVietqrConfig();
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return getVietqrConfig();
   }
@@ -142,6 +144,10 @@ export async function saveVietqrConfigToDb(
 
     // 1. Lưu cục bộ
     saveVietqrConfigLocally(fullConfig);
+
+    if (isLocalMode()) {
+      return { success: true };
+    }
 
     // 2. Lưu lên Supabase SQL
     const { error: upsertErr } = await supabase.from('recipes').upsert(
@@ -218,6 +224,7 @@ export function saveEwalletConfigLocally(config: Partial<EwalletConfig>): Ewalle
 }
 
 export async function fetchEwalletConfigFromDb(): Promise<EwalletConfig> {
+  if (isLocalMode()) return getEwalletConfig();
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return getEwalletConfig();
   }
@@ -267,6 +274,10 @@ export async function saveEwalletConfigToDb(
 
     // 1. Lưu cục bộ
     saveEwalletConfigLocally(fullConfig);
+
+    if (isLocalMode()) {
+      return { success: true };
+    }
 
     // 2. Lưu lên Supabase SQL
     const { error: upsertErr } = await supabase.from('recipes').upsert(

@@ -1,6 +1,7 @@
 // src/lib/utils/recipeCalculator.ts
 
 import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { DEFAULT_BAKERY_RECIPES, BakeryRecipe } from '@/lib/constants/bakeryData';
 
 export const RECIPES_UPDATED_EVENT = 'bakery_recipes_updated';
@@ -119,6 +120,7 @@ export function getStoredRecipes(): BakeryRecipe[] {
  */
 export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
   const fallback = getStoredRecipes();
+  if (isLocalMode()) return fallback;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return fallback;
   }

@@ -3,6 +3,8 @@
 import { AccountingClosingRecord, ClosingPeriodType } from '@/lib/types/closing';
 import { getStoreBranding } from './storeBranding';
 import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 const STORAGE_KEY = 'bakery_closing_records';
 export const CLOSING_UPDATED_EVENT = 'bakery_closing_records_updated';
@@ -31,6 +33,7 @@ export function getClosingRecords(): AccountingClosingRecord[] {
  */
 export async function fetchClosingRecordsFromDb(): Promise<AccountingClosingRecord[]> {
   const fallback = getClosingRecords();
+  if (isLocalMode()) return fallback;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return fallback;
   }

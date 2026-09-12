@@ -1,5 +1,7 @@
 import { StockAdjustmentLog } from '../types/stockAdjustment';
 import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 const STORAGE_KEY = 'bakery_stock_adjustment_logs';
 export const STOCK_ADJUSTMENT_EVENT = 'bakery_stock_adjustment_logs_updated';
@@ -30,6 +32,7 @@ export function getStockAdjustmentLogs(): StockAdjustmentLog[] {
  */
 export async function fetchStockAdjustmentLogsFromDb(): Promise<StockAdjustmentLog[]> {
   const fallback = getStockAdjustmentLogs();
+  if (isLocalMode()) return fallback;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return fallback;
   }

@@ -1,6 +1,8 @@
 import { SpoilageLog } from '@/lib/types/spoilage';
 import { generateUUID } from '@/lib/utils/uuid';
 import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 const STORAGE_KEY = 'bakery_spoilage_logs';
 const DB_ROW_SPOILAGE_ID = '00000000-0000-0000-0000-000000000008';
@@ -34,6 +36,7 @@ export function saveSpoilageLogs(logs: SpoilageLog[]): void {
 
 export async function fetchSpoilageLogsFromDb(): Promise<SpoilageLog[]> {
   const fallback = getSpoilageLogs();
+  if (isLocalMode()) return fallback;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return fallback;
   }
@@ -61,6 +64,11 @@ export async function fetchSpoilageLogsFromDb(): Promise<SpoilageLog[]> {
 
 export async function saveSpoilageLogsToDb(logs: SpoilageLog[]): Promise<{ success: boolean; error?: string }> {
   saveSpoilageLogs(logs);
+
+  if (isLocalMode()) {
+    autoSyncToLocalSqlFolder().catch(() => {});
+    return { success: true };
+  }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { success: true };

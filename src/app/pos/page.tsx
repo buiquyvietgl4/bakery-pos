@@ -14,6 +14,7 @@ import {
   Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
+import Link from 'next/link';
 import { exportToCSV } from '@/lib/utils/exportExcel';
 import { 
   broadcastNewOrder, 
@@ -45,6 +46,7 @@ import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistory
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import {
   fetchVietqrConfigFromDb,
@@ -1667,6 +1669,20 @@ export default function POSPage() {
                   </button>
                 )}
               </div>
+
+              {/* Huy Hiệu Trạng Thái Chế Độ CSDL (Online Cloud vs Local SQL) */}
+              <Link
+                href="/admin"
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-2xl text-[11px] font-bold border transition shadow-2xs shrink-0 cursor-pointer ${
+                  isLocalMode()
+                    ? 'bg-amber-500/10 text-amber-900 border-amber-300 hover:bg-amber-500/20'
+                    : 'bg-emerald-500/10 text-emerald-900 border-emerald-300 hover:bg-emerald-500/20'
+                }`}
+                title={isLocalMode() ? 'Đang chạy Chế độ Local SQL Cục bộ. Bấm để mở Quản trị CSDL.' : 'Đang chạy Chế độ Online Cloud SQL. Bấm để mở Quản trị CSDL.'}
+              >
+                <span className={`w-2 h-2 rounded-full ${isLocalMode() ? 'bg-amber-500 animate-pulse' : 'bg-emerald-500'}`} />
+                <span className="hidden xl:inline">{isLocalMode() ? 'Local SQL' : 'Cloud SQL'}</span>
+              </Link>
 
               {/* Nút Cài Đặt & Kết Nối Máy In Nhanh */}
               <button
