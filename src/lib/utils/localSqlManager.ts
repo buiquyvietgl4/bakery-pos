@@ -740,6 +740,11 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
       localSnapshot['bakery_telegram_config'] = JSON.stringify(telegram);
     }
 
+    const cakeCosting = data.cake_costing_config || data.cake_costing || data.settings?.cake_costing;
+    if (cakeCosting) {
+      localSnapshot['bakery_cake_costing_config'] = JSON.stringify(cakeCosting);
+    }
+
     const branding = data.branding_config || data.branding || data.settings?.branding;
     if (branding) {
       localSnapshot['bakery_store_branding'] = JSON.stringify(branding);
@@ -805,12 +810,14 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let ewallet_config: any = null;
     let printer_config: any = null;
     let telegram_config: any = null;
+    let cake_costing_config: any = null;
 
     if (Array.isArray(sysRows)) {
       for (const row of sysRows) {
-        if (!row.category) continue;
+        const rawJson = row.notes || row.category;
+        if (!rawJson) continue;
         try {
-          const parsed = JSON.parse(row.category);
+          const parsed = JSON.parse(rawJson);
           if (row.name === 'SYS_CONFIG_EXPENSES' && Array.isArray(parsed)) expenses = parsed;
           if (row.name === 'SYS_CONFIG_CASHFLOW' && Array.isArray(parsed)) cashflow = parsed;
           if (row.name === 'SYS_CONFIG_SPOILAGE' && Array.isArray(parsed)) spoilage_logs = parsed;
@@ -822,6 +829,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_EWALLET') ewallet_config = parsed;
           if (row.name === 'SYS_CONFIG_PRINTER') printer_config = parsed;
           if (row.name === 'SYS_CONFIG_TELEGRAM') telegram_config = parsed;
+          if (row.name === 'SYS_CONFIG_CAKE_COSTING') cake_costing_config = parsed;
         } catch {}
       }
     }
@@ -869,6 +877,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       ewallet_config,
       printer_configs: printer_config,
       telegram_config,
+      cake_costing_config,
       images: [],
       settings: {
         vietqr: vietqr_config,
@@ -877,6 +886,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
         telegram: telegram_config,
         branding: branding_config,
         security: security_config,
+        cake_costing: cake_costing_config,
       },
     };
 

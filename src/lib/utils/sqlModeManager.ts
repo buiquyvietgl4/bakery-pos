@@ -40,6 +40,7 @@ const BAKERY_DATA_KEYS = [
   'bakery_printer_config',
   'bakery_telegram_config',
   'bakery_store_branding',
+  'bakery_cake_costing_config',
 ];
 
 const DEFAULT_CONFIG: SqlModeConfig = {

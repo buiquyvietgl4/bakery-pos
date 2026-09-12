@@ -58,6 +58,16 @@ import {
   VietqrConfig,
   EwalletConfig,
 } from '@/lib/utils/paymentSync';
+import {
+  getCakeCostingConfig,
+  calculateCustomCakeCost,
+  CakeCostCalculationResult,
+  fetchCakeCostingFromDb,
+} from '@/lib/utils/customCakeCosting';
+import {
+  CustomCakeCostingConfig,
+  DEFAULT_CUSTOM_CAKE_CONFIG,
+} from '@/lib/constants/cakeCostingData';
 
 interface CartItem {
   product: CachedProduct;
@@ -84,7 +94,15 @@ interface PreorderFormData {
   shippingFee: number;
   cakeName: string;
   size: string;
+  sizeId?: string;
   flavor: string;
+  flavorId?: string;
+  cream?: string;
+  creamId?: string;
+  packaging?: string;
+  packagingId?: string;
+  selectedAddonIds?: string[];
+  customAddonCost?: number;
   cakeMessage: string;
   notes: string;
   totalPrice: number;
@@ -271,6 +289,19 @@ export default function POSPage() {
 
   // ── ĐẶT BÁNH KEM (CUSTOM CAKE PREORDER) MODAL STATE ──
   const [isPreorderModalOpen, setIsPreorderModalOpen] = useState(false);
+  // Cấu hình định mức chi phí bánh sinh nhật đặt theo yêu cầu
+  const [cakeCostingConfig, setCakeCostingConfig] = useState<CustomCakeCostingConfig>(() => getCakeCostingConfig());
+  
+  useEffect(() => {
+    setCakeCostingConfig(getCakeCostingConfig());
+    fetchCakeCostingFromDb().then((remote) => {
+      if (remote) setCakeCostingConfig(remote);
+    });
+    const handleCostingUpdate = () => setCakeCostingConfig(getCakeCostingConfig());
+    window.addEventListener('bakery_cake_costing_updated', handleCostingUpdate);
+    return () => window.removeEventListener('bakery_cake_costing_updated', handleCostingUpdate);
+  }, []);
+
   const [preorderForm, setPreorderForm] = useState<PreorderFormData>({
     customerName: '',
     customerPhone: '',
@@ -281,7 +312,15 @@ export default function POSPage() {
     shippingFee: 0,
     cakeName: 'Bánh Bông Lan Trứng Muối 18cm',
     size: 'Size 18cm (6 - 8 người)',
-    flavor: 'Cốt bánh Vani sốt phô mai',
+    sizeId: 'size-18',
+    flavor: 'Cốt Vani truyền thống',
+    flavorId: 'flavor-vanilla',
+    cream: 'Kem tươi Topping thanh mát',
+    creamId: 'cream-topping',
+    packaging: 'Hộp giấy tiêu chuẩn + Đế lót',
+    packagingId: 'pack-paper',
+    selectedAddonIds: [],
+    customAddonCost: 0,
     cakeMessage: 'Chúc Mừng Sinh Nhật',
     notes: 'Ít ngọt, trang trí tone màu ấm, kèm nến số',
     totalPrice: 365000,
@@ -1020,6 +1059,39 @@ export default function POSPage() {
     ? Math.round((cakePriceNum * Math.min(100, Math.max(0, preorderDiscountVal))) / 100)
     : Math.min(cakePriceNum, Math.max(0, preorderDiscountVal));
   const preorderDiscountPct = cakePriceNum > 0 ? Math.round((preorderDiscountAmount / cakePriceNum) * 100) : 0;
+  // Kết quả định mức chi phí vốn & giá bán đề xuất bánh đặt theo yêu cầu
+  const cakeCostResult: CakeCostCalculationResult = useMemo(() => {
+    return calculateCustomCakeCost(
+      {
+        sizeId: preorderForm.sizeId,
+        sizeName: preorderForm.size,
+        flavorId: preorderForm.flavorId,
+        flavorName: preorderForm.flavor,
+        creamId: preorderForm.creamId,
+        creamName: preorderForm.cream,
+        packagingId: preorderForm.packagingId,
+        packagingName: preorderForm.packaging,
+        addonIds: preorderForm.selectedAddonIds,
+        customAddonCost: preorderForm.customAddonCost,
+        sellingPrice: cakePriceNum,
+      },
+      cakeCostingConfig
+    );
+  }, [
+    preorderForm.sizeId,
+    preorderForm.size,
+    preorderForm.flavorId,
+    preorderForm.flavor,
+    preorderForm.creamId,
+    preorderForm.cream,
+    preorderForm.packagingId,
+    preorderForm.packaging,
+    preorderForm.selectedAddonIds,
+    preorderForm.customAddonCost,
+    cakePriceNum,
+    cakeCostingConfig,
+  ]);
+
   const preorderFinalTotal = Math.max(0, cakePriceNum - preorderDiscountAmount) + preorderShippingFee;
 
   // Expected Cash in Register
@@ -1311,7 +1383,8 @@ export default function POSPage() {
       const isShip = preorderForm.deliveryMethod === 'shipping';
       const deliveryMethodStr = isShip ? `Giao tận nơi (Ship bánh)` : `Khách nhận tại tiệm`;
       const sampleImgTag = preorderForm.referenceImageUrl ? ` | Ảnh mẫu: Có [MẪU_ẢNH:${preorderForm.referenceImageUrl}]` : '';
-      const fullNotes = `[ĐẶT BÁNH KEM] Khách: ${preorderForm.customerName} (${preorderForm.customerPhone}) | Hình thức: ${deliveryMethodStr}${isShip ? ` | Đ/C: ${preorderForm.shippingAddress}` : ''} | Hẹn: ${pickupDateTimeStr} | Bánh: ${preorderForm.cakeName} (${preorderForm.size}) | Chữ: "${preorderForm.cakeMessage}" | Yêu cầu: ${preorderForm.notes}${sampleImgTag}${discountAmount > 0 ? ` | Giảm giá: -${discountAmount.toLocaleString('vi-VN')}đ` : ''}${shippingFee > 0 ? ` | Phí ship: +${shippingFee.toLocaleString('vi-VN')}đ` : ''} | GIÁ CUỐI: ${finalTotal.toLocaleString('vi-VN')}đ | Đã cọc: ${depositAmount.toLocaleString('vi-VN')}đ | CÒN THU KHI GIAO: ${remainingAmount.toLocaleString('vi-VN')}đ`;
+      const costDetailTag = ` | Vốn dự toán: ${cakeCostResult.totalCost.toLocaleString('vi-VN')}đ (${cakeCostResult.summaryText || preorderForm.size})`;
+      const fullNotes = `[ĐẶT BÁNH KEM] Khách: ${preorderForm.customerName} (${preorderForm.customerPhone}) | Hình thức: ${deliveryMethodStr}${isShip ? ` | Đ/C: ${preorderForm.shippingAddress}` : ''} | Hẹn: ${pickupDateTimeStr} | Bánh: ${preorderForm.cakeName} (${preorderForm.size}) | Cốt & Kem: ${preorderForm.flavor || 'Vani'} - ${preorderForm.cream || 'Kem tươi'} | Hộp: ${preorderForm.packaging || 'Hộp giấy'}${cakeCostResult.selectedAddons.length > 0 ? ' | Decor: ' + cakeCostResult.selectedAddons.map(a => a.name).join(', ') : ''} | Chữ: "${preorderForm.cakeMessage}" | Yêu cầu: ${preorderForm.notes}${sampleImgTag}${costDetailTag}${discountAmount > 0 ? ` | Giảm giá: -${discountAmount.toLocaleString('vi-VN')}đ` : ''}${shippingFee > 0 ? ` | Phí ship: +${shippingFee.toLocaleString('vi-VN')}đ` : ''} | GIÁ CUỐI: ${finalTotal.toLocaleString('vi-VN')}đ | Đã cọc: ${depositAmount.toLocaleString('vi-VN')}đ | CÒN THU KHI GIAO: ${remainingAmount.toLocaleString('vi-VN')}đ`;
 
       const pickupIso = (() => {
         try {
@@ -1359,6 +1432,9 @@ export default function POSPage() {
         discount_pct: discountPct,
         total_amount: finalTotal,
         totalPrice: finalTotal,
+        total_cogs: cakeCostResult.totalCost,
+        estimated_cost: cakeCostResult.totalCost,
+        cost_breakdown: cakeCostResult,
         deposit_amount: depositAmount,
         depositAmount: depositAmount,
         remaining_amount: remainingAmount,
@@ -1376,8 +1452,10 @@ export default function POSPage() {
             },
             quantity: 1,
             unit_price: preorderForm.totalPrice,
+            unit_cost: cakeCostResult.totalCost,
             line_total: preorderForm.totalPrice,
-            notes: `Chữ: "${preorderForm.cakeMessage}"${preorderForm.notes ? ` | ${preorderForm.notes}` : ''}`,
+            line_cost: cakeCostResult.totalCost,
+            notes: `Chữ: "${preorderForm.cakeMessage}" | Cốt: ${preorderForm.flavor || 'Vani'} | Kem: ${preorderForm.cream || 'Kem tươi'} | Hộp: ${preorderForm.packaging || 'Hộp giấy'}${cakeCostResult.selectedAddons.length > 0 ? ' | Phụ kiện: ' + cakeCostResult.selectedAddons.map(a => a.name).join(', ') : ''}${preorderForm.notes ? ` | ${preorderForm.notes}` : ''}`,
           },
           ...(shippingFee > 0 ? [
             {
@@ -1522,7 +1600,15 @@ export default function POSPage() {
         shippingFee: 0,
         cakeName: 'Bánh Bông Lan Trứng Muối 18cm',
         size: 'Size 18cm (6 - 8 người)',
-        flavor: 'Cốt bánh Vani sốt phô mai',
+        sizeId: 'size-18',
+        flavor: 'Cốt Vani truyền thống',
+        flavorId: 'flavor-vanilla',
+        cream: 'Kem tươi Topping thanh mát',
+        creamId: 'cream-topping',
+        packaging: 'Hộp giấy tiêu chuẩn + Đế lót',
+        packagingId: 'pack-paper',
+        selectedAddonIds: [],
+        customAddonCost: 0,
         cakeMessage: 'Chúc Mừng Sinh Nhật',
         notes: 'Ít ngọt, trang trí hoa kem',
         totalPrice: 365000,
@@ -2797,18 +2883,187 @@ export default function POSPage() {
                     )}
                   </div>
                   <div className="min-w-0">
-                    <label className="font-semibold text-zinc-700 text-xs">Kích thước bánh:</label>
+                    <label className="font-semibold text-zinc-700 text-xs">Kích thước bánh & Định mức chuẩn:</label>
                     <select
-                      value={preorderForm.size}
-                      onChange={(e) => setPreorderForm({ ...preorderForm, size: e.target.value })}
-                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold min-w-0 text-xs"
+                      value={preorderForm.sizeId || ''}
+                      onChange={(e) => {
+                        const s = cakeCostingConfig.sizes.find(x => x.id === e.target.value);
+                        if (s) {
+                          setPreorderForm(prev => ({
+                            ...prev,
+                            sizeId: s.id,
+                            size: s.name,
+                            totalPrice: s.suggestedPrice,
+                          }));
+                        }
+                      }}
+                      className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold min-w-0 text-xs text-zinc-900"
                     >
-                      <option value="Size 16cm (4 - 6 người)">Size 16cm (4 - 6 người)</option>
-                      <option value="Size 18cm (6 - 8 người)">Size 18cm (6 - 8 người)</option>
-                      <option value="Size 20cm (8 - 12 người)">Size 20cm (8 - 12 người)</option>
-                      <option value="Size 22cm (12 - 16 người)">Size 22cm (12 - 16 người)</option>
-                      <option value="Bánh 2 tầng sinh nhật">Bánh 2 tầng sinh nhật</option>
+                      {cakeCostingConfig.sizes.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} — Vốn ~{s.baseCost.toLocaleString('vi-VN')}₫ (Gợi ý: {s.suggestedPrice.toLocaleString('vi-VN')}₫)
+                        </option>
+                      ))}
                     </select>
+                  </div>
+                </div>
+
+                {/* NÚT CHỌN NHANH SIZE BÁNH (1 CHẠM TỰ ĐỘNG ĐIỀN GIÁ GỢI Ý) */}
+                <div>
+                  <div className="flex items-center justify-between text-[11px] mb-1">
+                    <span className="font-bold text-pink-800 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-pink-600" /> Chọn nhanh kích thước:
+                    </span>
+                    <span className="text-zinc-500 text-[10px]">Tự động nạp giá vốn & giá bán chuẩn</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {cakeCostingConfig.sizes.map((s) => {
+                      const isSelected = preorderForm.sizeId === s.id || preorderForm.size === s.name;
+                      return (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => {
+                            setPreorderForm(prev => ({
+                              ...prev,
+                              sizeId: s.id,
+                              size: s.name,
+                              totalPrice: s.suggestedPrice,
+                            }));
+                          }}
+                          className={`p-2 rounded-xl text-left border transition cursor-pointer active:scale-95 ${
+                            isSelected
+                              ? 'bg-pink-600 text-white border-pink-600 shadow-xs ring-2 ring-pink-200'
+                              : 'bg-white text-zinc-700 border-zinc-200 hover:border-pink-300 hover:bg-pink-50/30'
+                          }`}
+                        >
+                          <div className="font-bold text-[11px] truncate flex items-center justify-between">
+                            <span>{s.name.split(' (')[0]}</span>
+                            <span className={`text-[9px] px-1 rounded ${isSelected ? 'bg-pink-700 text-white' : 'bg-zinc-100 text-zinc-500'}`}>
+                              Ø{s.diameterCm}cm
+                            </span>
+                          </div>
+                          <div className={`text-[10px] mt-0.5 ${isSelected ? 'text-pink-100' : 'text-zinc-500'}`}>
+                            {s.servings}
+                          </div>
+                          <div className={`text-[10px] font-black mt-1 ${isSelected ? 'text-white' : 'text-pink-700'}`}>
+                            {s.suggestedPrice.toLocaleString('vi-VN')}₫
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* CHỌN CỐT BÁNH & LOẠI KEM PHỦ */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 p-2.5 bg-zinc-50 rounded-xl border border-zinc-200">
+                  <div className="min-w-0">
+                    <label className="font-semibold text-zinc-700 text-[11px] block mb-1">Loại cốt bánh:</label>
+                    <select
+                      value={preorderForm.flavorId || ''}
+                      onChange={(e) => {
+                        const f = cakeCostingConfig.flavors.find(x => x.id === e.target.value);
+                        setPreorderForm(prev => ({
+                          ...prev,
+                          flavorId: e.target.value,
+                          flavor: f ? f.name : prev.flavor,
+                        }));
+                      }}
+                      className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold text-xs min-w-0"
+                    >
+                      {cakeCostingConfig.flavors.map((f) => (
+                        <option key={f.id} value={f.id}>
+                          {f.name} {f.extraPrice > 0 ? `(+${f.extraPrice.toLocaleString('vi-VN')}₫)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0">
+                    <label className="font-semibold text-zinc-700 text-[11px] block mb-1">Loại kem phủ & trang trí:</label>
+                    <select
+                      value={preorderForm.creamId || ''}
+                      onChange={(e) => {
+                        const c = cakeCostingConfig.creams.find(x => x.id === e.target.value);
+                        setPreorderForm(prev => ({
+                          ...prev,
+                          creamId: e.target.value,
+                          cream: c ? c.name : prev.cream,
+                        }));
+                      }}
+                      className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold text-xs min-w-0"
+                    >
+                      {cakeCostingConfig.creams.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} {c.extraPrice > 0 ? `(+${c.extraPrice.toLocaleString('vi-VN')}₫)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* HỘP BÁNH & BAO BÌ */}
+                <div>
+                  <label className="font-semibold text-zinc-700 text-[11px] block mb-1">Hộp đựng bánh & Đóng gói:</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {cakeCostingConfig.packagings.map((pkg) => {
+                      const isSelected = preorderForm.packagingId === pkg.id || (!preorderForm.packagingId && pkg.isDefault);
+                      return (
+                        <button
+                          key={pkg.id}
+                          type="button"
+                          onClick={() => setPreorderForm(prev => ({ ...prev, packagingId: pkg.id, packaging: pkg.name }))}
+                          className={`p-2 rounded-xl text-left border text-xs font-bold transition cursor-pointer active:scale-95 ${
+                            isSelected
+                              ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                              : 'bg-white text-zinc-700 border-zinc-200 hover:border-amber-300'
+                          }`}
+                        >
+                          <div className="truncate">{pkg.name}</div>
+                          <div className={`text-[10px] font-normal ${isSelected ? 'text-amber-100' : 'text-zinc-500'}`}>
+                            {pkg.extraPrice > 0 ? `Phụ thu: +${pkg.extraPrice.toLocaleString('vi-VN')}₫` : 'Tiêu chuẩn (Đã gồm)'}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* PHỤ KIỆN & DECOR BÁNH THÊM */}
+                <div className="p-2.5 bg-pink-50/50 rounded-xl border border-pink-200 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-pink-800 text-[11px] flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5 text-pink-600" /> Phụ kiện & Decor thêm (Tích chọn nhiều):
+                    </label>
+                    <span className="text-[10px] text-pink-600 font-semibold">
+                      Đã chọn: {(preorderForm.selectedAddonIds || []).length} món
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {cakeCostingConfig.addons.map((a) => {
+                      const isSelected = (preorderForm.selectedAddonIds || []).includes(a.id);
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => {
+                            const current = preorderForm.selectedAddonIds || [];
+                            const next = isSelected ? current.filter(x => x !== a.id) : [...current, a.id];
+                            setPreorderForm(prev => ({ ...prev, selectedAddonIds: next }));
+                          }}
+                          className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer active:scale-95 ${
+                            isSelected
+                              ? 'bg-pink-600 text-white border-pink-600 shadow-xs ring-1 ring-pink-300'
+                              : 'bg-white text-zinc-700 border-zinc-200 hover:border-pink-300 hover:bg-pink-50/40'
+                          }`}
+                        >
+                          <span>{a.icon || '🎁'}</span>
+                          <span>{a.name}</span>
+                          <span className={`text-[10px] ${isSelected ? 'text-pink-100 font-bold' : 'text-rose-600'}`}>
+                            {a.price > 0 ? `+${a.price.toLocaleString('vi-VN')}₫` : 'Free'}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -2952,6 +3207,73 @@ export default function POSPage() {
                 <span className="font-bold text-amber-800 uppercase tracking-wider block text-[10px]">
                   5. Thông tin thanh toán, Giảm giá & Tiền cọc
                 </span>
+
+                {/* THẺ ĐỊNH MỨC VỐN & BÁO GIÁ THÔNG MINH CHO BÁNH ĐẶT RIÊNG */}
+                <div className="p-3 bg-white/95 rounded-xl border-2 border-pink-300 shadow-xs space-y-2 text-xs animate-in fade-in duration-200">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-lg bg-pink-100 text-pink-600 flex items-center justify-center">
+                        <Sparkles className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <span className="font-black text-xs text-zinc-900 block">Định Mức Vốn & Báo Giá Bánh Đặt</span>
+                        <span className="text-[10px] text-zinc-500">Tự động tính từ Size & Phụ kiện đã chọn</span>
+                      </div>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                      cakeCostResult.statusLevel === 'good'
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                        : cakeCostResult.statusLevel === 'warning'
+                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                        : 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
+                    }`}>
+                      {cakeCostResult.statusLevel === 'good'
+                        ? '✓ Lãi Gộp Tốt'
+                        : cakeCostResult.statusLevel === 'warning'
+                        ? '⚠️ Lãi Mỏng'
+                        : '🚨 Giá Bán Quá Thấp!'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 bg-pink-50/50 p-2 rounded-lg border border-pink-100 text-center">
+                    <div>
+                      <span className="text-[10px] text-zinc-500 block">Vốn Ước Tính (Cost)</span>
+                      <span className="text-xs font-black text-rose-600">
+                        {cakeCostResult.totalCost.toLocaleString('vi-VN')}₫
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-500 block">Giá Gợi Ý (~{cakeCostingConfig.targetFoodCostPct}%)</span>
+                      <span className="text-xs font-black text-pink-700">
+                        {cakeCostResult.suggestedPrice.toLocaleString('vi-VN')}₫
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-zinc-500 block">Lãi Gộp Dự Kiến</span>
+                      <span className="text-xs font-black text-emerald-600">
+                        +{cakeCostResult.estimatedProfit.toLocaleString('vi-VN')}₫
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-100">
+                    <div className="text-[10px] text-zinc-600">
+                      Tỷ lệ Food Cost: <b className={cakeCostResult.foodCostPct > 40 ? 'text-rose-600 font-black' : 'text-emerald-700 font-bold'}>{cakeCostResult.foodCostPct}%</b>
+                      {cakeCostResult.foodCostPct > 45 && (
+                        <span className="text-rose-600 font-bold ml-1">
+                          (Báo giá bị thấp so với chi phí vốn!)
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPreorderForm(prev => ({ ...prev, totalPrice: cakeCostResult.suggestedPrice }))}
+                      className="px-2.5 py-1 rounded-lg bg-pink-600 hover:bg-pink-700 text-white font-black text-[10px] flex items-center gap-1 shadow-2xs transition active:scale-95 cursor-pointer"
+                    >
+                      <Sparkles className="w-3 h-3" /> Điền Giá Gợi Ý ({cakeCostResult.suggestedPrice.toLocaleString('vi-VN')}₫)
+                    </button>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div className="min-w-0">
                     <label className="font-semibold text-zinc-700 text-xs">Giá bánh (VND):</label>

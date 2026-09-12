@@ -112,6 +112,7 @@ export interface BakeryBackupData {
     telegram?: any;
     branding?: any;
     security?: any;
+    cake_costing?: any;
   };
 }
 

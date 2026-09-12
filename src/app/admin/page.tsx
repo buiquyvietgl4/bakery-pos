@@ -67,6 +67,7 @@ import {
 } from '@/lib/utils/localSqlManager';
 import { gatherFullBakeryData } from '@/lib/utils/backupManager';
 import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
+import { CustomCakeCostingSettings } from '@/components/admin/CustomCakeCostingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
@@ -135,7 +136,7 @@ export default function AdminDashboard() {
     securityConfig,
     resetSecurityDefaults,
   } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'inventory' | 'recipes' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
 
   // ── SECURITY & PERMISSIONS STATE ──
   const [unlockPassword, setUnlockPassword] = useState('');
@@ -2519,6 +2520,7 @@ export default function AdminDashboard() {
             { id: 'images', label: 'Quản Lý Bánh & Ảnh', icon: Cake },
             { id: 'inventory', label: 'Kho Xuất Nhập & Vật Tư', icon: Package },
             { id: 'recipes', label: 'Công Thức BOM', icon: BookOpen },
+            { id: 'cake_costing', label: 'Định Mức Bánh Đặt', icon: Sparkles },
             { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode },
             { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
             { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2 },
@@ -3920,6 +3922,11 @@ export default function AdminDashboard() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── TAB: ĐỊNH MỨC BÁNH ĐẶT (SIZE & PHỤ KIỆN) ── */}
+      {activeTab === 'cake_costing' && (
+        <CustomCakeCostingSettings />
       )}
 
       {/* ── TAB 5: CHI PHÍ VẬN HÀNH (OPEX) ── */}

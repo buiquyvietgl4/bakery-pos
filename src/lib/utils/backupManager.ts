@@ -506,6 +506,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   let printerConfig = null;
   let telegramConfig = null;
   let securityConfig = null;
+  let cakeCostingConfig: any = null;
   let accountingClosings: any[] = [];
 
   if (typeof window !== 'undefined') {
@@ -518,6 +519,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawSec) securityConfig = JSON.parse(rawSec);
       const rawCl = localStorage.getItem('bakery_closing_records') || localStorage.getItem('bakery_accounting_closings');
       if (rawCl) accountingClosings = JSON.parse(rawCl);
+      const rawCC = localStorage.getItem('bakery_cake_costing_config');
+      if (rawCC) cakeCostingConfig = JSON.parse(rawCC);
     } catch {}
   }
   printerConfig = getPrinterConfig();
@@ -656,6 +659,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       telegram: telegramConfig,
       branding: getStoreBranding(),
       security: securityConfig,
+      cake_costing: cakeCostingConfig,
     },
   };
 }
