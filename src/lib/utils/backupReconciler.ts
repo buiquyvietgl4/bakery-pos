@@ -300,7 +300,7 @@ export async function reconcileBackupWithCurrentState(backupData: BakeryBackupDa
         identifier: bi.name,
         displayName: bi.name,
         status: 'new',
-        details: `Vật tư mới: ${bi.stock_qty} ${bi.unit} (giá vốn ~${bi.avg_cost || 0}đ)`,
+        details: `Vật tư mới: ${bi.stock_qty} ${bi.unit} (giá vốn ~${(bi.avg_cost || 0).toLocaleString('vi-VN')}₫)`,
         backupItem: bi,
       });
     } else {
@@ -311,7 +311,7 @@ export async function reconcileBackupWithCurrentState(backupData: BakeryBackupDa
         byEntity.ingredients.updatedCount++;
         const changes: string[] = [];
         if (qtyDiff) changes.push(`Tồn kho: ${existing.stock_qty} ➔ ${bi.stock_qty} ${bi.unit}`);
-        if (costDiff) changes.push(`Giá vốn: ${existing.avg_cost} ➔ ${bi.avg_cost}đ`);
+        if (costDiff) changes.push(`Giá vốn: ${(existing.avg_cost || 0).toLocaleString('vi-VN')}₫ ➔ ${(bi.avg_cost || 0).toLocaleString('vi-VN')}₫`);
 
         byEntity.ingredients.items.push({
           entityType: 'ingredients',

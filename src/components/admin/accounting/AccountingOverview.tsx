@@ -30,7 +30,7 @@ export interface AccountingOverviewProps {
 const formatVND = (val: number) => {
   const rounded = Math.round(val || 0);
   const prefix = rounded < 0 ? '-' : '';
-  return `${prefix}VND ${Math.abs(rounded).toLocaleString('en-US')}`;
+  return `${prefix}${Math.abs(rounded).toLocaleString('vi-VN')}₫`;
 };
 
 export const isOrderCash = (o: any): boolean => {

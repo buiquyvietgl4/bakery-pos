@@ -5,6 +5,7 @@ import {
   FileText, Plus, Trash2, Tag, Calendar, Banknote, 
   QrCode, Search, PieChart, TrendingDown, CheckCircle2, AlertCircle
 } from 'lucide-react';
+import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
 export interface OpexManagerProps {
   expenses: any[];
@@ -139,13 +140,12 @@ export const OpexManager: React.FC<OpexManagerProps> = ({
             <div>
               <label className="font-bold text-zinc-700 block mb-1">Số tiền chi (VNĐ):</label>
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
                 required
-                min="1000"
-                step="1000"
-                value={newAmount || ''}
-                onChange={(e) => setNewAmount(Number(e.target.value))}
-                placeholder="Ví dụ: 2,500,000"
+                value={formatCurrencyInput(newAmount)}
+                onChange={(e) => setNewAmount(parseCurrencyInput(e.target.value))}
+                placeholder="Ví dụ: 2.500.000"
                 className="w-full p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-rose-600 text-base focus:outline-none focus:ring-2 focus:ring-rose-500/20"
               />
             </div>

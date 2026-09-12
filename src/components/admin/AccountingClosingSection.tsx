@@ -16,6 +16,7 @@ import {
   exportClosingToCSV,
   CLOSING_UPDATED_EVENT 
 } from '@/lib/utils/closingManager';
+import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
 interface AccountingClosingSectionProps {
   orders: any[];
@@ -340,9 +341,10 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
             </label>
             <div className="relative">
               <input
-                type="number"
-                value={actualCashInput}
-                onChange={(e) => setActualCashInput(e.target.value)}
+                type="text"
+                inputMode="numeric"
+                value={formatCurrencyInput(actualCashInput)}
+                onChange={(e) => setActualCashInput(parseCurrencyInput(e.target.value).toString())}
                 placeholder="Nhập số tiền thực tế..."
                 disabled={!!existingClosedRecord}
                 className="w-full bg-white border border-zinc-300 rounded-xl px-3.5 py-2.5 text-base font-mono font-bold text-zinc-900 shadow-2xs focus:border-amber-500 focus:outline-none disabled:bg-zinc-100 disabled:text-zinc-600"

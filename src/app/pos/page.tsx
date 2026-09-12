@@ -43,6 +43,7 @@ import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
 interface CartItem {
   product: CachedProduct;
@@ -2462,11 +2463,10 @@ export default function POSPage() {
                 ) : (
                   <div className="flex-1 relative">
                     <input
-                      type="number"
-                      min="0"
-                      step="1000"
-                      value={discountCustomAmount || ''}
-                      onChange={(e) => setDiscountCustomAmount(Math.max(0, Number(e.target.value)))}
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(discountCustomAmount)}
+                      onChange={(e) => setDiscountCustomAmount(parseCurrencyInput(e.target.value))}
                       placeholder="0"
                       className="w-full pr-6 pl-2.5 py-1 text-right bg-stone-50 border border-stone-200 rounded-lg text-xs font-black text-amber-800 focus:bg-white focus:outline-amber-500"
                     />
@@ -2611,12 +2611,11 @@ export default function POSPage() {
                     <div>
                       <label className="font-semibold text-zinc-600">Phí giao hàng / Ship (VND, nếu có):</label>
                       <input
-                        type="number"
-                        min="0"
-                        step="5000"
-                        value={preorderForm.shippingFee || ''}
-                        onChange={(e) => setPreorderForm({ ...preorderForm, shippingFee: Number(e.target.value) })}
-                        placeholder="Ví dụ: 20000, 30000... (0 nếu miễn phí)"
+                        type="text"
+                        inputMode="numeric"
+                        value={formatCurrencyInput(preorderForm.shippingFee)}
+                        onChange={(e) => setPreorderForm({ ...preorderForm, shippingFee: parseCurrencyInput(e.target.value) })}
+                        placeholder="Ví dụ: 20.000, 30.000... (0 nếu miễn phí)"
                         className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold text-zinc-900"
                       />
                     </div>
@@ -2909,10 +2908,12 @@ export default function POSPage() {
                   <div className="min-w-0">
                     <label className="font-semibold text-zinc-700 text-xs">Giá bánh (VND):</label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="numeric"
                       required
-                      value={preorderForm.totalPrice || ''}
-                      onChange={(e) => setPreorderForm({ ...preorderForm, totalPrice: Number(e.target.value) })}
+                      value={formatCurrencyInput(preorderForm.totalPrice)}
+                      onChange={(e) => setPreorderForm({ ...preorderForm, totalPrice: parseCurrencyInput(e.target.value) })}
+                      placeholder="VD: 320.000"
                       className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-amber-700 text-sm min-w-0"
                     />
                   </div>
@@ -2937,11 +2938,13 @@ export default function POSPage() {
                       </div>
                     </div>
                     <input
-                      type="number"
-                      min="0"
-                      value={preorderDiscountVal || ''}
-                      onChange={(e) => setPreorderDiscountVal(Number(e.target.value))}
-                      placeholder={preorderDiscountMode === 'percent' ? 'VD: 10 (%)' : 'VD: 50000 (₫)'}
+                      type={preorderDiscountMode === 'percent' ? 'number' : 'text'}
+                      inputMode="numeric"
+                      min={preorderDiscountMode === 'percent' ? '0' : undefined}
+                      max={preorderDiscountMode === 'percent' ? '100' : undefined}
+                      value={preorderDiscountMode === 'percent' ? (preorderDiscountVal || '') : formatCurrencyInput(preorderDiscountVal)}
+                      onChange={(e) => setPreorderDiscountVal(preorderDiscountMode === 'percent' ? Math.min(100, Math.max(0, Number(e.target.value))) : parseCurrencyInput(e.target.value))}
+                      placeholder={preorderDiscountMode === 'percent' ? 'VD: 10 (%)' : 'VD: 50.000 (₫)'}
                       className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-emerald-600 text-sm min-w-0"
                     />
                   </div>
@@ -2976,9 +2979,10 @@ export default function POSPage() {
                     </div>
                   </div>
                   <input
-                    type="number"
-                    value={preorderForm.depositAmount === undefined || preorderForm.depositAmount === null ? '' : preorderForm.depositAmount}
-                    onChange={(e) => setPreorderForm({ ...preorderForm, depositAmount: Number(e.target.value) })}
+                    type="text"
+                    inputMode="numeric"
+                    value={preorderForm.depositAmount === undefined || preorderForm.depositAmount === null ? '' : (preorderForm.depositAmount === 0 ? '0' : formatCurrencyInput(preorderForm.depositAmount))}
+                    onChange={(e) => setPreorderForm({ ...preorderForm, depositAmount: parseCurrencyInput(e.target.value) })}
                     placeholder={`Thu đủ: ${(preorderFinalTotal || 0).toLocaleString('vi-VN')}₫`}
                     className="w-full p-2 rounded-xl bg-white border border-amber-300 font-black text-emerald-700 text-sm text-right"
                   />
@@ -3952,9 +3956,10 @@ export default function POSPage() {
                 Tiền mặt thực tế đếm được cuối ca:
               </label>
               <input
-                type="number"
-                value={closingCashInput || ''}
-                onChange={(e) => setClosingCashInput(Number(e.target.value))}
+                type="text"
+                inputMode="numeric"
+                value={formatCurrencyInput(closingCashInput)}
+                onChange={(e) => setClosingCashInput(parseCurrencyInput(e.target.value))}
                 placeholder="Nhập số tiền đếm trong két..."
                 className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-base font-black text-zinc-900"
               />
@@ -4158,10 +4163,11 @@ export default function POSPage() {
                       </div>
                     </div>
                     <input
-                      type="number"
-                      value={posDepositAmount === null ? '' : posDepositAmount}
+                      type="text"
+                      inputMode="numeric"
+                      value={posDepositAmount === null ? '' : (posDepositAmount === 0 ? '0' : formatCurrencyInput(posDepositAmount))}
                       onChange={(e) => {
-                        const val = e.target.value === '' ? null : Number(e.target.value);
+                        const val = e.target.value === '' ? null : parseCurrencyInput(e.target.value);
                         setPosDepositAmount(val);
                       }}
                       placeholder={`Mặc định thu đủ ${(grandTotal || 0).toLocaleString('vi-VN')}₫`}
@@ -4249,9 +4255,10 @@ export default function POSPage() {
                           🚚 Phí ship (₫):
                         </label>
                         <input
-                          type="number"
-                          value={posShippingFee || ''}
-                          onChange={(e) => setPosShippingFee(Number(e.target.value))}
+                          type="text"
+                          inputMode="numeric"
+                          value={formatCurrencyInput(posShippingFee)}
+                          onChange={(e) => setPosShippingFee(parseCurrencyInput(e.target.value))}
                           placeholder="0 (miễn phí)"
                           className="w-full px-2.5 py-2 bg-white border border-emerald-300/80 rounded-xl text-xs font-bold text-zinc-900 focus:outline-emerald-500 text-right shadow-2xs min-w-0"
                         />
@@ -4298,10 +4305,11 @@ export default function POSPage() {
                       </div>
                     </div>
                     <input
-                      type="number"
-                      value={posDepositAmount === null ? '' : posDepositAmount}
+                      type="text"
+                      inputMode="numeric"
+                      value={posDepositAmount === null ? '' : (posDepositAmount === 0 ? '0' : formatCurrencyInput(posDepositAmount))}
                       onChange={(e) => {
-                        const val = e.target.value === '' ? null : Number(e.target.value);
+                        const val = e.target.value === '' ? null : parseCurrencyInput(e.target.value);
                         setPosDepositAmount(val);
                       }}
                       placeholder={`Mặc định thu đủ ${(grandTotal || 0).toLocaleString('vi-VN')}₫`}
@@ -4441,11 +4449,10 @@ export default function POSPage() {
                   ) : (
                     <div className="flex-1 relative">
                       <input
-                        type="number"
-                        min="0"
-                        step="1000"
-                        value={discountCustomAmount || ''}
-                        onChange={(e) => setDiscountCustomAmount(Math.max(0, Number(e.target.value)))}
+                        type="text"
+                        inputMode="numeric"
+                        value={formatCurrencyInput(discountCustomAmount)}
+                        onChange={(e) => setDiscountCustomAmount(parseCurrencyInput(e.target.value))}
                         placeholder="Nhập số tiền giảm (VND)..."
                         className="w-full pr-7 pl-3 py-1.5 text-right bg-white border border-stone-200 rounded-xl text-xs font-black text-amber-800 focus:outline-amber-500"
                       />
@@ -4556,10 +4563,11 @@ export default function POSPage() {
                 <div className="flex justify-between items-center text-xs">
                   <span className="font-bold text-zinc-700">Tiền khách đưa:</span>
                   <input
-                    type="number"
-                    value={cashGiven || ''}
-                    onChange={(e) => setCashGiven(Number(e.target.value))}
-                    placeholder={dueNow.toString()}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatCurrencyInput(cashGiven)}
+                    onChange={(e) => setCashGiven(parseCurrencyInput(e.target.value))}
+                    placeholder={(dueNow || 0).toLocaleString('vi-VN')}
                     className="w-36 px-2.5 py-1.5 text-right font-black text-sm bg-white border border-zinc-200 rounded-lg text-zinc-900"
                   />
                 </div>

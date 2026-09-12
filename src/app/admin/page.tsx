@@ -43,6 +43,7 @@ import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backu
 import { AccountingClosingSection } from '@/components/admin/AccountingClosingSection';
 import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
+import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -2596,10 +2597,12 @@ export default function AdminDashboard() {
                 <div>
                   <label className="font-bold text-zinc-700">Giá bán niêm yết (VND) *</label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
                     required
-                    value={newProdPrice || ''}
-                    onChange={(e) => setNewProdPrice(Number(e.target.value))}
+                    value={formatCurrencyInput(newProdPrice)}
+                    onChange={(e) => setNewProdPrice(parseCurrencyInput(e.target.value))}
+                    placeholder="VD: 35.000"
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-amber-600 text-sm"
                   />
                 </div>
@@ -2771,10 +2774,11 @@ export default function AdminDashboard() {
                   <div>
                     <label className="font-bold text-zinc-700">Đơn giá nhập (VND):</label>
                     <input
-                      type="number"
-                      value={poUnitPrice || ''}
-                      onChange={(e) => setPoUnitPrice(Number(e.target.value))}
-                      placeholder="Nhập đơn giá..."
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(poUnitPrice)}
+                      onChange={(e) => setPoUnitPrice(parseCurrencyInput(e.target.value))}
+                      placeholder="Nhập đơn giá (VD: 50.000)..."
                       className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
                     />
                   </div>
@@ -3025,9 +3029,11 @@ export default function AdminDashboard() {
                 <div>
                   <label className="font-bold text-zinc-700">Đơn giá vốn ban đầu (VND):</label>
                   <input
-                    type="number"
-                    value={newIngAvgCost || ''}
-                    onChange={(e) => setNewIngAvgCost(Number(e.target.value))}
+                    type="text"
+                    inputMode="numeric"
+                    value={formatCurrencyInput(newIngAvgCost)}
+                    onChange={(e) => setNewIngAvgCost(parseCurrencyInput(e.target.value))}
+                    placeholder="VD: 30.000"
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
                   />
                 </div>
@@ -3747,11 +3753,13 @@ export default function AdminDashboard() {
                   <span className="font-bold text-zinc-600 block text-[11px]">Thử nghiệm quét QR:</span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label className="text-[10px] text-zinc-400 block">Số tiền thử:</label>
+                      <label className="text-[10px] text-zinc-400 block">Số tiền thử (VND):</label>
                       <input
-                        type="number"
-                        value={testAmount}
-                        onChange={(e) => setTestAmount(Number(e.target.value))}
+                        type="text"
+                        inputMode="numeric"
+                        value={formatCurrencyInput(testAmount)}
+                        onChange={(e) => setTestAmount(parseCurrencyInput(e.target.value))}
+                        placeholder="VD: 150.000"
                         className="w-full p-1.5 bg-zinc-50 border border-zinc-200 rounded-lg font-black text-amber-600 text-xs"
                       />
                     </div>
@@ -4160,11 +4168,13 @@ export default function AdminDashboard() {
                   <span className="font-bold text-zinc-600 block text-[11px]">Thử nghiệm quét QR Ví:</span>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                     <div>
-                      <label className="text-[10px] text-zinc-400 block">Số tiền thử:</label>
+                      <label className="text-[10px] text-zinc-400 block">Số tiền thử (VND):</label>
                       <input
-                        type="number"
-                        value={testWalletAmount}
-                        onChange={(e) => setTestWalletAmount(Number(e.target.value))}
+                        type="text"
+                        inputMode="numeric"
+                        value={formatCurrencyInput(testWalletAmount)}
+                        onChange={(e) => setTestWalletAmount(parseCurrencyInput(e.target.value))}
+                        placeholder="VD: 65.000"
                         className="w-full p-1.5 bg-zinc-50 border border-zinc-200 rounded-lg font-black text-pink-600 text-xs"
                       />
                     </div>

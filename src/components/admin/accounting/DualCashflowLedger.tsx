@@ -7,6 +7,7 @@ import {
   Calendar, RefreshCw, Filter, Banknote, Building2, AlertCircle
 } from 'lucide-react';
 import { isOrderCash } from './AccountingOverview';
+import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
 export interface DualCashflowLedgerProps {
   orders: any[];
@@ -579,13 +580,12 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
               <div>
                 <label className="font-bold text-zinc-700 block mb-1">Số tiền (VNĐ):</label>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="numeric"
                   required
-                  min="1000"
-                  step="1000"
-                  value={txAmount || ''}
-                  onChange={(e) => setTxAmount(Number(e.target.value))}
-                  placeholder="Ví dụ: 500,000"
+                  value={formatCurrencyInput(txAmount)}
+                  onChange={(e) => setTxAmount(parseCurrencyInput(e.target.value))}
+                  placeholder="Ví dụ: 500.000"
                   className="w-full p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-sm text-zinc-900 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
                 />
               </div>
