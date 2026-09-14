@@ -207,7 +207,7 @@ export function exportFullTaxBooksExcel(
 
 /**
  * Xuất Tờ khai thông báo doanh thu năm Mẫu 01/TKN-CNKD (Doanh thu <= 1 Tỷ/năm - Miễn thuế)
- * Ban hành kèm theo Thông tư 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP
+ * Khớp 100% bản xem trước in A4 theo Nghị định 141/2026/NĐ-CP & Thông tư 50/2026/TT-BTC
  */
 export function export01TknCnkdExcel(
   info: HouseholdBusinessInfo,
@@ -221,41 +221,100 @@ export function export01TknCnkdExcel(
   policy?: TaxPolicyConfig
 ) {
   const annualThreshold = analysis.annual_threshold || policy?.annual_threshold || 1_000_000_000;
-  const circularRef = policy?.circular_01_tkn_ref || 'Mẫu số 01/TKN-CNKD ban hành kèm theo Thông tư số 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP';
+  const circularRef = policy?.circular_01_tkn_ref || 'Thông tư số 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP';
 
   const declarationRows = [
-    { indicator: '[01]', name: `Kỳ tính thuế (Năm tính thuế) - Căn cứ: ${circularRef}`, rate: '-', amount: periodLabel, tax: '-' },
-    { indicator: '[02]', name: `Tên người nộp thuế: ${info.shop_name}`, rate: '-', amount: `Đại diện: ${info.owner_name}`, tax: '-' },
-    { indicator: '[03]', name: `Mã số thuế: ${info.tax_code}`, rate: '-', amount: `Điện thoại: ${info.phone}`, tax: '-' },
-    { indicator: '[04]', name: `Địa chỉ kinh doanh: ${info.business_address}`, rate: '-', amount: `Cơ quan thuế: ${info.tax_office_name || 'Chi cục Thuế quản lý'}`, tax: '-' },
-    { indicator: '[11]', name: `Email: ${info.email || '-'}`, rate: '-', amount: `Diện tích: ${info.business_area || '-'} m2 - Lao động: ${info.regular_employees_count || 1} người`, tax: '-' },
-    { indicator: '[14]', name: `Số tài khoản ngân hàng kinh doanh: ${info.bank_account_number || '-'}`, rate: '-', amount: `Ngân hàng: ${info.bank_name || '-'}`, tax: '-' },
-    { indicator: '[20]', name: '--- KÊ KHAI DOANH THU THỰC TẾ TRONG NĂM ---', rate: '-', amount: '-', tax: '-' },
-    { indicator: '[21]', name: 'TỔNG DOANH THU PHÁT SINH TRONG NĂM (VNĐ)', rate: '-', amount: analysis.current_year_revenue, tax: '0 đ (Miễn thuế 100%)' },
-    { indicator: '[22]', name: '1. Doanh thu sản xuất bánh kem, bánh mì, đồ uống chế biến', rate: '3%', amount: summary[2]?.total_revenue || 0, tax: '0 đ (Miễn thuế)' },
-    { indicator: '[23]', name: '2. Doanh thu bán lẻ phụ kiện tiệc, nến, hàng hóa mua bán', rate: '1%', amount: summary[0]?.total_revenue || 0, tax: '0 đ (Miễn thuế)' },
-    { indicator: '[24]', name: '3. Doanh thu dịch vụ ship, giao hàng tận nơi, trang trí tiệc', rate: '5%', amount: summary[1]?.total_revenue || 0, tax: '0 đ (Miễn thuế)' },
-    { indicator: '[25]', name: '4. Doanh thu các hoạt động khác', rate: '2%', amount: summary[3]?.total_revenue || 0, tax: '0 đ (Miễn thuế)' },
-    { indicator: '[26]', name: '--- TÌNH TRẠNG NGHĨA VỤ THUẾ THEO NGHỊ ĐỊNH 141/2026/NĐ-CP ---', rate: '-', amount: '-', tax: '-' },
-    { indicator: '[27]', name: `Ngưỡng doanh thu miễn thuế quy định: ${annualThreshold.toLocaleString('vi-VN')} đ`, rate: '-', amount: annualThreshold, tax: `${annualThreshold.toLocaleString('vi-VN')} VNĐ` },
-    { indicator: '[28]', name: `Xác nhận điều kiện: Doanh thu thực tế <= ${annualThreshold.toLocaleString('vi-VN')} đ`, rate: '-', amount: analysis.current_year_revenue, tax: 'ĐỦ ĐIỀU KIỆN MIỄN THUẾ 100%' },
-    { indicator: '[29]', name: 'Thuế Giá Trị Gia Tăng (GTGT) phải nộp:', rate: '0%', amount: 0, tax: 0 },
-    { indicator: '[30]', name: 'Thuế Thu Nhập Cá Nhân (TNCN) phải nộp:', rate: '0%', amount: 0, tax: 0 },
-    { indicator: '[31]', name: 'Lệ phí môn bài (Đã bãi bỏ theo Nghị quyết 198/2025/QH15):', rate: '-', amount: 0, tax: 0 },
-    { indicator: '[32]', name: 'TỔNG SỐ THUẾ PHẢI NỘP VÀO NGÂN SÁCH NHÀ NƯỚC (VNĐ):', rate: '-', amount: 0, tax: 0 },
+    {
+      indicator: '[21]',
+      name: 'TỔNG DOANH THU THỰC TẾ PHÁT SINH TRONG NĂM',
+      rate: '-',
+      amount: analysis.current_year_revenue,
+      tax: '0 đ (Miễn thuế)',
+    },
+    {
+      indicator: '[22]',
+      name: '1. Doanh thu sản xuất bánh kem, bánh mì, đồ uống chế biến tiệm bánh',
+      rate: 'GTGT 3% | TNCN 1.5%',
+      amount: summary[2]?.total_revenue || 0,
+      tax: '0 đ (Miễn thuế)',
+    },
+    {
+      indicator: '[23]',
+      name: '2. Doanh thu bán lẻ phụ kiện tiệc, nến, mũ, hàng hóa mua bán',
+      rate: 'GTGT 1% | TNCN 0.5%',
+      amount: summary[0]?.total_revenue || 0,
+      tax: '0 đ (Miễn thuế)',
+    },
+    {
+      indicator: '[24]',
+      name: '3. Doanh thu dịch vụ giao hàng, ship bánh, trang trí tiệc',
+      rate: 'GTGT 5% | TNCN 2%',
+      amount: summary[1]?.total_revenue || 0,
+      tax: '0 đ (Miễn thuế)',
+    },
+    {
+      indicator: '[25]',
+      name: '4. Doanh thu hoạt động kinh doanh khác',
+      rate: 'GTGT 2% | TNCN 1%',
+      amount: summary[3]?.total_revenue || 0,
+      tax: '0 đ (Miễn thuế)',
+    },
+    {
+      indicator: '[26]',
+      name: 'Thuế Giá Trị Gia Tăng (GTGT) phải nộp trong năm:',
+      rate: 'Miễn thuế',
+      amount: '-',
+      tax: 0,
+    },
+    {
+      indicator: '[27]',
+      name: 'Thuế Thu Nhập Cá Nhân (TNCN) phải nộp trong năm:',
+      rate: 'Miễn thuế',
+      amount: '-',
+      tax: 0,
+    },
+    {
+      indicator: '[28]',
+      name: 'Lệ phí môn bài (Đã bãi bỏ đối với HKD từ 01/01/2026):',
+      rate: 'Đã bãi bỏ',
+      amount: '-',
+      tax: 0,
+    },
+    {
+      indicator: '[29]',
+      name: 'TỔNG NGHĨA VỤ THUẾ PHẢI NỘP VÀO NGÂN SÁCH NHÀ NƯỚC (VNĐ)',
+      rate: '-',
+      amount: '-',
+      tax: '0 VNĐ (MIỄN NỘP THUẾ)',
+      _isTotal: true,
+    },
   ];
 
   const sheets: ExcelSheet[] = [
     {
-      name: 'To_Khai_01_TKN_CNKD_Mien_Thue',
+      name: '01_TKN_CNKD_Mien_Thue',
+      title: 'TỜ KHAI THUẾ / THÔNG BÁO DOANH THU NĂM (DOANH THU ≤ 1 TỶ - MIỄN THUẾ)',
+      subtitles: [
+        `Mẫu số 01/TKN-CNKD (Ban hành kèm theo ${circularRef})`,
+        `Hộ kinh doanh: ${info.shop_name} - Đại diện: ${info.owner_name}`,
+        `Mã số thuế: ${info.tax_code} - Số điện thoại: ${info.phone}`,
+        `Địa chỉ kinh doanh: ${info.business_address}`,
+        `Kỳ tính thuế: ${periodLabel} - Đơn vị tính: Đồng Việt Nam`,
+        `XÁC NHẬN NGHĨA VỤ THUẾ: HỘ KINH DOANH ĐỦ ĐIỀU KIỆN ĐƯỢC MIỄN 100% THUẾ GTGT & THUẾ TNCN (Doanh thu năm không quá ${annualThreshold.toLocaleString('vi-VN')} đồng)`,
+      ],
       columns: [
-        { header: 'Mã Chỉ Tiêu', key: 'indicator', width: 90, type: 'string' },
-        { header: 'Nội Dung Kê Khai & Chỉ Tiêu Doanh Thu', key: 'name', width: 380, type: 'string' },
-        { header: 'Tỷ Lệ', key: 'rate', width: 80, type: 'string' },
-        { header: 'Số Tiền / Doanh Thu (VNĐ)', key: 'amount', width: 170, type: 'currency' },
-        { header: 'Nghĩa Vụ Thuế Phải Nộp', key: 'tax', width: 180, type: 'string' },
+        { header: 'Chỉ tiêu', key: 'indicator', width: 90, type: 'string', align: 'center' },
+        { header: 'Nội dung kê khai doanh thu', key: 'name', width: 440, type: 'string' },
+        { header: 'Tỷ lệ quy định', key: 'rate', width: 180, type: 'string', align: 'center' },
+        { header: 'Doanh thu phát sinh (VNĐ)', key: 'amount', width: 190, type: 'currency' },
+        { header: 'Số thuế phải nộp', key: 'tax', width: 190, type: 'currency' },
       ],
       data: declarationRows,
+      notes: [
+        '* Cam đoan: Tôi cam đoan số liệu khai trên là hoàn toàn đúng sự thật và chịu trách nhiệm trước pháp luật về tính chính xác của doanh thu thông báo.',
+        `Căn cứ pháp lý: Nghị định 141/2026/NĐ-CP & Thông tư 50/2026/TT-BTC áp dụng cho hộ kinh doanh có doanh thu dưới ngưỡng ${annualThreshold.toLocaleString('vi-VN')} VNĐ/năm.`,
+        `NGƯỜI NỘP THUẾ (Ký, ghi rõ họ tên): ${info.owner_name} - Đại diện ${info.shop_name}`,
+      ],
     },
   ];
 
@@ -265,7 +324,7 @@ export function export01TknCnkdExcel(
 
 /**
  * Xuất Tờ khai thuế Mẫu 01/CNKD KÈM PHỤ LỤC 01-2/BK-HĐKD (Doanh thu > 1 Tỷ/năm - Kê khai nộp thuế)
- * Chuẩn định dạng 2 Sheet của Tổng cục Thuế theo Thông tư 40/2021/TT-BTC
+ * Chuẩn định dạng 2 Sheet của Tổng cục Thuế theo Thông tư 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC
  */
 export function export01CnkdExcel(
   info: HouseholdBusinessInfo,
@@ -278,41 +337,46 @@ export function export01CnkdExcel(
   },
   policy?: TaxPolicyConfig
 ) {
-  const circularCnkdRef = policy?.circular_01_cnkd_ref || 'Mẫu số 01/CNKD ban hành kèm theo Thông tư số 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC';
+  const circularCnkdRef = policy?.circular_01_cnkd_ref || 'Thông tư số 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC';
   const circularBkRef = policy?.circular_01_2_bkhdkd_ref || 'Phụ lục 01-2/BK-HĐKD ban hành kèm theo Thông tư số 40/2021/TT-BTC';
 
-  // ── SHEET 1: TỜ KHAI CHÍNH MẪU 01/CNKD ──
+  // ── SHEET 1: TỜ KHAI CHÍNH MẪU 01/CNKD (Chỉ tiêu [28] đến [35] khớp 100% bản in) ──
   const declarationRows = [
-    { indicator: '[01]', name: `Kỳ kê khai thuế: ${periodLabel} - Căn cứ: ${circularCnkdRef}`, rate: '-', revenue: '-', vat: '-', pit: '-', total: '-' },
-    { indicator: '[02]', name: `Hộ kinh doanh: ${info.shop_name}`, rate: '-', revenue: `Đại diện: ${info.owner_name}`, vat: '-', pit: '-', total: '-' },
-    { indicator: '[03]', name: `Mã số thuế: ${info.tax_code}`, rate: '-', revenue: `Cơ quan thuế: ${info.tax_office_name || 'Chi cục Thuế quản lý'}`, vat: '-', pit: '-', total: '-' },
-    { indicator: '[04]', name: `Địa chỉ kinh doanh: ${info.business_address}`, rate: '-', revenue: `Điện thoại: ${info.phone}`, vat: '-', pit: '-', total: '-' },
-    { indicator: '[11]', name: `Email giao dịch: ${info.email || '-'}`, rate: '-', revenue: `Diện tích: ${info.business_area || '-'} m2 - Lao động: ${info.regular_employees_count || 1} người`, vat: '-', pit: '-', total: '-' },
-    { indicator: '[14]', name: `Số tài khoản ngân hàng kinh doanh: ${info.bank_account_number || '-'}`, rate: '-', revenue: `Ngân hàng: ${info.bank_name || '-'}`, vat: '-', pit: '-', total: '-' },
-    { indicator: '[15]', name: `Tên phần mềm bán hàng kết nối CQT: ${info.software_name || 'Bakery POS ERP'}`, rate: '-', revenue: '-', vat: '-', pit: '-', total: '-' },
-    { indicator: '[28]', name: 'TỔNG DOANH THU TÍNH THUẾ TRONG KỲ', rate: '-', revenue: totals.totalRevenue, vat: totals.totalVat, pit: totals.totalPit, total: totals.totalTax },
-    { indicator: '[29]', name: '1. Phân phối, cung cấp hàng hóa (Phụ kiện, nến, bánh nhập)', rate: 'GTGT 1% | TNCN 0.5%', revenue: summary[0]?.total_revenue || 0, vat: summary[0]?.total_vat || 0, pit: summary[0]?.total_pit || 0, total: summary[0]?.total_tax || 0 },
-    { indicator: '[30]', name: '2. Dịch vụ, xây dựng không bao thầu NVL (Phí ship, trang trí)', rate: 'GTGT 5% | TNCN 2.0%', revenue: summary[1]?.total_revenue || 0, vat: summary[1]?.total_vat || 0, pit: summary[1]?.total_pit || 0, total: summary[1]?.total_tax || 0 },
+    { indicator: '[28]', name: 'TỔNG DOANH THU TÍNH THUẾ TRONG KỲ', rate: '-', revenue: totals.totalRevenue, vat: totals.totalVat, pit: totals.totalPit, total: totals.totalTax, _isTotal: true },
+    { indicator: '[29]', name: '1. Phân phối, cung cấp hàng hóa (Phụ kiện sinh nhật, nến, mũ, bánh nhập)', rate: 'GTGT 1% | TNCN 0.5%', revenue: summary[0]?.total_revenue || 0, vat: summary[0]?.total_vat || 0, pit: summary[0]?.total_pit || 0, total: summary[0]?.total_tax || 0 },
+    { indicator: '[30]', name: '2. Dịch vụ, xây dựng không bao thầu NVL (Phí ship riêng, trang trí tiệc)', rate: 'GTGT 5% | TNCN 2%', revenue: summary[1]?.total_revenue || 0, vat: summary[1]?.total_vat || 0, pit: summary[1]?.total_pit || 0, total: summary[1]?.total_tax || 0 },
     { indicator: '[31]', name: '3. Sản xuất bánh kem, bánh mì, đồ uống chế biến tiệm bánh', rate: 'GTGT 3% | TNCN 1.5%', revenue: summary[2]?.total_revenue || 0, vat: summary[2]?.total_vat || 0, pit: summary[2]?.total_pit || 0, total: summary[2]?.total_tax || 0 },
-    { indicator: '[32]', name: '4. Hoạt động kinh doanh khác', rate: 'GTGT 2% | TNCN 1.0%', revenue: summary[3]?.total_revenue || 0, vat: summary[3]?.total_vat || 0, pit: summary[3]?.total_pit || 0, total: summary[3]?.total_tax || 0 },
-    { indicator: '[33]', name: 'TỔNG THUẾ GTGT PHẢI NỘP VÀO NSNN', rate: '-', revenue: '-', vat: totals.totalVat, pit: '-', total: totals.totalVat },
-    { indicator: '[34]', name: 'TỔNG THUẾ TNCN PHẢI NỘP VÀO NSNN', rate: '-', revenue: '-', vat: '-', pit: totals.totalPit, total: totals.totalPit },
-    { indicator: '[35]', name: 'TỔNG NGHĨA VỤ THUẾ PHẢI NỘP VÀO NSNN (GTGT + TNCN)', rate: '-', revenue: totals.totalRevenue, vat: totals.totalVat, pit: totals.totalPit, total: totals.totalTax },
+    { indicator: '[32]', name: '4. Hoạt động kinh doanh khác', rate: 'GTGT 2% | TNCN 1%', revenue: summary[3]?.total_revenue || 0, vat: summary[3]?.total_vat || 0, pit: summary[3]?.total_pit || 0, total: summary[3]?.total_tax || 0 },
+    { indicator: '[33]', name: 'Tổng số thuế GTGT phải nộp trong kỳ:', rate: '-', revenue: '-', vat: totals.totalVat, pit: '-', total: totals.totalVat },
+    { indicator: '[34]', name: 'Tổng số thuế TNCN phải nộp trong kỳ:', rate: '-', revenue: '-', vat: '-', pit: totals.totalPit, total: totals.totalPit },
+    { indicator: '[35]', name: 'TỔNG NGHĨA VỤ THUẾ PHẢI NỘP VÀO NGÂN SÁCH NHÀ NƯỚC (GTGT + TNCN)', rate: '-', revenue: totals.totalRevenue, vat: totals.totalVat, pit: totals.totalPit, total: totals.totalTax, _isTotal: true },
   ];
 
   const sheets: ExcelSheet[] = [
     {
       name: '01_CNKD_To_Khai',
+      title: 'TỜ KHAI THUẾ ĐỐI VỚI CÁ NHÂN KINH DOANH (DOANH THU > 1 TỶ)',
+      subtitles: [
+        `Mẫu số 01/CNKD (Ban hành kèm theo ${circularCnkdRef})`,
+        `Hộ kinh doanh: ${info.shop_name} - Đại diện: ${info.owner_name}`,
+        `Mã số thuế: ${info.tax_code} - Điện thoại: ${info.phone}`,
+        `Địa chỉ kinh doanh: ${info.business_address} - Cơ quan thuế: ${info.tax_office_name || 'Chi cục Thuế quản lý'}`,
+        `Kỳ tính thuế: ${periodLabel} - Đơn vị tính: Đồng Việt Nam`,
+      ],
       columns: [
-        { header: 'Chỉ Tiêu', key: 'indicator', width: 90, type: 'string' },
-        { header: 'Nội Dung Kinh Tế Kê Khai', key: 'name', width: 360, type: 'string' },
-        { header: 'Tỷ Lệ Tính Thuế', key: 'rate', width: 150, type: 'string' },
-        { header: 'Doanh Thu (VNĐ)', key: 'revenue', width: 150, type: 'currency' },
-        { header: 'Thuế GTGT (VNĐ)', key: 'vat', width: 140, type: 'currency' },
-        { header: 'Thuế TNCN (VNĐ)', key: 'pit', width: 140, type: 'currency' },
-        { header: 'Tổng Thuế (VNĐ)', key: 'total', width: 150, type: 'currency' },
+        { header: 'Chỉ Tiêu', key: 'indicator', width: 90, type: 'string', align: 'center' },
+        { header: 'Nội Dung Kinh Tế Kê Khai', key: 'name', width: 440, type: 'string' },
+        { header: 'Tỷ Lệ Tính Thuế', key: 'rate', width: 170, type: 'string', align: 'center' },
+        { header: 'Doanh Thu Kê Khai (VNĐ)', key: 'revenue', width: 180, type: 'currency' },
+        { header: 'Thuế GTGT (VNĐ)', key: 'vat', width: 160, type: 'currency' },
+        { header: 'Thuế TNCN (VNĐ)', key: 'pit', width: 160, type: 'currency' },
+        { header: 'Tổng Thuế (VNĐ)', key: 'total', width: 180, type: 'currency' },
       ],
       data: declarationRows,
+      notes: [
+        '* Cam đoan: Tôi cam đoan số liệu khai trên là hoàn toàn đúng sự thật và chịu trách nhiệm trước pháp luật về tính chính xác của số liệu kê khai.',
+        `NGƯỜI NỘP THUẾ (Ký, ghi rõ họ tên): ${info.owner_name} - Đại diện ${info.shop_name}`,
+      ],
     },
   ];
 

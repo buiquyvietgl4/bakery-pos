@@ -9,6 +9,7 @@ export interface ExcelColumn {
   key: string;
   width?: number;
   type?: 'string' | 'number' | 'currency' | 'date';
+  align?: 'left' | 'center' | 'right';
 }
 
 /**
@@ -51,8 +52,11 @@ export function exportToCSV(
 
 export interface ExcelSheet {
   name: string;
+  title?: string;
+  subtitles?: string[];
   columns: ExcelColumn[];
   data: any[];
+  notes?: string[];
 }
 
 /**
@@ -74,6 +78,32 @@ export function exportMultiSheetExcel(filename: string, sheets: ExcelSheet[]) {
       .map((col) => `<Column ss:AutoFitWidth="1" ss:Width="${col.width || 120}"/>`)
       .join('\n');
 
+    const totalCols = Math.max(1, sheet.columns.length);
+    const titleXml: string[] = [];
+
+    if (sheet.title) {
+      titleXml.push(`
+        <Row ss:Height="28">
+          <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="TitleStyle">
+            <Data ss:Type="String">${sanitize(sheet.title)}</Data>
+          </Cell>
+        </Row>`);
+    }
+
+    if (sheet.subtitles && sheet.subtitles.length > 0) {
+      sheet.subtitles.forEach((sub) => {
+        const isBanner = sub.startsWith('XÁC NHẬN NGHĨA VỤ THUẾ') || sub.startsWith('CĂN CỨ PHÁP LÝ');
+        const style = isBanner ? 'BannerStyle' : 'SubtitleStyle';
+        titleXml.push(`
+        <Row ss:Height="${isBanner ? 24 : 18}">
+          <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="${style}">
+            <Data ss:Type="String">${sanitize(sub)}</Data>
+          </Cell>
+        </Row>`);
+      });
+      titleXml.push(`<Row ss:Height="8"></Row>`);
+    }
+
     const headerCells = sheet.columns
       .map(
         (col) =>
@@ -83,30 +113,74 @@ export function exportMultiSheetExcel(filename: string, sheets: ExcelSheet[]) {
 
     const rowsXml = sheet.data
       .map((row) => {
+        const isTotal = Boolean(row._isTotal);
         const cells = sheet.columns
           .map((col) => {
             const val = row[col.key];
             if (val === null || val === undefined) {
-              return `<Cell ss:StyleID="DefaultStyle"><Data ss:Type="String"></Data></Cell>`;
+              const emptyStyle = isTotal ? 'TotalLabelStyle' : 'DefaultStyle';
+              return `<Cell ss:StyleID="${emptyStyle}"><Data ss:Type="String"></Data></Cell>`;
             }
+
             if (col.type === 'number' || col.type === 'currency') {
-              const numVal = typeof val === 'number' ? val : parseFloat(String(val).replace(/[^0-9.-]+/g, '')) || 0;
-              const styleId = col.type === 'currency' ? 'CurrencyStyle' : 'NumberStyle';
-              return `<Cell ss:StyleID="${styleId}"><Data ss:Type="Number">${numVal}</Data></Cell>`;
+              if (typeof val === 'number') {
+                const styleId = isTotal
+                  ? 'TotalCurrencyStyle'
+                  : col.type === 'currency'
+                  ? 'CurrencyStyle'
+                  : 'NumberStyle';
+                return `<Cell ss:StyleID="${styleId}"><Data ss:Type="Number">${val}</Data></Cell>`;
+              }
+              // Nếu là chuỗi số thuần túy (VD: "31646000" hoặc "31,646,000")
+              const strVal = String(val).trim();
+              const cleanStr = strVal.replace(/[,\s]/g, '');
+              if (/^-?\d+(\.\d+)?$/.test(cleanStr)) {
+                const numVal = parseFloat(cleanStr);
+                const styleId = isTotal
+                  ? 'TotalCurrencyStyle'
+                  : col.type === 'currency'
+                  ? 'CurrencyStyle'
+                  : 'NumberStyle';
+                return `<Cell ss:StyleID="${styleId}"><Data ss:Type="Number">${numVal}</Data></Cell>`;
+              }
+              // Chuỗi text (VD: "-", "Miễn thuế", "0 đ (Miễn thuế)")
+              const styleId = isTotal
+                ? (col.align === 'center' ? 'TotalCenterStyle' : 'TotalLabelStyle')
+                : (col.align === 'center' ? 'CenterStyle' : 'DefaultStyle');
+              return `<Cell ss:StyleID="${styleId}"><Data ss:Type="String">${sanitize(val)}</Data></Cell>`;
             }
-            return `<Cell ss:StyleID="DefaultStyle"><Data ss:Type="String">${sanitize(val)}</Data></Cell>`;
+
+            const styleId = isTotal
+              ? (col.align === 'center' ? 'TotalCenterStyle' : 'TotalLabelStyle')
+              : (col.align === 'center' ? 'CenterStyle' : 'DefaultStyle');
+            return `<Cell ss:StyleID="${styleId}"><Data ss:Type="String">${sanitize(val)}</Data></Cell>`;
           })
           .join('');
-        return `<Row>${cells}</Row>`;
+        return `<Row ss:Height="${isTotal ? 24 : 20}">${cells}</Row>`;
       })
       .join('\n');
+
+    const noteXml: string[] = [];
+    if (sheet.notes && sheet.notes.length > 0) {
+      noteXml.push(`<Row ss:Height="10"></Row>`);
+      sheet.notes.forEach((n) => {
+        noteXml.push(`
+        <Row ss:Height="18">
+          <Cell ss:MergeAcross="${totalCols - 1}" ss:StyleID="NoteStyle">
+            <Data ss:Type="String">${sanitize(n)}</Data>
+          </Cell>
+        </Row>`);
+      });
+    }
 
     return `
     <Worksheet ss:Name="${sanitize(sheet.name.substring(0, 31))}">
       <Table>
         ${colTags}
+        ${titleXml.join('\n')}
         <Row ss:Height="26">${headerCells}</Row>
         ${rowsXml}
+        ${noteXml.join('\n')}
       </Table>
     </Worksheet>`;
   }).join('\n');
@@ -127,8 +201,37 @@ export function exportMultiSheetExcel(filename: string, sheets: ExcelSheet[]) {
       <NumberFormat/>
       <Protection/>
     </Style>
+    <Style ss:ID="TitleStyle">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+      <Font ss:FontName="Segoe UI" ss:Size="13" ss:Bold="1" ss:Color="#065F46"/>
+    </Style>
+    <Style ss:ID="SubtitleStyle">
+      <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+      <Font ss:FontName="Segoe UI" ss:Size="10" ss:Color="#374151"/>
+    </Style>
+    <Style ss:ID="BannerStyle">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+      </Borders>
+      <Font ss:FontName="Segoe UI" ss:Size="10" ss:Bold="1" ss:Color="#065F46"/>
+      <Interior ss:Color="#ECFDF5" ss:Pattern="Solid"/>
+    </Style>
     <Style ss:ID="DefaultStyle">
       <Alignment ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/>
+      </Borders>
+      <Font ss:FontName="Segoe UI" ss:Size="10" ss:Color="#1F2937"/>
+    </Style>
+    <Style ss:ID="CenterStyle">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
       <Borders>
         <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/>
         <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/>
@@ -140,13 +243,13 @@ export function exportMultiSheetExcel(filename: string, sheets: ExcelSheet[]) {
     <Style ss:ID="HeaderStyle">
       <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
       <Borders>
-        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#B45309"/>
-        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D97706"/>
-        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D97706"/>
-        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D97706"/>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#059669"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#10B981"/>
       </Borders>
-      <Font ss:FontName="Segoe UI" ss:Size="11" ss:Bold="1" ss:Color="#FFFFFF"/>
-      <Interior ss:Color="#D97706" ss:Pattern="Solid"/>
+      <Font ss:FontName="Segoe UI" ss:Size="10.5" ss:Bold="1" ss:Color="#FFFFFF"/>
+      <Interior ss:Color="#059669" ss:Pattern="Solid"/>
     </Style>
     <Style ss:ID="NumberStyle">
       <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
@@ -169,6 +272,44 @@ export function exportMultiSheetExcel(filename: string, sheets: ExcelSheet[]) {
       </Borders>
       <Font ss:FontName="Segoe UI" ss:Size="10" ss:Bold="1" ss:Color="#047857"/>
       <NumberFormat ss:Format="#,##0\ &quot;₫&quot;"/>
+    </Style>
+    <Style ss:ID="TotalLabelStyle">
+      <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#059669"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#059669"/>
+      </Borders>
+      <Font ss:FontName="Segoe UI" ss:Size="10.5" ss:Bold="1" ss:Color="#065F46"/>
+      <Interior ss:Color="#ECFDF5" ss:Pattern="Solid"/>
+    </Style>
+    <Style ss:ID="TotalCenterStyle">
+      <Alignment ss:Horizontal="Center" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#059669"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#059669"/>
+      </Borders>
+      <Font ss:FontName="Segoe UI" ss:Size="10.5" ss:Bold="1" ss:Color="#065F46"/>
+      <Interior ss:Color="#ECFDF5" ss:Pattern="Solid"/>
+    </Style>
+    <Style ss:ID="TotalCurrencyStyle">
+      <Alignment ss:Horizontal="Right" ss:Vertical="Center"/>
+      <Borders>
+        <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#059669"/>
+        <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+        <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#A7F3D0"/>
+        <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="2" ss:Color="#059669"/>
+      </Borders>
+      <Font ss:FontName="Segoe UI" ss:Size="10.5" ss:Bold="1" ss:Color="#065F46"/>
+      <Interior ss:Color="#ECFDF5" ss:Pattern="Solid"/>
+      <NumberFormat ss:Format="#,##0\ &quot;₫&quot;"/>
+    </Style>
+    <Style ss:ID="NoteStyle">
+      <Alignment ss:Horizontal="Left" ss:Vertical="Center"/>
+      <Font ss:FontName="Segoe UI" ss:Size="9" ss:Italic="1" ss:Color="#6B7280"/>
     </Style>
   </Styles>
   ${xmlSheets}

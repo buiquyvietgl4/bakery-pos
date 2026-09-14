@@ -1300,7 +1300,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => export01TknCnkdExcel(businessInfo, periodLabel, thresholdAnalysis, s2aData.summary)}
+                    onClick={() => export01TknCnkdExcel(businessInfo, periodLabel, thresholdAnalysis, s2aData.summary, taxPolicy)}
                     className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold shadow-2xs transition cursor-pointer"
                   >
                     <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
@@ -1318,6 +1318,32 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                 </div>
               </div>
 
+              {/* Khối Thông Tin Hành Chính & Căn Cứ Pháp Lý */}
+              <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-3.5 sm:p-4 text-xs space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-zinc-700">
+                  <div>
+                    <span className="font-mono text-zinc-500 font-bold">[01]</span> Kỳ tính thuế: <b className="text-zinc-900">Năm {selectedYear}</b> ({startDateStr} đến {endDateStr})
+                  </div>
+                  <div>
+                    <span className="font-mono text-zinc-500 font-bold">[02]</span> Người nộp thuế: <b className="text-zinc-900">{businessInfo.shop_name}</b> (Đại diện: {businessInfo.owner_name})
+                  </div>
+                  <div>
+                    <span className="font-mono text-zinc-500 font-bold">[03]</span> Mã số thuế: <b className="font-mono text-zinc-900">{businessInfo.tax_code}</b> - ĐT: {businessInfo.phone}
+                  </div>
+                  <div>
+                    <span className="font-mono text-zinc-500 font-bold">[04]</span> Địa chỉ: <span className="text-zinc-900">{businessInfo.business_address}</span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-emerald-200/80 flex items-center justify-between flex-wrap gap-2 text-[11px] text-emerald-900">
+                  <span className="font-medium">
+                    🛡️ Căn cứ pháp lý: <b>Nghị định 141/2026/NĐ-CP &amp; Thông tư 50/2026/TT-BTC</b> (Ngưỡng doanh thu miễn thuế: <b>1.000.000.000 đ/năm</b>)
+                  </span>
+                  <span className="bg-emerald-200/70 text-emerald-950 px-2.5 py-0.5 rounded-full font-bold">
+                    ĐỦ ĐIỀU KIỆN MIỄN 100% THUẾ
+                  </span>
+                </div>
+              </div>
+
               {/* Bảng Kê Chỉ Tiêu Tờ Khai 01/TKN-CNKD */}
               <div className="space-y-2">
                 <div className="flex sm:hidden items-center justify-between px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 font-medium shadow-2xs">
@@ -1332,168 +1358,127 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       <tr className="bg-zinc-100 text-zinc-700 font-bold border-b border-zinc-200">
                         <th className="p-3 w-16 text-center shrink-0">Chỉ tiêu</th>
                         <th className="p-3 min-w-[200px]">Nội dung kê khai doanh thu</th>
-                        <th className="p-3 w-28 text-center shrink-0">Tỷ lệ quy định</th>
-                        <th className="p-3 w-44 text-right shrink-0">Doanh Thu Trong Năm (VNĐ)</th>
-                        <th className="p-3 w-44 text-right shrink-0">Nghĩa Vụ Thuế Phải Nộp</th>
+                        <th className="p-3 w-36 text-center shrink-0">Tỷ lệ quy định</th>
+                        <th className="p-3 w-44 text-right shrink-0">Doanh thu phát sinh</th>
+                        <th className="p-3 w-44 text-right shrink-0">Số thuế phải nộp</th>
                       </tr>
                     </thead>
-                  <tbody className="divide-y divide-zinc-200 font-medium">
-                    {/* Phần I: Thông tin hành chính */}
-                    <tr className="bg-zinc-50/50">
-                      <td className="p-2.5 text-center font-mono text-zinc-500">[01]</td>
-                      <td className="p-2.5 text-zinc-700 font-semibold" colSpan={4}>
-                        Kỳ tính thuế: <b>Năm {selectedYear}</b> ({startDateStr} đến {endDateStr})
-                      </td>
-                    </tr>
-                    <tr className="bg-zinc-50/50">
-                      <td className="p-2.5 text-center font-mono text-zinc-500">[02]</td>
-                      <td className="p-2.5 text-zinc-700" colSpan={4}>
-                        Người nộp thuế: <b>{businessInfo.shop_name}</b> - Đại diện: <b>{businessInfo.owner_name}</b>
-                      </td>
-                    </tr>
-                    <tr className="bg-zinc-50/50">
-                      <td className="p-2.5 text-center font-mono text-zinc-500">[03]</td>
-                      <td className="p-2.5 text-zinc-700" colSpan={4}>
-                        Mã số thuế: <b className="font-mono">{businessInfo.tax_code}</b> - Điện thoại: {businessInfo.phone}
-                      </td>
-                    </tr>
-                    <tr className="bg-zinc-50/50">
-                      <td className="p-2.5 text-center font-mono text-zinc-500">[04]</td>
-                      <td className="p-2.5 text-zinc-700" colSpan={4}>
-                        Địa chỉ kinh doanh: {businessInfo.business_address}
-                      </td>
-                    </tr>
+                    <tbody className="divide-y divide-zinc-200 font-medium">
+                      {/* [21] Tổng doanh thu */}
+                      <tr className="bg-zinc-50/80 font-bold">
+                        <td className="p-3 text-center font-mono text-zinc-900 font-bold">[21]</td>
+                        <td className="p-3 text-zinc-950 uppercase font-bold">
+                          TỔNG DOANH THU THỰC TẾ PHÁT SINH TRONG NĂM
+                        </td>
+                        <td className="p-3 text-center text-zinc-400">-</td>
+                        <td className="p-3 text-right font-black text-sm text-zinc-950">
+                          {thresholdAnalysis.current_year_revenue.toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="p-3 text-right font-black text-sm text-emerald-800">
+                          0 đ (Miễn thuế)
+                        </td>
+                      </tr>
 
-                    {/* Phần II: Kê khai doanh thu */}
-                    <tr className="bg-emerald-50/70 font-bold">
-                      <td className="p-3 text-center font-mono text-emerald-900">[21]</td>
-                      <td className="p-3 text-emerald-950 uppercase">
-                        TỔNG DOANH THU PHÁT SINH TRONG NĂM
-                      </td>
-                      <td className="p-3 text-center">-</td>
-                      <td className="p-3 text-right font-black text-sm text-zinc-950">
-                        {thresholdAnalysis.current_year_revenue.toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="p-3 text-right font-black text-sm text-emerald-800">
-                        0 đ (MIỄN THUẾ)
-                      </td>
-                    </tr>
+                      {/* [22] Doanh thu sản xuất bánh */}
+                      <tr>
+                        <td className="p-3 text-center font-mono text-zinc-600">[22]</td>
+                        <td className="p-3">
+                          1. Doanh thu sản xuất bánh kem, bánh mì, đồ uống chế biến tiệm bánh
+                        </td>
+                        <td className="p-3 text-center text-zinc-600 font-medium">GTGT 3% | TNCN 1.5%</td>
+                        <td className="p-3 text-right font-bold text-zinc-900">
+                          {(s2aData.summary[2]?.total_revenue || 0).toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="p-3 text-right font-semibold text-emerald-800">
+                          0 đ (Miễn thuế)
+                        </td>
+                      </tr>
 
-                    {/* Chi tiết nhóm 3 tiệm bánh */}
-                    <tr>
-                      <td className="p-3 text-center font-mono text-zinc-500">[22]</td>
-                      <td className="p-3">
-                        1. Sản xuất bánh kem, bánh mì, đồ uống chế biến tại tiệm
-                      </td>
-                      <td className="p-3 text-center text-zinc-500 font-semibold">3%</td>
-                      <td className="p-3 text-right font-bold text-zinc-900">
-                        {(s2aData.summary[2]?.total_revenue || 0).toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="p-3 text-right font-bold text-emerald-700">
-                        0 đ (Miễn thuế)
-                      </td>
-                    </tr>
+                      {/* [23] Phụ kiện tiệc */}
+                      <tr>
+                        <td className="p-3 text-center font-mono text-zinc-600">[23]</td>
+                        <td className="p-3">
+                          2. Doanh thu bán lẻ phụ kiện tiệc, nến, mũ, hàng hóa mua bán
+                        </td>
+                        <td className="p-3 text-center text-zinc-600 font-medium">GTGT 1% | TNCN 0.5%</td>
+                        <td className="p-3 text-right font-bold text-zinc-900">
+                          {(s2aData.summary[0]?.total_revenue || 0).toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="p-3 text-right font-semibold text-emerald-800">
+                          0 đ (Miễn thuế)
+                        </td>
+                      </tr>
 
-                    {/* Chi tiết nhóm 1 phụ kiện */}
-                    <tr>
-                      <td className="p-3 text-center font-mono text-zinc-500">[23]</td>
-                      <td className="p-3">
-                        2. Phân phối hàng hóa, phụ kiện sinh nhật, nến, bánh nhập sẵn
-                      </td>
-                      <td className="p-3 text-center text-zinc-500 font-semibold">1%</td>
-                      <td className="p-3 text-right font-bold text-zinc-900">
-                        {(s2aData.summary[0]?.total_revenue || 0).toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="p-3 text-right font-bold text-emerald-700">
-                        0 đ (Miễn thuế)
-                      </td>
-                    </tr>
+                      {/* [24] Giao hàng, ship bánh */}
+                      <tr>
+                        <td className="p-3 text-center font-mono text-zinc-600">[24]</td>
+                        <td className="p-3">
+                          3. Doanh thu dịch vụ giao hàng, ship bánh, trang trí tiệc
+                        </td>
+                        <td className="p-3 text-center text-zinc-600 font-medium">GTGT 5% | TNCN 2%</td>
+                        <td className="p-3 text-right font-bold text-zinc-900">
+                          {(s2aData.summary[1]?.total_revenue || 0).toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="p-3 text-right font-semibold text-emerald-800">
+                          0 đ (Miễn thuế)
+                        </td>
+                      </tr>
 
-                    {/* Chi tiết nhóm 2 dịch vụ */}
-                    <tr>
-                      <td className="p-3 text-center font-mono text-zinc-500">[24]</td>
-                      <td className="p-3">
-                        3. Dịch vụ ship riêng, vận chuyển, trang trí tiệc sinh nhật
-                      </td>
-                      <td className="p-3 text-center text-zinc-500 font-semibold">5%</td>
-                      <td className="p-3 text-right font-bold text-zinc-900">
-                        {(s2aData.summary[1]?.total_revenue || 0).toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="p-3 text-right font-bold text-emerald-700">
-                        0 đ (Miễn thuế)
-                      </td>
-                    </tr>
+                      {/* [25] Khác */}
+                      <tr>
+                        <td className="p-3 text-center font-mono text-zinc-600">[25]</td>
+                        <td className="p-3">
+                          4. Doanh thu hoạt động kinh doanh khác
+                        </td>
+                        <td className="p-3 text-center text-zinc-600 font-medium">GTGT 2% | TNCN 1%</td>
+                        <td className="p-3 text-right font-bold text-zinc-900">
+                          {(s2aData.summary[3]?.total_revenue || 0).toLocaleString('vi-VN')} đ
+                        </td>
+                        <td className="p-3 text-right font-semibold text-emerald-800">
+                          0 đ (Miễn thuế)
+                        </td>
+                      </tr>
 
-                    {/* Chi tiết nhóm 4 */}
-                    <tr>
-                      <td className="p-3 text-center font-mono text-zinc-500">[25]</td>
-                      <td className="p-3">
-                        4. Hoạt động kinh doanh khác
-                      </td>
-                      <td className="p-3 text-center text-zinc-500 font-semibold">2%</td>
-                      <td className="p-3 text-right font-bold text-zinc-900">
-                        {(s2aData.summary[3]?.total_revenue || 0).toLocaleString('vi-VN')} đ
-                      </td>
-                      <td className="p-3 text-right font-bold text-emerald-700">
-                        0 đ (Miễn thuế)
-                      </td>
-                    </tr>
+                      {/* [26] Thuế GTGT */}
+                      <tr className="bg-emerald-50/40">
+                        <td className="p-3 text-center font-mono text-emerald-900 font-bold">[26]</td>
+                        <td className="p-3 text-zinc-900 font-semibold">Thuế Giá Trị Gia Tăng (GTGT) phải nộp trong năm:</td>
+                        <td className="p-3 text-center text-emerald-800 font-medium">Miễn thuế</td>
+                        <td className="p-3 text-right text-zinc-400">-</td>
+                        <td className="p-3 text-right font-black text-emerald-800">0 đ</td>
+                      </tr>
 
-                    {/* Phần III: Tình trạng nghĩa vụ thuế */}
-                    <tr className="bg-zinc-50 font-bold">
-                      <td className="p-3 text-center font-mono text-zinc-700">[27]</td>
-                      <td className="p-3 text-zinc-900">
-                        Ngưỡng doanh thu miễn thuế theo quy định năm 2026 (Nghị định 141/2026/NĐ-CP)
-                      </td>
-                      <td className="p-3 text-center">-</td>
-                      <td className="p-3 text-right font-bold text-zinc-900">
-                        1.000.000.000 đ
-                      </td>
-                      <td className="p-3 text-right font-bold text-emerald-800">
-                        ĐỦ ĐIỀU KIỆN MIỄN THUẾ
-                      </td>
-                    </tr>
+                      {/* [27] Thuế TNCN */}
+                      <tr className="bg-emerald-50/40">
+                        <td className="p-3 text-center font-mono text-emerald-900 font-bold">[27]</td>
+                        <td className="p-3 text-zinc-900 font-semibold">Thuế Thu Nhập Cá Nhân (TNCN) phải nộp trong năm:</td>
+                        <td className="p-3 text-center text-emerald-800 font-medium">Miễn thuế</td>
+                        <td className="p-3 text-right text-zinc-400">-</td>
+                        <td className="p-3 text-right font-black text-emerald-800">0 đ</td>
+                      </tr>
 
-                    <tr>
-                      <td className="p-3 text-center font-mono text-zinc-500">[29]</td>
-                      <td className="p-3">Thuế Giá Trị Gia Tăng (GTGT) phải nộp trong năm:</td>
-                      <td className="p-3 text-center">0%</td>
-                      <td className="p-3 text-right text-zinc-400">-</td>
-                      <td className="p-3 text-right font-black text-emerald-800">0 đ</td>
-                    </tr>
+                      {/* [28] Lệ phí môn bài */}
+                      <tr className="bg-zinc-50/70">
+                        <td className="p-3 text-center font-mono text-zinc-600 font-bold">[28]</td>
+                        <td className="p-3 text-zinc-900 font-semibold">Lệ phí môn bài (Đã bãi bỏ đối với HKD từ 01/01/2026):</td>
+                        <td className="p-3 text-center font-semibold text-zinc-600">Đã bãi bỏ</td>
+                        <td className="p-3 text-right text-zinc-400">-</td>
+                        <td className="p-3 text-right font-black text-zinc-900">0 đ</td>
+                      </tr>
 
-                    <tr>
-                      <td className="p-3 text-center font-mono text-zinc-500">[30]</td>
-                      <td className="p-3">Thuế Thu Nhập Cá Nhân (TNCN) phải nộp trong năm:</td>
-                      <td className="p-3 text-center">0%</td>
-                      <td className="p-3 text-right text-zinc-400">-</td>
-                      <td className="p-3 text-right font-black text-emerald-800">0 đ</td>
-                    </tr>
-
-                    <tr>
-                      <td className="p-3 text-center font-mono text-zinc-500">[31]</td>
-                      <td className="p-3">Lệ phí môn bài:</td>
-                      <td className="p-3 text-center font-semibold text-emerald-700">Đã bãi bỏ</td>
-                      <td className="p-3 text-right text-zinc-400">-</td>
-                      <td className="p-3 text-right font-black text-emerald-800">0 đ</td>
-                    </tr>
-
-                    {/* [32] Tổng thuế phải nộp */}
-                    <tr className="bg-emerald-100/60 font-bold border-t-2 border-emerald-300">
-                      <td className="p-3 text-center font-mono text-emerald-950 font-black">[32]</td>
-                      <td className="p-3 text-emerald-950 uppercase font-black">
-                        TỔNG NGHĨA VỤ THUẾ PHẢI NỘP VÀO NGÂN SÁCH NHÀ NƯỚC (VNĐ)
-                      </td>
-                      <td className="p-3 text-center">-</td>
-                      <td className="p-3 text-right">-</td>
-                      <td className="p-3 text-right font-black text-emerald-950 text-base">
-                        0 đ (MIỄN 100%)
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
+                      {/* [29] Tổng thuế phải nộp */}
+                      <tr className="bg-amber-100/80 font-bold border-t-2 border-emerald-300">
+                        <td colSpan={3} className="p-3 text-amber-950 uppercase font-black text-xs sm:text-sm">
+                          [29] TỔNG NGHĨA VỤ THUẾ PHẢI NỘP VÀO NGÂN SÁCH NHÀ NƯỚC (VNĐ)
+                        </td>
+                        <td colSpan={2} className="p-3 text-right font-black text-emerald-900 text-sm sm:text-base">
+                          0 VNĐ (MIỄN NỘP THUẾ)
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
 
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-950 space-y-1">
                 <p className="font-bold flex items-center gap-1.5">

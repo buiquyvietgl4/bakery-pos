@@ -257,7 +257,11 @@ export function getTaxPolicyConfig(): TaxPolicyConfig {
   try {
     const raw = localStorage.getItem(TAX_POLICY_KEY);
     if (raw) {
-      return { ...DEFAULT_TAX_POLICY, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      if (!parsed.annual_threshold || parsed.annual_threshold < 500_000_000) {
+        parsed.annual_threshold = 1_000_000_000;
+      }
+      return { ...DEFAULT_TAX_POLICY, ...parsed };
     }
   } catch {}
   return DEFAULT_TAX_POLICY;
