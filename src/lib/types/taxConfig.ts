@@ -3,16 +3,30 @@
  * Theo Thông tư 88/2021/TT-BTC, Thông tư 152/2025/TT-BTC và Thông tư 40/2021/TT-BTC
  */
 
+export type TaxDeclarationFormType = '01/CNKD' | '01/TKN-CNKD';
+
 export interface HouseholdBusinessInfo {
   shop_name: string;
   tax_code: string;
   business_address: string;
   owner_name: string;
   phone: string;
-  registered_revenue_level: number; // 1: <500M, 2: 500M-3B, 3: 3B-50B, 4: >50B
+  tax_office_name?: string;         // Cơ quan thuế quản lý (VD: Chi cục Thuế Quận 1)
+  registered_revenue_level: number; // 1: <= 1 Tỷ (Mẫu 01/TKN-CNKD - Miễn thuế), 2: > 1 Tỷ (Mẫu 01/CNKD - Kê khai), 3: 3B-50B, 4: >50B
   pit_calculation_method: number;   // 1: % Doanh thu, 2: 15% Thu nhập ròng
   regular_employees_count: number;  // Số lao động thường xuyên
   operating_hours: string;          // Thời gian hoạt động trong ngày (VD: 06:00 - 22:00)
+  preferred_declaration_form?: TaxDeclarationFormType; // Mẫu ưu tiên lựa chọn
+}
+
+export interface TaxRevenueThresholdAnalysis {
+  annual_threshold: number;         // 1,000,000,000 VNĐ
+  current_year_revenue: number;     // Doanh thu thực tế tích lũy trong năm
+  is_under_threshold: boolean;      // true nếu <= 1 tỷ
+  recommended_form: TaxDeclarationFormType; // '01/TKN-CNKD' hoặc '01/CNKD'
+  tax_exemption_status: boolean;    // true nếu miễn thuế
+  percent_of_threshold: number;     // Tỷ lệ % so với ngưỡng 1 tỷ
+  remaining_until_threshold: number;// Số tiền còn lại trước khi chạm ngưỡng 1 tỷ
 }
 
 export interface TaxBusinessGroup {

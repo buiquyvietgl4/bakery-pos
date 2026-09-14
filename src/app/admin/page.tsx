@@ -70,6 +70,7 @@ import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings'
 import { CustomCakeCostingSettings } from '@/components/admin/CustomCakeCostingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSection';
+import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
 import {
@@ -816,16 +817,24 @@ export default function AdminDashboard() {
     return [];
   });
 
-  // Tải danh sách đơn hàng thực tế từ POS
+  // Tải danh sách đơn hàng thực tế từ POS và CSDL SQL
   const reloadAdminOrders = () => {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('bakery_orders');
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed)) setPosOrders(parsed);
+          if (Array.isArray(parsed) && parsed.length > 0) setPosOrders(parsed);
         }
       } catch {}
+    }
+    // Tự động nạp bổ sung từ Supabase SQL nếu có kết nối mạng
+    if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
+      fetchTaxOrdersFromDb().then((dbOrders) => {
+        if (Array.isArray(dbOrders) && dbOrders.length > 0) {
+          setPosOrders(dbOrders);
+        }
+      }).catch(() => {});
     }
   };
 

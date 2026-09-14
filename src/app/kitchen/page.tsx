@@ -821,6 +821,9 @@ export default function KitchenPage() {
               status,
               created_at,
               preorder_pickup_at,
+              subtotal,
+              discount_amount,
+              total_amount,
               notes,
               customer_name,
               customer_phone,
@@ -829,11 +832,13 @@ export default function KitchenPage() {
                 id,
                 product_name_snapshot,
                 quantity,
+                unit_price,
+                line_total,
                 notes
               )
             `)
             .order('created_at', { ascending: false })
-            .limit(50);
+            .limit(100);
 
           if (!error && data && data.length > 0) {
             // Map từ Supabase
@@ -884,7 +889,7 @@ export default function KitchenPage() {
                 customer_name: so.customer_name || existing?.customer_name || sbNotes.customer_name || '',
                 customer_phone: so.customer_phone || existing?.customer_phone || sbNotes.customer_phone || '',
                 cake_message: so.cake_message || existing?.cake_message || sbNotes.cake_message || '',
-                total_amount: so.total_amount || existing?.total_amount,
+                total_amount: so.total_amount ?? existing?.total_amount ?? sbNotes.total_amount ?? 0,
                 deposit_amount: so.deposit_amount !== undefined ? so.deposit_amount : (existing?.deposit_amount !== undefined ? existing?.deposit_amount : sbNotes.deposit_amount),
                 remaining_amount: so.remaining_amount !== undefined ? so.remaining_amount : (existing?.remaining_amount !== undefined ? existing?.remaining_amount : sbNotes.remaining_amount),
                 reference_image_url: so.reference_image_url || existing?.reference_image_url || sbNotes.reference_image_url || '',
@@ -902,6 +907,8 @@ export default function KitchenPage() {
                         id: String(it.id || Math.random()),
                         product_name_snapshot: it.product_name_snapshot || 'Bánh',
                         quantity: Number(it.quantity) || 1,
+                        unit_price: Number(it.unit_price) || 0,
+                        line_total: Number(it.line_total) || 0,
                         notes: it.notes || '',
                       }))
                   : existing?.items && existing.items.length > 0

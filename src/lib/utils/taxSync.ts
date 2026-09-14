@@ -1,7 +1,15 @@
-import { HouseholdBusinessInfo, TAX_BUSINESS_GROUPS, S2aRowItem, S2aSummaryByGroup } from '@/lib/types/taxConfig';
+import {
+  HouseholdBusinessInfo,
+  TAX_BUSINESS_GROUPS,
+  S2aRowItem,
+  S2aSummaryByGroup,
+  TaxDeclarationFormType,
+  TaxRevenueThresholdAnalysis,
+} from '@/lib/types/taxConfig';
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { parsePreorderFromNotes } from '@/lib/supabase/realtimeSync';
 
 export const TAX_CONFIG_KEY = 'bakery_tax_household_config';
 export const TAX_CONFIG_UPDATED_EVENT = 'bakery_tax_config_updated';
@@ -134,22 +142,124 @@ export async function saveHouseholdBusinessInfoToDb(
 }
 
 /**
+ * Nạp toàn bộ danh sách đơn hàng thực tế trực tiếp từ Supabase Cloud SQL
+ * Kèm đầy đủ chi tiết order_items để phục vụ tính toán chính xác 100% cho Sổ S2a, S2c, S2d, S2e và Tờ khai thuế 01/CNKD
+ */
+export async function fetchTaxOrdersFromDb(): Promise<any[]> {
+  const localOrdersRaw = typeof window !== 'undefined' ? localStorage.getItem('bakery_orders') : null;
+  let localOrders: any[] = [];
+  if (localOrdersRaw) {
+    try {
+      const parsed = JSON.parse(localOrdersRaw);
+      if (Array.isArray(parsed)) localOrders = parsed;
+    } catch {}
+  }
+
+  if (isLocalMode()) {
+    return localOrders;
+  }
+
+  try {
+    const { data: dbOrders, error } = await supabase
+      .from('orders')
+      .select(`
+        id,
+        order_number,
+        order_type,
+        status,
+        created_at,
+        preorder_pickup_at,
+        subtotal,
+        discount_amount,
+        discount_pct,
+        total_amount,
+        notes,
+        customer_name,
+        customer_phone,
+        cake_message,
+        order_items (
+          id,
+          product_name_snapshot,
+          quantity,
+          unit_price,
+          line_total,
+          notes
+        )
+      `)
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    if (!error && Array.isArray(dbOrders) && dbOrders.length > 0) {
+      const orderMap = new Map<string, any>();
+
+      // 1. Cho local orders vào trước
+      localOrders.forEach((lo) => {
+        const key = String(lo.order_number || lo.id || Math.random());
+        orderMap.set(key, lo);
+      });
+
+      // 2. Phủ dữ liệu Supabase lên (dữ liệu SQL có đầy đủ order_items)
+      dbOrders.forEach((so) => {
+        const key = String(so.order_number || so.id);
+        const existing = orderMap.get(key);
+        const items = Array.isArray(so.order_items) && so.order_items.length > 0
+          ? so.order_items
+          : (existing?.items || []);
+
+        orderMap.set(key, {
+          ...existing,
+          ...so,
+          items,
+        });
+      });
+
+      const merged = Array.from(orderMap.values());
+      // Lưu lại vào localStorage để offline hoặc các màn hình khác cũng có dữ liệu
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('bakery_orders', JSON.stringify(merged.slice(0, 100)));
+          window.dispatchEvent(new Event('bakery_orders_updated'));
+        } catch {}
+      }
+      return merged;
+    }
+  } catch (err) {
+    console.warn('Lỗi fetchTaxOrdersFromDb từ Supabase:', err);
+  }
+
+  return localOrders;
+}
+
+/**
  * Phân loại một mặt hàng vào Nhóm ngành nghề tính thuế
- * 1: Hàng hóa thương mại (phụ kiện, nến, bánh nhập sẵn)
+ * 1: Hàng hóa thương mại (phụ kiện, nến, mũ, đồ chơi, pháo, bánh nhập sẵn)
  * 2: Dịch vụ (phí ship, trang trí tiệc)
  * 3: Sản xuất chế biến (bánh kem sinh nhật, bánh mì, bánh ngọt làm tại tiệm, đồ uống)
  * 4: Khác
  */
 export function classifyItemTaxGroup(item: any): number {
-  const name = (item.name || item.product_name || item.title || '').toLowerCase();
-  const category = (item.category || '').toLowerCase();
+  const name = (
+    item.product_name_snapshot ||
+    item.name ||
+    item.product?.name ||
+    item.cake_name ||
+    item.title ||
+    ''
+  ).toLowerCase();
+  const category = (item.category || item.product?.category || '').toLowerCase();
 
-  // Nhóm 2: Dịch vụ / Ship
-  if (name.includes('phí ship') || name.includes('vận chuyển') || name.includes('giao hàng') || name.includes('trang trí tiệc')) {
+  // Nhóm 2: Dịch vụ / Phí Ship
+  if (
+    name.includes('phí ship') ||
+    name.includes('vận chuyển') ||
+    name.includes('giao hàng') ||
+    name.includes('trang trí tiệc') ||
+    name.includes('dịch vụ')
+  ) {
     return 2;
   }
 
-  // Nhóm 1: Phụ kiện tiệc, nến, mũ, đồ chơi, pháo
+  // Nhóm 1: Phụ kiện tiệc, nến, mũ, đồ chơi, pháo, phụ kiện
   if (
     category.includes('phụ kiện') ||
     category.includes('bao bì') ||
@@ -158,12 +268,14 @@ export function classifyItemTaxGroup(item: any): number {
     name.includes('pháo') ||
     name.includes('đồ chơi') ||
     name.includes('dao dĩa') ||
-    name.includes('hộp quà')
+    name.includes('hộp quà') ||
+    name.includes('thiệp') ||
+    item.product_type === 'imported'
   ) {
     return 1;
   }
 
-  // Mặc định cho Tiệm Bánh: Bánh sinh nhật, bánh kem, bánh mì, đồ uống chế biến -> Nhóm 3
+  // Mặc định cho Tiệm Bánh: Bánh sinh nhật, bánh kem, bánh mì, đồ uống chế biến -> Nhóm 3 (Sản xuất chế biến)
   return 3;
 }
 
@@ -182,32 +294,95 @@ export function generateS2aLedger(orders: any[]): {
 
   // Lặp qua từng đơn hàng
   orders.forEach((order, orderIdx) => {
+    // Bỏ qua đơn đã hủy nếu không phát sinh tiền
+    if (order.status === 'cancelled') {
+      const oTot = Number(order.total_amount || 0);
+      if (oTot === 0) return;
+    }
+
     const rawDate = (order.created_at || order.createdAt || new Date().toISOString()).slice(0, 10);
     const parts = rawDate.split('-');
     const voucherDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : rawDate;
     const voucherNo = order.order_number || order.orderNumber || order.id || `HD-${String(orderIdx + 1).padStart(4, '0')}`;
     const paymentMethod = order.payment_method || order.paymentMethod || 'Tiền mặt';
 
-    // Nếu đơn hàng có mảng chi tiết items
-    if (Array.isArray(order.items) && order.items.length > 0) {
-      order.items.forEach((item: any, itemIdx: number) => {
+    // 1. Xác định tổng doanh thu của đơn hàng
+    let orderRevenue = Number(order.total_amount ?? order.totalPrice ?? order.subtotal ?? 0);
+    if (isNaN(orderRevenue)) orderRevenue = 0;
+
+    // Nếu đơn hàng có ghi chú [ĐẶT BÁNH KEM], thử bóc tách nếu orderRevenue = 0
+    if (orderRevenue === 0 && order.notes && typeof order.notes === 'string') {
+      const fromNotes = parsePreorderFromNotes(order.notes);
+      if (fromNotes.total_amount) {
+        orderRevenue = fromNotes.total_amount;
+      } else if (fromNotes.deposit_amount && fromNotes.remaining_amount) {
+        orderRevenue = fromNotes.deposit_amount + fromNotes.remaining_amount;
+      }
+    }
+
+    const rawItems = Array.isArray(order.items)
+      ? order.items.filter((it: any) => it && typeof it === 'object')
+      : Array.isArray(order.order_items)
+      ? order.order_items.filter((it: any) => it && typeof it === 'object')
+      : [];
+
+    // Nếu đơn hàng test dummy có 0đ doanh thu và không có items -> Bỏ qua không đưa vào sổ thuế
+    if (orderRevenue === 0 && rawItems.length === 0) {
+      return;
+    }
+
+    // 2. Xử lý các món hàng chi tiết (items)
+    if (rawItems.length > 0) {
+      let sumItemsRev = 0;
+      const parsedItems = rawItems.map((item: any) => {
+        const lineQty = Math.max(1, Number(item.quantity || item.qty) || 1);
+        let lineRev = Number(item.line_total);
+        if (isNaN(lineRev) || lineRev === 0) {
+          const uPrice = Number(item.unit_price ?? item.price ?? 0);
+          lineRev = uPrice * lineQty;
+        }
+        sumItemsRev += lineRev;
+        return { item, lineQty, lineRev };
+      });
+
+      // Nếu tổng items = 0 nhưng cả đơn có orderRevenue > 0: Phân bổ cho các món
+      if (sumItemsRev === 0 && orderRevenue > 0) {
+        const splitAmount = Math.round(orderRevenue / parsedItems.length);
+        parsedItems.forEach((pi: any, idx: number) => {
+          if (idx === parsedItems.length - 1) {
+            pi.lineRev = orderRevenue - splitAmount * (parsedItems.length - 1);
+          } else {
+            pi.lineRev = splitAmount;
+          }
+        });
+      }
+
+      parsedItems.forEach(({ item, lineQty, lineRev }: { item: any; lineQty: number; lineRev: number }, itemIdx: number) => {
+        // Nếu dòng này không có tiền (ví dụ quà tặng 0đ), bỏ qua không tính thuế
+        if (lineRev === 0 && orderRevenue === 0) return;
+
         const groupId = classifyItemTaxGroup(item);
         const groupDef = TAX_BUSINESS_GROUPS.find((g) => g.id === groupId) || TAX_BUSINESS_GROUPS[2];
-        const lineQty = item.quantity || item.qty || 1;
-        const linePrice = item.price || item.unit_price || 0;
-        const lineRevenue = (item.total || linePrice * lineQty) || 0;
-        const vatAmount = Math.round((lineRevenue * groupDef.vat_percent) / 100);
-        const pitAmount = Math.round((lineRevenue * groupDef.pit_percent) / 100);
+        const vatAmount = Math.round((lineRev * groupDef.vat_percent) / 100);
+        const pitAmount = Math.round((lineRev * groupDef.pit_percent) / 100);
+
+        const itemName =
+          item.product_name_snapshot ||
+          item.name ||
+          item.product?.name ||
+          item.cake_name ||
+          order.cake_name ||
+          'Sản phẩm tiệm bánh';
 
         rows.push({
           id: `${order.id || orderIdx}-${itemIdx}`,
           voucher_no: voucherNo,
           voucher_date: voucherDate,
           raw_date: rawDate,
-          description: `Bán lẻ: ${item.name || 'Sản phẩm tiệm bánh'} (x${lineQty})`,
+          description: `Bán lẻ: ${itemName} (x${lineQty})`,
           group_id: groupId,
           group_name: groupDef.name,
-          revenue: lineRevenue,
+          revenue: lineRev,
           vat_amount: vatAmount,
           pit_amount: pitAmount,
           payment_method: paymentMethod,
@@ -215,21 +390,25 @@ export function generateS2aLedger(orders: any[]): {
       });
     } else {
       // Đơn hàng không có mảng chi tiết (tính theo tổng đơn)
-      const lineRevenue = order.total_amount || order.totalPrice || 0;
+      if (orderRevenue === 0) return;
       const groupId = 3; // Nhóm 3 mặc định: Sản xuất bánh
       const groupDef = TAX_BUSINESS_GROUPS[2];
-      const vatAmount = Math.round((lineRevenue * groupDef.vat_percent) / 100);
-      const pitAmount = Math.round((lineRevenue * groupDef.pit_percent) / 100);
+      const vatAmount = Math.round((orderRevenue * groupDef.vat_percent) / 100);
+      const pitAmount = Math.round((orderRevenue * groupDef.pit_percent) / 100);
+
+      const desc = order.customer_name
+        ? `Bán lẻ bánh theo yêu cầu khách ${order.customer_name} - Đơn ${voucherNo}`
+        : `Bán lẻ bánh và đồ uống tại quầy - Đơn ${voucherNo}`;
 
       rows.push({
         id: `${order.id || orderIdx}`,
         voucher_no: voucherNo,
         voucher_date: voucherDate,
         raw_date: rawDate,
-        description: `Bán lẻ bánh và đồ uống tại quầy - Đơn ${voucherNo}`,
+        description: desc,
         group_id: groupId,
         group_name: groupDef.name,
-        revenue: lineRevenue,
+        revenue: orderRevenue,
         vat_amount: vatAmount,
         pit_amount: pitAmount,
         payment_method: paymentMethod,
@@ -268,5 +447,43 @@ export function generateS2aLedger(orders: any[]): {
     totalVat,
     totalPit,
     totalTax,
+  };
+}
+
+/**
+ * Phân tích ngưỡng doanh thu năm (1 tỷ đồng) để tự động quyết định sử dụng Mẫu tờ khai thuế:
+ * - Doanh thu <= 1 Tỷ: Áp dụng Mẫu 01/TKN-CNKD (Nghị định 141/2026/NĐ-CP & Thông tư 50/2026/TT-BTC) -> MIỄN 100% THUẾ GTGT & TNCN!
+ * - Doanh thu > 1 Tỷ: Áp dụng Mẫu 01/CNKD (Kê khai nộp thuế % theo định kỳ)
+ */
+export function analyzeTaxRevenueThreshold(
+  orders: any[],
+  targetYear?: number
+): TaxRevenueThresholdAnalysis {
+  const currentYear = targetYear || new Date().getFullYear();
+  const yearPrefix = `${currentYear}-`;
+
+  // Lọc các đơn hàng trong năm mục tiêu
+  const annualOrders = orders.filter((o) => {
+    const rawDate = (o.created_at || o.createdAt || '').slice(0, 10);
+    return rawDate.startsWith(yearPrefix) || !rawDate;
+  });
+
+  const s2a = generateS2aLedger(annualOrders);
+  const currentYearRevenue = s2a.totalRevenue;
+  const annualThreshold = 1_000_000_000; // 1 Tỷ đồng
+
+  const isUnder = currentYearRevenue <= annualThreshold;
+  const recommendedForm: TaxDeclarationFormType = isUnder ? '01/TKN-CNKD' : '01/CNKD';
+  const percentOfThreshold = Math.min(100, Math.round((currentYearRevenue / annualThreshold) * 1000) / 10);
+  const remainingUntilThreshold = Math.max(0, annualThreshold - currentYearRevenue);
+
+  return {
+    annual_threshold: annualThreshold,
+    current_year_revenue: currentYearRevenue,
+    is_under_threshold: isUnder,
+    recommended_form: recommendedForm,
+    tax_exemption_status: isUnder,
+    percent_of_threshold: percentOfThreshold,
+    remaining_until_threshold: remainingUntilThreshold,
   };
 }
