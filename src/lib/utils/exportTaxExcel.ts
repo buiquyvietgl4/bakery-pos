@@ -7,6 +7,7 @@ import {
   S2aRowItem,
   S2aSummaryByGroup
 } from '@/lib/types/taxConfig';
+import { generateS2eLedger } from '@/lib/utils/taxSync';
 
 /**
  * Xuất Sổ S2a-HKD ra Excel chuẩn Thông tư 88/2021/TT-BTC & Thông tư 152/2025/TT-BTC
@@ -179,26 +180,43 @@ export function exportFullTaxBooksExcel(
     data: s2dData,
   });
 
-  // Sheet 4: S2e-HKD Sổ chi tiết tiền
-  const s2eData = cashflow.map((c) => ({
-    voucher: c.id || 'CF',
-    date: c.date || (c.created_at || '').slice(0, 10),
-    desc: c.description || c.title || 'Giao dịch tiền',
-    fund_type: c.wallet === 'cash' ? 'Quỹ tiền mặt' : 'Tiền gửi ngân hàng (VietQR)',
-    income: c.type === 'in' ? c.amount : 0,
-    expense: c.type === 'out' ? c.amount : 0,
+  // Sheet 4: S2e-HKD Sổ chi tiết tiền (Thông tư 88/2021/TT-BTC)
+  const s2eResult = generateS2eLedger(cashflow, { orders, expenses });
+  const s2eData = s2eResult.rows.map((r, idx) => ({
+    stt: idx + 1,
+    voucher: r.voucher_no,
+    date: r.voucher_date,
+    desc: r.description,
+    fund_type: r.fund_type,
+    income: r.income,
+    expense: r.expense,
+    balance: r.balance,
   }));
+
+  s2eData.push({
+    stt: '',
+    voucher: 'TỔNG CỘNG',
+    date: '',
+    desc: 'Tổng số tiền thu, chi phát sinh trong kỳ và tồn quỹ cuối kỳ',
+    fund_type: '',
+    income: s2eResult.totalIncome,
+    expense: s2eResult.totalExpense,
+    balance: s2eResult.closingBalance,
+  } as any);
+
   sheets.push({
     name: 'S2e_So_Chi_Tiet_Tien',
     columns: [
+      { header: 'STT', key: 'stt', width: 60, type: 'string' },
       { header: 'Số chứng từ', key: 'voucher', width: 130, type: 'string' },
       { header: 'Ngày tháng', key: 'date', width: 110, type: 'string' },
-      { header: 'Diễn giải thu / chi', key: 'desc', width: 280, type: 'string' },
+      { header: 'Diễn giải nội dung thu / chi', key: 'desc', width: 320, type: 'string' },
       { header: 'Tài khoản / Quỹ', key: 'fund_type', width: 180, type: 'string' },
       { header: 'Số tiền Thu (VNĐ)', key: 'income', width: 150, type: 'currency' },
       { header: 'Số tiền Chi (VNĐ)', key: 'expense', width: 150, type: 'currency' },
+      { header: 'Số dư Tồn quỹ (VNĐ)', key: 'balance', width: 160, type: 'currency' },
     ],
-    data: s2eData.slice(0, 500),
+    data: s2eData,
   });
 
   const filename = `Tron_Bo_7_So_Ke_Toan_HKD_TT88_${Date.now()}`;

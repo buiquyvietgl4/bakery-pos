@@ -203,3 +203,17 @@ export interface S2aSummaryByGroup {
   total_tax: number;
   count: number;
 }
+
+export interface S2eRowItem {
+  id: string;
+  voucher_no: string;          // Ký hiệu chứng từ: PT-0001 (Phiếu Thu) / PC-0001 (Phiếu Chi)
+  raw_date: string;            // YYYY-MM-DD
+  voucher_date: string;        // Ngày tháng chứng từ (DD/MM/YYYY)
+  description: string;         // Diễn giải nội dung thu / chi
+  fund_type: string;           // Quỹ tiền mặt (111) / Ngân hàng VietQR (112)
+  source: 'cash' | 'bank';     // Tiền mặt hoặc Ngân hàng
+  type: 'income' | 'expense';  // Thu hoặc Chi
+  income: number;              // Số tiền Thu (VNĐ)
+  expense: number;             // Số tiền Chi (VNĐ)
+  balance: number;             // Số dư Tồn quỹ (VNĐ)
+}

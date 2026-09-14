@@ -7,6 +7,7 @@ import {
   TAX_BUSINESS_GROUPS,
   S2aRowItem,
   S2aSummaryByGroup,
+  S2eRowItem,
   TaxDeclarationFormType,
   TaxRevenueThresholdAnalysis,
 } from '@/lib/types/taxConfig';
@@ -734,6 +735,224 @@ export function generateS2aLedger(
     totalVat,
     totalPit,
     totalTax,
+  };
+}
+
+/**
+ * Chuẩn hóa và tổng hợp dữ liệu Sổ S2e-HKD: Sổ Chi Tiết Tiền (Thông tư 88/2021/TT-BTC)
+ * Phản ánh tình hình thu, chi, tồn quỹ tiền mặt (TK 111) và tiền gửi ngân hàng (TK 112 VietQR).
+ * Tự động tạo mã chứng từ kế toán chuẩn PT-XXXX (Phiếu Thu) và PC-XXXX (Phiếu Chi).
+ */
+export function generateS2eLedger(
+  cashflow: any[] = [],
+  options?: {
+    startDate?: string;
+    endDate?: string;
+    orders?: any[];
+    expenses?: any[];
+  }
+): {
+  rows: S2eRowItem[];
+  totalIncome: number;
+  totalExpense: number;
+  netCashflow: number;
+  cashIncome: number;
+  cashExpense: number;
+  cashBalance: number;
+  bankIncome: number;
+  bankExpense: number;
+  bankBalance: number;
+  closingBalance: number;
+} {
+  let itemsToProcess = Array.isArray(cashflow) ? [...cashflow] : [];
+
+  // Nếu cashflow rỗng nhưng có orders hoặc expenses, tạo giao dịch tổng hợp từ orders và expenses
+  if (itemsToProcess.length === 0) {
+    if (Array.isArray(options?.orders) && options.orders.length > 0) {
+      options.orders.forEach((o: any) => {
+        const amt = Number(o.total_amount || o.totalPrice || 0);
+        if (amt <= 0) return;
+        const num = o.order_number || o.orderNumber || 'BK';
+        itemsToProcess.push({
+          id: 'ord-' + (o.id || num),
+          date: (o.created_at || o.createdAt || new Date().toISOString()).slice(0, 10),
+          type: 'income',
+          desc: `Thu tiền bán bánh đơn hàng #${num}`,
+          amount: amt,
+          method: o.payment_method || o.paymentMethod || 'cash',
+        });
+      });
+    }
+    if (Array.isArray(options?.expenses) && options.expenses.length > 0) {
+      options.expenses.forEach((e: any) => {
+        const amt = Number(e.amount || 0);
+        if (amt <= 0) return;
+        itemsToProcess.push({
+          id: 'exp-' + (e.id || Math.random()),
+          date: (e.date || new Date().toISOString()).slice(0, 10),
+          type: 'expense',
+          desc: e.description || e.category || 'Chi phí hoạt động',
+          amount: amt,
+          method: e.payment_source || e.paymentMethod || 'cash',
+        });
+      });
+    }
+  }
+
+  // 1. Chuẩn hóa từng bản ghi và lọc theo khoảng ngày (nếu có)
+  const normalized = itemsToProcess
+    .map((c: any, index: number) => {
+      let rawDate = (c.date || c.created_at || c.createdAt || '').slice(0, 10);
+      if (!rawDate || !rawDate.includes('-')) {
+        rawDate = new Date().toISOString().slice(0, 10);
+      }
+
+      const typeStr = String(c.type || '').toLowerCase();
+      const isIncome =
+        typeStr === 'income' ||
+        typeStr === 'in' ||
+        typeStr === 'thu' ||
+        (!typeStr && Number(c.amount || 0) > 0);
+
+      const amount = Math.abs(Number(c.amount || c.total_amount || 0));
+
+      const desc =
+        c.desc ||
+        c.description ||
+        c.title ||
+        c.notes ||
+        c.note ||
+        (isIncome ? 'Thu tiền bán hàng quầy POS' : 'Chi phí hoạt động kinh doanh');
+
+      const methodStr = String(
+        c.method || c.wallet || c.payment_method || c.source || c.paymentMethod || ''
+      ).toLowerCase();
+      const descLower = desc.toLowerCase();
+
+      const isExplicitCash =
+        methodStr.includes('cash') ||
+        methodStr.includes('tiền mặt') ||
+        methodStr.includes('tien_mat') ||
+        methodStr === 'tm' ||
+        descLower.includes('tiền mặt') ||
+        descLower.includes('quầy pos');
+
+      const isExplicitBank =
+        methodStr.includes('bank') ||
+        methodStr.includes('vietqr') ||
+        methodStr.includes('chuyển khoản') ||
+        methodStr.includes('ngân hàng') ||
+        descLower.includes('vietqr') ||
+        descLower.includes('ngân hàng') ||
+        descLower.includes('chuyển khoản');
+
+      let finalIsCash = false;
+      if (isExplicitBank) {
+        finalIsCash = false;
+      } else if (isExplicitCash) {
+        finalIsCash = true;
+      } else {
+        finalIsCash = c.category === 'sales' || isIncome;
+      }
+
+      const fund_type = finalIsCash ? 'Quỹ tiền mặt (111)' : 'Ngân hàng VietQR (112)';
+      const source: 'cash' | 'bank' = finalIsCash ? 'cash' : 'bank';
+
+      return {
+        originalId: c.id,
+        rawDate,
+        isIncome,
+        amount,
+        desc,
+        fund_type,
+        source,
+        originalIndex: index,
+      };
+    })
+    .filter((item) => {
+      if (options?.startDate && item.rawDate < options.startDate) return false;
+      if (options?.endDate && item.rawDate > options.endDate) return false;
+      return true;
+    });
+
+  // 2. Sắp xếp theo ngày tăng dần (cũ nhất -> mới nhất) để tính lũy kế tồn quỹ chuẩn xác
+  normalized.sort((a, b) => a.rawDate.localeCompare(b.rawDate));
+
+  // 3. Đánh số chứng từ kế toán PT/PC và tính số dư lũy kế
+  let incomeCount = 0;
+  let expenseCount = 0;
+  let runningBalance = 0;
+  let totalIncome = 0;
+  let totalExpense = 0;
+  let cashIncome = 0;
+  let cashExpense = 0;
+  let cashBalance = 0;
+  let bankIncome = 0;
+  let bankExpense = 0;
+  let bankBalance = 0;
+
+  const rows: S2eRowItem[] = normalized.map((item, idx) => {
+    let voucher_no = '';
+    if (item.isIncome) {
+      incomeCount++;
+      voucher_no = `PT-${String(incomeCount).padStart(4, '0')}`;
+    } else {
+      expenseCount++;
+      voucher_no = `PC-${String(expenseCount).padStart(4, '0')}`;
+    }
+
+    // Nếu ID nguyên thủy đã là PT- hoặc PC- hợp lệ thì giữ lại
+    if (typeof item.originalId === 'string' && (item.originalId.startsWith('PT-') || item.originalId.startsWith('PC-'))) {
+      voucher_no = item.originalId;
+    }
+
+    const incAmt = item.isIncome ? item.amount : 0;
+    const expAmt = !item.isIncome ? item.amount : 0;
+
+    totalIncome += incAmt;
+    totalExpense += expAmt;
+    runningBalance += (incAmt - expAmt);
+
+    if (item.source === 'cash') {
+      cashIncome += incAmt;
+      cashExpense += expAmt;
+      cashBalance += (incAmt - expAmt);
+    } else {
+      bankIncome += incAmt;
+      bankExpense += expAmt;
+      bankBalance += (incAmt - expAmt);
+    }
+
+    const parts = item.rawDate.split('-');
+    const voucher_date = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : item.rawDate;
+
+    return {
+      id: item.originalId || `s2e-${idx + 1}`,
+      voucher_no,
+      raw_date: item.rawDate,
+      voucher_date,
+      description: item.desc,
+      fund_type: item.fund_type,
+      source: item.source,
+      type: item.isIncome ? 'income' : 'expense',
+      income: incAmt,
+      expense: expAmt,
+      balance: runningBalance,
+    };
+  });
+
+  return {
+    rows,
+    totalIncome,
+    totalExpense,
+    netCashflow: totalIncome - totalExpense,
+    cashIncome,
+    cashExpense,
+    cashBalance,
+    bankIncome,
+    bankExpense,
+    bankBalance,
+    closingBalance: runningBalance,
   };
 }
 

@@ -4,7 +4,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import {
   FileSpreadsheet, Printer, Building2, Calendar, Filter,
   DollarSign, ShieldCheck, ChevronRight, CheckCircle2,
-  TrendingUp, Download, Eye, Edit3, Settings, AlertCircle,
+  TrendingUp, TrendingDown, Download, Eye, Edit3, Settings, AlertCircle,
   HelpCircle, Receipt, RefreshCw, FileText, ArrowUpRight, Search,
   Package, Wallet, Layers, Database, Sparkles, AlertTriangle, Check
 } from 'lucide-react';
@@ -13,6 +13,7 @@ import {
   TAX_BUSINESS_GROUPS,
   S2aRowItem,
   S2aSummaryByGroup,
+  S2eRowItem,
   TaxDeclarationFormType,
   TaxRevenueThresholdAnalysis,
   TaxPolicyConfig,
@@ -26,6 +27,7 @@ import {
   saveHouseholdBusinessInfoToDb,
   fetchTaxOrdersFromDb,
   generateS2aLedger,
+  generateS2eLedger,
   analyzeTaxRevenueThreshold,
   TAX_CONFIG_UPDATED_EVENT,
   getTaxPolicyConfig,
@@ -296,6 +298,38 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
       return matchSearch && matchGroup;
     });
   }, [s2aData.rows, searchQuery, filterTaxGroup]);
+
+  // ── SỔ S2E-HKD: SỔ CHI TIẾT TIỀN (THU, CHI, TỒN QUỸ) ──
+  const [s2eSearchQuery, setS2eSearchQuery] = useState('');
+  const [s2eFilterFund, setS2eFilterFund] = useState<'all' | 'cash' | 'bank' | 'income' | 'expense'>('all');
+  const [s2eShowAllPeriod, setS2eShowAllPeriod] = useState(false);
+
+  const s2eData = useMemo(() => {
+    return generateS2eLedger(cashflow, {
+      startDate: s2eShowAllPeriod ? undefined : startDateStr,
+      endDate: s2eShowAllPeriod ? undefined : endDateStr,
+      orders: periodOrders,
+      expenses: expenses,
+    });
+  }, [cashflow, s2eShowAllPeriod, startDateStr, endDateStr, periodOrders, expenses]);
+
+  const filteredS2eRows = useMemo(() => {
+    return s2eData.rows.filter((r) => {
+      const matchSearch =
+        !s2eSearchQuery ||
+        r.voucher_no.toLowerCase().includes(s2eSearchQuery.toLowerCase()) ||
+        r.description.toLowerCase().includes(s2eSearchQuery.toLowerCase()) ||
+        r.fund_type.toLowerCase().includes(s2eSearchQuery.toLowerCase());
+
+      let matchFund = true;
+      if (s2eFilterFund === 'cash') matchFund = r.source === 'cash';
+      else if (s2eFilterFund === 'bank') matchFund = r.source === 'bank';
+      else if (s2eFilterFund === 'income') matchFund = r.type === 'income';
+      else if (s2eFilterFund === 'expense') matchFund = r.type === 'expense';
+
+      return matchSearch && matchFund;
+    });
+  }, [s2eData.rows, s2eSearchQuery, s2eFilterFund]);
 
   // Xử lý lưu thông tin hộ KD và đồng bộ SQL tự động
   const handleSaveBusinessInfo = async (e: React.FormEvent) => {
@@ -1023,61 +1057,283 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
       )}
 
       {/* ════════════════════════════════════════════════════════════════════════════ */}
-      {/* ── SUB-TAB 4: SỔ S2E-HKD: SỔ CHI TIẾT TIỀN ── */}
+      {/* ── SUB-TAB 4: SỔ S2E-HKD: SỔ CHI TIẾT TIỀN (THÔNG TƯ 88/2021/TT-BTC) ── */}
       {/* ════════════════════════════════════════════════════════════════════════════ */}
       {activeBookTab === 'S2e' && (
-        <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-            <div>
-              <h3 className="font-bold text-sm text-zinc-900">
-                Sổ S2e-HKD: Sổ Chi Tiết Tiền
-              </h3>
-              <p className="text-xs text-zinc-500">
-                Ghi chép các khoản thu - chi tiền mặt tại quầy và tiền gửi tài khoản ngân hàng (VietQR)
+        <div className="space-y-5">
+          {/* ── THẺ THỐNG KÊ 4 KHỐI DÒNG TIỀN & TỒN QUỸ ── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div className="p-4 rounded-2xl bg-emerald-50/80 border border-emerald-200/90 shadow-2xs">
+              <div className="flex items-center justify-between text-xs font-bold text-emerald-800">
+                <span className="uppercase tracking-wider">Tổng Thu Tiền Vào (PT)</span>
+                <span className="p-1.5 rounded-lg bg-emerald-100 text-emerald-700">
+                  <TrendingUp className="w-4 h-4" />
+                </span>
+              </div>
+              <p className="text-2xl font-black text-emerald-950 mt-2">
+                {s2eData.totalIncome.toLocaleString('vi-VN')} <span className="text-sm font-bold text-emerald-700">đ</span>
+              </p>
+              <p className="text-[11px] text-emerald-700 mt-1 font-medium">
+                Tiền mặt: {s2eData.cashIncome.toLocaleString('vi-VN')} đ | NH: {s2eData.bankIncome.toLocaleString('vi-VN')} đ
               </p>
             </div>
-            <button
-              onClick={() => handleOpenPrint('S2e-HKD')}
-              className="flex items-center gap-1 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-xs font-bold text-zinc-800 transition cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>In Sổ S2e</span>
-            </button>
+
+            <div className="p-4 rounded-2xl bg-rose-50/80 border border-rose-200/90 shadow-2xs">
+              <div className="flex items-center justify-between text-xs font-bold text-rose-800">
+                <span className="uppercase tracking-wider">Tổng Chi Tiền Ra (PC)</span>
+                <span className="p-1.5 rounded-lg bg-rose-100 text-rose-700">
+                  <TrendingDown className="w-4 h-4" />
+                </span>
+              </div>
+              <p className="text-2xl font-black text-rose-950 mt-2">
+                {s2eData.totalExpense.toLocaleString('vi-VN')} <span className="text-sm font-bold text-rose-700">đ</span>
+              </p>
+              <p className="text-[11px] text-rose-700 mt-1 font-medium">
+                Tiền mặt: {s2eData.cashExpense.toLocaleString('vi-VN')} đ | NH: {s2eData.bankExpense.toLocaleString('vi-VN')} đ
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-blue-50/80 border border-blue-200/90 shadow-2xs">
+              <div className="flex items-center justify-between text-xs font-bold text-blue-800">
+                <span className="uppercase tracking-wider">Dòng Tiền Thuần Trong Kỳ</span>
+                <span className="p-1.5 rounded-lg bg-blue-100 text-blue-700">
+                  <ArrowUpRight className="w-4 h-4" />
+                </span>
+              </div>
+              <p className={`text-2xl font-black mt-2 ${s2eData.netCashflow >= 0 ? 'text-blue-950' : 'text-rose-950'}`}>
+                {s2eData.netCashflow >= 0 ? '+' : ''}{s2eData.netCashflow.toLocaleString('vi-VN')} <span className="text-sm font-bold text-blue-700">đ</span>
+              </p>
+              <p className="text-[11px] text-blue-700 mt-1 font-medium">
+                {s2eData.netCashflow >= 0 ? 'Dòng tiền thặng dư dương (+)' : 'Dòng tiền thâm hụt âm (-)'}
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-300 shadow-2xs">
+              <div className="flex items-center justify-between text-xs font-bold text-amber-900">
+                <span className="uppercase tracking-wider">Số Dư Tồn Quỹ Hiện Tại</span>
+                <span className="p-1.5 rounded-lg bg-amber-500 text-zinc-950">
+                  <Wallet className="w-4 h-4" />
+                </span>
+              </div>
+              <p className="text-2xl font-black text-zinc-900 mt-2">
+                {s2eData.closingBalance.toLocaleString('vi-VN')} <span className="text-sm font-bold text-zinc-600">đ</span>
+              </p>
+              <p className="text-[11px] text-zinc-700 mt-1 font-medium">
+                Quỹ mặt: {s2eData.cashBalance.toLocaleString('vi-VN')} đ | VietQR: {s2eData.bankBalance.toLocaleString('vi-VN')} đ
+              </p>
+            </div>
           </div>
 
-          <div className="overflow-x-auto overscroll-x-contain">
-            <table className="w-full text-xs text-left min-w-[640px]">
-              <thead>
-                <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-500 font-bold">
-                  <th className="p-2.5">Ký hiệu chứng từ</th>
-                  <th className="p-2.5">Ngày tháng</th>
-                  <th className="p-2.5">Diễn giải</th>
-                  <th className="p-2.5">Tài khoản / Quỹ</th>
-                  <th className="p-2.5 text-right">Số Tiền Thu (VNĐ)</th>
-                  <th className="p-2.5 text-right">Số Tiền Chi (VNĐ)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {cashflow.slice(0, 15).map((c) => (
-                  <tr key={c.id} className="hover:bg-zinc-50">
-                    <td className="p-2.5 font-mono font-bold text-zinc-800">{c.id}</td>
-                    <td className="p-2.5">{c.date || (c.created_at || '').slice(0, 10)}</td>
-                    <td className="p-2.5">{c.description || c.title}</td>
-                    <td className="p-2.5">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-100 text-zinc-800">
-                        {c.wallet === 'cash' ? 'Quỹ tiền mặt' : 'Ngân hàng VietQR'}
-                      </span>
-                    </td>
-                    <td className="p-2.5 text-right font-bold text-emerald-700">
-                      {c.type === 'in' ? c.amount.toLocaleString('vi-VN') : '-'}
-                    </td>
-                    <td className="p-2.5 text-right font-bold text-rose-700">
-                      {c.type === 'out' ? c.amount.toLocaleString('vi-VN') : '-'}
-                    </td>
+          {/* ── BẢNG SỔ CHI TIẾT TIỀN S2E-HKD ── */}
+          <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-base text-zinc-900">
+                    Sổ S2e-HKD: Sổ Chi Tiết Tiền
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-bold text-[10px] uppercase">
+                    Thông tư 88/2021/TT-BTC
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Theo dõi thu - chi tiền mặt tại quầy (TK 111) và tiền gửi ngân hàng (TK 112 VietQR) • {periodLabel}
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setS2eShowAllPeriod(!s2eShowAllPeriod)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer border ${
+                    s2eShowAllPeriod
+                      ? 'bg-zinc-900 text-white border-zinc-900 shadow-xs'
+                      : 'bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100'
+                  }`}
+                >
+                  {s2eShowAllPeriod ? 'Đang xem: Toàn bộ lịch sử' : 'Lọc theo kỳ báo cáo'}
+                </button>
+                <button
+                  onClick={() => handleOpenPrint('S2e-HKD')}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 rounded-xl text-xs font-bold text-zinc-950 transition cursor-pointer shadow-xs"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>In Sổ S2e (A4)</span>
+                </button>
+              </div>
+            </div>
+
+            {/* ── BỘ LỌC VÀ TÌM KIẾM SỔ S2E ── */}
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 pt-1">
+              <div className="relative flex-1 max-w-md">
+                <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Tìm theo số hiệu PT/PC, nội dung diễn giải..."
+                  value={s2eSearchQuery}
+                  onChange={(e) => setS2eSearchQuery(e.target.value)}
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-zinc-200 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setS2eFilterFund('all')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    s2eFilterFund === 'all'
+                      ? 'bg-zinc-900 text-white'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                  }`}
+                >
+                  Tất cả ({s2eData.rows.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setS2eFilterFund('cash')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    s2eFilterFund === 'cash'
+                      ? 'bg-amber-500 text-zinc-950'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                  }`}
+                >
+                  Quỹ tiền mặt (111)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setS2eFilterFund('bank')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    s2eFilterFund === 'bank'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                  }`}
+                >
+                  Ngân hàng VietQR (112)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setS2eFilterFund('income')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    s2eFilterFund === 'income'
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                  }`}
+                >
+                  Phiếu Thu (PT)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setS2eFilterFund('expense')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    s2eFilterFund === 'expense'
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                  }`}
+                >
+                  Phiếu Chi (PC)
+                </button>
+              </div>
+            </div>
+
+            {/* ── BẢNG DỮ LIỆU S2E CHUẨN THÔNG TƯ 88 ── */}
+            <div className="overflow-x-auto overscroll-x-contain rounded-xl border border-zinc-200">
+              <table className="w-full text-xs text-left min-w-[760px]">
+                <thead>
+                  <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-600 font-bold">
+                    <th className="p-2.5 text-center w-12">STT</th>
+                    <th className="p-2.5 text-center w-28">Ký hiệu chứng từ</th>
+                    <th className="p-2.5 text-center w-24">Ngày tháng</th>
+                    <th className="p-2.5">Diễn giải nội dung thu / chi</th>
+                    <th className="p-2.5 text-center w-36">Tài khoản / Quỹ</th>
+                    <th className="p-2.5 text-right w-32">Số Tiền Thu (VNĐ)</th>
+                    <th className="p-2.5 text-right w-32">Số Tiền Chi (VNĐ)</th>
+                    <th className="p-2.5 text-right w-32">Tồn Quỹ (VNĐ)</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredS2eRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="p-8 text-center text-zinc-500 italic">
+                        <div className="flex flex-col items-center justify-center gap-2">
+                          <Receipt className="w-8 h-8 text-zinc-300" />
+                          <p>Chưa có phát sinh giao dịch thu chi tiền trong bộ lọc này.</p>
+                          {!s2eShowAllPeriod && (
+                            <button
+                              type="button"
+                              onClick={() => setS2eShowAllPeriod(true)}
+                              className="text-xs text-amber-600 hover:underline font-bold"
+                            >
+                              Bấm vào đây để xem toàn bộ lịch sử thu chi
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredS2eRows.map((r, idx) => (
+                      <tr key={r.id || idx} className="hover:bg-zinc-50/80 transition-colors">
+                        <td className="p-2.5 text-center text-zinc-500 font-medium">{idx + 1}</td>
+                        <td className="p-2.5 text-center">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                              r.type === 'income'
+                                ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                                : 'bg-rose-100 text-rose-800 border border-rose-200'
+                            }`}
+                          >
+                            {r.voucher_no}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-center text-zinc-700 font-medium">
+                          {r.voucher_date}
+                        </td>
+                        <td className="p-2.5 font-semibold text-zinc-900">
+                          {r.description}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <span
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              r.source === 'cash'
+                                ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                                : 'bg-blue-50 text-blue-800 border border-blue-200'
+                            }`}
+                          >
+                            {r.fund_type}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-right font-bold text-emerald-700">
+                          {r.income > 0 ? `+${r.income.toLocaleString('vi-VN')} đ` : <span className="text-zinc-300 font-normal">-</span>}
+                        </td>
+                        <td className="p-2.5 text-right font-bold text-rose-700">
+                          {r.expense > 0 ? `-${r.expense.toLocaleString('vi-VN')} đ` : <span className="text-zinc-300 font-normal">-</span>}
+                        </td>
+                        <td className="p-2.5 text-right font-black text-zinc-900">
+                          {r.balance.toLocaleString('vi-VN')} đ
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+                {filteredS2eRows.length > 0 && (
+                  <tfoot>
+                    <tr className="bg-zinc-50 font-bold border-t-2 border-zinc-300 text-zinc-900">
+                      <td colSpan={5} className="p-3 text-right uppercase tracking-wider text-xs">
+                        Tổng cộng phát sinh và tồn quỹ cuối kỳ:
+                      </td>
+                      <td className="p-3 text-right text-emerald-800 font-black">
+                        +{s2eData.totalIncome.toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="p-3 text-right text-rose-800 font-black">
+                        -{s2eData.totalExpense.toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="p-3 text-right text-zinc-950 font-black text-sm">
+                        {s2eData.closingBalance.toLocaleString('vi-VN')} đ
+                      </td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -2564,6 +2820,8 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
           policy={taxPolicy}
           inventoryRows={bkhdkdData.inventoryRows}
           expenseSummary={bkhdkdData.expenseSummaryRaw}
+          s2eRows={s2eData.rows}
+          s2eTotals={s2eData}
           onClose={() => setIsPrintModalOpen(false)}
         />
       )}

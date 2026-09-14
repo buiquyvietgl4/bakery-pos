@@ -9,6 +9,7 @@ import {
   TaxPolicyConfig,
   BkHdkdInventoryRow,
   BkHdkdExpenseItemRow,
+  S2eRowItem,
 } from '@/lib/types/taxConfig';
 
 interface TaxBookPrintViewProps {
@@ -36,6 +37,19 @@ interface TaxBookPrintViewProps {
   policy?: TaxPolicyConfig;
   inventoryRows?: BkHdkdInventoryRow[];
   expenseSummary?: BkHdkdExpenseItemRow[];
+  s2eRows?: S2eRowItem[];
+  s2eTotals?: {
+    totalIncome: number;
+    totalExpense: number;
+    netCashflow: number;
+    cashIncome: number;
+    cashExpense: number;
+    cashBalance: number;
+    bankIncome: number;
+    bankExpense: number;
+    bankBalance: number;
+    closingBalance: number;
+  };
   onClose: () => void;
 }
 
@@ -49,6 +63,8 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
   policy,
   inventoryRows = [],
   expenseSummary = [],
+  s2eRows = [],
+  s2eTotals,
   onClose,
 }) => {
   const handlePrint = () => {
@@ -505,8 +521,81 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
                 * Cam đoan: Tôi cam đoan số liệu kê khai trên là đúng sự thật và chịu hoàn toàn trách nhiệm trước pháp luật về tính chính xác của phụ lục này.
               </p>
             </div>
+          ) : bookCode === 'S2e-HKD' ? (
+            /* ── BẢNG SỔ S2e-HKD: SỔ CHI TIẾT TIỀN (THÔNG TƯ 88/2021/TT-BTC) ── */
+            <div className="overflow-x-auto my-4">
+              <table className="w-full border-collapse border border-black text-left text-[11px]">
+                <thead>
+                  <tr className="bg-zinc-100 text-center font-bold">
+                    <th className="border border-black p-2 w-10">STT</th>
+                    <th className="border border-black p-2 w-28">Ký hiệu chứng từ</th>
+                    <th className="border border-black p-2 w-24">Ngày, tháng</th>
+                    <th className="border border-black p-2">Diễn giải nội dung thu / chi</th>
+                    <th className="border border-black p-2 w-32 text-center">Tài khoản / Quỹ</th>
+                    <th className="border border-black p-2 w-28 text-right">Số tiền Thu (VNĐ)</th>
+                    <th className="border border-black p-2 w-28 text-right">Số tiền Chi (VNĐ)</th>
+                    <th className="border border-black p-2 w-28 text-right">Tồn quỹ (VNĐ)</th>
+                  </tr>
+                  <tr className="text-center italic text-zinc-600 bg-zinc-50/50">
+                    <td className="border border-black py-0.5">-</td>
+                    <td className="border border-black py-0.5">A</td>
+                    <td className="border border-black py-0.5">B</td>
+                    <td className="border border-black py-0.5">C</td>
+                    <td className="border border-black py-0.5">D</td>
+                    <td className="border border-black py-0.5 text-right">1</td>
+                    <td className="border border-black py-0.5 text-right">2</td>
+                    <td className="border border-black py-0.5 text-right">3</td>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {(!s2eRows || s2eRows.length === 0) ? (
+                    <tr>
+                      <td colSpan={8} className="border border-black p-4 text-center italic text-zinc-500">
+                        Chưa phát sinh giao dịch thu chi tiền trong kỳ này.
+                      </td>
+                    </tr>
+                  ) : (
+                    s2eRows.map((r, i) => (
+                      <tr key={r.id || i} className="hover:bg-zinc-50/80">
+                        <td className="border border-black p-1.5 text-center">{i + 1}</td>
+                        <td className="border border-black p-1.5 font-mono text-center font-bold">{r.voucher_no}</td>
+                        <td className="border border-black p-1.5 text-center">{r.voucher_date}</td>
+                        <td className="border border-black p-1.5">{r.description}</td>
+                        <td className="border border-black p-1.5 text-center">{r.fund_type}</td>
+                        <td className="border border-black p-1.5 text-right font-medium text-emerald-900">
+                          {r.income > 0 ? r.income.toLocaleString('vi-VN') : '-'}
+                        </td>
+                        <td className="border border-black p-1.5 text-right font-medium text-rose-900">
+                          {r.expense > 0 ? r.expense.toLocaleString('vi-VN') : '-'}
+                        </td>
+                        <td className="border border-black p-1.5 text-right font-bold text-zinc-900">
+                          {r.balance.toLocaleString('vi-VN')}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+
+                  {/* DÒNG TỔNG CỘNG PHÁT SINH VÀ TỒN QUỸ CUỐI KỲ */}
+                  <tr className="bg-zinc-100 font-bold border-t-2 border-black">
+                    <td colSpan={5} className="border border-black p-2 text-right uppercase">
+                      CỘNG PHÁT SINH TRONG KỲ VÀ TỒN QUỸ CUỐI KỲ
+                    </td>
+                    <td className="border border-black p-2 text-right font-bold text-emerald-900">
+                      {(s2eTotals?.totalIncome || 0).toLocaleString('vi-VN')}
+                    </td>
+                    <td className="border border-black p-2 text-right font-bold text-rose-900">
+                      {(s2eTotals?.totalExpense || 0).toLocaleString('vi-VN')}
+                    </td>
+                    <td className="border border-black p-2 text-right font-black text-zinc-950">
+                      {(s2eTotals?.closingBalance || 0).toLocaleString('vi-VN')}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           ) : (
-            /* ── BẢNG CÁC SỔ S1a, S2a, S2c, S2d, S2e ── */
+            /* ── BẢNG CÁC SỔ S1a, S2a, S2c, S2d ── */
             <div className="overflow-x-auto my-4">
               <table className="w-full border-collapse border border-black text-left text-[11px]">
                 <thead>
