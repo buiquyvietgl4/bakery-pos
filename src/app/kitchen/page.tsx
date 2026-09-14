@@ -41,7 +41,7 @@ import { DeliveryPaymentModal } from '@/components/kitchen/DeliveryPaymentModal'
 import { addSpoilageLog } from '@/lib/utils/spoilageManager';
 import { parseRecipeItem, formatScaledQty, normalizeRecipe, fetchRecipesFromDb } from '@/lib/utils/recipeCalculator';
 import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
-import { cleanCakeNameAndSize, extractAccessoriesFromText, getAddonIcon } from '@/lib/utils/customCakeCosting';
+import { cleanCakeNameAndSize, getAddonIcon } from '@/lib/utils/customCakeCosting';
 
 interface OrderItem {
   id: string;
@@ -1525,13 +1525,11 @@ export default function KitchenPage() {
     }
 
     const specialRequest = fromN.special_request || cleanDisplayNotes(order.notes) || '';
-    const noteAccessories = extractAccessoriesFromText(`${order.notes || ''} ${specialRequest} ${mainItem?.notes || ''}`);
 
     const allAddons = Array.from(
       new Set([
         ...initialAddons,
-        ...extraItems.map((it) => (it.quantity > 1 ? `${it.name} (x${it.quantity})` : it.name)),
-        ...noteAccessories,
+        ...(initialAddons.length === 0 ? extraItems.map((it) => (it.quantity > 1 ? `${it.name} (x${it.quantity})` : it.name)) : []),
       ])
     );
 
@@ -1544,7 +1542,6 @@ export default function KitchenPage() {
       packaging,
       addons: allAddons,
       allAddons,
-      noteAccessories,
       extraItems,
       isPreorder,
       quantity: mainItem?.quantity || 1,
@@ -2199,14 +2196,6 @@ export default function KitchenPage() {
                             )}
                           </div>
 
-                          {/* Cảnh báo ghi chú phụ kiện từ khách */}
-                          {cakeInfo.noteAccessories && cakeInfo.noteAccessories.length > 0 && (
-                            <div className="px-2.5 py-1.5 rounded-xl bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[10.5px] font-bold flex items-center gap-1.5">
-                              <span className="text-sm shrink-0">🕯️</span>
-                              <span className="truncate">Ghi chú: {cakeInfo.noteAccessories.join(', ')}</span>
-                            </div>
-                          )}
-
                           {/* Phụ kiện đặt thêm (Addons) */}
                           {cakeInfo.allAddons && cakeInfo.allAddons.length > 0 && (
                             <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-600/60 space-y-1.5">
@@ -2411,14 +2400,6 @@ export default function KitchenPage() {
                                 </div>
                               )}
                             </div>
-
-                            {/* Cảnh báo ghi chú phụ kiện từ khách */}
-                            {cakeInfo.noteAccessories && cakeInfo.noteAccessories.length > 0 && (
-                              <div className="px-2.5 py-1.5 rounded-xl bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[10.5px] font-bold flex items-center gap-1.5">
-                                <span className="text-sm shrink-0">🕯️</span>
-                                <span className="truncate">Ghi chú: {cakeInfo.noteAccessories.join(', ')}</span>
-                              </div>
-                            )}
 
                             {/* Phụ kiện đặt thêm (Addons) */}
                             {cakeInfo.allAddons && cakeInfo.allAddons.length > 0 && (
@@ -2710,14 +2691,6 @@ export default function KitchenPage() {
                         </div>
                       )}
                     </div>
-
-                    {/* Cảnh báo ghi chú phụ kiện từ khách */}
-                    {cakeInfo.noteAccessories && cakeInfo.noteAccessories.length > 0 && (
-                      <div className="px-2.5 py-1.5 rounded-xl bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[10.5px] font-bold flex items-center gap-1.5">
-                        <span className="text-sm shrink-0">🕯️</span>
-                        <span className="truncate">Ghi chú: {cakeInfo.noteAccessories.join(', ')}</span>
-                      </div>
-                    )}
 
                     {/* Phụ kiện đặt thêm (Addons) */}
                     {cakeInfo.allAddons && cakeInfo.allAddons.length > 0 && (

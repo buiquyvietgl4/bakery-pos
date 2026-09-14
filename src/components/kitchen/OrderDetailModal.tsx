@@ -10,7 +10,6 @@ import { formatPickupDateTime, parsePreorderFromNotes, cleanDisplayNotes } from 
 import { 
   cleanCakeNameAndSize, 
   getAddonIcon, 
-  extractAccessoriesFromText, 
   STANDARD_INCLUDED_ACCESSORIES 
 } from '@/lib/utils/customCakeCosting';
 
@@ -100,17 +99,11 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const specialReq = fromN.special_request || cleanDisplayNotes(order.notes);
   const refImg = order.reference_image_url || fromN.reference_image_url;
 
-  // Tự động phát hiện phụ kiện từ ghi chú và yêu cầu đặc biệt của khách (ví dụ: kèm nến số, vương miện...)
-  const noteDetectedAccessories = extractAccessoriesFromText(
-    `${order.notes || ''} ${specialReq || ''} ${mainItem?.notes || ''}`
-  );
-
-  // Hợp nhất danh sách tất cả các phụ kiện đặt thêm
+  // Danh sách các phụ kiện đặt thêm (Decor)
   const allAddons = Array.from(
     new Set([
       ...initialAddons,
-      ...attachedItems.map((it) => (it.quantity > 1 ? `${it.name} (x${it.quantity})` : it.name)),
-      ...noteDetectedAccessories,
+      ...(initialAddons.length === 0 ? attachedItems.map((it) => (it.quantity > 1 ? `${it.name} (x${it.quantity})` : it.name)) : []),
     ])
   );
 
@@ -275,19 +268,6 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                   <span className="text-blue-300 font-extrabold">{packaging || 'Hộp giấy tiêu chuẩn + Đế lót'}</span>
                 </div>
               </div>
-
-              {/* Cảnh báo phụ kiện phát hiện từ ghi chú khách hàng */}
-              {noteDetectedAccessories.length > 0 && (
-                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs flex items-start gap-2">
-                  <span className="text-base shrink-0">🕯️</span>
-                  <div>
-                    <span className="font-bold text-amber-300 block">Lưu ý phụ kiện từ ghi chú khách:</span>
-                    <span className="font-medium text-zinc-200">
-                      Khách yêu cầu: &ldquo;{noteDetectedAccessories.join(', ')}&rdquo; — Thợ bánh & Thu ngân nhớ chuẩn bị đầy đủ khi đóng hộp!
-                    </span>
-                  </div>
-                </div>
-              )}
 
               {/* Danh sách sản phẩm / Phụ kiện bán kèm trong đơn */}
               {attachedItems.length > 0 && (

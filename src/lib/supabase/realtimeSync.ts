@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
-import { cleanCakeNameAndSize, extractAccessoriesFromText } from '@/lib/utils/customCakeCosting';
+import { cleanCakeNameAndSize, splitRespectingParentheses } from '@/lib/utils/customCakeCosting';
 
 export interface SyncOrderPayload {
   order_number: string;
@@ -818,17 +818,8 @@ export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
   if (addonMatch && addonMatch[1]) {
     const rawAddons = addonMatch[1].trim();
     if (rawAddons && !rawAddons.toLowerCase().startsWith('không')) {
-      addons = rawAddons
-        .split(',')
-        .map((s) => s.trim())
-        .filter(Boolean);
+      addons = splitRespectingParentheses(rawAddons);
     }
-  }
-
-  // Tự động bổ sung các phụ kiện nhận diện được từ ghi chú yêu cầu (ví dụ: kèm nến số, vương miện...)
-  const detectedAccessories = extractAccessoriesFromText(notes);
-  if (detectedAccessories.length > 0) {
-    addons = Array.from(new Set([...(addons || []), ...detectedAccessories]));
   }
 
   let totalAmount: number | undefined = undefined;

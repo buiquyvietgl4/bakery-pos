@@ -328,6 +328,42 @@ export function getAddonIcon(name: string): string {
 }
 
 /**
+ * Tách một chuỗi theo dấu phân cách (mặc định là dấu phẩy), nhưng KHÔNG tách các dấu phân cách nằm bên trong dấu ngoặc đơn (hoặc ngoặc vuông/nhọn).
+ * Ví dụ: "Vương miện, Trái cây tươi (Dâu, Nho, Xoài...), Nến số"
+ * -> ["Vương miện", "Trái cây tươi (Dâu, Nho, Xoài...)", "Nến số"]
+ */
+export function splitRespectingParentheses(input?: string, delimiter: string = ','): string[] {
+  if (!input || typeof input !== 'string') return [];
+  const parts: string[] = [];
+  let current = '';
+  let parenDepth = 0;
+
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (char === '(' || char === '[' || char === '{') {
+      parenDepth++;
+      current += char;
+    } else if (char === ')' || char === ']' || char === '}') {
+      parenDepth = Math.max(0, parenDepth - 1);
+      current += char;
+    } else if (char === delimiter && parenDepth === 0) {
+      if (current.trim()) {
+        parts.push(current.trim());
+      }
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  if (current.trim()) {
+    parts.push(current.trim());
+  }
+
+  return parts;
+}
+
+/**
  * Tự động phát hiện các phụ kiện khách yêu cầu qua ghi chú / yêu cầu đặc biệt
  */
 export function extractAccessoriesFromText(text?: string): string[] {
