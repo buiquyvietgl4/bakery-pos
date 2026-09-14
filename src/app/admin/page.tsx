@@ -817,8 +817,8 @@ export default function AdminDashboard() {
     return [];
   });
 
-  // Tải danh sách đơn hàng thực tế từ POS và CSDL SQL
-  const reloadAdminOrders = () => {
+  // Tải danh sách đơn hàng thực tế từ POS và CSDL SQL (được bảo vệ cache và debounce)
+  const reloadAdminOrders = (force = false) => {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('bakery_orders');
@@ -828,9 +828,9 @@ export default function AdminDashboard() {
         }
       } catch {}
     }
-    // Tự động nạp bổ sung từ Supabase SQL nếu có kết nối mạng
+    // Tự động nạp bổ sung từ Supabase SQL nếu có kết nối mạng (dùng cache TTL 25s)
     if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
-      fetchTaxOrdersFromDb().then((dbOrders) => {
+      fetchTaxOrdersFromDb(force).then((dbOrders) => {
         if (Array.isArray(dbOrders) && dbOrders.length > 0) {
           setPosOrders(dbOrders);
         }
@@ -839,11 +839,22 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    reloadAdminOrders();
-    const handleUpdate = () => reloadAdminOrders();
+    reloadAdminOrders(false);
+    let debounceTimer: any = null;
+    const handleUpdate = (e?: Event) => {
+      // Chỉ phản hồi nếu là event đơn hàng thật sự, bỏ qua các key storage khác
+      if (e && 'key' in e && (e as StorageEvent).key && (e as StorageEvent).key !== 'bakery_orders') {
+        return;
+      }
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        reloadAdminOrders(false);
+      }, 1500);
+    };
     window.addEventListener('bakery_orders_updated', handleUpdate);
     window.addEventListener('storage', handleUpdate);
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('bakery_orders_updated', handleUpdate);
       window.removeEventListener('storage', handleUpdate);
     };

@@ -87,13 +87,20 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
   const [liveOrders, setLiveOrders] = useState<any[]>(orders || []);
   const [isRefreshingSql, setIsRefreshingSql] = useState<boolean>(false);
 
+  // Tự động đồng bộ liveOrders khi prop orders từ trang quản trị cập nhật
+  useEffect(() => {
+    if (Array.isArray(orders) && orders.length > 0) {
+      setLiveOrders(orders);
+    }
+  }, [orders]);
+
   const loadLiveTaxData = async (showToast = false) => {
     setIsRefreshingSql(true);
     try {
       const [dbInfo, dbOrders, dbPolicy] = await Promise.all([
-        fetchHouseholdBusinessInfoFromDb(),
-        fetchTaxOrdersFromDb(),
-        fetchTaxPolicyConfigFromDb(),
+        fetchHouseholdBusinessInfoFromDb(showToast),
+        fetchTaxOrdersFromDb(showToast),
+        fetchTaxPolicyConfigFromDb(showToast),
       ]);
       if (dbInfo) {
         setBusinessInfo(dbInfo);
@@ -121,17 +128,20 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
   useEffect(() => {
     loadLiveTaxData(false);
 
+    let orderDebounceTimer: any = null;
     const handleOrdersUpdate = () => {
-      fetchTaxOrdersFromDb().then((dbOrders) => {
-        if (Array.isArray(dbOrders) && dbOrders.length > 0) {
-          setLiveOrders(dbOrders);
-          const nowStr = new Date().toLocaleTimeString('vi-VN');
-          setLastSyncTime(nowStr);
-        }
-      });
+      if (orderDebounceTimer) clearTimeout(orderDebounceTimer);
+      orderDebounceTimer = setTimeout(() => {
+        fetchTaxOrdersFromDb(false).then((dbOrders) => {
+          if (Array.isArray(dbOrders) && dbOrders.length > 0) {
+            setLiveOrders(dbOrders);
+            const nowStr = new Date().toLocaleTimeString('vi-VN');
+            setLastSyncTime(nowStr);
+          }
+        }).catch(() => {});
+      }, 2000);
     };
     window.addEventListener('bakery_orders_updated', handleOrdersUpdate);
-    window.addEventListener('storage', handleOrdersUpdate);
 
     const handleUpdate = (e: any) => {
       if (e.detail) {
@@ -160,11 +170,11 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
     window.addEventListener(TAX_AUTO_SYNC_EVENT, handleAutoSync);
 
     return () => {
+      if (orderDebounceTimer) clearTimeout(orderDebounceTimer);
       window.removeEventListener(TAX_CONFIG_UPDATED_EVENT, handleUpdate);
       window.removeEventListener(TAX_POLICY_UPDATED_EVENT, handlePolicyUpdate);
       window.removeEventListener(TAX_AUTO_SYNC_EVENT, handleAutoSync);
       window.removeEventListener('bakery_orders_updated', handleOrdersUpdate);
-      window.removeEventListener('storage', handleOrdersUpdate);
     };
   }, []);
 

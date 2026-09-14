@@ -134,41 +134,66 @@ export function saveHouseholdBusinessInfo(info: HouseholdBusinessInfo): void {
 /**
  * Nạp thông tin Hộ Kinh Doanh từ Supabase SQL (hoặc Local SQL)
  */
-export async function fetchHouseholdBusinessInfoFromDb(): Promise<HouseholdBusinessInfo> {
+let cachedInfo: HouseholdBusinessInfo | null = null;
+let lastFetchInfoTime = 0;
+let inflightInfoPromise: Promise<HouseholdBusinessInfo> | null = null;
+const INFO_CACHE_TTL_MS = 60_000; // 1 phút
+
+export async function fetchHouseholdBusinessInfoFromDb(force = false): Promise<HouseholdBusinessInfo> {
   const fallback = getHouseholdBusinessInfo();
   if (isLocalMode()) return fallback;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return fallback;
   }
 
-  try {
-    const { data, error } = await supabase
-      .from('recipes')
-      .select('notes')
-      .or(`id.eq.${DB_ROW_TAX_ID},name.eq.${DB_ROW_TAX_NAME}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (!error && data?.notes) {
-      try {
-        const parsed = JSON.parse(data.notes);
-        if (parsed && typeof parsed === 'object' && (parsed.shop_name || parsed.tax_code)) {
-          const loaded: HouseholdBusinessInfo = {
-            ...DEFAULT_HOUSEHOLD_INFO,
-            ...parsed,
-          };
-          saveHouseholdBusinessInfo(loaded);
-          return loaded;
-        }
-      } catch (e) {
-        console.warn('Lỗi parse JSON cấu hình thuế từ SQL:', e);
-      }
-    }
-  } catch (err) {
-    console.warn('Lỗi fetchHouseholdBusinessInfoFromDb:', err);
+  const now = Date.now();
+  if (!force && cachedInfo && now - lastFetchInfoTime < INFO_CACHE_TTL_MS) {
+    return cachedInfo;
   }
 
-  return fallback;
+  if (inflightInfoPromise) {
+    return inflightInfoPromise;
+  }
+
+  inflightInfoPromise = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('recipes')
+        .select('notes')
+        .or(`id.eq.${DB_ROW_TAX_ID},name.eq.${DB_ROW_TAX_NAME}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data?.notes) {
+        try {
+          const parsed = JSON.parse(data.notes);
+          if (parsed && typeof parsed === 'object' && (parsed.shop_name || parsed.tax_code)) {
+            const loaded: HouseholdBusinessInfo = {
+              ...DEFAULT_HOUSEHOLD_INFO,
+              ...parsed,
+            };
+            cachedInfo = loaded;
+            lastFetchInfoTime = Date.now();
+            try {
+              localStorage.setItem(TAX_CONFIG_KEY, JSON.stringify(loaded));
+            } catch {}
+            return loaded;
+          }
+        } catch (e) {
+          console.warn('Lỗi parse JSON cấu hình thuế từ SQL:', e);
+        }
+      }
+    } catch (err) {
+      console.warn('Lỗi fetchHouseholdBusinessInfoFromDb:', err);
+    } finally {
+      inflightInfoPromise = null;
+    }
+    cachedInfo = fallback;
+    lastFetchInfoTime = Date.now();
+    return fallback;
+  })();
+
+  return inflightInfoPromise;
 }
 
 /**
@@ -252,41 +277,66 @@ export function saveTaxPolicyConfig(policy: TaxPolicyConfig): void {
 /**
  * Nạp cấu hình chính sách thuế từ Supabase Cloud SQL
  */
-export async function fetchTaxPolicyConfigFromDb(): Promise<TaxPolicyConfig> {
+let cachedPolicy: TaxPolicyConfig | null = null;
+let lastFetchPolicyTime = 0;
+let inflightPolicyPromise: Promise<TaxPolicyConfig> | null = null;
+const POLICY_CACHE_TTL_MS = 60_000; // 1 phút
+
+export async function fetchTaxPolicyConfigFromDb(force = false): Promise<TaxPolicyConfig> {
   const fallback = getTaxPolicyConfig();
   if (isLocalMode()) return fallback;
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return fallback;
   }
 
-  try {
-    const { data, error } = await supabase
-      .from('recipes')
-      .select('notes')
-      .or(`id.eq.${DB_ROW_TAX_POLICY_ID},name.eq.${DB_ROW_TAX_POLICY_NAME}`)
-      .limit(1)
-      .maybeSingle();
-
-    if (!error && data?.notes) {
-      try {
-        const parsed = JSON.parse(data.notes);
-        if (parsed && typeof parsed === 'object' && (parsed.annual_threshold || parsed.tax_groups)) {
-          const loaded: TaxPolicyConfig = {
-            ...DEFAULT_TAX_POLICY,
-            ...parsed,
-          };
-          saveTaxPolicyConfig(loaded);
-          return loaded;
-        }
-      } catch (e) {
-        console.warn('Lỗi parse JSON chính sách thuế từ SQL:', e);
-      }
-    }
-  } catch (err) {
-    console.warn('Lỗi fetchTaxPolicyConfigFromDb:', err);
+  const now = Date.now();
+  if (!force && cachedPolicy && now - lastFetchPolicyTime < POLICY_CACHE_TTL_MS) {
+    return cachedPolicy;
   }
 
-  return fallback;
+  if (inflightPolicyPromise) {
+    return inflightPolicyPromise;
+  }
+
+  inflightPolicyPromise = (async () => {
+    try {
+      const { data, error } = await supabase
+        .from('recipes')
+        .select('notes')
+        .or(`id.eq.${DB_ROW_TAX_POLICY_ID},name.eq.${DB_ROW_TAX_POLICY_NAME}`)
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data?.notes) {
+        try {
+          const parsed = JSON.parse(data.notes);
+          if (parsed && typeof parsed === 'object' && (parsed.annual_threshold || parsed.tax_groups)) {
+            const loaded: TaxPolicyConfig = {
+              ...DEFAULT_TAX_POLICY,
+              ...parsed,
+            };
+            cachedPolicy = loaded;
+            lastFetchPolicyTime = Date.now();
+            try {
+              localStorage.setItem(TAX_POLICY_KEY, JSON.stringify(loaded));
+            } catch {}
+            return loaded;
+          }
+        } catch (e) {
+          console.warn('Lỗi parse JSON chính sách thuế từ SQL:', e);
+        }
+      }
+    } catch (err) {
+      console.warn('Lỗi fetchTaxPolicyConfigFromDb:', err);
+    } finally {
+      inflightPolicyPromise = null;
+    }
+    cachedPolicy = fallback;
+    lastFetchPolicyTime = Date.now();
+    return fallback;
+  })();
+
+  return inflightPolicyPromise;
 }
 
 /**
@@ -373,10 +423,16 @@ export function triggerTaxAutoSyncToDb(
 }
 
 /**
- * Nạp toàn bộ danh sách đơn hàng thực tế trực tiếp từ Supabase Cloud SQL
+ * Nạp danh sách đơn hàng thực tế từ Supabase Cloud SQL
  * Kèm đầy đủ chi tiết order_items để phục vụ tính toán chính xác 100% cho Sổ S2a, S2c, S2d, S2e và Tờ khai thuế 01/CNKD
+ * Được bảo vệ với Cache 25s và khử trùng lặp yêu cầu mạng (In-flight deduplication)
  */
-export async function fetchTaxOrdersFromDb(): Promise<any[]> {
+let cachedTaxOrders: any[] | null = null;
+let lastFetchTaxOrdersTime = 0;
+let inflightTaxOrdersPromise: Promise<any[]> | null = null;
+const TAX_ORDERS_CACHE_TTL_MS = 25_000; // 25 giây cache
+
+export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
   const localOrdersRaw = typeof window !== 'undefined' ? localStorage.getItem('bakery_orders') : null;
   let localOrders: any[] = [];
   if (localOrdersRaw) {
@@ -386,79 +442,105 @@ export async function fetchTaxOrdersFromDb(): Promise<any[]> {
     } catch {}
   }
 
-  if (isLocalMode()) {
+  if (isLocalMode() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    cachedTaxOrders = localOrders;
+    lastFetchTaxOrdersTime = Date.now();
     return localOrders;
   }
 
-  try {
-    const { data: dbOrders, error } = await supabase
-      .from('orders')
-      .select(`
-        id,
-        order_number,
-        order_type,
-        status,
-        created_at,
-        preorder_pickup_at,
-        subtotal,
-        discount_amount,
-        discount_pct,
-        total_amount,
-        notes,
-        customer_name,
-        customer_phone,
-        cake_message,
-        order_items (
-          id,
-          product_name_snapshot,
-          quantity,
-          unit_price,
-          line_total,
-          notes
-        )
-      `)
-      .order('created_at', { ascending: false })
-      .limit(500);
-
-    if (!error && Array.isArray(dbOrders) && dbOrders.length > 0) {
-      const orderMap = new Map<string, any>();
-
-      // 1. Cho local orders vào trước
-      localOrders.forEach((lo) => {
-        const key = String(lo.order_number || lo.id || Math.random());
-        orderMap.set(key, lo);
-      });
-
-      // 2. Phủ dữ liệu Supabase lên (dữ liệu SQL có đầy đủ order_items)
-      dbOrders.forEach((so) => {
-        const key = String(so.order_number || so.id);
-        const existing = orderMap.get(key);
-        const items = Array.isArray(so.order_items) && so.order_items.length > 0
-          ? so.order_items
-          : (existing?.items || []);
-
-        orderMap.set(key, {
-          ...existing,
-          ...so,
-          items,
-        });
-      });
-
-      const merged = Array.from(orderMap.values());
-      // Lưu lại vào localStorage để offline hoặc các màn hình khác cũng có dữ liệu
-      if (typeof window !== 'undefined') {
-        try {
-          localStorage.setItem('bakery_orders', JSON.stringify(merged.slice(0, 100)));
-          window.dispatchEvent(new Event('bakery_orders_updated'));
-        } catch {}
-      }
-      return merged;
-    }
-  } catch (err) {
-    console.warn('Lỗi fetchTaxOrdersFromDb từ Supabase:', err);
+  const now = Date.now();
+  if (!force && cachedTaxOrders && now - lastFetchTaxOrdersTime < TAX_ORDERS_CACHE_TTL_MS) {
+    return cachedTaxOrders;
   }
 
-  return localOrders;
+  if (inflightTaxOrdersPromise) {
+    return inflightTaxOrdersPromise;
+  }
+
+  inflightTaxOrdersPromise = (async () => {
+    try {
+      const { data: dbOrders, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          order_number,
+          order_type,
+          status,
+          created_at,
+          preorder_pickup_at,
+          subtotal,
+          discount_amount,
+          discount_pct,
+          total_amount,
+          notes,
+          customer_name,
+          customer_phone,
+          cake_message,
+          order_items (
+            id,
+            product_name_snapshot,
+            quantity,
+            unit_price,
+            line_total,
+            notes
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(300);
+
+      if (!error && Array.isArray(dbOrders) && dbOrders.length > 0) {
+        const orderMap = new Map<string, any>();
+
+        // 1. Cho local orders vào trước
+        localOrders.forEach((lo) => {
+          const key = String(lo.order_number || lo.id || Math.random());
+          orderMap.set(key, lo);
+        });
+
+        // 2. Phủ dữ liệu Supabase lên (dữ liệu SQL có đầy đủ order_items)
+        dbOrders.forEach((so) => {
+          const key = String(so.order_number || so.id);
+          const existing = orderMap.get(key);
+          const items = Array.isArray(so.order_items) && so.order_items.length > 0
+            ? so.order_items
+            : (existing?.items || []);
+
+          orderMap.set(key, {
+            ...existing,
+            ...so,
+            items,
+          });
+        });
+
+        const merged = Array.from(orderMap.values());
+        cachedTaxOrders = merged;
+        lastFetchTaxOrdersTime = Date.now();
+
+        // Cập nhật âm thầm vào localStorage nếu có khác biệt (TUYỆT ĐỐI KHÔNG dispatch event để tránh đệ quy vô tận)
+        if (typeof window !== 'undefined') {
+          try {
+            const curRaw = localStorage.getItem('bakery_orders');
+            const newSlice = JSON.stringify(merged.slice(0, 100));
+            if (curRaw !== newSlice) {
+              localStorage.setItem('bakery_orders', newSlice);
+            }
+          } catch {}
+        }
+        return merged;
+      }
+
+      cachedTaxOrders = localOrders;
+      lastFetchTaxOrdersTime = Date.now();
+      return localOrders;
+    } catch (err) {
+      console.warn('Lỗi fetchTaxOrdersFromDb từ Supabase:', err);
+      return cachedTaxOrders || localOrders;
+    } finally {
+      inflightTaxOrdersPromise = null;
+    }
+  })();
+
+  return inflightTaxOrdersPromise;
 }
 
 /**
