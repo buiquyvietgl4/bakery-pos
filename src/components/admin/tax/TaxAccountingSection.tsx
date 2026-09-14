@@ -694,8 +694,8 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
               </span>
             </div>
 
-            <div className="overflow-x-auto mt-3">
-              <table className="w-full text-xs text-left">
+            <div className="overflow-x-auto overscroll-x-contain mt-3">
+              <table className="w-full text-xs text-left min-w-[720px]">
                 <thead>
                   <tr className="border-b border-zinc-200 text-zinc-500 font-bold bg-zinc-50/60">
                     <th className="p-2.5">Nhóm Ngành Nghề</th>
@@ -798,8 +798,8 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
+            <div className="overflow-x-auto overscroll-x-contain">
+              <table className="w-full text-xs text-left min-w-[760px]">
                 <thead>
                   <tr className="border-b border-zinc-200 text-zinc-500 font-bold bg-zinc-50/60">
                     <th className="p-2.5 w-12 text-center">STT</th>
@@ -913,8 +913,8 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+          <div className="overflow-x-auto overscroll-x-contain">
+            <table className="w-full text-xs text-left min-w-[640px]">
               <thead>
                 <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-500 font-bold">
                   <th className="p-2.5">Ký hiệu chứng từ</th>
@@ -967,8 +967,8 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+          <div className="overflow-x-auto overscroll-x-contain">
+            <table className="w-full text-xs text-left min-w-[660px]">
               <thead>
                 <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-500 font-bold">
                   <th className="p-2.5">Tên Vật Liệu / Dụng Cụ / Sản Phẩm</th>
@@ -1035,8 +1035,8 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
             </button>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+          <div className="overflow-x-auto overscroll-x-contain">
+            <table className="w-full text-xs text-left min-w-[640px]">
               <thead>
                 <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-500 font-bold">
                   <th className="p-2.5">Ký hiệu chứng từ</th>
@@ -1207,12 +1207,13 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
           </div>
 
           {/* ── BỘ CHUYỂN ĐỔI MẪU TỜ KHAI (FORM SWITCHER) ── */}
-          <div className="flex flex-wrap items-center justify-between gap-3 bg-zinc-100 p-2 rounded-2xl border border-zinc-200">
-            <div className="flex flex-wrap items-center gap-2">
+          {/* ── BỘ CHUYỂN ĐỔI MẪU TỜ KHAI (FORM SWITCHER) ── */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-zinc-100 p-2 rounded-2xl border border-zinc-200">
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none pb-1 sm:pb-0 w-full sm:w-auto -mx-0.5 px-0.5">
               <button
                 type="button"
                 onClick={() => setSelectedDeclarationForm('01_TKN_CNKD')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap shrink-0 ${
                   selectedDeclarationForm === '01_TKN_CNKD'
                     ? 'bg-emerald-600 text-white shadow-xs'
                     : 'bg-white text-zinc-700 hover:bg-zinc-50'
@@ -1236,7 +1237,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedDeclarationForm('01_CNKD')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                className={`flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer whitespace-nowrap shrink-0 ${
                   selectedDeclarationForm === '01_CNKD'
                     ? 'bg-rose-600 text-white shadow-xs'
                     : 'bg-white text-zinc-700 hover:bg-zinc-50'
@@ -1258,7 +1259,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
               </button>
             </div>
 
-            <div className="text-xs text-zinc-500 font-medium px-2">
+            <div className="text-xs text-zinc-500 font-medium px-2 shrink-0">
               Đang xem: <b className="text-zinc-900">{selectedDeclarationForm === '01_TKN_CNKD' ? 'Mẫu 01/TKN-CNKD' : 'Mẫu 01/CNKD'}</b>
             </div>
           </div>
@@ -1267,7 +1268,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
           {/* ── MẪU 1: 01/TKN-CNKD (DOANH THU ≤ 1 TỶ/NĂM - MIỄN THUẾ 100%) ── */}
           {/* ══════════════════════════════════════════════════════════════════════════ */}
           {selectedDeclarationForm === '01_TKN_CNKD' && (
-            <div className="bg-white rounded-2xl p-6 border border-emerald-200 shadow-xs space-y-6 animate-in fade-in">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 border border-emerald-200 shadow-xs space-y-5 sm:space-y-6 animate-in fade-in">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-200">
                 <div>
                   <div className="flex items-center gap-2">
@@ -1308,17 +1309,24 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
               </div>
 
               {/* Bảng Kê Chỉ Tiêu Tờ Khai 01/TKN-CNKD */}
-              <div className="border border-zinc-200 rounded-xl overflow-hidden">
-                <table className="w-full text-xs text-left">
-                  <thead>
-                    <tr className="bg-zinc-100 text-zinc-700 font-bold border-b border-zinc-200">
-                      <th className="p-3 w-16 text-center">Chỉ tiêu</th>
-                      <th className="p-3">Nội dung kê khai doanh thu</th>
-                      <th className="p-3 w-28 text-center">Tỷ lệ quy định</th>
-                      <th className="p-3 w-44 text-right">Doanh Thu Trong Năm (VNĐ)</th>
-                      <th className="p-3 w-44 text-right">Nghĩa Vụ Thuế Phải Nộp</th>
-                    </tr>
-                  </thead>
+              <div className="space-y-2">
+                <div className="flex sm:hidden items-center justify-between px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 font-medium shadow-2xs">
+                  <span className="flex items-center gap-1.5">
+                    👉 <b>Kéo sang phải</b> để xem đủ cột doanh thu &amp; số thuế
+                  </span>
+                  <span className="text-[10px] bg-emerald-200/70 text-emerald-950 px-1.5 py-0.5 rounded font-bold font-mono">5 Cột</span>
+                </div>
+                <div className="border border-zinc-200 rounded-xl overflow-x-auto overscroll-x-contain">
+                  <table className="w-full text-xs text-left min-w-[680px]">
+                    <thead>
+                      <tr className="bg-zinc-100 text-zinc-700 font-bold border-b border-zinc-200">
+                        <th className="p-3 w-16 text-center shrink-0">Chỉ tiêu</th>
+                        <th className="p-3 min-w-[200px]">Nội dung kê khai doanh thu</th>
+                        <th className="p-3 w-28 text-center shrink-0">Tỷ lệ quy định</th>
+                        <th className="p-3 w-44 text-right shrink-0">Doanh Thu Trong Năm (VNĐ)</th>
+                        <th className="p-3 w-44 text-right shrink-0">Nghĩa Vụ Thuế Phải Nộp</th>
+                      </tr>
+                    </thead>
                   <tbody className="divide-y divide-zinc-200 font-medium">
                     {/* Phần I: Thông tin hành chính */}
                     <tr className="bg-zinc-50/50">
@@ -1475,6 +1483,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                   </tbody>
                 </table>
               </div>
+            </div>
 
               <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-950 space-y-1">
                 <p className="font-bold flex items-center gap-1.5">
@@ -1493,7 +1502,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
           {/* ── MẪU 2: 01/CNKD (DOANH THU > 1 TỶ/NĂM - KÊ KHAI NỘP THUẾ ĐỊNH KỲ) ── */}
           {/* ══════════════════════════════════════════════════════════════════════════ */}
           {selectedDeclarationForm === '01_CNKD' && (
-            <div className="bg-white rounded-2xl p-6 border border-zinc-200/80 shadow-xs space-y-6 animate-in fade-in">
+            <div className="bg-white rounded-2xl p-4 sm:p-6 border border-zinc-200/80 shadow-xs space-y-5 sm:space-y-6 animate-in fade-in">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-200">
                 <div>
                   <div className="flex items-center gap-2">
@@ -1555,11 +1564,11 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
               </div>
 
               {/* Bộ chuyển đổi giữa Tờ khai chính 01/CNKD và Phụ lục 01-2/BK-HĐKD */}
-              <div className="flex items-center gap-2 bg-zinc-100 p-1.5 rounded-xl border border-zinc-200">
+              <div className="flex items-center gap-2 bg-zinc-100 p-1.5 rounded-xl border border-zinc-200 overflow-x-auto scrollbar-none pb-1 sm:pb-1.5">
                 <button
                   type="button"
                   onClick={() => setCnkdViewMode('main')}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap shrink-0 ${
                     cnkdViewMode === 'main'
                       ? 'bg-white text-zinc-900 shadow-xs'
                       : 'text-zinc-600 hover:text-zinc-900'
@@ -1572,7 +1581,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setCnkdViewMode('appendix')}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap shrink-0 ${
                     cnkdViewMode === 'appendix'
                       ? 'bg-white text-zinc-900 shadow-xs'
                       : 'text-zinc-600 hover:text-zinc-900'
@@ -1588,16 +1597,22 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
 
               {/* ── VIEW 1: TỜ KHAI CHÍNH 01/CNKD ── */}
               {cnkdViewMode === 'main' && (
-                <div className="space-y-4 animate-in fade-in">
-                  <div className="border border-zinc-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-xs text-left">
+                <div className="space-y-3 sm:space-y-4 animate-in fade-in">
+                  <div className="flex sm:hidden items-center justify-between px-3 py-2 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-900 font-medium shadow-2xs">
+                    <span className="flex items-center gap-1.5">
+                      👉 <b>Kéo sang phải</b> để xem đủ cột doanh thu &amp; số thuế
+                    </span>
+                    <span className="text-[10px] bg-rose-200/70 text-rose-950 px-1.5 py-0.5 rounded font-bold font-mono">5 Cột</span>
+                  </div>
+                  <div className="border border-zinc-200 rounded-xl overflow-x-auto overscroll-x-contain">
+                    <table className="w-full text-xs text-left min-w-[680px]">
                       <thead>
                         <tr className="bg-zinc-100 text-zinc-700 font-bold border-b border-zinc-200">
-                          <th className="p-3 w-16 text-center">Chỉ tiêu</th>
-                          <th className="p-3">Nội dung kinh tế kê khai</th>
-                          <th className="p-3 w-36 text-center">Tỷ lệ tính thuế</th>
-                          <th className="p-3 w-40 text-right">Doanh Thu Kê Khai (VNĐ)</th>
-                          <th className="p-3 w-40 text-right">Số Thuế Phải Nộp (VNĐ)</th>
+                          <th className="p-3 w-16 text-center shrink-0">Chỉ tiêu</th>
+                          <th className="p-3 min-w-[220px]">Nội dung kinh tế kê khai</th>
+                          <th className="p-3 w-36 text-center shrink-0">Tỷ lệ tính thuế</th>
+                          <th className="p-3 w-40 text-right shrink-0">Doanh Thu Kê Khai (VNĐ)</th>
+                          <th className="p-3 w-40 text-right shrink-0">Số Thuế Phải Nộp (VNĐ)</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-zinc-200 font-medium">
@@ -1741,73 +1756,81 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       </span>
                     </div>
 
-                    <div className="border border-zinc-200 rounded-xl overflow-x-auto">
-                      <table className="w-full text-xs text-left">
-                        <thead>
-                          <tr className="bg-zinc-100 text-center font-bold text-zinc-700 border-b border-zinc-200">
-                            <th rowSpan={2} className="p-2 w-10">STT</th>
-                            <th rowSpan={2} className="p-2 text-left">Tên hàng hóa, dịch vụ</th>
-                            <th rowSpan={2} className="p-2 w-14">ĐVT</th>
-                            <th colSpan={2} className="p-1 border-l border-zinc-200">Tồn đầu kỳ</th>
-                            <th colSpan={2} className="p-1 border-l border-zinc-200">Nhập trong kỳ</th>
-                            <th colSpan={2} className="p-1 border-l border-zinc-200">Xuất trong kỳ</th>
-                            <th colSpan={2} className="p-1 border-l border-zinc-200">Tồn cuối kỳ</th>
-                          </tr>
-                          <tr className="bg-zinc-50 text-center font-bold text-zinc-600 text-[11px] border-b border-zinc-200">
-                            <th className="p-1.5 w-14 border-l border-zinc-200">Lượng</th>
-                            <th className="p-1.5 w-24">Tiền (VNĐ)</th>
-                            <th className="p-1.5 w-14 border-l border-zinc-200">Lượng</th>
-                            <th className="p-1.5 w-24">Tiền (VNĐ)</th>
-                            <th className="p-1.5 w-14 border-l border-zinc-200">Lượng</th>
-                            <th className="p-1.5 w-24">Tiền (VNĐ)</th>
-                            <th className="p-1.5 w-14 border-l border-zinc-200">Lượng</th>
-                            <th className="p-1.5 w-28">Tiền (VNĐ)</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-200 font-medium">
-                          {bkhdkdData.inventoryRows.length === 0 ? (
-                            <tr>
-                              <td colSpan={11} className="p-4 text-center italic text-zinc-500">
-                                Chưa phát sinh tồn kho vật tư trong kỳ này.
+                    <div className="space-y-2">
+                      <div className="flex sm:hidden items-center justify-between px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px] text-indigo-900 font-medium shadow-2xs">
+                        <span className="flex items-center gap-1.5">
+                          👉 <b>Kéo sang phải</b> để xem đủ 11 cột xuất - nhập - tồn kho
+                        </span>
+                        <span className="text-[10px] bg-indigo-200/70 text-indigo-950 px-1.5 py-0.5 rounded font-bold font-mono">11 Cột</span>
+                      </div>
+                      <div className="border border-zinc-200 rounded-xl overflow-x-auto overscroll-x-contain">
+                        <table className="w-full text-xs text-left min-w-[820px]">
+                          <thead>
+                            <tr className="bg-zinc-100 text-center font-bold text-zinc-700 border-b border-zinc-200">
+                              <th rowSpan={2} className="p-2 w-10 shrink-0">STT</th>
+                              <th rowSpan={2} className="p-2 text-left min-w-[150px]">Tên hàng hóa, dịch vụ</th>
+                              <th rowSpan={2} className="p-2 w-14 shrink-0">ĐVT</th>
+                              <th colSpan={2} className="p-1 border-l border-zinc-200">Tồn đầu kỳ</th>
+                              <th colSpan={2} className="p-1 border-l border-zinc-200">Nhập trong kỳ</th>
+                              <th colSpan={2} className="p-1 border-l border-zinc-200">Xuất trong kỳ</th>
+                              <th colSpan={2} className="p-1 border-l border-zinc-200">Tồn cuối kỳ</th>
+                            </tr>
+                            <tr className="bg-zinc-50 text-center font-bold text-zinc-600 text-[11px] border-b border-zinc-200">
+                              <th className="p-1.5 w-14 border-l border-zinc-200 shrink-0">Lượng</th>
+                              <th className="p-1.5 w-24 shrink-0">Tiền (VNĐ)</th>
+                              <th className="p-1.5 w-14 border-l border-zinc-200 shrink-0">Lượng</th>
+                              <th className="p-1.5 w-24 shrink-0">Tiền (VNĐ)</th>
+                              <th className="p-1.5 w-14 border-l border-zinc-200 shrink-0">Lượng</th>
+                              <th className="p-1.5 w-24 shrink-0">Tiền (VNĐ)</th>
+                              <th className="p-1.5 w-14 border-l border-zinc-200 shrink-0">Lượng</th>
+                              <th className="p-1.5 w-28 shrink-0">Tiền (VNĐ)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-200 font-medium">
+                            {bkhdkdData.inventoryRows.length === 0 ? (
+                              <tr>
+                                <td colSpan={11} className="p-4 text-center italic text-zinc-500">
+                                  Chưa phát sinh tồn kho vật tư trong kỳ này.
+                                </td>
+                              </tr>
+                            ) : (
+                              bkhdkdData.inventoryRows.slice(0, 30).map((r) => (
+                                <tr key={r.stt} className="hover:bg-zinc-50">
+                                  <td className="p-2 text-center text-zinc-500">{r.stt}</td>
+                                  <td className="p-2 font-semibold text-zinc-900">{r.item_name}</td>
+                                  <td className="p-2 text-center text-zinc-600">{r.unit}</td>
+                                  <td className="p-2 text-right border-l border-zinc-200">{r.opening_qty.toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right">{r.opening_amount.toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right border-l border-zinc-200">{r.in_qty.toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right">{r.in_amount.toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right border-l border-zinc-200">{r.out_qty.toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right">{r.out_amount.toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right border-l border-zinc-200">{r.closing_qty.toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right font-bold text-zinc-900">{r.closing_amount.toLocaleString('vi-VN')}</td>
+                                </tr>
+                              ))
+                            )}
+                            <tr className="font-black bg-zinc-100 border-t-2 border-zinc-300 text-zinc-900">
+                              <td colSpan={4} className="p-2.5 uppercase">TỔNG CỘNG GIÁ TRỊ TỒN KHO VẬT TƯ</td>
+                              <td className="p-2.5 text-right">
+                                {bkhdkdData.inventoryRows.reduce((s, r) => s + r.opening_amount, 0).toLocaleString('vi-VN')} đ
+                              </td>
+                              <td className="p-2.5 text-center">-</td>
+                              <td className="p-2.5 text-right">
+                                {bkhdkdData.inventoryRows.reduce((s, r) => s + r.in_amount, 0).toLocaleString('vi-VN')} đ
+                              </td>
+                              <td className="p-2.5 text-center">-</td>
+                              <td className="p-2.5 text-right">
+                                {bkhdkdData.inventoryRows.reduce((s, r) => s + r.out_amount, 0).toLocaleString('vi-VN')} đ
+                              </td>
+                              <td className="p-2.5 text-center">-</td>
+                              <td className="p-2.5 text-right text-emerald-800 text-sm">
+                                {bkhdkdData.inventoryRows.reduce((s, r) => s + r.closing_amount, 0).toLocaleString('vi-VN')} đ
                               </td>
                             </tr>
-                          ) : (
-                            bkhdkdData.inventoryRows.slice(0, 30).map((r) => (
-                              <tr key={r.stt} className="hover:bg-zinc-50">
-                                <td className="p-2 text-center text-zinc-500">{r.stt}</td>
-                                <td className="p-2 font-semibold text-zinc-900">{r.item_name}</td>
-                                <td className="p-2 text-center text-zinc-600">{r.unit}</td>
-                                <td className="p-2 text-right border-l border-zinc-200">{r.opening_qty.toLocaleString('vi-VN')}</td>
-                                <td className="p-2 text-right">{r.opening_amount.toLocaleString('vi-VN')}</td>
-                                <td className="p-2 text-right border-l border-zinc-200">{r.in_qty.toLocaleString('vi-VN')}</td>
-                                <td className="p-2 text-right">{r.in_amount.toLocaleString('vi-VN')}</td>
-                                <td className="p-2 text-right border-l border-zinc-200">{r.out_qty.toLocaleString('vi-VN')}</td>
-                                <td className="p-2 text-right">{r.out_amount.toLocaleString('vi-VN')}</td>
-                                <td className="p-2 text-right border-l border-zinc-200">{r.closing_qty.toLocaleString('vi-VN')}</td>
-                                <td className="p-2 text-right font-bold text-zinc-900">{r.closing_amount.toLocaleString('vi-VN')}</td>
-                              </tr>
-                            ))
-                          )}
-                          <tr className="font-black bg-zinc-100 border-t-2 border-zinc-300 text-zinc-900">
-                            <td colSpan={4} className="p-2.5 uppercase">TỔNG CỘNG GIÁ TRỊ TỒN KHO VẬT TƯ</td>
-                            <td className="p-2.5 text-right">
-                              {bkhdkdData.inventoryRows.reduce((s, r) => s + r.opening_amount, 0).toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="p-2.5 text-center">-</td>
-                            <td className="p-2.5 text-right">
-                              {bkhdkdData.inventoryRows.reduce((s, r) => s + r.in_amount, 0).toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="p-2.5 text-center">-</td>
-                            <td className="p-2.5 text-right">
-                              {bkhdkdData.inventoryRows.reduce((s, r) => s + r.out_amount, 0).toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="p-2.5 text-center">-</td>
-                            <td className="p-2.5 text-right text-emerald-800 text-sm">
-                              {bkhdkdData.inventoryRows.reduce((s, r) => s + r.closing_amount, 0).toLocaleString('vi-VN')} đ
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
 
@@ -1823,40 +1846,48 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       </span>
                     </div>
 
-                    <div className="border border-zinc-200 rounded-xl overflow-hidden">
-                      <table className="w-full text-xs text-left">
-                        <thead>
-                          <tr className="bg-zinc-100 text-zinc-700 font-bold border-b border-zinc-200">
-                            <th className="p-3 w-20 text-center">Chỉ tiêu</th>
-                            <th className="p-3">Tên loại chi phí quản lý kinh doanh</th>
-                            <th className="p-3 w-48 text-right">Số tiền phát sinh (VNĐ)</th>
-                            <th className="p-3 w-56">Ghi chú theo Thông tư 40</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-200 font-medium">
-                          {bkhdkdData.expenseSummaryRaw.map((exp) => (
-                            <tr key={exp.indicator_code} className="hover:bg-zinc-50">
-                              <td className="p-3 text-center font-mono font-bold text-rose-700">
-                                [{exp.indicator_code}]
-                              </td>
-                              <td className="p-3 font-semibold text-zinc-900">{exp.name}</td>
-                              <td className="p-3 text-right font-bold text-zinc-900">
-                                {exp.amount.toLocaleString('vi-VN')} đ
-                              </td>
-                              <td className="p-3 text-zinc-500 text-xs italic">{exp.note}</td>
+                    <div className="space-y-2">
+                      <div className="flex sm:hidden items-center justify-between px-3 py-2 bg-zinc-100 border border-zinc-200 rounded-xl text-[11px] text-zinc-800 font-medium shadow-2xs">
+                        <span className="flex items-center gap-1.5">
+                          👉 <b>Kéo sang phải</b> để xem đủ số tiền &amp; ghi chú chi phí
+                        </span>
+                        <span className="text-[10px] bg-zinc-200 text-zinc-900 px-1.5 py-0.5 rounded font-bold font-mono">4 Cột</span>
+                      </div>
+                      <div className="border border-zinc-200 rounded-xl overflow-x-auto overscroll-x-contain">
+                        <table className="w-full text-xs text-left min-w-[640px]">
+                          <thead>
+                            <tr className="bg-zinc-100 text-zinc-700 font-bold border-b border-zinc-200">
+                              <th className="p-3 w-20 text-center shrink-0">Chỉ tiêu</th>
+                              <th className="p-3 min-w-[220px]">Tên loại chi phí quản lý kinh doanh</th>
+                              <th className="p-3 w-48 text-right shrink-0">Số tiền phát sinh (VNĐ)</th>
+                              <th className="p-3 w-56 shrink-0">Ghi chú theo Thông tư 40</th>
                             </tr>
-                          ))}
-                          <tr className="font-black bg-amber-100/70 border-t-2 border-amber-300 text-amber-950">
-                            <td colSpan={2} className="p-3 uppercase">
-                              TỔNG CHI PHÍ QUẢN LÝ KINH DOANH TRONG KỲ ([24] đến [30])
-                            </td>
-                            <td className="p-3 text-right text-base text-amber-950">
-                              {bkhdkdData.expenseSummary.total_cost.toLocaleString('vi-VN')} đ
-                            </td>
-                            <td className="p-3 text-xs italic text-amber-800">Toàn bộ chi phí hợp lệ</td>
-                          </tr>
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-200 font-medium">
+                            {bkhdkdData.expenseSummaryRaw.map((exp) => (
+                              <tr key={exp.indicator_code} className="hover:bg-zinc-50">
+                                <td className="p-3 text-center font-mono font-bold text-rose-700">
+                                  [{exp.indicator_code}]
+                                </td>
+                                <td className="p-3 font-semibold text-zinc-900">{exp.name}</td>
+                                <td className="p-3 text-right font-bold text-zinc-900">
+                                  {exp.amount.toLocaleString('vi-VN')} đ
+                                </td>
+                                <td className="p-3 text-zinc-500 text-xs italic">{exp.note}</td>
+                              </tr>
+                            ))}
+                            <tr className="font-black bg-amber-100/70 border-t-2 border-amber-300 text-amber-950">
+                              <td colSpan={2} className="p-3 uppercase">
+                                TỔNG CHI PHÍ QUẢN LÝ KINH DOANH TRONG KỲ ([24] đến [30])
+                              </td>
+                              <td className="p-3 text-right text-base text-amber-950">
+                                {bkhdkdData.expenseSummary.total_cost.toLocaleString('vi-VN')} đ
+                              </td>
+                              <td className="p-3 text-xs italic text-amber-800">Toàn bộ chi phí hợp lệ</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </div>
