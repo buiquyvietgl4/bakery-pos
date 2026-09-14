@@ -64,12 +64,31 @@ function notifyNewOrderToListeners(order: any) {
 let syncChannelInstance: any = null;
 
 /**
+ * Khởi tạo hoặc kết nối lại kênh Realtime singleton
+ */
+export function reconnectSyncChannel(force = false) {
+  if (syncChannelInstance) {
+    if (force || syncChannelInstance.state === 'closed' || syncChannelInstance.state === 'errored') {
+      try {
+        supabase.removeChannel(syncChannelInstance);
+      } catch {}
+      syncChannelInstance = null;
+      return ensureSyncChannel();
+    }
+    return syncChannelInstance;
+  }
+  return ensureSyncChannel();
+}
+
+/**
  * Khởi tạo kênh Realtime singleton duy nhất cho toàn hệ thống.
  * Đính kèm TẤT CẢ các bộ lắng nghe (broadcast & postgres_changes) TRƯỚC KHI gọi subscribe()
  * để ngăn chặn hoàn toàn lỗi: "cannot add postgres_changes callbacks after channel has subscribed"
  */
 function ensureSyncChannel() {
-  if (syncChannelInstance) return syncChannelInstance;
+  if (syncChannelInstance && syncChannelInstance.state !== 'closed' && syncChannelInstance.state !== 'errored') {
+    return syncChannelInstance;
+  }
 
   try {
     syncChannelInstance = supabase.channel('bakery_cross_device_sync', {
@@ -503,11 +522,21 @@ export function subscribeCrossDeviceSync(callbacks: {
 }
 
 /**
+ * Kiểm tra chuỗi UUID hợp lệ để không bao giờ gửi id sai định dạng gây lỗi PostgreSQL 22P02
+ */
+export function isValidUUID(str: any): boolean {
+  if (!str || typeof str !== 'string') return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str.trim());
+}
+
+/**
  * Phân tích chuỗi ngày giờ hẹn giao sang ISO Timestamp chuẩn
  * Hỗ trợ các định dạng tiếng Việt phổ biến:
  * - "14:02 ngày 10/09/2026" hoặc "14:02 ngày 2026-09-10"
+ * - "17:30 ngày mai (15/09)"
  * - "10/09/2026 14:02"
- * - ISO string: "2026-09-10T14:02:00.000Z"
+ * - "2026-09-10T14:02:00.000Z"
+ * Tuyệt đối trả về ISO string hoặc null (không bao giờ trả về chuỗi tiếng Việt thô)
  */
 export function parseToIsoTimestamp(dtStr?: string): string | null {
   if (!dtStr || typeof dtStr !== 'string') return null;
@@ -520,31 +549,55 @@ export function parseToIsoTimestamp(dtStr?: string): string | null {
     if (!isNaN(d.getTime())) return d.toISOString();
   }
 
-  // 2. Định dạng: "HH:mm ngày DD/MM/YYYY" hoặc "HH:mm, DD/MM/YYYY"
-  const dmyMatch = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(?:ngày|,)?\s*)(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/i);
+  // 2. Trích xuất giờ và phút (HH:mm)
+  let hours = 17;
+  let minutes = 0;
+  const timeMatch = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
+  if (timeMatch) {
+    hours = parseInt(timeMatch[1], 10);
+    minutes = parseInt(timeMatch[2], 10);
+  }
+
+  // 3. Xử lý "ngày mai" hoặc "hôm nay"
+  const lower = s.toLowerCase();
+  const now = new Date();
+  let targetYear = now.getFullYear();
+  let targetMonth = now.getMonth();
+  let targetDate = now.getDate();
+
+  if (lower.includes('ngày mai') || lower.includes('mai')) {
+    const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    targetYear = tomorrow.getFullYear();
+    targetMonth = tomorrow.getMonth();
+    targetDate = tomorrow.getDate();
+  }
+
+  // 4. Định dạng DD/MM/YYYY hoặc DD-MM-YYYY hoặc DD/MM
+  const dmyMatch = s.match(/(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?/);
   if (dmyMatch) {
-    const [, h, m, day, mon, yr] = dmyMatch;
-    const d = new Date(parseInt(yr, 10), parseInt(mon, 10) - 1, parseInt(day, 10), parseInt(h, 10), parseInt(m, 10));
-    if (!isNaN(d.getTime())) return d.toISOString();
+    targetDate = parseInt(dmyMatch[1], 10);
+    targetMonth = parseInt(dmyMatch[2], 10) - 1;
+    if (dmyMatch[3]) {
+      let y = parseInt(dmyMatch[3], 10);
+      if (y < 100) y += 2000;
+      targetYear = y;
+    }
+  } else {
+    // Thử dạng YYYY-MM-DD
+    const ymdMatch = s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+    if (ymdMatch) {
+      targetYear = parseInt(ymdMatch[1], 10);
+      targetMonth = parseInt(ymdMatch[2], 10) - 1;
+      targetDate = parseInt(ymdMatch[3], 10);
+    }
   }
 
-  // 3. Định dạng: "HH:mm ngày YYYY-MM-DD"
-  const ymdMatch = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?(?:\s*(?:ngày|,)?\s*)(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/i);
-  if (ymdMatch) {
-    const [, h, m, yr, mon, day] = ymdMatch;
-    const d = new Date(parseInt(yr, 10), parseInt(mon, 10) - 1, parseInt(day, 10), parseInt(h, 10), parseInt(m, 10));
-    if (!isNaN(d.getTime())) return d.toISOString();
+  const d = new Date(targetYear, targetMonth, targetDate, hours, minutes, 0, 0);
+  if (!isNaN(d.getTime())) {
+    return d.toISOString();
   }
 
-  // 4. Định dạng: "DD/MM/YYYY HH:mm"
-  const revMatch = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})\s*(?:lúc|,)?\s*(\d{1,2}):(\d{2})/i);
-  if (revMatch) {
-    const [, day, mon, yr, h, m] = revMatch;
-    const d = new Date(parseInt(yr, 10), parseInt(mon, 10) - 1, parseInt(day, 10), parseInt(h, 10), parseInt(m, 10));
-    if (!isNaN(d.getTime())) return d.toISOString();
-  }
-
-  // 5. Thử new Date(s)
+  // 5. Thử Date.parse(s)
   const directDate = new Date(s);
   if (!isNaN(directDate.getTime())) {
     return directDate.toISOString();
@@ -598,15 +651,17 @@ export async function syncOrderToSupabase(
       }
 
       // Nếu có id dạng UUID hợp lệ thì dùng id đó
-      if (order.id && typeof order.id === 'string' && order.id.length === 36 && order.id.includes('-')) {
+      if (order.id && isValidUUID(order.id)) {
         orderPayload.id = order.id;
       }
 
-      // Bảo toàn chính xác giờ hẹn giao ban đầu của khách:
+      // Bảo toàn chính xác giờ hẹn giao ban đầu của khách (TUYỆT ĐỐI KHÔNG gửi chuỗi tiếng Việt thô lên cột timestamptz):
       const rawPickup = order.preorder_pickup_at || order.pickupDateTime;
       if (rawPickup) {
         const parsedIso = parseToIsoTimestamp(rawPickup);
-        orderPayload.preorder_pickup_at = parsedIso || rawPickup;
+        if (parsedIso) {
+          orderPayload.preorder_pickup_at = parsedIso;
+        }
       }
       const cName = order.customer_name || order.customerName;
       if (cName) orderPayload.customer_name = cName;
@@ -630,9 +685,10 @@ export async function syncOrderToSupabase(
             const unitPrice = Number(it.unit_price || it.selling_price || it.product?.selling_price || 0);
             const qty = Number(it.quantity || 1);
             const unitCost = Number(it.unit_cost ?? it.unitCost ?? it.cost ?? it.product?.base_cost_price ?? 0);
+            const pId = it.product_id || it.productId || it.product?.id || null;
             return {
               order_id: insertedOrder.id,
-              product_id: it.product_id || it.productId || it.product?.id || null,
+              product_id: isValidUUID(pId) ? pId : null,
               product_name_snapshot: it.product_name_snapshot || it.name || it.product?.name || 'Bánh',
               quantity: qty,
               unit_price: unitPrice,
@@ -690,6 +746,7 @@ export interface ParsedPreorderNotes {
   cake_size?: string;
   flavor?: string;
   cream?: string;
+  filling?: string;
   packaging?: string;
   addons?: string[];
   customer_name?: string;
@@ -793,6 +850,13 @@ export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
     if (cMatch && cMatch[1]) cream = cMatch[1].trim();
   }
 
+  // Nhân bánh
+  let filling: string | undefined = undefined;
+  const fillMatch = notes.match(/Nhân:\s*([^|]+)/i);
+  if (fillMatch && fillMatch[1]) {
+    filling = fillMatch[1].trim();
+  }
+
   // Hộp đóng gói
   let packaging: string | undefined = undefined;
   const packMatch = notes.match(/Hộp:\s*([^|]+)/i);
@@ -828,6 +892,7 @@ export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
     cake_size: cakeSize,
     flavor,
     cream,
+    filling,
     packaging,
     addons,
     customer_name: customerName,

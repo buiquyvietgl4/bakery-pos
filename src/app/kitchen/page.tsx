@@ -7,6 +7,7 @@ import {
   broadcastClearDemoOrders, 
   subscribeCrossDeviceSync, 
   syncOrderToSupabase,
+  reconnectSyncChannel,
   parsePreorderFromNotes, 
   formatPickupDateTime,
   cleanDisplayNotes
@@ -73,6 +74,7 @@ interface KDSOrder {
   cake_message?: string;
   flavor?: string;
   cream?: string;
+  filling?: string;
   packaging?: string;
   addons?: string[];
   selected_addons?: any[];
@@ -135,6 +137,7 @@ export default function KitchenPage() {
       createdAt: order.created_at,
       flavor: cakeInfo.flavor,
       cream: cakeInfo.cream,
+      filling: cakeInfo.filling,
       packaging: cakeInfo.packaging,
       addons: cakeInfo.addons,
     });
@@ -824,6 +827,18 @@ export default function KitchenPage() {
               if (so.order_number) sbMap.set(so.order_number, so);
             });
 
+            // 🔄 TỰ ĐỘNG ĐẨY BÙ (AUTO-RECONCILE): Nếu máy này có đơn active trong localOrders mà Supabase chưa có, tự động đẩy bù lên Supabase!
+            const unsyncedActiveOrders = localOrders.filter((lo) =>
+              lo && lo.order_number &&
+              (lo.status === 'pending' || lo.status === 'preparing' || lo.status === 'ready') &&
+              !sbMap.has(lo.order_number)
+            );
+            if (unsyncedActiveOrders.length > 0) {
+              unsyncedActiveOrders.forEach((lo) => {
+                syncOrderToSupabase(lo, lo.status as any).catch((err) => console.warn('Lỗi auto-reconcile:', err));
+              });
+            }
+
             // Gộp đơn: Trạng thái từ Supabase luôn được ưu tiên cao nhất
             // Nếu một đơn đã được điện thoại bấm sang "preparing" hoặc "completed" trên Supabase,
             // máy tính sẽ tự động cập nhật theo trạng thái mới nhất đó!
@@ -860,6 +875,7 @@ export default function KitchenPage() {
                 reference_image_url: so.reference_image_url || existing?.reference_image_url || sbNotes.reference_image_url || '',
                 flavor: so.flavor || existing?.flavor || sbNotes.flavor || '',
                 cream: so.cream || existing?.cream || sbNotes.cream || '',
+                filling: so.filling || existing?.filling || sbNotes.filling || '',
                 packaging: so.packaging || existing?.packaging || sbNotes.packaging || '',
                 addons: Array.isArray(so.addons) && so.addons.length > 0 ? so.addons : (Array.isArray(existing?.addons) && existing.addons.length > 0 ? existing.addons : (sbNotes.addons || [])),
                 selected_addons: so.selected_addons || existing?.selected_addons || [],
@@ -957,8 +973,18 @@ export default function KitchenPage() {
       }
     };
 
+    // Tự động kết nối lại WebSocket Realtime và tải đơn ngay khi bật lại màn hình điện thoại hoặc vào lại mạng
+    const handleWakeOrOnline = () => {
+      if (document.visibilityState === 'visible' || (typeof navigator !== 'undefined' && navigator.onLine)) {
+        reconnectSyncChannel();
+        loadOrders();
+      }
+    };
+
     window.addEventListener('bakery_orders_updated', handleLocalUpdate);
     window.addEventListener('storage', handleStorageChange);
+    document.addEventListener('visibilitychange', handleWakeOrOnline);
+    window.addEventListener('online', handleWakeOrOnline);
 
     // 2. Polling định kỳ mỗi 3 giây làm chốt an toàn
     const pollTimer = setInterval(loadOrders, 3000);
@@ -1256,6 +1282,8 @@ export default function KitchenPage() {
       window.removeEventListener('bakery_orders_updated', handleLocalUpdate);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('bakery_recipes_updated', handleRecipesUpdate);
+      document.removeEventListener('visibilitychange', handleWakeOrOnline);
+      window.removeEventListener('online', handleWakeOrOnline);
       clearInterval(pollTimer);
       unsubscribeSync();
     };
@@ -1534,13 +1562,15 @@ export default function KitchenPage() {
       if (cmMatch) size = cmMatch[1].toUpperCase();
     }
 
-    // Trích xuất Cốt, Kem, Hộp
+    // Trích xuất Cốt, Kem, Nhân, Hộp
     const rawFlavor = (order as any).flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
     const rawCream = (order as any).cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
+    const rawFilling = (order as any).filling || fromN.filling || fromItemN.filling || (mainItem as any)?.filling || '';
     const rawPackaging = (order as any).packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
 
     const flavor = rawFlavor || (isPreorder ? 'Cốt Vani' : '');
     const cream = rawCream || (isPreorder ? 'Kem tươi' : '');
+    const filling = rawFilling || '';
     const packaging = rawPackaging || (isPreorder ? 'Hộp giấy tiêu chuẩn' : '');
 
     // Trích xuất Phụ kiện đặt thêm (Addons)
@@ -1588,6 +1618,7 @@ export default function KitchenPage() {
       size: size || '',
       flavor,
       cream,
+      filling,
       packaging,
       addons: allAddons,
       allAddons,
@@ -2228,8 +2259,8 @@ export default function KitchenPage() {
                               </div>
                             )}
 
-                            {/* Cốt & Kem & Hộp */}
-                            {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                            {/* Cốt & Kem & Nhân & Hộp */}
+                            {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
                               <div className="pt-1.5 border-t border-pink-900/30 text-[11px] space-y-0.5">
                                 <div className="flex items-center gap-1 text-zinc-300 truncate">
                                   <span className="text-pink-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
@@ -2237,6 +2268,12 @@ export default function KitchenPage() {
                                     {cakeInfo.flavor || 'Cốt Vani'} • {cakeInfo.cream || 'Kem tươi'}
                                   </span>
                                 </div>
+                                {cakeInfo.filling && (
+                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                    <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
+                                    <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-1 text-zinc-300 truncate">
                                   <span className="text-blue-400 font-bold shrink-0">📦 Hộp:</span>
                                   <span className="text-blue-200 font-semibold truncate">{cakeInfo.packaging || 'Hộp giấy tiêu chuẩn'}</span>
@@ -2433,8 +2470,8 @@ export default function KitchenPage() {
                                 </div>
                               )}
 
-                              {/* Cốt & Kem & Hộp */}
-                              {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                              {/* Cốt & Kem & Nhân & Hộp */}
+                              {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
                                 <div className="pt-1.5 border-t border-blue-900/30 text-[11px] space-y-0.5">
                                   <div className="flex items-center gap-1 text-zinc-300 truncate">
                                     <span className="text-blue-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
@@ -2442,6 +2479,12 @@ export default function KitchenPage() {
                                       {cakeInfo.flavor || 'Cốt Vani'} • {cakeInfo.cream || 'Kem tươi'}
                                     </span>
                                   </div>
+                                  {cakeInfo.filling && (
+                                    <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                      <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
+                                      <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                                    </div>
+                                  )}
                                   <div className="flex items-center gap-1 text-zinc-300 truncate">
                                     <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
                                     <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging || 'Hộp giấy tiêu chuẩn'}</span>
@@ -2724,8 +2767,8 @@ export default function KitchenPage() {
                         </div>
                       )}
 
-                      {/* Cốt & Kem & Hộp */}
-                      {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                      {/* Cốt & Kem & Nhân & Hộp */}
+                      {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
                         <div className="pt-1.5 border-t border-emerald-900/30 text-[11px] space-y-0.5">
                           <div className="flex items-center gap-1 text-zinc-300 truncate">
                             <span className="text-emerald-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
@@ -2733,6 +2776,12 @@ export default function KitchenPage() {
                               {cakeInfo.flavor || 'Cốt Vani'} • {cakeInfo.cream || 'Kem tươi'}
                             </span>
                           </div>
+                          {cakeInfo.filling && (
+                            <div className="flex items-center gap-1 text-zinc-300 truncate">
+                              <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
+                              <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                            </div>
+                          )}
                           <div className="flex items-center gap-1 text-zinc-300 truncate">
                             <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
                             <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging || 'Hộp giấy tiêu chuẩn'}</span>

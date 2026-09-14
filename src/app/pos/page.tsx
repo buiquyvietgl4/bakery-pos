@@ -101,6 +101,8 @@ interface PreorderFormData {
   creamId?: string;
   packaging?: string;
   packagingId?: string;
+  filling?: string;
+  fillingId?: string;
   selectedAddonIds?: string[];
   customAddonCost?: number;
   cakeMessage: string;
@@ -321,6 +323,8 @@ export default function POSPage() {
     packagingId: 'pack-paper',
     selectedAddonIds: [],
     customAddonCost: 0,
+    filling: 'Không nhân (Chỉ phủ kem tươi)',
+    fillingId: 'filling-none',
     cakeMessage: 'Chúc Mừng Sinh Nhật',
     notes: 'Ít ngọt, trang trí tone màu ấm, kèm nến số',
     totalPrice: 365000,
@@ -1087,6 +1091,8 @@ export default function POSPage() {
         sizeName: preorderForm.size,
         flavorId: preorderForm.flavorId,
         flavorName: preorderForm.flavor,
+        fillingId: preorderForm.fillingId,
+        fillingName: preorderForm.filling,
         creamId: preorderForm.creamId,
         creamName: preorderForm.cream,
         packagingId: preorderForm.packagingId,
@@ -1102,6 +1108,8 @@ export default function POSPage() {
     preorderForm.size,
     preorderForm.flavorId,
     preorderForm.flavor,
+    preorderForm.fillingId,
+    preorderForm.filling,
     preorderForm.creamId,
     preorderForm.cream,
     preorderForm.packagingId,
@@ -1415,7 +1423,8 @@ export default function POSPage() {
       const deliveryMethodStr = isShip ? `Giao tận nơi (Ship bánh)` : `Khách nhận tại tiệm`;
       const sampleImgTag = preorderForm.referenceImageUrl ? ` | Ảnh mẫu: Có [MẪU_ẢNH:${preorderForm.referenceImageUrl}]` : '';
       const costDetailTag = ` | Vốn dự toán: ${cakeCostResult.totalCost.toLocaleString('vi-VN')}đ (${cakeCostResult.summaryText || preorderForm.size})`;
-      const fullNotes = `[ĐẶT BÁNH KEM] Khách: ${preorderForm.customerName} (${preorderForm.customerPhone}) | Hình thức: ${deliveryMethodStr}${isShip ? ` | Đ/C: ${preorderForm.shippingAddress}` : ''} | Hẹn: ${pickupDateTimeStr} | Bánh: ${preorderForm.cakeName} (${preorderForm.size}) | Cốt & Kem: ${preorderForm.flavor || 'Vani'} - ${preorderForm.cream || 'Kem tươi'} | Hộp: ${preorderForm.packaging || 'Hộp giấy'}${cakeCostResult.selectedAddons.length > 0 ? ' | Decor: ' + cakeCostResult.selectedAddons.map(a => a.name).join(', ') : ''} | Chữ: "${preorderForm.cakeMessage}" | Yêu cầu: ${preorderForm.notes}${sampleImgTag}${costDetailTag}${discountAmount > 0 ? ` | Giảm giá: -${discountAmount.toLocaleString('vi-VN')}đ` : ''}${shippingFee > 0 ? ` | Phí ship: +${shippingFee.toLocaleString('vi-VN')}đ` : ''} | GIÁ CUỐI: ${finalTotal.toLocaleString('vi-VN')}đ | Đã cọc: ${depositAmount.toLocaleString('vi-VN')}đ | CÒN THU KHI GIAO: ${remainingAmount.toLocaleString('vi-VN')}đ`;
+      const fillingTag = preorderForm.filling && preorderForm.fillingId !== 'filling-none' ? ` | Nhân: ${preorderForm.filling}` : '';
+      const fullNotes = `[ĐẶT BÁNH KEM] Khách: ${preorderForm.customerName} (${preorderForm.customerPhone}) | Hình thức: ${deliveryMethodStr}${isShip ? ` | Đ/C: ${preorderForm.shippingAddress}` : ''} | Hẹn: ${pickupDateTimeStr} | Bánh: ${preorderForm.cakeName} (${preorderForm.size}) | Cốt & Kem: ${preorderForm.flavor || 'Vani'} - ${preorderForm.cream || 'Kem tươi'}${fillingTag} | Hộp: ${preorderForm.packaging || 'Hộp giấy'}${cakeCostResult.selectedAddons.length > 0 ? ' | Decor: ' + cakeCostResult.selectedAddons.map(a => a.name).join(', ') : ''} | Chữ: "${preorderForm.cakeMessage}" | Yêu cầu: ${preorderForm.notes}${sampleImgTag}${costDetailTag}${discountAmount > 0 ? ` | Giảm giá: -${discountAmount.toLocaleString('vi-VN')}đ` : ''}${shippingFee > 0 ? ` | Phí ship: +${shippingFee.toLocaleString('vi-VN')}đ` : ''} | GIÁ CUỐI: ${finalTotal.toLocaleString('vi-VN')}đ | Đã cọc: ${depositAmount.toLocaleString('vi-VN')}đ | CÒN THU KHI GIAO: ${remainingAmount.toLocaleString('vi-VN')}đ`;
 
       const pickupIso = (() => {
         try {
@@ -1423,6 +1432,16 @@ export default function POSPage() {
           if (!isNaN(d.getTime())) return d.toISOString();
         } catch {}
         return pickupDateTimeStr;
+      })();
+
+      // CRITICAL: Nếu pickupIso là chuỗi tiếng Việt (không phải ISO), gán null để tránh lỗi PostgreSQL 22007
+      const pickupIsoSafe = (() => {
+        if (!pickupIso) return null;
+        try {
+          const d = new Date(pickupIso);
+          if (!isNaN(d.getTime())) return pickupIso;
+        } catch {}
+        return null;
       })();
 
       // 1. Tạo đơn đặt bánh đồng bộ đầy đủ thông tin cho cả Bếp KDS và Lịch Sử Hóa Đơn
@@ -1434,7 +1453,7 @@ export default function POSPage() {
         order_type: 'preorder' as const,
         status: preorderForm.isReadyStock ? ('ready' as const) : ('pending' as const),
         created_at: now.toISOString(),
-        preorder_pickup_at: pickupIso,
+        preorder_pickup_at: pickupIsoSafe,
         pickupDateTime: pickupDateTimeStr,
         pickupDateTimeStr,
         customer_name: preorderForm.customerName,
@@ -1453,6 +1472,7 @@ export default function POSPage() {
         size: preorderForm.size,
         flavor: preorderForm.flavor,
         cream: preorderForm.cream,
+        filling: preorderForm.filling,
         packaging: preorderForm.packaging,
         addons: cakeCostResult.selectedAddons.map((a) => a.name),
         selected_addons: cakeCostResult.selectedAddons,
@@ -1492,9 +1512,10 @@ export default function POSPage() {
             line_cost: cakeCostResult.totalCost,
             flavor: preorderForm.flavor,
             cream: preorderForm.cream,
+            filling: preorderForm.filling,
             packaging: preorderForm.packaging,
             addons: cakeCostResult.selectedAddons.map((a) => a.name),
-            notes: `Chữ: "${preorderForm.cakeMessage}" | Cốt: ${preorderForm.flavor || 'Vani'} | Kem: ${preorderForm.cream || 'Kem tươi'} | Hộp: ${preorderForm.packaging || 'Hộp giấy'}${cakeCostResult.selectedAddons.length > 0 ? ' | Phụ kiện: ' + cakeCostResult.selectedAddons.map(a => a.name).join(', ') : ''}${preorderForm.notes ? ` | ${preorderForm.notes}` : ''}`,
+            notes: `Chữ: "${preorderForm.cakeMessage}" | Cốt: ${preorderForm.flavor || 'Vani'} | Kem: ${preorderForm.cream || 'Kem tươi'}${preorderForm.filling && preorderForm.fillingId !== 'filling-none' ? ` | Nhân: ${preorderForm.filling}` : ''} | Hộp: ${preorderForm.packaging || 'Hộp giấy'}${cakeCostResult.selectedAddons.length > 0 ? ' | Phụ kiện: ' + cakeCostResult.selectedAddons.map(a => a.name).join(', ') : ''}${preorderForm.notes ? ` | ${preorderForm.notes}` : ''}`,
           },
           ...(shippingFee > 0 ? [
             {
@@ -1539,7 +1560,7 @@ export default function POSPage() {
 
           window.dispatchEvent(new Event('bakery_orders_updated'));
           soundManager.playNewOrderChime();
-          const pickupFormatted = formatPickupDateTime(unifiedPreorder.preorder_pickup_at);
+          const pickupFormatted = formatPickupDateTime(pickupIsoSafe || pickupDateTimeStr);
 
           // Bắn Web Push PWA trực tiếp cho thợ bánh
           triggerServerPush({
@@ -1648,6 +1669,8 @@ export default function POSPage() {
         packagingId: 'pack-paper',
         selectedAddonIds: [],
         customAddonCost: 0,
+        filling: 'Không nhân (Chỉ phủ kem tươi)',
+        fillingId: 'filling-none',
         cakeMessage: 'Chúc Mừng Sinh Nhật',
         notes: 'Ít ngọt, trang trí hoa kem',
         totalPrice: 365000,
@@ -3044,6 +3067,40 @@ export default function POSPage() {
                     </select>
                   </div>
                 </div>
+
+                {/* CHỌN NHÂN BÁNH SINH NHẬT */}
+                {cakeCostingConfig.fillings && cakeCostingConfig.fillings.length > 0 && (
+                  <div className="p-2.5 bg-rose-50/50 rounded-xl border border-rose-200">
+                    <label className="font-bold text-rose-800 text-[11px] flex items-center gap-1 mb-1.5">
+                      🍓 Nhân bánh sinh nhật:
+                    </label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                      {cakeCostingConfig.fillings.map((fl) => {
+                        const isSelected = preorderForm.fillingId === fl.id || (!preorderForm.fillingId && fl.isDefault);
+                        return (
+                          <button
+                            key={fl.id}
+                            type="button"
+                            onClick={() => setPreorderForm(prev => ({ ...prev, fillingId: fl.id, filling: fl.name }))}
+                            className={`p-2 rounded-xl text-left border text-xs font-bold transition cursor-pointer active:scale-95 ${
+                              isSelected
+                                ? 'bg-rose-600 text-white border-rose-600 shadow-xs ring-1 ring-rose-300'
+                                : 'bg-white text-zinc-700 border-zinc-200 hover:border-rose-300 hover:bg-rose-50/40'
+                            }`}
+                          >
+                            <div className="flex items-center gap-1 truncate">
+                              {fl.icon && <span>{fl.icon}</span>}
+                              <span className="truncate">{fl.name}</span>
+                            </div>
+                            <div className={`text-[10px] font-normal mt-0.5 ${isSelected ? 'text-rose-100' : 'text-zinc-500'}`}>
+                              {fl.extraPrice > 0 ? `Phụ thu: +${fl.extraPrice.toLocaleString('vi-VN')}₫` : 'Mặc định (Đã gồm)'}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 {/* HỘP BÁNH & BAO BÌ */}
                 <div>

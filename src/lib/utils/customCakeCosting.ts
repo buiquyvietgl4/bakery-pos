@@ -6,6 +6,7 @@ import {
   DEFAULT_CUSTOM_CAKE_CONFIG,
   CakeSizeOption,
   CakeFlavorOption,
+  CakeFillingOption,
   CakeCreamOption,
   CakePackagingOption,
   CakeAddonOption,
@@ -32,6 +33,7 @@ export function getCakeCostingConfig(): CustomCakeCostingConfig {
           ...parsed,
           sizes: parsed.sizes.length > 0 ? parsed.sizes : DEFAULT_CUSTOM_CAKE_CONFIG.sizes,
           flavors: parsed.flavors?.length > 0 ? parsed.flavors : DEFAULT_CUSTOM_CAKE_CONFIG.flavors,
+          fillings: parsed.fillings?.length > 0 ? parsed.fillings : DEFAULT_CUSTOM_CAKE_CONFIG.fillings,
           creams: parsed.creams?.length > 0 ? parsed.creams : DEFAULT_CUSTOM_CAKE_CONFIG.creams,
           packagings: parsed.packagings?.length > 0 ? parsed.packagings : DEFAULT_CUSTOM_CAKE_CONFIG.packagings,
           addons: parsed.addons?.length > 0 ? parsed.addons : DEFAULT_CUSTOM_CAKE_CONFIG.addons,
@@ -123,11 +125,13 @@ export async function fetchCakeCostingFromDb(): Promise<CustomCakeCostingConfig 
 export interface CakeCostCalculationResult {
   size: CakeSizeOption | null;
   flavor: CakeFlavorOption | null;
+  filling: CakeFillingOption | null;
   cream: CakeCreamOption | null;
   packaging: CakePackagingOption | null;
   selectedAddons: CakeAddonOption[];
   baseCost: number;
   flavorCost: number;
+  fillingCost: number;
   creamCost: number;
   packagingCost: number;
   addonCost: number;
@@ -149,6 +153,8 @@ export function calculateCustomCakeCost(
     sizeName?: string;
     flavorId?: string;
     flavorName?: string;
+    fillingId?: string;
+    fillingName?: string;
     creamId?: string;
     creamName?: string;
     packagingId?: string;
@@ -179,7 +185,16 @@ export function calculateCustomCakeCost(
     flavor = cfg.flavors[0] || null;
   }
 
-  // 3. Tìm Loại kem
+  // 3. Tìm Nhân bánh
+  let filling = cfg.fillings?.find((f) => f.id === selection.fillingId) || null;
+  if (!filling && selection.fillingName) {
+    filling = cfg.fillings?.find((f) => selection.fillingName?.toLowerCase().includes(f.name.toLowerCase())) || null;
+  }
+  if (!filling) {
+    filling = cfg.fillings?.find((f) => f.isDefault) || cfg.fillings?.[0] || null;
+  }
+
+  // 4. Tìm Loại kem
   let cream = cfg.creams.find((c) => c.id === selection.creamId) || null;
   if (!cream && selection.creamName) {
     cream = cfg.creams.find((c) => selection.creamName?.toLowerCase().includes(c.name.toLowerCase())) || null;
@@ -188,7 +203,7 @@ export function calculateCustomCakeCost(
     cream = cfg.creams[0] || null;
   }
 
-  // 4. Tìm Hộp bao bì
+  // 5. Tìm Hộp bao bì
   let packaging = cfg.packagings.find((p) => p.id === selection.packagingId) || null;
   if (!packaging && selection.packagingName) {
     packaging = cfg.packagings.find((p) => selection.packagingName?.toLowerCase().includes(p.name.toLowerCase())) || null;
@@ -197,7 +212,7 @@ export function calculateCustomCakeCost(
     packaging = cfg.packagings.find((p) => p.isDefault) || cfg.packagings[0] || null;
   }
 
-  // 5. Tìm Phụ kiện
+  // 6. Tìm Phụ kiện
   const selectedAddons: CakeAddonOption[] = [];
   if (Array.isArray(selection.addonIds)) {
     selection.addonIds.forEach((id) => {
@@ -208,23 +223,25 @@ export function calculateCustomCakeCost(
 
   const baseCost = size ? size.baseCost : 90000;
   const flavorCost = flavor ? flavor.extraCost : 0;
+  const fillingCost = filling ? filling.extraCost : 0;
   const creamCost = cream ? cream.extraCost : 0;
   const packagingCost = packaging ? packaging.extraCost : 0;
   const addonCost = selectedAddons.reduce((sum, item) => sum + item.cost, 0);
   const customAddonCost = Number(selection.customAddonCost || 0);
 
-  const totalCost = baseCost + flavorCost + creamCost + packagingCost + addonCost + customAddonCost;
+  const totalCost = baseCost + flavorCost + fillingCost + creamCost + packagingCost + addonCost + customAddonCost;
 
   // Tính giá bán đề xuất:
   // Base price từ size + extra price các thành phần
   const baseSuggestedPrice = size ? size.suggestedPrice : 365000;
   const flavorPrice = flavor ? flavor.extraPrice : 0;
+  const fillingPrice = filling ? filling.extraPrice : 0;
   const creamPrice = cream ? cream.extraPrice : 0;
   const packagingPrice = packaging ? packaging.extraPrice : 0;
   const addonPrice = selectedAddons.reduce((sum, item) => sum + item.price, 0);
 
   // Suggested Price có thể là tổng các thành phần bán, hoặc bảo đảm food cost <= 33%
-  const sumComponentsPrice = baseSuggestedPrice + flavorPrice + creamPrice + packagingPrice + addonPrice;
+  const sumComponentsPrice = baseSuggestedPrice + flavorPrice + fillingPrice + creamPrice + packagingPrice + addonPrice;
   const targetMultiplier = cfg.targetFoodCostPct > 0 ? 100 / cfg.targetFoodCostPct : 3;
   const targetPrice = Math.round((totalCost * targetMultiplier) / 5000) * 5000; // Làm tròn 5.000đ
 
@@ -245,6 +262,7 @@ export function calculateCustomCakeCost(
   const summaryText = [
     size ? size.name : '',
     flavor && flavor.extraCost > 0 ? flavor.name : '',
+    filling && filling.extraCost > 0 ? filling.name : '',
     cream && cream.extraCost > 0 ? cream.name : '',
     packaging && packaging.extraCost > 0 ? packaging.name : '',
     addonNames ? `Phụ kiện: ${addonNames}` : '',
@@ -255,11 +273,13 @@ export function calculateCustomCakeCost(
   return {
     size,
     flavor,
+    filling,
     cream,
     packaging,
     selectedAddons,
     baseCost,
     flavorCost,
+    fillingCost,
     creamCost,
     packagingCost,
     addonCost,

@@ -21,6 +21,7 @@ export interface CakeStickerData {
   notes?: string;
   flavor?: string;
   cream?: string;
+  filling?: string;
   packaging?: string;
   addons?: string[];
 }
@@ -495,6 +496,12 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
                         : (branding.address ? `Tại ${branding.address}` : 'Tại cửa hàng')}
                     </span>
                   </div>
+                  {data.filling && (
+                    <div className="sticker-info-line flex items-center gap-1 font-bold text-pink-950 truncate">
+                      <span className="sticker-icon shrink-0 text-[8px]">🍓</span>
+                      <span className="truncate"><b>Nhân:</b> {data.filling}</span>
+                    </div>
+                  )}
                   {data.addons && data.addons.length > 0 && (
                     <div className="sticker-info-line flex items-center gap-1 font-bold text-amber-950 truncate">
                       <span className="sticker-icon shrink-0 text-[8px]">✨</span>
