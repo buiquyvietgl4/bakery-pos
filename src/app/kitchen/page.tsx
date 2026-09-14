@@ -41,6 +41,7 @@ import { DeliveryPaymentModal } from '@/components/kitchen/DeliveryPaymentModal'
 import { addSpoilageLog } from '@/lib/utils/spoilageManager';
 import { parseRecipeItem, formatScaledQty, normalizeRecipe, fetchRecipesFromDb } from '@/lib/utils/recipeCalculator';
 import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
+import { cleanCakeNameAndSize, extractAccessoriesFromText, getAddonIcon } from '@/lib/utils/customCakeCosting';
 
 interface OrderItem {
   id: string;
@@ -68,7 +69,14 @@ interface KDSOrder {
   customer_name?: string;
   customer_phone?: string;
   cake_name?: string;
+  cake_size?: string;
   cake_message?: string;
+  flavor?: string;
+  cream?: string;
+  packaging?: string;
+  addons?: string[];
+  selected_addons?: any[];
+  cost_breakdown?: any;
   custom_cake?: any;
   total_amount?: number;
   deposit_amount?: number;
@@ -1467,50 +1475,81 @@ export default function KitchenPage() {
     const mainItem = order.items?.[0];
     const fromItemN = mainItem?.notes ? parsePreorderFromNotes(mainItem.notes) : {};
     const rawFullName = mainItem?.product_name_snapshot || order.cake_name || fromN.cake_name || 'Bánh Kem Theo Yêu Cầu';
+    const isPreorder = order.order_type === 'preorder' || order.order_number?.startsWith('BK-PRE') || !!order.preorder_pickup_at;
 
-    let name = rawFullName;
-    let size = fromN.cake_size || (order as any).cake_size || (order as any).size || '';
-    const sizeMatch = rawFullName.match(/\(([^)]+)\)/);
-    if (sizeMatch) {
-      if (!size) size = sizeMatch[1];
-      name = rawFullName.replace(/\s*\([^)]+\)/g, '').trim();
-    } else if (!size) {
+    const parsedCake = cleanCakeNameAndSize(rawFullName, fromN.cake_size || (order as any).cake_size || (order as any).size || '');
+    let name = parsedCake.name;
+    let size = parsedCake.size;
+    if (!size) {
       const cmMatch = rawFullName.match(/(\d+\s*cm)/i);
       if (cmMatch) size = cmMatch[1].toUpperCase();
     }
 
     // Trích xuất Cốt, Kem, Hộp
-    const flavor = (order as any).flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
-    const cream = (order as any).cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
-    const packaging = (order as any).packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
+    const rawFlavor = (order as any).flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
+    const rawCream = (order as any).cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
+    const rawPackaging = (order as any).packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
+
+    const flavor = rawFlavor || (isPreorder ? 'Cốt Vani' : '');
+    const cream = rawCream || (isPreorder ? 'Kem tươi' : '');
+    const packaging = rawPackaging || (isPreorder ? 'Hộp giấy tiêu chuẩn' : '');
 
     // Trích xuất Phụ kiện đặt thêm (Addons)
-    let addons: string[] = [];
+    let initialAddons: string[] = [];
     if (Array.isArray((order as any).addons) && (order as any).addons.length > 0) {
-      addons = (order as any).addons;
+      initialAddons = (order as any).addons;
     } else if (Array.isArray((order as any).selected_addons)) {
-      addons = (order as any).selected_addons.map((a: any) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
+      initialAddons = (order as any).selected_addons.map((a: any) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
     } else if (Array.isArray((order as any).cost_breakdown?.selectedAddons)) {
-      addons = (order as any).cost_breakdown.selectedAddons.map((a: any) => a.name).filter(Boolean);
+      initialAddons = (order as any).cost_breakdown.selectedAddons.map((a: any) => a.name).filter(Boolean);
     } else if (Array.isArray((mainItem as any)?.addons)) {
-      addons = (mainItem as any).addons;
+      initialAddons = (mainItem as any).addons;
     } else if (Array.isArray(fromN.addons) && fromN.addons.length > 0) {
-      addons = fromN.addons;
+      initialAddons = fromN.addons;
     } else if (Array.isArray(fromItemN.addons) && fromItemN.addons.length > 0) {
-      addons = fromItemN.addons;
+      initialAddons = fromItemN.addons;
     }
+
+    // Phụ kiện đính kèm thêm trong danh sách món (order.items từ index 1 trở đi)
+    const extraItems: Array<{ name: string; quantity: number }> = [];
+    if (Array.isArray(order.items) && order.items.length > 1) {
+      order.items.slice(1).forEach((item: any) => {
+        const itName = item.product_name_snapshot || item.product?.name || item.name || '';
+        if (itName && !itName.toLowerCase().includes('phí giao') && !itName.toLowerCase().includes('ship bánh')) {
+          extraItems.push({
+            name: itName,
+            quantity: item.quantity || 1,
+          });
+        }
+      });
+    }
+
+    const specialRequest = fromN.special_request || cleanDisplayNotes(order.notes) || '';
+    const noteAccessories = extractAccessoriesFromText(`${order.notes || ''} ${specialRequest} ${mainItem?.notes || ''}`);
+
+    const allAddons = Array.from(
+      new Set([
+        ...initialAddons,
+        ...extraItems.map((it) => (it.quantity > 1 ? `${it.name} (x${it.quantity})` : it.name)),
+        ...noteAccessories,
+      ])
+    );
 
     return {
       fullName: rawFullName,
       name: name || rawFullName,
-      size: size || fromN.cake_size || '',
+      size: size || '',
       flavor,
       cream,
       packaging,
-      addons,
+      addons: allAddons,
+      allAddons,
+      noteAccessories,
+      extraItems,
+      isPreorder,
       quantity: mainItem?.quantity || 1,
       cakeMessage: order.cake_message || fromN.cake_message || '',
-      specialRequest: fromN.special_request || cleanDisplayNotes(order.notes) || '',
+      specialRequest,
       referenceImageUrl: (order as any).reference_image_url || fromN.reference_image_url || '',
     };
   };
@@ -2144,40 +2183,46 @@ export default function KitchenPage() {
                             )}
 
                             {/* Cốt & Kem & Hộp */}
-                            {(cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                            {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
                               <div className="pt-1.5 border-t border-pink-900/30 text-[11px] space-y-0.5">
-                                {(cakeInfo.flavor || cakeInfo.cream) && (
-                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                    <span className="text-pink-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                                    <span className="text-zinc-100 font-semibold truncate">
-                                      {cakeInfo.flavor || 'Vani'} • {cakeInfo.cream || 'Kem tươi'}
-                                    </span>
-                                  </div>
-                                )}
-                                {cakeInfo.packaging && (
-                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                    <span className="text-blue-400 font-bold shrink-0">📦 Hộp:</span>
-                                    <span className="text-blue-200 font-semibold truncate">{cakeInfo.packaging}</span>
-                                  </div>
-                                )}
+                                <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                  <span className="text-pink-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                                  <span className="text-zinc-100 font-semibold truncate">
+                                    {cakeInfo.flavor || 'Cốt Vani'} • {cakeInfo.cream || 'Kem tươi'}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                  <span className="text-blue-400 font-bold shrink-0">📦 Hộp:</span>
+                                  <span className="text-blue-200 font-semibold truncate">{cakeInfo.packaging || 'Hộp giấy tiêu chuẩn'}</span>
+                                </div>
                               </div>
                             )}
                           </div>
 
+                          {/* Cảnh báo ghi chú phụ kiện từ khách */}
+                          {cakeInfo.noteAccessories && cakeInfo.noteAccessories.length > 0 && (
+                            <div className="px-2.5 py-1.5 rounded-xl bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[10.5px] font-bold flex items-center gap-1.5">
+                              <span className="text-sm shrink-0">🕯️</span>
+                              <span className="truncate">Ghi chú: {cakeInfo.noteAccessories.join(', ')}</span>
+                            </div>
+                          )}
+
                           {/* Phụ kiện đặt thêm (Addons) */}
-                          {cakeInfo.addons && cakeInfo.addons.length > 0 && (
+                          {cakeInfo.allAddons && cakeInfo.allAddons.length > 0 && (
                             <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-600/60 space-y-1.5">
-                              <div className="flex items-center gap-1.5 text-[11px] font-black text-amber-300">
-                                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                                <span>PHỤ KIỆN ĐẶT THÊM ({cakeInfo.addons.length}):</span>
+                              <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
+                                <span className="flex items-center gap-1.5">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>PHỤ KIỆN ĐẶT THÊM ({cakeInfo.allAddons.length}):</span>
+                                </span>
                               </div>
                               <div className="flex flex-wrap gap-1">
-                                {cakeInfo.addons.map((addon, aIdx) => (
+                                {cakeInfo.allAddons.map((addon, aIdx) => (
                                   <span
                                     key={aIdx}
                                     className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1"
                                   >
-                                    <span>✨</span>
+                                    <span>{getAddonIcon(addon)}</span>
                                     <span>{addon}</span>
                                   </span>
                                 ))}
@@ -2351,40 +2396,46 @@ export default function KitchenPage() {
                               )}
 
                               {/* Cốt & Kem & Hộp */}
-                              {(cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                              {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
                                 <div className="pt-1.5 border-t border-blue-900/30 text-[11px] space-y-0.5">
-                                  {(cakeInfo.flavor || cakeInfo.cream) && (
-                                    <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                      <span className="text-blue-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                                      <span className="text-zinc-100 font-semibold truncate">
-                                        {cakeInfo.flavor || 'Vani'} • {cakeInfo.cream || 'Kem tươi'}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {cakeInfo.packaging && (
-                                    <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                      <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
-                                      <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging}</span>
-                                    </div>
-                                  )}
+                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                    <span className="text-blue-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                                    <span className="text-zinc-100 font-semibold truncate">
+                                      {cakeInfo.flavor || 'Cốt Vani'} • {cakeInfo.cream || 'Kem tươi'}
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                    <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
+                                    <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging || 'Hộp giấy tiêu chuẩn'}</span>
+                                  </div>
                                 </div>
                               )}
                             </div>
 
+                            {/* Cảnh báo ghi chú phụ kiện từ khách */}
+                            {cakeInfo.noteAccessories && cakeInfo.noteAccessories.length > 0 && (
+                              <div className="px-2.5 py-1.5 rounded-xl bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[10.5px] font-bold flex items-center gap-1.5">
+                                <span className="text-sm shrink-0">🕯️</span>
+                                <span className="truncate">Ghi chú: {cakeInfo.noteAccessories.join(', ')}</span>
+                              </div>
+                            )}
+
                             {/* Phụ kiện đặt thêm (Addons) */}
-                            {cakeInfo.addons && cakeInfo.addons.length > 0 && (
+                            {cakeInfo.allAddons && cakeInfo.allAddons.length > 0 && (
                               <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-600/60 space-y-1.5">
-                                <div className="flex items-center gap-1.5 text-[11px] font-black text-amber-300">
-                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                                  <span>PHỤ KIỆN ĐẶT THÊM ({cakeInfo.addons.length}):</span>
+                                <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
+                                  <span className="flex items-center gap-1.5">
+                                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>PHỤ KIỆN ĐẶT THÊM ({cakeInfo.allAddons.length}):</span>
+                                  </span>
                                 </div>
                                 <div className="flex flex-wrap gap-1">
-                                  {cakeInfo.addons.map((addon, aIdx) => (
+                                  {cakeInfo.allAddons.map((addon, aIdx) => (
                                     <span
                                       key={aIdx}
                                       className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1"
                                     >
-                                      <span>✨</span>
+                                      <span>{getAddonIcon(addon)}</span>
                                       <span>{addon}</span>
                                     </span>
                                   ))}
@@ -2644,40 +2695,46 @@ export default function KitchenPage() {
                       )}
 
                       {/* Cốt & Kem & Hộp */}
-                      {(cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                      {(cakeInfo.isPreorder || cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
                         <div className="pt-1.5 border-t border-emerald-900/30 text-[11px] space-y-0.5">
-                          {(cakeInfo.flavor || cakeInfo.cream) && (
-                            <div className="flex items-center gap-1 text-zinc-300 truncate">
-                              <span className="text-emerald-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                              <span className="text-zinc-100 font-semibold truncate">
-                                {cakeInfo.flavor || 'Vani'} • {cakeInfo.cream || 'Kem tươi'}
-                              </span>
-                            </div>
-                          )}
-                          {cakeInfo.packaging && (
-                            <div className="flex items-center gap-1 text-zinc-300 truncate">
-                              <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
-                              <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging}</span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1 text-zinc-300 truncate">
+                            <span className="text-emerald-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                            <span className="text-zinc-100 font-semibold truncate">
+                              {cakeInfo.flavor || 'Cốt Vani'} • {cakeInfo.cream || 'Kem tươi'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1 text-zinc-300 truncate">
+                            <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
+                            <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging || 'Hộp giấy tiêu chuẩn'}</span>
+                          </div>
                         </div>
                       )}
                     </div>
 
+                    {/* Cảnh báo ghi chú phụ kiện từ khách */}
+                    {cakeInfo.noteAccessories && cakeInfo.noteAccessories.length > 0 && (
+                      <div className="px-2.5 py-1.5 rounded-xl bg-amber-950/60 border border-amber-600/70 text-amber-200 text-[10.5px] font-bold flex items-center gap-1.5">
+                        <span className="text-sm shrink-0">🕯️</span>
+                        <span className="truncate">Ghi chú: {cakeInfo.noteAccessories.join(', ')}</span>
+                      </div>
+                    )}
+
                     {/* Phụ kiện đặt thêm (Addons) */}
-                    {cakeInfo.addons && cakeInfo.addons.length > 0 && (
+                    {cakeInfo.allAddons && cakeInfo.allAddons.length > 0 && (
                       <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-600/60 space-y-1.5">
-                        <div className="flex items-center gap-1.5 text-[11px] font-black text-amber-300">
-                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                          <span>PHỤ KIỆN ĐI KÈM ({cakeInfo.addons.length}):</span>
+                        <div className="flex items-center justify-between text-[11px] font-black text-amber-300">
+                          <span className="flex items-center gap-1.5">
+                            <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                            <span>PHỤ KIỆN ĐI KÈM ({cakeInfo.allAddons.length}):</span>
+                          </span>
                         </div>
                         <div className="flex flex-wrap gap-1">
-                          {cakeInfo.addons.map((addon, aIdx) => (
+                          {cakeInfo.allAddons.map((addon, aIdx) => (
                             <span
                               key={aIdx}
                               className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1"
                             >
-                              <span>✨</span>
+                              <span>{getAddonIcon(addon)}</span>
                               <span>{addon}</span>
                             </span>
                           ))}

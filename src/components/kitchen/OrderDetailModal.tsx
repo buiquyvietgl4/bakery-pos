@@ -4,9 +4,15 @@ import React from 'react';
 import { 
   X, Cake, Clock, User, Phone, MapPin, Tag, Camera, 
   MessageSquare, Sparkles, CheckCircle2, Flame, AlertTriangle,
-  ArrowRight, DollarSign, ExternalLink
+  ArrowRight, DollarSign, ExternalLink, Package
 } from 'lucide-react';
 import { formatPickupDateTime, parsePreorderFromNotes, cleanDisplayNotes } from '@/lib/supabase/realtimeSync';
+import { 
+  cleanCakeNameAndSize, 
+  getAddonIcon, 
+  extractAccessoriesFromText, 
+  STANDARD_INCLUDED_ACCESSORIES 
+} from '@/lib/utils/customCakeCosting';
 
 export interface OrderDetailModalProps {
   isOpen: boolean;
@@ -46,38 +52,67 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const fromItemN = mainItem?.notes ? parsePreorderFromNotes(mainItem.notes) : {};
   const cakeFullName = mainItem?.product_name_snapshot || order.cake_name || fromN.cake_name || 'Bánh Kem Theo Yêu Cầu';
   
-  // Trích xuất kích thước nếu có
-  let cakeName = cakeFullName;
-  let cakeSize = fromN.cake_size || order.cake_size || order.size || '';
-  const sizeMatch = cakeFullName.match(/\(([^)]+)\)/);
-  if (sizeMatch) {
-    if (!cakeSize) cakeSize = sizeMatch[1];
-    cakeName = cakeFullName.replace(/\s*\([^)]+\)/g, '').trim();
+  // Trích xuất kích thước và làm sạch tên bánh tránh lỗi ngoặc đơn ')'
+  const parsedCake = cleanCakeNameAndSize(cakeFullName, fromN.cake_size || order.cake_size || order.size || '');
+  const cakeName = parsedCake.name;
+  const cakeSize = parsedCake.size;
+
+  // Trích xuất Cốt, Kem, Hộp (Có giá trị tiêu chuẩn dự phòng cho Bánh đặt trước)
+  const rawFlavor = order.flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
+  const rawCream = order.cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
+  const rawPackaging = order.packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
+
+  const flavor = rawFlavor || (isPreorder ? 'Cốt Vani truyền thống' : '');
+  const cream = rawCream || (isPreorder ? 'Kem tươi Topping thanh mát' : '');
+  const packaging = rawPackaging || (isPreorder ? 'Hộp giấy tiêu chuẩn + Đế lót' : '');
+
+  // Trích xuất Phụ kiện đặt thêm từ cấu hình đơn
+  let initialAddons: string[] = [];
+  if (Array.isArray(order.addons) && order.addons.length > 0) {
+    initialAddons = order.addons;
+  } else if (Array.isArray(order.selected_addons)) {
+    initialAddons = order.selected_addons.map((a: any) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
+  } else if (Array.isArray(order.cost_breakdown?.selectedAddons)) {
+    initialAddons = order.cost_breakdown.selectedAddons.map((a: any) => a.name).filter(Boolean);
+  } else if (Array.isArray((mainItem as any)?.addons)) {
+    initialAddons = (mainItem as any).addons;
+  } else if (Array.isArray(fromN.addons) && fromN.addons.length > 0) {
+    initialAddons = fromN.addons;
+  } else if (Array.isArray(fromItemN.addons) && fromItemN.addons.length > 0) {
+    initialAddons = fromItemN.addons;
   }
 
-  // Trích xuất Cốt, Kem, Hộp, Phụ kiện
-  const flavor = order.flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
-  const cream = order.cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
-  const packaging = order.packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
-
-  let addons: string[] = [];
-  if (Array.isArray(order.addons) && order.addons.length > 0) {
-    addons = order.addons;
-  } else if (Array.isArray(order.selected_addons)) {
-    addons = order.selected_addons.map((a: any) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
-  } else if (Array.isArray(order.cost_breakdown?.selectedAddons)) {
-    addons = order.cost_breakdown.selectedAddons.map((a: any) => a.name).filter(Boolean);
-  } else if (Array.isArray((mainItem as any)?.addons)) {
-    addons = (mainItem as any).addons;
-  } else if (Array.isArray(fromN.addons) && fromN.addons.length > 0) {
-    addons = fromN.addons;
-  } else if (Array.isArray(fromItemN.addons) && fromItemN.addons.length > 0) {
-    addons = fromItemN.addons;
+  // Phụ kiện đính kèm trong danh sách món (order.items từ index 1 trở đi)
+  const attachedItems: Array<{ name: string; quantity: number }> = [];
+  if (Array.isArray(order.items) && order.items.length > 1) {
+    order.items.slice(1).forEach((item: any) => {
+      const name = item.product_name_snapshot || item.product?.name || item.name || '';
+      if (name && !name.toLowerCase().includes('phí giao') && !name.toLowerCase().includes('ship bánh')) {
+        attachedItems.push({
+          name,
+          quantity: item.quantity || 1,
+        });
+      }
+    });
   }
 
   const cakeMsg = order.cake_message || fromN.cake_message;
   const specialReq = fromN.special_request || cleanDisplayNotes(order.notes);
   const refImg = order.reference_image_url || fromN.reference_image_url;
+
+  // Tự động phát hiện phụ kiện từ ghi chú và yêu cầu đặc biệt của khách (ví dụ: kèm nến số, vương miện...)
+  const noteDetectedAccessories = extractAccessoriesFromText(
+    `${order.notes || ''} ${specialReq || ''} ${mainItem?.notes || ''}`
+  );
+
+  // Hợp nhất danh sách tất cả các phụ kiện đặt thêm
+  const allAddons = Array.from(
+    new Set([
+      ...initialAddons,
+      ...attachedItems.map((it) => (it.quantity > 1 ? `${it.name} (x${it.quantity})` : it.name)),
+      ...noteDetectedAccessories,
+    ])
+  );
 
   // Tài chính
   const totalAmt = order.total_amount || fromN.total_amount || 0;
@@ -212,63 +247,116 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
           </div>
 
           {/* 1.5. KHỐI CỐT BÁNH, KEM, HỘP & PHỤ KIỆN ĐẶT THÊM */}
-          {(flavor || cream || packaging || addons.length > 0) && (
+          {(isPreorder || flavor || cream || packaging || allAddons.length > 0) && (
             <div className="bg-gradient-to-r from-amber-950/40 via-zinc-950 to-zinc-950 rounded-2xl p-4 border border-amber-600/50 space-y-3">
               <div className="text-[11px] font-black text-amber-300 uppercase tracking-wider flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Sparkles className="w-3.5 h-3.5 text-amber-400" /> Cốt bánh, Loại kem & Phụ kiện đặt thêm
                 </span>
-                {addons.length > 0 && (
+                {allAddons.length > 0 && (
                   <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px] font-black">
-                    +{addons.length} Phụ kiện
+                    +{allAddons.length} Phụ kiện & Decor
                   </span>
                 )}
               </div>
 
+              {/* Grid 3 thông số: Cốt, Kem, Hộp */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                {flavor && (
-                  <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                    <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🌾 Cốt bánh:</span>
-                    <span className="text-zinc-100 font-extrabold">{flavor}</span>
-                  </div>
-                )}
-                {cream && (
-                  <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                    <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🍦 Loại kem:</span>
-                    <span className="text-zinc-100 font-extrabold">{cream}</span>
-                  </div>
-                )}
-                {packaging && (
-                  <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 sm:col-span-2">
-                    <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">📦 Hộp đóng gói:</span>
-                    <span className="text-blue-300 font-extrabold">{packaging}</span>
-                  </div>
-                )}
+                <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
+                  <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🌾 Cốt bánh:</span>
+                  <span className="text-zinc-100 font-extrabold">{flavor || 'Cốt Vani truyền thống'}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
+                  <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🍦 Loại kem:</span>
+                  <span className="text-zinc-100 font-extrabold">{cream || 'Kem tươi Topping thanh mát'}</span>
+                </div>
+                <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 sm:col-span-2">
+                  <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">📦 Hộp đóng gói:</span>
+                  <span className="text-blue-300 font-extrabold">{packaging || 'Hộp giấy tiêu chuẩn + Đế lót'}</span>
+                </div>
               </div>
 
-              {/* Danh sách phụ kiện đặt thêm (Vương miện, nến số, topper...) */}
-              {addons.length > 0 ? (
-                <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
-                  <div className="text-[11px] font-black text-amber-300 flex items-center gap-1">
-                    <span>✨ Phụ kiện khách đặt thêm (Thợ bánh & Thu ngân kiểm đủ):</span>
+              {/* Cảnh báo phụ kiện phát hiện từ ghi chú khách hàng */}
+              {noteDetectedAccessories.length > 0 && (
+                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/40 text-amber-200 text-xs flex items-start gap-2">
+                  <span className="text-base shrink-0">🕯️</span>
+                  <div>
+                    <span className="font-bold text-amber-300 block">Lưu ý phụ kiện từ ghi chú khách:</span>
+                    <span className="font-medium text-zinc-200">
+                      Khách yêu cầu: &ldquo;{noteDetectedAccessories.join(', ')}&rdquo; — Thợ bánh & Thu ngân nhớ chuẩn bị đầy đủ khi đóng hộp!
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Danh sách sản phẩm / Phụ kiện bán kèm trong đơn */}
+              {attachedItems.length > 0 && (
+                <div className="p-2.5 rounded-xl bg-blue-950/40 border border-blue-800/50 space-y-1">
+                  <div className="text-[11px] font-bold text-blue-300 flex items-center gap-1">
+                    <Package className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Sản phẩm & Phụ kiện bán kèm đơn ({attachedItems.length}):</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    {addons.map((addon, idx) => (
+                    {attachedItems.map((it, idx) => (
                       <span
                         key={idx}
-                        className="px-2.5 py-1 rounded-xl bg-amber-500/20 text-amber-200 border border-amber-500/40 text-xs font-black flex items-center gap-1.5 shadow-xs"
+                        className="px-2.5 py-1 rounded-xl bg-blue-900/40 text-blue-200 border border-blue-700/60 text-xs font-bold flex items-center gap-1"
                       >
-                        <span>✨</span>
+                        <span>📦</span>
+                        <span>{it.name} {it.quantity > 1 ? `x${it.quantity}` : ''}</span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Danh sách phụ kiện khách đặt thêm (Vương miện, nến số, topper...) */}
+              {allAddons.length > 0 ? (
+                <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
+                  <div className="text-[11px] font-black text-amber-300 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Phụ kiện & Decor khách đặt thêm (Thợ bánh & Thu ngân kiểm đủ):</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {allAddons.map((addon, idx) => (
+                      <span
+                        key={idx}
+                        className="px-2.5 py-1.5 rounded-xl bg-amber-500/20 text-amber-200 border border-amber-500/40 text-xs font-black flex items-center gap-1.5 shadow-xs"
+                      >
+                        <span>{getAddonIcon(addon)}</span>
                         <span>{addon}</span>
                       </span>
                     ))}
                   </div>
                 </div>
               ) : (
-                <div className="text-[11px] text-zinc-500 italic pt-1">
-                  (Khách không đặt thêm phụ kiện decor)
+                <div className="text-[11px] text-zinc-400 italic pt-1">
+                  (Khách không đặt thêm phụ kiện decor đặc biệt)
                 </div>
               )}
+
+              {/* Bộ phụ kiện tiêu chuẩn đi kèm (Miễn phí) */}
+              <div className="pt-2 border-t border-zinc-800/80 space-y-1.5">
+                <div className="text-[11px] font-bold text-zinc-400 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Bộ phụ kiện chuẩn tặng kèm (Kiểm đủ khi đóng hộp):
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/60 px-2 py-0.5 rounded-md border border-emerald-800/60">
+                    Đã gồm
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  {STANDARD_INCLUDED_ACCESSORIES.map((acc, idx) => (
+                    <div key={idx} className="p-2 rounded-xl bg-zinc-900/80 border border-zinc-800/80 flex items-center gap-1.5 text-xs text-zinc-200">
+                      <span className="text-base">{acc.icon}</span>
+                      <div className="truncate">
+                        <div className="font-bold text-[11px] text-zinc-100 truncate">{acc.name}</div>
+                        <div className="text-[9px] text-zinc-400 truncate">{acc.desc}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
@@ -368,7 +456,15 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
           {onPrintSticker && (
             <button
               type="button"
-              onClick={() => onPrintSticker(order)}
+              onClick={() => onPrintSticker({
+                ...order,
+                cake_name: cakeName,
+                cake_size: cakeSize,
+                flavor,
+                cream,
+                packaging,
+                addons: allAddons,
+              })}
               className="px-3.5 py-2.5 rounded-2xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
             >
               <Tag className="w-4 h-4 text-amber-400" />

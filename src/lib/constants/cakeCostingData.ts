@@ -16,6 +16,7 @@ export interface CakeFlavorOption {
   name: string;
   extraCost: number; // Vốn nguyên liệu cộng thêm
   extraPrice: number; // Phụ thu bán
+  icon?: string;
 }
 
 export interface CakeCreamOption {
@@ -23,6 +24,7 @@ export interface CakeCreamOption {
   name: string;
   extraCost: number;
   extraPrice: number;
+  icon?: string;
 }
 
 export interface CakePackagingOption {
@@ -31,6 +33,7 @@ export interface CakePackagingOption {
   extraCost: number;
   extraPrice: number;
   isDefault?: boolean;
+  icon?: string;
 }
 
 export interface CakeAddonOption {
@@ -105,23 +108,23 @@ export const DEFAULT_CAKE_SIZES: CakeSizeOption[] = [
 ];
 
 export const DEFAULT_CAKE_FLAVORS: CakeFlavorOption[] = [
-  { id: 'flavor-vanilla', name: 'Cốt Vani truyền thống', extraCost: 0, extraPrice: 0 },
-  { id: 'flavor-choco', name: 'Cốt Socola nguyên chất', extraCost: 10000, extraPrice: 20000 },
-  { id: 'flavor-matcha', name: 'Cốt Trà xanh Matcha Uji', extraCost: 15000, extraPrice: 25000 },
-  { id: 'flavor-redvelvet', name: 'Cốt Red Velvet nhung đỏ', extraCost: 20000, extraPrice: 35000 },
-  { id: 'flavor-sponge-salted', name: 'Cốt Bông lan trứng muối', extraCost: 25000, extraPrice: 40000 },
+  { id: 'flavor-vanilla', name: 'Cốt Vani truyền thống', extraCost: 0, extraPrice: 0, icon: '🎂' },
+  { id: 'flavor-choco', name: 'Cốt Socola nguyên chất', extraCost: 10000, extraPrice: 20000, icon: '🍫' },
+  { id: 'flavor-matcha', name: 'Cốt Trà xanh Matcha Uji', extraCost: 15000, extraPrice: 25000, icon: '🍵' },
+  { id: 'flavor-redvelvet', name: 'Cốt Red Velvet nhung đỏ', extraCost: 20000, extraPrice: 35000, icon: '🍰' },
+  { id: 'flavor-sponge-salted', name: 'Cốt Bông lan trứng muối', extraCost: 25000, extraPrice: 40000, icon: '🥚' },
 ];
 
 export const DEFAULT_CAKE_CREAMS: CakeCreamOption[] = [
-  { id: 'cream-topping', name: 'Kem tươi Topping thanh mát', extraCost: 0, extraPrice: 0 },
-  { id: 'cream-whipping', name: 'Kem Whipping Anchor cao cấp', extraCost: 25000, extraPrice: 40000 },
-  { id: 'cream-cheese', name: 'Kem Phô mai Mascarpone béo ngậy', extraCost: 30000, extraPrice: 50000 },
-  { id: 'cream-butter', name: 'Kem bơ Hàn Quốc tạo hình', extraCost: 35000, extraPrice: 60000 },
+  { id: 'cream-topping', name: 'Kem tươi Topping thanh mát', extraCost: 0, extraPrice: 0, icon: '🍦' },
+  { id: 'cream-whipping', name: 'Kem Whipping Anchor cao cấp', extraCost: 25000, extraPrice: 40000, icon: '🥛' },
+  { id: 'cream-cheese', name: 'Kem Phô mai Mascarpone béo ngậy', extraCost: 30000, extraPrice: 50000, icon: '🧀' },
+  { id: 'cream-butter', name: 'Kem bơ Hàn Quốc tạo hình', extraCost: 35000, extraPrice: 60000, icon: '🧈' },
 ];
 
 export const DEFAULT_CAKE_PACKAGINGS: CakePackagingOption[] = [
-  { id: 'pack-paper', name: 'Hộp giấy tiêu chuẩn + Đế lót', extraCost: 0, extraPrice: 0, isDefault: true },
-  { id: 'pack-mica', name: 'Hộp Mica trong suốt cao cấp + Ruy băng', extraCost: 25000, extraPrice: 40000 },
+  { id: 'pack-paper', name: 'Hộp giấy tiêu chuẩn + Đế lót', extraCost: 0, extraPrice: 0, isDefault: true, icon: '📦' },
+  { id: 'pack-mica', name: 'Hộp Mica trong suốt cao cấp + Ruy băng', extraCost: 25000, extraPrice: 40000, icon: '🎁' },
 ];
 
 export const DEFAULT_CAKE_ADDONS: CakeAddonOption[] = [

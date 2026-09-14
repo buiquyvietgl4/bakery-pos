@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { cleanCakeNameAndSize, extractAccessoriesFromText } from '@/lib/utils/customCakeCosting';
 
 export interface SyncOrderPayload {
   order_number: string;
@@ -755,10 +756,12 @@ export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
 
   let cakeName: string | undefined = undefined;
   let cakeSize: string | undefined = undefined;
-  const cakeMatch = notes.match(/Bánh:\s*([^\(\|]+)(?:\(([^)]+)\))?/i);
-  if (cakeMatch) {
-    if (cakeMatch[1]) cakeName = cakeMatch[1].trim();
-    if (cakeMatch[2]) cakeSize = cakeMatch[2].trim();
+  const cakeMatch = notes.match(/Bánh:\s*([^|]+)/i);
+  if (cakeMatch && cakeMatch[1]) {
+    const rawCake = cakeMatch[1].trim();
+    const parsed = cleanCakeNameAndSize(rawCake);
+    cakeName = parsed.name;
+    if (parsed.size) cakeSize = parsed.size;
   }
 
   let customerName: string | undefined = undefined;
@@ -820,6 +823,12 @@ export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
         .map((s) => s.trim())
         .filter(Boolean);
     }
+  }
+
+  // Tự động bổ sung các phụ kiện nhận diện được từ ghi chú yêu cầu (ví dụ: kèm nến số, vương miện...)
+  const detectedAccessories = extractAccessoriesFromText(notes);
+  if (detectedAccessories.length > 0) {
+    addons = Array.from(new Set([...(addons || []), ...detectedAccessories]));
   }
 
   let totalAmount: number | undefined = undefined;

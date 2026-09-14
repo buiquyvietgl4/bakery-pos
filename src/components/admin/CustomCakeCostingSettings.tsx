@@ -97,6 +97,7 @@ export function CustomCakeCostingSettings() {
       name: 'Cốt bánh mới',
       extraCost: 15000,
       extraPrice: 30000,
+      icon: '🎂',
     };
     setConfig({ ...config, flavors: [...config.flavors, item] });
   };
@@ -118,6 +119,7 @@ export function CustomCakeCostingSettings() {
       name: 'Loại kem mới',
       extraCost: 20000,
       extraPrice: 35000,
+      icon: '🍦',
     };
     setConfig({ ...config, creams: [...config.creams, item] });
   };
@@ -140,6 +142,7 @@ export function CustomCakeCostingSettings() {
       name: 'Hộp bánh mới',
       extraCost: 20000,
       extraPrice: 35000,
+      icon: '📦',
     };
     setConfig({ ...config, packagings: [...config.packagings, item] });
   };
@@ -389,7 +392,7 @@ export function CustomCakeCostingSettings() {
 
       {/* SUB-TAB 2: FLAVORS & CREAMS */}
       {activeSubTab === 'flavors_creams' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 animate-in fade-in duration-150">
+        <div className="space-y-6 animate-in fade-in duration-150">
           {/* CỐT BÁNH */}
           <div className="space-y-3 p-4 rounded-2xl border border-zinc-200 bg-zinc-50/50">
             <div className="flex items-center justify-between">
@@ -406,45 +409,52 @@ export function CustomCakeCostingSettings() {
               </button>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {config.flavors.map((f, idx) => (
                 <div key={f.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
+                      value={f.icon || '🎂'}
+                      onChange={(e) => handleUpdateFlavor(idx, 'icon', e.target.value)}
+                      className="w-9 p-1 text-center rounded-lg border border-zinc-200 text-sm shrink-0"
+                      title="Biểu tượng cốt bánh"
+                    />
+                    <input
+                      type="text"
                       placeholder="Tên loại cốt bánh (vd: Cốt Vani, Cốt Socola...)"
                       value={f.name}
                       onChange={(e) => handleUpdateFlavor(idx, 'name', e.target.value)}
-                      className="flex-1 min-w-0 p-1.5 rounded-xl border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
+                      className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
                     />
                     <button
                       type="button"
                       onClick={() => handleDeleteFlavor(idx)}
-                      className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
+                      className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
                       title="Xóa loại cốt này"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      <span className="text-[10px] text-rose-600 font-bold shrink-0">Vốn thêm:</span>
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                      <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={formatCurrencyInput(f.extraCost)}
                         onChange={(e) => handleUpdateFlavor(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                        className="w-full p-1.5 text-right rounded-xl border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+                        className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
                       />
                     </div>
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ thu:</span>
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                      <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ Thu:</span>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={formatCurrencyInput(f.extraPrice)}
                         onChange={(e) => handleUpdateFlavor(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                        className="w-full p-1.5 text-right rounded-xl border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                        className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
                       />
                     </div>
                   </div>
@@ -469,45 +479,52 @@ export function CustomCakeCostingSettings() {
               </button>
             </div>
 
-            <div className="space-y-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {config.creams.map((c, idx) => (
                 <div key={c.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
+                      value={c.icon || '🍦'}
+                      onChange={(e) => handleUpdateCream(idx, 'icon', e.target.value)}
+                      className="w-9 p-1 text-center rounded-lg border border-zinc-200 text-sm shrink-0"
+                      title="Biểu tượng loại kem"
+                    />
+                    <input
+                      type="text"
                       placeholder="Tên loại kem (vd: Kem Topping, Kem Whipping, Phô mai...)"
                       value={c.name}
                       onChange={(e) => handleUpdateCream(idx, 'name', e.target.value)}
-                      className="flex-1 min-w-0 p-1.5 rounded-xl border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
+                      className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
                     />
                     <button
                       type="button"
                       onClick={() => handleDeleteCream(idx)}
-                      className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
+                      className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
                       title="Xóa loại kem này"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      <span className="text-[10px] text-rose-600 font-bold shrink-0">Vốn thêm:</span>
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                      <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={formatCurrencyInput(c.extraCost)}
                         onChange={(e) => handleUpdateCream(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                        className="w-full p-1.5 text-right rounded-xl border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+                        className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
                       />
                     </div>
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ thu:</span>
+                    <div className="flex items-center gap-1 flex-1 min-w-0">
+                      <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ Thu:</span>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={formatCurrencyInput(c.extraPrice)}
                         onChange={(e) => handleUpdateCream(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                        className="w-full p-1.5 text-right rounded-xl border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                        className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
                       />
                     </div>
                   </div>
@@ -535,45 +552,52 @@ export function CustomCakeCostingSettings() {
             </button>
           </div>
 
-          <div className="space-y-2.5 max-w-2xl">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {config.packagings.map((pkg, idx) => (
-              <div key={pkg.id} className="p-3.5 bg-white rounded-2xl border border-zinc-200 space-y-2.5 hover:border-pink-300 transition shadow-xs">
+              <div key={pkg.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
                 <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={pkg.icon || '📦'}
+                    onChange={(e) => handleUpdatePackaging(idx, 'icon', e.target.value)}
+                    className="w-9 p-1 text-center rounded-lg border border-zinc-200 text-sm shrink-0"
+                    title="Biểu tượng hộp bánh"
+                  />
                   <input
                     type="text"
                     placeholder="Tên loại hộp bánh (vd: Hộp giấy tiêu chuẩn, Hộp mica trong suốt...)"
                     value={pkg.name}
                     onChange={(e) => handleUpdatePackaging(idx, 'name', e.target.value)}
-                    className="flex-1 min-w-0 p-1.5 rounded-xl border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
+                    className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
                   />
                   <button
                     type="button"
                     onClick={() => handleDeletePackaging(idx)}
-                    className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
+                    className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
                     title="Xóa hộp này"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
                 <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    <span className="text-[10px] text-rose-600 font-bold shrink-0">Vốn vỏ hộp:</span>
+                  <div className="flex items-center gap-1 flex-1 min-w-0">
+                    <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
                     <input
                       type="text"
                       inputMode="numeric"
                       value={formatCurrencyInput(pkg.extraCost)}
                       onChange={(e) => handleUpdatePackaging(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                      className="w-full p-1.5 text-right rounded-xl border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+                      className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
                     />
                   </div>
-                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                    <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ thu:</span>
+                  <div className="flex items-center gap-1 flex-1 min-w-0">
+                    <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ Thu:</span>
                     <input
                       type="text"
                       inputMode="numeric"
                       value={formatCurrencyInput(pkg.extraPrice)}
                       onChange={(e) => handleUpdatePackaging(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                      className="w-full p-1.5 text-right rounded-xl border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
                     />
                   </div>
                 </div>

@@ -272,3 +272,138 @@ export function calculateCustomCakeCost(
     summaryText,
   };
 }
+
+/**
+ * Làm sạch tên bánh và kích thước, xử lý trường hợp lồng ngoặc đơn ví dụ "BÁNH KEM (Size 18cm (6 - 8 người))"
+ * Giúp tên bánh không bị thừa dấu ngoặc đóng ')' như "BÁNH KEM)"
+ */
+export function cleanCakeNameAndSize(fullName: string, existingSize?: string): { name: string; size: string } {
+  if (!fullName) return { name: 'Bánh Kem Theo Yêu Cầu', size: existingSize || '' };
+  
+  let name = fullName.trim();
+  let size = (existingSize || '').trim();
+
+  // Tìm vị trí mở ngoặc đầu tiên
+  const firstParenIdx = name.indexOf('(');
+  if (firstParenIdx !== -1) {
+    const candidateName = name.slice(0, firstParenIdx).trim();
+    let candidateSize = name.slice(firstParenIdx).trim();
+    if (candidateSize.startsWith('(') && candidateSize.endsWith(')')) {
+      candidateSize = candidateSize.slice(1, -1).trim();
+    }
+    if (candidateName) {
+      name = candidateName;
+    }
+    if (!size && candidateSize) {
+      size = candidateSize;
+    }
+  }
+
+  // Xóa các dấu đóng ngoặc dư thừa ở cuối tên bánh
+  name = name.replace(/[\(\)]+$/g, '').trim();
+
+  // Làm sạch kích thước
+  if (size) {
+    size = size.replace(/^\(+/, '').replace(/\)+$/, '').trim();
+  }
+
+  return { name: name || fullName, size };
+}
+
+/**
+ * Lấy icon biểu tượng cho từng loại phụ kiện trang trí (Phù hợp với 7 cấu hình Admin)
+ */
+export function getAddonIcon(name: string): string {
+  if (!name) return '✨';
+  const lower = name.toLowerCase();
+  if (lower.includes('chữ') || lower.includes('vẽ') || lower.includes('icon')) return '✍️';
+  if (lower.includes('trái cây') || lower.includes('dâu') || lower.includes('nho') || lower.includes('xoài') || lower.includes('hoa quả')) return '🍓';
+  if (lower.includes('vương miện') || lower.includes('mô hình') || lower.includes('đồ chơi') || lower.includes('búp bê') || lower.includes('topper')) return '👑';
+  if (lower.includes('hoa tươi') || lower.includes('bông tươi')) return '💐';
+  if (lower.includes('nến') || lower.includes('pháo')) return '🕯️';
+  if (lower.includes('đèn') || lower.includes('led') || lower.includes('sáng')) return '✨';
+  if (lower.includes('tiền') || lower.includes('rút tiền')) return '💸';
+  if (lower.includes('mũ') || lower.includes('nón')) return '🎩';
+  return '🎁';
+}
+
+/**
+ * Tự động phát hiện các phụ kiện khách yêu cầu qua ghi chú / yêu cầu đặc biệt
+ */
+export function extractAccessoriesFromText(text?: string): string[] {
+  if (!text || typeof text !== 'string') return [];
+  const lower = text.toLowerCase();
+  const detected: string[] = [];
+
+  // Nến số / nến pháo nghệ thuật
+  if (
+    lower.includes('nến số') ||
+    lower.includes('kèm nến') ||
+    lower.includes('nến pháo') ||
+    lower.includes('pháo bông') ||
+    lower.includes('thêm nến') ||
+    lower.includes('nến sinh nhật')
+  ) {
+    const numMatch = text.match(/nến\s*(?:số)?\s*(\d+)/i);
+    if (numMatch) {
+      detected.push(`Bộ nến số ${numMatch[1]} (Theo yêu cầu khách)`);
+    } else {
+      detected.push('Bộ nến số / Nến pháo nghệ thuật (Khách yêu cầu)');
+    }
+  }
+
+  // Vương miện / mô hình / đồ chơi
+  if (lower.includes('vương miện') || lower.includes('vuong mien')) {
+    detected.push('Vương miện công chúa / hoàng gia');
+  }
+  if (
+    lower.includes('mô hình') ||
+    lower.includes('đồ chơi') ||
+    lower.includes('búp bê') ||
+    lower.includes('siêu nhân') ||
+    lower.includes('oto') ||
+    lower.includes('ô tô')
+  ) {
+    detected.push('Mô hình đồ chơi / Phụ kiện cắm bánh');
+  }
+  if (lower.includes('topper') || lower.includes('cắm chữ')) {
+    detected.push('Topper cắm bánh nghệ thuật');
+  }
+
+  // Hoa tươi
+  if (lower.includes('hoa tươi') || lower.includes('bông tươi')) {
+    detected.push('Hoa tươi trang trí cao cấp');
+  }
+
+  // Đèn LED
+  if (lower.includes('đèn led') || lower.includes('dây led') || lower.includes('phát sáng')) {
+    detected.push('Dây đèn LED nhấp nháy phát sáng');
+  }
+
+  // Hộp rút tiền
+  if (lower.includes('rút tiền') || lower.includes('hộp tiền')) {
+    detected.push('Hộp rút tiền bên trong bánh');
+  }
+
+  // Trái cây tươi
+  if (lower.includes('trái cây') || lower.includes('dâu tây') || lower.includes('nho xanh') || lower.includes('hoa quả')) {
+    detected.push('Trái cây tươi (Dâu, Nho, Xoài...)');
+  }
+
+  // Mũ sinh nhật
+  if (lower.includes('mũ sinh nhật') || lower.includes('nón sinh nhật')) {
+    detected.push('Mũ / Nón sinh nhật');
+  }
+
+  return Array.from(new Set(detected));
+}
+
+/**
+ * Danh mục phụ kiện tiêu chuẩn luôn tặng kèm miễn phí cho mỗi bánh sinh nhật
+ */
+export const STANDARD_INCLUDED_ACCESSORIES = [
+  { name: 'Dao cắt bánh kem', icon: '🍴', desc: '1 dao nhựa an toàn' },
+  { name: 'Bộ đĩa & thìa ăn bánh', icon: '🍽️', desc: 'Đĩa giấy & thìa' },
+  { name: 'Nến sinh nhật tiêu chuẩn', icon: '🕯️', desc: 'Nến cây tiệm tặng kèm' },
+  { name: 'Hộp & đế lót bánh', icon: '📦', desc: 'Đế lót định hình & hộp' },
+];
