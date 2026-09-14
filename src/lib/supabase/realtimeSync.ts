@@ -699,6 +699,10 @@ export interface ParsedPreorderNotes {
   reference_image_url?: string;
   cake_name?: string;
   cake_size?: string;
+  flavor?: string;
+  cream?: string;
+  packaging?: string;
+  addons?: string[];
   customer_name?: string;
   customer_phone?: string;
   preorder_pickup_at?: string;
@@ -783,6 +787,41 @@ export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
     specialRequest = reqMatch[1].trim();
   }
 
+  // Cốt bánh & Loại kem
+  let flavor: string | undefined = undefined;
+  let cream: string | undefined = undefined;
+  const comboMatch = notes.match(/Cốt & Kem:\s*([^|]+)/i);
+  if (comboMatch && comboMatch[1]) {
+    const parts = comboMatch[1].split('-').map((s) => s.trim());
+    if (parts[0]) flavor = parts[0];
+    if (parts[1]) cream = parts[1];
+  } else {
+    const fMatch = notes.match(/Cốt:\s*([^|]+)/i);
+    if (fMatch && fMatch[1]) flavor = fMatch[1].trim();
+    const cMatch = notes.match(/Kem:\s*([^|]+)/i);
+    if (cMatch && cMatch[1]) cream = cMatch[1].trim();
+  }
+
+  // Hộp đóng gói
+  let packaging: string | undefined = undefined;
+  const packMatch = notes.match(/Hộp:\s*([^|]+)/i);
+  if (packMatch && packMatch[1]) {
+    packaging = packMatch[1].trim();
+  }
+
+  // Phụ kiện trang trí / Decor đặt thêm
+  let addons: string[] | undefined = undefined;
+  const addonMatch = notes.match(/(?:Decor|Phụ kiện|Phụ kiện thêm):\s*([^|]+)/i);
+  if (addonMatch && addonMatch[1]) {
+    const rawAddons = addonMatch[1].trim();
+    if (rawAddons && !rawAddons.toLowerCase().startsWith('không')) {
+      addons = rawAddons
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+
   let totalAmount: number | undefined = undefined;
   const totalMatch = notes.match(/GIÁ CUỐI:\s*([\d\.\,]+)/i);
   if (totalMatch && totalMatch[1]) {
@@ -799,6 +838,10 @@ export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
     reference_image_url: referenceImageUrl,
     cake_name: cakeName,
     cake_size: cakeSize,
+    flavor,
+    cream,
+    packaging,
+    addons,
     customer_name: customerName,
     customer_phone: customerPhone,
     preorder_pickup_at: pickupTime,

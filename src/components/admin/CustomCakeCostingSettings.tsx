@@ -406,42 +406,48 @@ export function CustomCakeCostingSettings() {
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {config.flavors.map((f, idx) => (
-                <div key={f.id} className="p-2.5 bg-white rounded-xl border border-zinc-200 flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={f.name}
-                    onChange={(e) => handleUpdateFlavor(idx, 'name', e.target.value)}
-                    className="flex-1 p-1 rounded-lg border border-zinc-200 font-bold text-xs"
-                  />
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-rose-600 font-semibold">Vốn:</span>
+                <div key={f.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
+                  <div className="flex items-center gap-2">
                     <input
                       type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(f.extraCost)}
-                      onChange={(e) => handleUpdateFlavor(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                      className="w-20 p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 text-xs"
+                      placeholder="Tên loại cốt bánh (vd: Cốt Vani, Cốt Socola...)"
+                      value={f.name}
+                      onChange={(e) => handleUpdateFlavor(idx, 'name', e.target.value)}
+                      className="flex-1 min-w-0 p-1.5 rounded-xl border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
                     />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFlavor(idx)}
+                      className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
+                      title="Xóa loại cốt này"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-emerald-600 font-semibold">Phụ thu:</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(f.extraPrice)}
-                      onChange={(e) => handleUpdateFlavor(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                      className="w-20 p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 text-xs"
-                    />
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span className="text-[10px] text-rose-600 font-bold shrink-0">Vốn thêm:</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatCurrencyInput(f.extraCost)}
+                        onChange={(e) => handleUpdateFlavor(idx, 'extraCost', parseCurrencyInput(e.target.value))}
+                        className="w-full p-1.5 text-right rounded-xl border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ thu:</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatCurrencyInput(f.extraPrice)}
+                        onChange={(e) => handleUpdateFlavor(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
+                        className="w-full p-1.5 text-right rounded-xl border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      />
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteFlavor(idx)}
-                    className="p-1 text-zinc-400 hover:text-rose-600 rounded transition cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               ))}
             </div>
@@ -463,42 +469,48 @@ export function CustomCakeCostingSettings() {
               </button>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {config.creams.map((c, idx) => (
-                <div key={c.id} className="p-2.5 bg-white rounded-xl border border-zinc-200 flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={c.name}
-                    onChange={(e) => handleUpdateCream(idx, 'name', e.target.value)}
-                    className="flex-1 p-1 rounded-lg border border-zinc-200 font-bold text-xs"
-                  />
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-rose-600 font-semibold">Vốn:</span>
+                <div key={c.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
+                  <div className="flex items-center gap-2">
                     <input
                       type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(c.extraCost)}
-                      onChange={(e) => handleUpdateCream(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                      className="w-20 p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 text-xs"
+                      placeholder="Tên loại kem (vd: Kem Topping, Kem Whipping, Phô mai...)"
+                      value={c.name}
+                      onChange={(e) => handleUpdateCream(idx, 'name', e.target.value)}
+                      className="flex-1 min-w-0 p-1.5 rounded-xl border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
                     />
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCream(idx)}
+                      className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
+                      title="Xóa loại kem này"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-emerald-600 font-semibold">Phụ thu:</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(c.extraPrice)}
-                      onChange={(e) => handleUpdateCream(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                      className="w-20 p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 text-xs"
-                    />
+                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span className="text-[10px] text-rose-600 font-bold shrink-0">Vốn thêm:</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatCurrencyInput(c.extraCost)}
+                        onChange={(e) => handleUpdateCream(idx, 'extraCost', parseCurrencyInput(e.target.value))}
+                        className="w-full p-1.5 text-right rounded-xl border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ thu:</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={formatCurrencyInput(c.extraPrice)}
+                        onChange={(e) => handleUpdateCream(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
+                        className="w-full p-1.5 text-right rounded-xl border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      />
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteCream(idx)}
-                    className="p-1 text-zinc-400 hover:text-rose-600 rounded transition cursor-pointer"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               ))}
             </div>
@@ -525,40 +537,46 @@ export function CustomCakeCostingSettings() {
 
           <div className="space-y-2.5 max-w-2xl">
             {config.packagings.map((pkg, idx) => (
-              <div key={pkg.id} className="p-3 bg-white rounded-2xl border border-zinc-200 flex items-center gap-3">
-                <input
-                  type="text"
-                  value={pkg.name}
-                  onChange={(e) => handleUpdatePackaging(idx, 'name', e.target.value)}
-                  className="flex-1 p-1.5 rounded-xl border border-zinc-200 font-bold text-xs"
-                />
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-rose-600 font-bold">Vốn vỏ hộp:</span>
+              <div key={pkg.id} className="p-3.5 bg-white rounded-2xl border border-zinc-200 space-y-2.5 hover:border-pink-300 transition shadow-xs">
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    inputMode="numeric"
-                    value={formatCurrencyInput(pkg.extraCost)}
-                    onChange={(e) => handleUpdatePackaging(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                    className="w-24 p-1.5 text-right rounded-xl border border-rose-200 font-bold text-rose-700 text-xs"
+                    placeholder="Tên loại hộp bánh (vd: Hộp giấy tiêu chuẩn, Hộp mica trong suốt...)"
+                    value={pkg.name}
+                    onChange={(e) => handleUpdatePackaging(idx, 'name', e.target.value)}
+                    className="flex-1 min-w-0 p-1.5 rounded-xl border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
                   />
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePackaging(idx)}
+                    className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer shrink-0"
+                    title="Xóa hộp này"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-emerald-600 font-bold">Phụ thu khách:</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatCurrencyInput(pkg.extraPrice)}
-                    onChange={(e) => handleUpdatePackaging(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                    className="w-24 p-1.5 text-right rounded-xl border border-emerald-200 font-bold text-emerald-700 text-xs"
-                  />
+                <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className="text-[10px] text-rose-600 font-bold shrink-0">Vốn vỏ hộp:</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(pkg.extraCost)}
+                      onChange={(e) => handleUpdatePackaging(idx, 'extraCost', parseCurrencyInput(e.target.value))}
+                      className="w-full p-1.5 text-right rounded-xl border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                    <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ thu:</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(pkg.extraPrice)}
+                      onChange={(e) => handleUpdatePackaging(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
+                      className="w-full p-1.5 text-right rounded-xl border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                    />
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleDeletePackaging(idx)}
-                  className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-xl transition cursor-pointer"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
               </div>
             ))}
           </div>
@@ -594,38 +612,40 @@ export function CustomCakeCostingSettings() {
                   />
                   <input
                     type="text"
+                    placeholder="Tên phụ kiện (vd: Vương miện, Nến số, Topper...)"
                     value={a.name}
                     onChange={(e) => handleUpdateAddon(idx, 'name', e.target.value)}
-                    className="flex-1 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900"
+                    className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
                   />
                   <button
                     type="button"
                     onClick={() => handleDeleteAddon(idx)}
-                    className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
+                    className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
+                    title="Xóa phụ kiện này"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-rose-600 font-bold">Giá Vốn:</span>
+                  <div className="flex items-center gap-1 flex-1 min-w-0">
+                    <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
                     <input
                       type="text"
                       inputMode="numeric"
                       value={formatCurrencyInput(a.cost)}
                       onChange={(e) => handleUpdateAddon(idx, 'cost', parseCurrencyInput(e.target.value))}
-                      className="w-24 p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs"
+                      className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
                     />
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[10px] text-emerald-600 font-bold">Giá Bán / Phụ Thu:</span>
+                  <div className="flex items-center gap-1 flex-1 min-w-0">
+                    <span className="text-[10px] text-emerald-600 font-bold shrink-0">Giá Bán:</span>
                     <input
                       type="text"
                       inputMode="numeric"
                       value={formatCurrencyInput(a.price)}
                       onChange={(e) => handleUpdateAddon(idx, 'price', parseCurrencyInput(e.target.value))}
-                      className="w-24 p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs"
+                      className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
                     />
                   </div>
                 </div>

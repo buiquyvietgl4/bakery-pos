@@ -113,17 +113,22 @@ export default function KitchenPage() {
     const fromN = parsePreorderFromNotes(order.notes);
     const isShip = order.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
     const shipAddr = order.shipping_address || fromN.shipping_address;
+    const cakeInfo = getCakeDisplayInfo(order);
 
     setStickerModalData({
       orderNumber: order.order_number || (order as any).orderNumber || `DH-${order.id.slice(0, 6)}`,
-      cakeName: mainItem?.product_name_snapshot || order.cake_name || fromN?.cake_name || 'Bánh Sinh Nhật',
+      cakeName: cakeInfo.name || mainItem?.product_name_snapshot || order.cake_name || fromN?.cake_name || 'Bánh Sinh Nhật',
       customerName: order.customer_name || fromN?.customer_name || 'Khách tiệm',
       customerPhone: order.customer_phone || fromN?.customer_phone || undefined,
-      cakeMessage: order.cake_message || fromN?.cake_message || undefined,
+      cakeMessage: cakeInfo.cakeMessage || order.cake_message || fromN?.cake_message || undefined,
       pickupTime: order.preorder_pickup_at ? formatPickupDateTime(order.preorder_pickup_at) : undefined,
       deliveryMethod: isShip ? 'shipping' : 'pickup',
       shippingAddress: shipAddr || undefined,
       createdAt: order.created_at,
+      flavor: cakeInfo.flavor,
+      cream: cakeInfo.cream,
+      packaging: cakeInfo.packaging,
+      addons: cakeInfo.addons,
     });
     setIsStickerModalOpen(true);
   };
@@ -746,6 +751,12 @@ export default function KitchenPage() {
                     cake_message: o.cake_message || o.cakeMessage || '',
                     notes: o.notes || '',
                     reference_image_url: o.reference_image_url || o.referenceImageUrl || fromNotes.reference_image_url || '',
+                    flavor: o.flavor || fromNotes.flavor || '',
+                    cream: o.cream || fromNotes.cream || '',
+                    packaging: o.packaging || fromNotes.packaging || '',
+                    addons: Array.isArray(o.addons) && o.addons.length > 0 ? o.addons : (fromNotes.addons || []),
+                    selected_addons: o.selected_addons || [],
+                    cost_breakdown: o.cost_breakdown,
                     items: Array.isArray(o.items) && o.items.length > 0
                       ? o.items.filter((it: any) => it && typeof it === 'object').map((it: any, idx: number) => ({
                           id: String(it.id || `it-${idx}`),
@@ -839,6 +850,12 @@ export default function KitchenPage() {
                 deposit_amount: so.deposit_amount !== undefined ? so.deposit_amount : (existing?.deposit_amount !== undefined ? existing?.deposit_amount : sbNotes.deposit_amount),
                 remaining_amount: so.remaining_amount !== undefined ? so.remaining_amount : (existing?.remaining_amount !== undefined ? existing?.remaining_amount : sbNotes.remaining_amount),
                 reference_image_url: so.reference_image_url || existing?.reference_image_url || sbNotes.reference_image_url || '',
+                flavor: so.flavor || existing?.flavor || sbNotes.flavor || '',
+                cream: so.cream || existing?.cream || sbNotes.cream || '',
+                packaging: so.packaging || existing?.packaging || sbNotes.packaging || '',
+                addons: Array.isArray(so.addons) && so.addons.length > 0 ? so.addons : (Array.isArray(existing?.addons) && existing.addons.length > 0 ? existing.addons : (sbNotes.addons || [])),
+                selected_addons: so.selected_addons || existing?.selected_addons || [],
+                cost_breakdown: so.cost_breakdown || existing?.cost_breakdown,
                 items: Array.isArray(so.order_items) && so.order_items.length > 0
                   ? so.order_items
                       .filter((it: any) => it && typeof it === 'object')
@@ -948,6 +965,10 @@ export default function KitchenPage() {
                   remaining_amount: o.remaining_amount !== undefined ? o.remaining_amount : (payload.order_data?.remaining_amount !== undefined ? payload.order_data?.remaining_amount : notesParse.remaining_amount),
                   reference_image_url: o.reference_image_url || payload.order_data?.reference_image_url || payload.order_data?.referenceImageUrl || '',
                   preorder_pickup_at: o.preorder_pickup_at || payload.order_data?.preorder_pickup_at || notesParse.preorder_pickup_at || '',
+                  flavor: o.flavor || payload.order_data?.flavor || notesParse.flavor || '',
+                  cream: o.cream || payload.order_data?.cream || notesParse.cream || '',
+                  packaging: o.packaging || payload.order_data?.packaging || notesParse.packaging || '',
+                  addons: o.addons || payload.order_data?.addons || notesParse.addons || [],
                 };
               }
               return o;
@@ -977,6 +998,10 @@ export default function KitchenPage() {
                 deposit_amount: od.deposit_amount !== undefined ? od.deposit_amount : (od.depositAmount !== undefined ? od.depositAmount : odNotes.deposit_amount),
                 remaining_amount: od.remaining_amount !== undefined ? od.remaining_amount : (od.remainingAmount !== undefined ? od.remainingAmount : odNotes.remaining_amount),
                 reference_image_url: od.reference_image_url || od.referenceImageUrl || '',
+                flavor: od.flavor || odNotes.flavor || '',
+                cream: od.cream || odNotes.cream || '',
+                packaging: od.packaging || odNotes.packaging || '',
+                addons: Array.isArray(od.addons) && od.addons.length > 0 ? od.addons : (odNotes.addons || []),
                 items: Array.isArray(od.items) ? od.items : [],
               },
             ];
@@ -1036,6 +1061,12 @@ export default function KitchenPage() {
             cake_message: incomingOrder.cake_message || incomingOrder.cakeMessage || '',
             notes: incomingOrder.notes || '',
             reference_image_url: incomingOrder.reference_image_url || incomingOrder.referenceImageUrl || fromN.reference_image_url || '',
+            flavor: incomingOrder.flavor || fromN.flavor || '',
+            cream: incomingOrder.cream || fromN.cream || '',
+            packaging: incomingOrder.packaging || fromN.packaging || '',
+            addons: Array.isArray(incomingOrder.addons) && incomingOrder.addons.length > 0 ? incomingOrder.addons : (fromN.addons || []),
+            selected_addons: incomingOrder.selected_addons || [],
+            cost_breakdown: incomingOrder.cost_breakdown,
             items: Array.isArray(incomingOrder.items) && incomingOrder.items.length > 0 
               ? incomingOrder.items 
               : incomingOrder.cake_name || fromN.cake_name
@@ -1430,14 +1461,15 @@ export default function KitchenPage() {
     setKdsMobileTab('pending');
   };
 
-  // Hàm trích xuất thông tin bánh tinh gọn cho thợ bếp: Tên bánh, Kích thước, Lời nhắn, Yêu cầu
+  // Hàm trích xuất thông tin bánh tinh gọn cho thợ bếp: Tên bánh, Kích thước, Cốt, Kem, Hộp, Phụ kiện, Lời nhắn, Yêu cầu
   const getCakeDisplayInfo = (order: KDSOrder) => {
     const fromN = parsePreorderFromNotes(order.notes);
     const mainItem = order.items?.[0];
+    const fromItemN = mainItem?.notes ? parsePreorderFromNotes(mainItem.notes) : {};
     const rawFullName = mainItem?.product_name_snapshot || order.cake_name || fromN.cake_name || 'Bánh Kem Theo Yêu Cầu';
 
     let name = rawFullName;
-    let size = fromN.cake_size || '';
+    let size = fromN.cake_size || (order as any).cake_size || (order as any).size || '';
     const sizeMatch = rawFullName.match(/\(([^)]+)\)/);
     if (sizeMatch) {
       if (!size) size = sizeMatch[1];
@@ -1447,13 +1479,39 @@ export default function KitchenPage() {
       if (cmMatch) size = cmMatch[1].toUpperCase();
     }
 
+    // Trích xuất Cốt, Kem, Hộp
+    const flavor = (order as any).flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
+    const cream = (order as any).cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
+    const packaging = (order as any).packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
+
+    // Trích xuất Phụ kiện đặt thêm (Addons)
+    let addons: string[] = [];
+    if (Array.isArray((order as any).addons) && (order as any).addons.length > 0) {
+      addons = (order as any).addons;
+    } else if (Array.isArray((order as any).selected_addons)) {
+      addons = (order as any).selected_addons.map((a: any) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
+    } else if (Array.isArray((order as any).cost_breakdown?.selectedAddons)) {
+      addons = (order as any).cost_breakdown.selectedAddons.map((a: any) => a.name).filter(Boolean);
+    } else if (Array.isArray((mainItem as any)?.addons)) {
+      addons = (mainItem as any).addons;
+    } else if (Array.isArray(fromN.addons) && fromN.addons.length > 0) {
+      addons = fromN.addons;
+    } else if (Array.isArray(fromItemN.addons) && fromItemN.addons.length > 0) {
+      addons = fromItemN.addons;
+    }
+
     return {
       fullName: rawFullName,
       name: name || rawFullName,
       size: size || fromN.cake_size || '',
+      flavor,
+      cream,
+      packaging,
+      addons,
       quantity: mainItem?.quantity || 1,
       cakeMessage: order.cake_message || fromN.cake_message || '',
       specialRequest: fromN.special_request || cleanDisplayNotes(order.notes) || '',
+      referenceImageUrl: (order as any).reference_image_url || fromN.reference_image_url || '',
     };
   };
 
@@ -2084,7 +2142,48 @@ export default function KitchenPage() {
                                 ✍️ Chữ: &ldquo;{cakeInfo.cakeMessage}&rdquo;
                               </div>
                             )}
+
+                            {/* Cốt & Kem & Hộp */}
+                            {(cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                              <div className="pt-1.5 border-t border-pink-900/30 text-[11px] space-y-0.5">
+                                {(cakeInfo.flavor || cakeInfo.cream) && (
+                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                    <span className="text-pink-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                                    <span className="text-zinc-100 font-semibold truncate">
+                                      {cakeInfo.flavor || 'Vani'} • {cakeInfo.cream || 'Kem tươi'}
+                                    </span>
+                                  </div>
+                                )}
+                                {cakeInfo.packaging && (
+                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                    <span className="text-blue-400 font-bold shrink-0">📦 Hộp:</span>
+                                    <span className="text-blue-200 font-semibold truncate">{cakeInfo.packaging}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
+
+                          {/* Phụ kiện đặt thêm (Addons) */}
+                          {cakeInfo.addons && cakeInfo.addons.length > 0 && (
+                            <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-600/60 space-y-1.5">
+                              <div className="flex items-center gap-1.5 text-[11px] font-black text-amber-300">
+                                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                <span>PHỤ KIỆN ĐẶT THÊM ({cakeInfo.addons.length}):</span>
+                              </div>
+                              <div className="flex flex-wrap gap-1">
+                                {cakeInfo.addons.map((addon, aIdx) => (
+                                  <span
+                                    key={aIdx}
+                                    className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1"
+                                  >
+                                    <span>✨</span>
+                                    <span>{addon}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
 
                           {/* 3. Nút Xem chi tiết & In tem & Chuyển bước */}
                           <div className="space-y-2 pt-1">
@@ -2250,7 +2349,48 @@ export default function KitchenPage() {
                                   ✍️ Chữ: &ldquo;{cakeInfo.cakeMessage}&rdquo;
                                 </div>
                               )}
+
+                              {/* Cốt & Kem & Hộp */}
+                              {(cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                                <div className="pt-1.5 border-t border-blue-900/30 text-[11px] space-y-0.5">
+                                  {(cakeInfo.flavor || cakeInfo.cream) && (
+                                    <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                      <span className="text-blue-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                                      <span className="text-zinc-100 font-semibold truncate">
+                                        {cakeInfo.flavor || 'Vani'} • {cakeInfo.cream || 'Kem tươi'}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {cakeInfo.packaging && (
+                                    <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                      <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
+                                      <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
+
+                            {/* Phụ kiện đặt thêm (Addons) */}
+                            {cakeInfo.addons && cakeInfo.addons.length > 0 && (
+                              <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-600/60 space-y-1.5">
+                                <div className="flex items-center gap-1.5 text-[11px] font-black text-amber-300">
+                                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                                  <span>PHỤ KIỆN ĐẶT THÊM ({cakeInfo.addons.length}):</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {cakeInfo.addons.map((addon, aIdx) => (
+                                    <span
+                                      key={aIdx}
+                                      className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1"
+                                    >
+                                      <span>✨</span>
+                                      <span>{addon}</span>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
 
                             {/* 3. Nút Xem chi tiết, Tem Hộp, Báo Hỏng, Hoàn Thành Bước 2 */}
                             <div className="space-y-2 pt-1">
@@ -2497,7 +2637,53 @@ export default function KitchenPage() {
                           📍 {shipAddr}
                         </div>
                       )}
+                      {cakeInfo.cakeMessage && (
+                        <div className="text-emerald-200 text-[11px] font-semibold pt-1 border-t border-emerald-900/40 truncate">
+                          ✍️ Chữ: &ldquo;{cakeInfo.cakeMessage}&rdquo;
+                        </div>
+                      )}
+
+                      {/* Cốt & Kem & Hộp */}
+                      {(cakeInfo.flavor || cakeInfo.cream || cakeInfo.packaging) && (
+                        <div className="pt-1.5 border-t border-emerald-900/30 text-[11px] space-y-0.5">
+                          {(cakeInfo.flavor || cakeInfo.cream) && (
+                            <div className="flex items-center gap-1 text-zinc-300 truncate">
+                              <span className="text-emerald-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                              <span className="text-zinc-100 font-semibold truncate">
+                                {cakeInfo.flavor || 'Vani'} • {cakeInfo.cream || 'Kem tươi'}
+                              </span>
+                            </div>
+                          )}
+                          {cakeInfo.packaging && (
+                            <div className="flex items-center gap-1 text-zinc-300 truncate">
+                              <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
+                              <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging}</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
+
+                    {/* Phụ kiện đặt thêm (Addons) */}
+                    {cakeInfo.addons && cakeInfo.addons.length > 0 && (
+                      <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-600/60 space-y-1.5">
+                        <div className="flex items-center gap-1.5 text-[11px] font-black text-amber-300">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                          <span>PHỤ KIỆN ĐI KÈM ({cakeInfo.addons.length}):</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {cakeInfo.addons.map((addon, aIdx) => (
+                            <span
+                              key={aIdx}
+                              className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-200 border border-amber-500/40 text-[10px] font-bold flex items-center gap-1"
+                            >
+                              <span>✨</span>
+                              <span>{addon}</span>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     {/* 3. THÔNG TIN SỐ TIỀN CẦN THU (Theo yêu cầu: Đã thanh toán 100% vs Mới chỉ cọc) */}
                     {isPaid100 ? (

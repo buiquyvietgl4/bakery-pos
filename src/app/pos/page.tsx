@@ -1452,6 +1452,10 @@ export default function POSPage() {
         cake_size: preorderForm.size,
         size: preorderForm.size,
         flavor: preorderForm.flavor,
+        cream: preorderForm.cream,
+        packaging: preorderForm.packaging,
+        addons: cakeCostResult.selectedAddons.map((a) => a.name),
+        selected_addons: cakeCostResult.selectedAddons,
         cake_message: preorderForm.cakeMessage,
         cakeMessage: preorderForm.cakeMessage,
         special_notes: preorderForm.notes,
@@ -1486,6 +1490,10 @@ export default function POSPage() {
             unit_cost: cakeCostResult.totalCost,
             line_total: preorderForm.totalPrice,
             line_cost: cakeCostResult.totalCost,
+            flavor: preorderForm.flavor,
+            cream: preorderForm.cream,
+            packaging: preorderForm.packaging,
+            addons: cakeCostResult.selectedAddons.map((a) => a.name),
             notes: `Chữ: "${preorderForm.cakeMessage}" | Cốt: ${preorderForm.flavor || 'Vani'} | Kem: ${preorderForm.cream || 'Kem tươi'} | Hộp: ${preorderForm.packaging || 'Hộp giấy'}${cakeCostResult.selectedAddons.length > 0 ? ' | Phụ kiện: ' + cakeCostResult.selectedAddons.map(a => a.name).join(', ') : ''}${preorderForm.notes ? ` | ${preorderForm.notes}` : ''}`,
           },
           ...(shippingFee > 0 ? [
@@ -3874,6 +3882,10 @@ export default function POSPage() {
                                 shippingAddress: po.shipping_address || po.shippingAddress,
                                 createdAt: po.created_at,
                                 price: total,
+                                flavor: po.flavor || fromNotes.flavor,
+                                cream: po.cream || fromNotes.cream,
+                                packaging: po.packaging || fromNotes.packaging,
+                                addons: po.addons || fromNotes.addons,
                               });
                             }}
                             className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
@@ -6046,6 +6058,10 @@ export default function POSPage() {
               createdAt: ord.created_at,
               price: ord.total_amount || fromN.total_amount,
               notes: cleanDisplayNotes(ord.notes) || fromN.special_request,
+              flavor: ord.flavor || fromN.flavor,
+              cream: ord.cream || fromN.cream,
+              packaging: ord.packaging || fromN.packaging,
+              addons: ord.addons || fromN.addons,
             });
           }}
           showNavigationButtons={true}
