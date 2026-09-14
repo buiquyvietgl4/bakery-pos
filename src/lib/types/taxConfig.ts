@@ -14,9 +14,94 @@ export interface HouseholdBusinessInfo {
   tax_office_name?: string;         // Cơ quan thuế quản lý (VD: Chi cục Thuế Quận 1)
   registered_revenue_level: number; // 1: <= 1 Tỷ (Mẫu 01/TKN-CNKD - Miễn thuế), 2: > 1 Tỷ (Mẫu 01/CNKD - Kê khai), 3: 3B-50B, 4: >50B
   pit_calculation_method: number;   // 1: % Doanh thu, 2: 15% Thu nhập ròng
-  regular_employees_count: number;  // Số lao động thường xuyên
+  regular_employees_count: number;  // Số lao động thường xuyên [13]
   operating_hours: string;          // Thời gian hoạt động trong ngày (VD: 06:00 - 22:00)
   preferred_declaration_form?: TaxDeclarationFormType; // Mẫu ưu tiên lựa chọn
+  // Các trường hành chính chuẩn Thông tư 40/2021 & mẫu CQT:
+  email?: string;                   // [11] Thư điện tử
+  business_area?: number;           // [12] Diện tích địa điểm kinh doanh (m2)
+  bank_account_number?: string;     // [14] Số tài khoản ngân hàng kinh doanh
+  bank_name?: string;               // [14] Tên ngân hàng mở tài khoản
+  district?: string;                // [08] Quận/Huyện
+  province?: string;                // [09] Tỉnh/Thành phố
+  software_name?: string;           // [15] Tên phần mềm bán hàng kết nối CQT
+}
+
+/**
+ * Cấu hình chính sách và biểu mẫu thuế động
+ * Cho phép cập nhật linh hoạt khi Nhà nước / Bộ Tài chính thay đổi luật, thông tư, biểu mẫu
+ */
+export interface TaxPolicyConfig {
+  id: string;                       // vd: 'POLICY_2026_ND141', 'POLICY_TT40', 'CUSTOM'
+  name: string;                     // Tên chính sách hiển thị
+  version?: string;                 // Phiên bản chính sách (vd: '2026.1', '2021.1')
+  policy_name?: string;             // Bí danh tên chính sách
+  effective_date: string;           // Ngày áp dụng (YYYY-MM-DD hoặc DD/MM/YYYY)
+  annual_threshold: number;         // Ngưỡng doanh thu miễn thuế (mặc định 1.000.000.000 đ)
+  is_active: boolean;
+  notes?: string;                   // Ghi chú căn cứ pháp lý
+  circular_citation?: string;       // Viện dẫn tổng quát văn bản pháp lý
+  
+  // Viện dẫn căn cứ pháp lý hiển thị trên đầu các biểu mẫu xuất ra
+  circular_01_tkn_ref: string;      // Tiêu ngữ Mẫu 01/TKN-CNKD (NĐ 141/2026 & TT 50/2026)
+  circular_01_cnkd_ref: string;     // Tiêu ngữ Mẫu 01/CNKD (TT 40/2021 & TT 50/2026)
+  circular_01_2_bkhdkd_ref: string; // Tiêu ngữ Phụ lục 01-2/BK-HĐKD (TT 40/2021)
+  circular_books_ref: string;       // Tiêu ngữ 7 Sổ kế toán (TT 88/2021 & TT 152/2025)
+
+  // Danh mục nhóm ngành nghề tính thuế và tỷ lệ % thuế (có thể sửa đổi)
+  tax_groups: TaxBusinessGroup[];
+
+  // 7 Chỉ tiêu chi phí quản lý kinh doanh (Phần II Phụ lục 01-2/BK-HĐKD)
+  cost_indicators: {
+    code: string;                   // '[24]', '[25]', ...
+    label: string;                  // 'Chi phí nhân công', ...
+    keywords: string[];             // từ khóa tự động gom chi phí từ expenses
+  }[];
+}
+
+export interface BkHdkdExpenseItemRow {
+  indicator_code: string;
+  name: string;
+  amount: number;
+  note: string;
+}
+
+/**
+ * Dòng Nhập - Xuất - Tồn Kho (Phần I - Phụ lục 01-2/BK-HĐKD)
+ */
+export interface BkHdkdInventoryRow {
+  stt: number;
+  item_code: string;
+  item_name: string;
+  unit: string;
+  opening_qty: number;
+  opening_amount: number;
+  in_qty: number;
+  in_amount: number;
+  out_qty: number;
+  out_amount: number;
+  closing_qty: number;
+  closing_amount: number;
+}
+
+/**
+ * Tổng hợp Chi phí Quản lý Kinh doanh (Phần II - Phụ lục 01-2/BK-HĐKD)
+ */
+export interface BkHdkdExpenseSummary {
+  labor_24: number;          // [24] Chi phí nhân công
+  electricity_25: number;    // [25] Chi phí điện
+  water_26: number;          // [26] Chi phí nước
+  telecom_27: number;        // [27] Chi phí viễn thông
+  rent_28: number;           // [28] Chi phí thuê kho bãi, mặt bằng kinh doanh
+  management_29: number;     // [29] Chi phí quản lý
+  other_30: number;          // [30] Chi phí khác
+  total_cost: number;        // Tổng chi phí quản lý trong kỳ = [24] + ... + [30]
+  items_detail: Array<{
+    code: string;
+    label: string;
+    amount: number;
+    description: string;
+  }>;
 }
 
 export interface TaxRevenueThresholdAnalysis {

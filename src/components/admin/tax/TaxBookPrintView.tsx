@@ -2,12 +2,29 @@
 
 import React from 'react';
 import { Printer, X } from 'lucide-react';
-import { HouseholdBusinessInfo, S2aRowItem, S2aSummaryByGroup } from '@/lib/types/taxConfig';
+import {
+  HouseholdBusinessInfo,
+  S2aRowItem,
+  S2aSummaryByGroup,
+  TaxPolicyConfig,
+  BkHdkdInventoryRow,
+  BkHdkdExpenseItemRow,
+} from '@/lib/types/taxConfig';
 
 interface TaxBookPrintViewProps {
   info: HouseholdBusinessInfo;
   periodLabel: string;
-  bookCode: 'S1a-HKD' | 'S2a-HKD' | 'S2b-HKD' | 'S2c-HKD' | 'S2d-HKD' | 'S2e-HKD' | 'S3a-HKD' | '01/CNKD' | '01/TKN-CNKD';
+  bookCode:
+    | 'S1a-HKD'
+    | 'S2a-HKD'
+    | 'S2b-HKD'
+    | 'S2c-HKD'
+    | 'S2d-HKD'
+    | 'S2e-HKD'
+    | 'S3a-HKD'
+    | '01/CNKD'
+    | '01-2/BK-HĐKD'
+    | '01/TKN-CNKD';
   rows: S2aRowItem[];
   summary: S2aSummaryByGroup[];
   totals: {
@@ -16,6 +33,9 @@ interface TaxBookPrintViewProps {
     totalPit: number;
     totalTax: number;
   };
+  policy?: TaxPolicyConfig;
+  inventoryRows?: BkHdkdInventoryRow[];
+  expenseSummary?: BkHdkdExpenseItemRow[];
   onClose: () => void;
 }
 
@@ -26,6 +46,9 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
   rows,
   summary,
   totals,
+  policy,
+  inventoryRows = [],
+  expenseSummary = [],
   onClose,
 }) => {
   const handlePrint = () => {
@@ -52,6 +75,8 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
                 ? 'Tờ Khai Thông Báo Doanh Thu Năm (Doanh Thu ≤ 1 Tỷ - Miễn Thuế)'
                 : bookCode === '01/CNKD'
                 ? 'Tờ Khai Thuế Cá Nhân Kinh Doanh (Doanh Thu > 1 Tỷ)'
+                : bookCode === '01-2/BK-HĐKD'
+                ? 'Phụ Lục Bảng Kê Hoạt Động Kinh Doanh (Kèm Mẫu 01/CNKD)'
                 : 'Mẫu Sổ Kế Toán Chuẩn Bộ Tài Chính (Khổ A4)'}
             </span>
           </div>
@@ -90,9 +115,11 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
               <p className="font-bold text-sm">Mẫu số {bookCode}</p>
               <p className="text-[11px] italic text-zinc-700">
                 {bookCode === '01/TKN-CNKD'
-                  ? '(Ban hành kèm theo Thông tư số 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP)'
+                  ? `(Ban hành kèm theo ${policy?.circular_citation || 'Thông tư số 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP'})`
                   : bookCode === '01/CNKD'
-                  ? '(Ban hành kèm theo Thông tư số 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC)'
+                  ? `(Ban hành kèm theo ${policy?.circular_citation || 'Thông tư số 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC'})`
+                  : bookCode === '01-2/BK-HĐKD'
+                  ? '(Ban hành kèm theo Thông tư số 40/2021/TT-BTC của Bộ Tài chính)'
                   : '(Ban hành kèm theo Thông tư số 88/2021/TT-BTC & Thông tư 152/2025/TT-BTC)'}
               </p>
             </div>
@@ -108,6 +135,7 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
               {bookCode === 'S1a-HKD' && 'SỔ DOANH THU BÁN HÀNG HÓA, DỊCH VỤ (KHÔNG CHỊU THUẾ)'}
               {bookCode === 'S3a-HKD' && 'SỔ THEO DÕI NGHĨA VỤ THUẾ KHÁC'}
               {bookCode === '01/CNKD' && 'TỜ KHAI THUẾ ĐỐI VỚI CÁ NHÂN KINH DOANH (DOANH THU > 1 TỶ)'}
+              {bookCode === '01-2/BK-HĐKD' && 'PHỤ LỤC BẢNG KÊ HOẠT ĐỘNG KINH DOANH TRONG KỲ'}
               {bookCode === '01/TKN-CNKD' && 'TỜ KHAI THUẾ / THÔNG BÁO DOANH THU NĂM (DOANH THU ≤ 1 TỶ - MIỄN THUẾ)'}
             </h1>
             <p className="text-xs italic text-zinc-600 mt-1">
@@ -323,6 +351,159 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
                   </tr>
                 </tbody>
               </table>
+            </div>
+          ) : bookCode === '01-2/BK-HĐKD' ? (
+            /* ── BẢNG PHỤ LỤC 01-2/BK-HĐKD (KÈM THEO TỜ KHAI 01/CNKD) ── */
+            <div className="my-4 space-y-6">
+              {/* Header hành chính của Phụ lục */}
+              <div className="bg-zinc-50 border border-zinc-300 p-3 rounded text-[11px] space-y-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <p>[01] Kỳ tính thuế: <span className="font-semibold">{periodLabel}</span></p>
+                  <p>[02] Tên người nộp thuế: <span className="font-semibold uppercase">{info.shop_name}</span></p>
+                  <p>[03] Mã số thuế: <span className="font-semibold font-mono">{info.tax_code}</span></p>
+                  <p>[04] Tên đại diện: <span className="font-semibold">{info.owner_name}</span></p>
+                  <p>[05] Địa chỉ kinh doanh: <span>{info.business_address}</span></p>
+                  <p>[06] Số điện thoại: <span>{info.phone}</span></p>
+                </div>
+              </div>
+
+              {/* PHẦN I: BẢNG KÊ VẬT LIỆU, DỤNG CỤ, SẢN PHẨM, HÀNG HÓA */}
+              <div className="space-y-2">
+                <h3 className="font-bold text-xs uppercase text-zinc-900 border-b border-black pb-1">
+                  I. Bảng kê vật liệu, dụng cụ, sản phẩm, hàng hóa
+                </h3>
+                <table className="w-full border-collapse border border-black text-left text-[11px]">
+                  <thead>
+                    <tr className="bg-zinc-100 text-center font-bold">
+                      <th rowSpan={2} className="border border-black p-1.5 w-10">STT</th>
+                      <th rowSpan={2} className="border border-black p-1.5">Tên hàng hóa, dịch vụ</th>
+                      <th rowSpan={2} className="border border-black p-1.5 w-14">ĐVT</th>
+                      <th colSpan={2} className="border border-black p-1">Tồn đầu kỳ</th>
+                      <th colSpan={2} className="border border-black p-1">Nhập trong kỳ</th>
+                      <th colSpan={2} className="border border-black p-1">Xuất trong kỳ</th>
+                      <th colSpan={2} className="border border-black p-1">Tồn cuối kỳ</th>
+                    </tr>
+                    <tr className="bg-zinc-100 text-center font-bold">
+                      <th className="border border-black p-1 w-14">Lượng</th>
+                      <th className="border border-black p-1 w-20">Tiền (VNĐ)</th>
+                      <th className="border border-black p-1 w-14">Lượng</th>
+                      <th className="border border-black p-1 w-20">Tiền (VNĐ)</th>
+                      <th className="border border-black p-1 w-14">Lượng</th>
+                      <th className="border border-black p-1 w-20">Tiền (VNĐ)</th>
+                      <th className="border border-black p-1 w-14">Lượng</th>
+                      <th className="border border-black p-1 w-20">Tiền (VNĐ)</th>
+                    </tr>
+                    <tr className="text-center italic text-zinc-600 bg-zinc-50/60 text-[10px]">
+                      <td className="border border-black py-0.5">[07]</td>
+                      <td className="border border-black py-0.5">[08]</td>
+                      <td className="border border-black py-0.5">[09]</td>
+                      <td className="border border-black py-0.5">[10]</td>
+                      <td className="border border-black py-0.5">[11]</td>
+                      <td className="border border-black py-0.5">[12]</td>
+                      <td className="border border-black py-0.5">[13]</td>
+                      <td className="border border-black py-0.5">[14]</td>
+                      <td className="border border-black py-0.5">[15]</td>
+                      <td className="border border-black py-0.5">[16]</td>
+                      <td className="border border-black py-0.5">[17]</td>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inventoryRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={11} className="border border-black p-4 text-center italic text-zinc-500">
+                          Chưa có phát sinh tồn kho vật tư trong kỳ.
+                        </td>
+                      </tr>
+                    ) : (
+                      inventoryRows.map((r, i) => (
+                        <tr key={i} className="hover:bg-zinc-50">
+                          <td className="border border-black p-1.5 text-center">{r.stt}</td>
+                          <td className="border border-black p-1.5 font-medium">{r.item_name}</td>
+                          <td className="border border-black p-1.5 text-center">{r.unit}</td>
+                          <td className="border border-black p-1.5 text-right">{r.opening_qty.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{r.opening_amount.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{r.in_qty.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{r.in_amount.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{r.out_qty.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{r.out_amount.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{r.closing_qty.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right font-semibold">{r.closing_amount.toLocaleString('vi-VN')}</td>
+                        </tr>
+                      ))
+                    )}
+                    <tr className="font-bold bg-zinc-100 border-t-2 border-black">
+                      <td colSpan={4} className="border border-black p-2 uppercase">TỔNG CỘNG GIÁ TRỊ TỒN KHO VẬT TƯ</td>
+                      <td className="border border-black p-2 text-right">
+                        {inventoryRows.reduce((s, r) => s + r.opening_amount, 0).toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="border border-black p-2 text-center">-</td>
+                      <td className="border border-black p-2 text-right">
+                        {inventoryRows.reduce((s, r) => s + r.in_amount, 0).toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="border border-black p-2 text-center">-</td>
+                      <td className="border border-black p-2 text-right">
+                        {inventoryRows.reduce((s, r) => s + r.out_amount, 0).toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="border border-black p-2 text-center">-</td>
+                      <td className="border border-black p-2 text-right text-emerald-900 font-black">
+                        {inventoryRows.reduce((s, r) => s + r.closing_amount, 0).toLocaleString('vi-VN')} đ
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              {/* PHẦN II: BẢNG KÊ CHI PHÍ QUẢN LÝ KINH DOANH */}
+              <div className="space-y-2">
+                <h3 className="font-bold text-xs uppercase text-zinc-900 border-b border-black pb-1">
+                  II. Bảng kê chi phí quản lý kinh doanh phát sinh trong kỳ
+                </h3>
+                <table className="w-full border-collapse border border-black text-left text-[11px]">
+                  <thead>
+                    <tr className="bg-zinc-100 text-center font-bold">
+                      <th className="border border-black p-2 w-16">Chỉ tiêu</th>
+                      <th className="border border-black p-2">Tên loại chi phí quản lý kinh doanh</th>
+                      <th className="border border-black p-2 w-48 text-right">Số tiền phát sinh (VNĐ)</th>
+                      <th className="border border-black p-2 w-48">Ghi chú</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expenseSummary.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="border border-black p-4 text-center italic text-zinc-500">
+                          Chưa có chi phí quản lý ghi nhận trong kỳ.
+                        </td>
+                      </tr>
+                    ) : (
+                      expenseSummary.map((exp) => (
+                        <tr key={exp.indicator_code} className="hover:bg-zinc-50">
+                          <td className="border border-black p-2 text-center font-mono font-bold">
+                            [{exp.indicator_code}]
+                          </td>
+                          <td className="border border-black p-2 font-medium">{exp.name}</td>
+                          <td className="border border-black p-2 text-right font-semibold">
+                            {exp.amount.toLocaleString('vi-VN')} đ
+                          </td>
+                          <td className="border border-black p-2 text-zinc-600 text-xs italic">{exp.note || '-'}</td>
+                        </tr>
+                      ))
+                    )}
+                    <tr className="font-bold bg-amber-100 text-amber-950 border-t-2 border-black">
+                      <td colSpan={2} className="border border-black p-2.5 uppercase">
+                        TỔNG CỘNG CHI PHÍ QUẢN LÝ KINH DOANH TRONG KỲ ([24] đến [30])
+                      </td>
+                      <td className="border border-black p-2.5 text-right font-black text-sm">
+                        {expenseSummary.reduce((s, r) => s + r.amount, 0).toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="border border-black p-2.5 text-zinc-700 text-xs italic">Toàn bộ chi phí hợp lệ</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p className="italic text-[11px] text-zinc-600 pt-1">
+                * Cam đoan: Tôi cam đoan số liệu kê khai trên là đúng sự thật và chịu hoàn toàn trách nhiệm trước pháp luật về tính chính xác của phụ lục này.
+              </p>
             </div>
           ) : (
             /* ── BẢNG CÁC SỔ S1a, S2a, S2c, S2d, S2e ── */
