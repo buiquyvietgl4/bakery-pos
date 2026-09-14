@@ -69,6 +69,7 @@ import { gatherFullBakeryData } from '@/lib/utils/backupManager';
 import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
 import { CustomCakeCostingSettings } from '@/components/admin/CustomCakeCostingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
+import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSection';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
 import {
@@ -136,7 +137,7 @@ export default function AdminDashboard() {
     securityConfig,
     resetSecurityDefaults,
   } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tax_accounting' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
 
   // ── SECURITY & PERMISSIONS STATE ──
   const [unlockPassword, setUnlockPassword] = useState('');
@@ -2670,6 +2671,7 @@ export default function AdminDashboard() {
         <div className="flex items-center gap-1.5 bg-zinc-200/80 p-1 rounded-2xl overflow-x-auto scrollbar-none">
           {[
             { id: 'overview', label: 'Kế Toán & Tài Chính', icon: BarChart3 },
+            { id: 'tax_accounting', label: 'Sổ Sách & Báo Cáo Thuế (TT 88)', icon: FileSpreadsheet },
             { id: 'images', label: 'Quản Lý Bánh & Ảnh', icon: Cake },
             { id: 'inventory', label: 'Kho Xuất Nhập & Vật Tư', icon: Package },
             { id: 'recipes', label: 'Công Thức BOM', icon: BookOpen },
@@ -2715,6 +2717,17 @@ export default function AdminDashboard() {
           onExportCashflow={handleExportCashflow_Excel}
           onExportFull={handleExportFullAccounting_Excel}
           initialSubTab="pnl"
+        />
+      )}
+
+      {/* ── TAB MỚI ĐỘC LẬP: PHÂN HỆ SỔ SÁCH KẾ TOÁN & BÁO CÁO THUẾ (THÔNG TƯ 88 & 40) ── */}
+      {activeTab === 'tax_accounting' && (
+        <TaxAccountingSection
+          orders={posOrders}
+          expenses={expenses}
+          ingredients={ingredients}
+          cashflow={cashflow}
+          adminName={adminNameInput || 'Chủ tiệm'}
         />
       )}
 

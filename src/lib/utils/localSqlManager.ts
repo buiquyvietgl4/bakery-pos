@@ -360,6 +360,20 @@ CREATE TABLE IF NOT EXISTS cake_costing_config (
     config_data TEXT NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS tax_household_config (
+    id TEXT PRIMARY KEY,
+    shop_name TEXT,
+    tax_code TEXT,
+    business_address TEXT,
+    owner_name TEXT,
+    phone TEXT,
+    registered_revenue_level INTEGER DEFAULT 2,
+    pit_calculation_method INTEGER DEFAULT 1,
+    regular_employees_count INTEGER DEFAULT 5,
+    operating_hours TEXT DEFAULT '06:30 - 22:00',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 }
 
@@ -614,6 +628,19 @@ INSERT INTO cake_costing_config (id, config_data, updated_at) VALUES ('primary',
 `;
   }
 
+  // ----------------------------------------------------------------------------
+  // 16. BẢNG THÔNG TIN KẾ TOÁN & THUẾ HỘ KINH DOANH (TAX_HOUSEHOLD_CONFIG)
+  // ----------------------------------------------------------------------------
+  const taxInfo = data?.tax_household_config || data?.tax_household || data?.settings?.tax_household;
+  if (taxInfo) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 16. BẢNG THÔNG TIN KẾ TOÁN & THUẾ HỘ KINH DOANH (TAX_HOUSEHOLD_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO tax_household_config (id, shop_name, tax_code, business_address, owner_name, phone, registered_revenue_level, pit_calculation_method, regular_employees_count, operating_hours, updated_at) VALUES ('primary', ${sqlEscape(taxInfo.shop_name)}, ${sqlEscape(taxInfo.tax_code)}, ${sqlEscape(taxInfo.business_address)}, ${sqlEscape(taxInfo.owner_name)}, ${sqlEscape(taxInfo.phone)}, ${sqlEscape(taxInfo.registered_revenue_level || 2)}, ${sqlEscape(taxInfo.pit_calculation_method || 1)}, ${sqlEscape(taxInfo.regular_employees_count || 5)}, ${sqlEscape(taxInfo.operating_hours || '06:30 - 22:00')}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
   return sql;
 }
 
@@ -799,6 +826,11 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
     const branding = data.branding_config || data.branding || data.settings?.branding;
     if (branding) {
       localSnapshot['bakery_store_branding'] = JSON.stringify(branding);
+    }
+
+    const tax = data.tax_household_config || data.tax_household || data.settings?.tax_household;
+    if (tax) {
+      localSnapshot['bakery_tax_household_config'] = JSON.stringify(tax);
     }
 
     // Áp dụng vào hệ thống

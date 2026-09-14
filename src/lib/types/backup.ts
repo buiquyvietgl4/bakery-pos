@@ -120,6 +120,7 @@ export interface BakeryBackupData {
     branding?: any;
     security?: any;
     cake_costing?: any;
+    tax_household?: any;
   };
 }
 

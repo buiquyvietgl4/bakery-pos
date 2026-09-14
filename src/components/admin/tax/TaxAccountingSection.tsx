@@ -1,0 +1,1390 @@
+'use client';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  FileSpreadsheet, Printer, Building2, Calendar, Filter,
+  DollarSign, ShieldCheck, ChevronRight, CheckCircle2,
+  TrendingUp, Download, Eye, Edit3, Settings, AlertCircle,
+  HelpCircle, Receipt, RefreshCw, FileText, ArrowUpRight, Search,
+  Package, Wallet, Layers, Database
+} from 'lucide-react';
+import {
+  HouseholdBusinessInfo,
+  TAX_BUSINESS_GROUPS,
+  S2aRowItem,
+  S2aSummaryByGroup,
+} from '@/lib/types/taxConfig';
+import {
+  getHouseholdBusinessInfo,
+  saveHouseholdBusinessInfo,
+  fetchHouseholdBusinessInfoFromDb,
+  saveHouseholdBusinessInfoToDb,
+  generateS2aLedger,
+  TAX_CONFIG_UPDATED_EVENT,
+} from '@/lib/utils/taxSync';
+import { exportS2aExcel, exportFullTaxBooksExcel } from '@/lib/utils/exportTaxExcel';
+import { TaxBookPrintView } from './TaxBookPrintView';
+
+export interface TaxAccountingSectionProps {
+  orders: any[];
+  expenses: any[];
+  ingredients: any[];
+  cashflow: any[];
+  adminName: string;
+}
+
+export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
+  orders,
+  expenses,
+  ingredients,
+  cashflow,
+  adminName,
+}) => {
+  // ── THÔNG TIN HỘ KINH DOANH ──
+  const [businessInfo, setBusinessInfo] = useState<HouseholdBusinessInfo>(() => getHouseholdBusinessInfo());
+  const [isEditInfoModalOpen, setIsEditInfoModalOpen] = useState(false);
+  const [tempInfo, setTempInfo] = useState<HouseholdBusinessInfo>(businessInfo);
+  const [isSqlSaving, setIsSqlSaving] = useState(false);
+  const [sqlNotice, setSqlNotice] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Tự động nạp cấu hình Hộ KD từ CSDL SQL (Supabase / Local)
+    fetchHouseholdBusinessInfoFromDb().then((dbInfo) => {
+      if (dbInfo) {
+        setBusinessInfo(dbInfo);
+        setTempInfo(dbInfo);
+      }
+    });
+
+    const handleUpdate = (e: any) => {
+      if (e.detail) {
+        setBusinessInfo(e.detail);
+        setTempInfo(e.detail);
+      } else {
+        const info = getHouseholdBusinessInfo();
+        setBusinessInfo(info);
+        setTempInfo(info);
+      }
+    };
+    window.addEventListener(TAX_CONFIG_UPDATED_EVENT, handleUpdate);
+    return () => window.removeEventListener(TAX_CONFIG_UPDATED_EVENT, handleUpdate);
+  }, []);
+
+  // ── SUB-TABS TRONG PHÂN HỆ THUẾ ──
+  const [activeBookTab, setActiveBookTab] = useState<
+    'S2a' | 'S2c' | 'S2d' | 'S2e' | '01_CNKD' | 'other_books' | 'settings'
+  >('S2a');
+
+  // ── BỘ LỌC KỲ KẾ TOÁN THUẾ (NGÀY / THÁNG / QUÝ / NĂM) ──
+  const [periodPreset, setPeriodPreset] = useState<'month' | 'quarter' | 'year' | 'today' | 'custom'>('month');
+  const [selectedQuarter, setSelectedQuarter] = useState<number>(Math.floor(new Date().getMonth() / 3) + 1);
+  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+
+  const todayStr = new Date().toISOString().split('T')[0];
+  const firstDayOfMonthStr = `${todayStr.slice(0, 7)}-01`;
+  const [customStart, setCustomStart] = useState<string>(firstDayOfMonthStr);
+  const [customEnd, setCustomEnd] = useState<string>(todayStr);
+
+  // Tìm kiếm giao dịch trong sổ
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterTaxGroup, setFilterTaxGroup] = useState<number>(0); // 0 = tất cả
+
+  // Modal xem mẫu in A4 chuẩn Bộ Tài chính
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [currentPrintBook, setCurrentPrintBook] = useState<'S1a-HKD' | 'S2a-HKD' | 'S2b-HKD' | 'S2c-HKD' | 'S2d-HKD' | 'S2e-HKD' | 'S3a-HKD' | '01/CNKD'>('S2a-HKD');
+
+  // ── TÍNH TOÁN KHOẢNG THỜI GIAN THEO KỲ BÁO CÁO ──
+  const { startDateStr, endDateStr, periodLabel } = useMemo(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+
+    if (periodPreset === 'today') {
+      const dStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+      return {
+        startDateStr: dStr,
+        endDateStr: dStr,
+        periodLabel: `Hôm nay (${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()})`,
+      };
+    } else if (periodPreset === 'quarter') {
+      const startMonth = (selectedQuarter - 1) * 3 + 1;
+      const endMonth = startMonth + 2;
+      const lastDayOfEndMonth = new Date(selectedYear, endMonth, 0).getDate();
+      const sDate = `${selectedYear}-${pad(startMonth)}-01`;
+      const eDate = `${selectedYear}-${pad(endMonth)}-${pad(lastDayOfEndMonth)}`;
+      return {
+        startDateStr: sDate,
+        endDateStr: eDate,
+        periodLabel: `Quý ${selectedQuarter}/${selectedYear} (01/${pad(startMonth)} - ${pad(lastDayOfEndMonth)}/${pad(endMonth)}/${selectedYear})`,
+      };
+    } else if (periodPreset === 'year') {
+      return {
+        startDateStr: `${selectedYear}-01-01`,
+        endDateStr: `${selectedYear}-12-31`,
+        periodLabel: `Năm ${selectedYear} (01/01/${selectedYear} - 31/12/${selectedYear})`,
+      };
+    } else if (periodPreset === 'custom') {
+      return {
+        startDateStr: customStart,
+        endDateStr: customEnd,
+        periodLabel: `${customStart} đến ${customEnd}`,
+      };
+    } else {
+      // month
+      const currentMonth = pad(now.getMonth() + 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+      return {
+        startDateStr: `${now.getFullYear()}-${currentMonth}-01`,
+        endDateStr: `${now.getFullYear()}-${currentMonth}-${pad(lastDay)}`,
+        periodLabel: `Tháng ${now.getMonth() + 1}/${now.getFullYear()} (01/${currentMonth} - ${pad(lastDay)}/${currentMonth}/${now.getFullYear()})`,
+      };
+    }
+  }, [periodPreset, selectedQuarter, selectedYear, customStart, customEnd]);
+
+  // ── LỌC ĐƠN HÀNG TRONG KỲ VÀ TẠO DỮ LIỆU SỔ S2A ──
+  const periodOrders = useMemo(() => {
+    return orders.filter((o: any) => {
+      const oDate = (o.created_at || o.createdAt || new Date().toISOString()).slice(0, 10);
+      return oDate >= startDateStr && oDate <= endDateStr;
+    });
+  }, [orders, startDateStr, endDateStr]);
+
+  const s2aData = useMemo(() => {
+    return generateS2aLedger(periodOrders);
+  }, [periodOrders]);
+
+  // Lọc tìm kiếm trên bảng sổ S2a
+  const filteredRows = useMemo(() => {
+    return s2aData.rows.filter((r) => {
+      const matchSearch =
+        !searchQuery ||
+        r.voucher_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        r.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchGroup = filterTaxGroup === 0 || r.group_id === filterTaxGroup;
+      return matchSearch && matchGroup;
+    });
+  }, [s2aData.rows, searchQuery, filterTaxGroup]);
+
+  // Xử lý lưu thông tin hộ KD và đồng bộ SQL
+  const handleSaveBusinessInfo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSqlSaving(true);
+    const res = await saveHouseholdBusinessInfoToDb(tempInfo);
+    setIsSqlSaving(false);
+    if (res.success) {
+      setBusinessInfo(tempInfo);
+      setIsEditInfoModalOpen(false);
+      setSqlNotice('Đã lưu thông tin Hộ KD & Đồng bộ CSDL SQL thành công!');
+      setTimeout(() => setSqlNotice(null), 4000);
+    } else {
+      alert('Lỗi lưu CSDL SQL: ' + (res.error || 'Vui lòng thử lại'));
+    }
+  };
+
+  // Mở in mẫu sổ
+  const handleOpenPrint = (book: 'S1a-HKD' | 'S2a-HKD' | 'S2b-HKD' | 'S2c-HKD' | 'S2d-HKD' | 'S2e-HKD' | 'S3a-HKD' | '01/CNKD') => {
+    setCurrentPrintBook(book);
+    setIsPrintModalOpen(true);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Thông báo trạng thái đồng bộ CSDL SQL */}
+      {sqlNotice && (
+        <div className="flex items-center justify-between gap-2 px-4 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-bold animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{sqlNotice}</span>
+          </div>
+          <button
+            onClick={() => setSqlNotice(null)}
+            className="text-emerald-700 hover:text-emerald-950 text-xs font-semibold cursor-pointer"
+          >
+            Đóng
+          </button>
+        </div>
+      )}
+      
+      {/* ── TOP HEADER: THÔNG TIN HỘ KINH DOANH & CÁC NÚT HÀNH ĐỘNG NHANH ── */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 border border-amber-200/80 rounded-3xl p-5 sm:p-6 shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+          
+          {/* Thông tin hành chính của Hộ Kinh Doanh */}
+          <div className="space-y-1.5">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="px-2.5 py-0.5 rounded-md bg-amber-600 text-white font-black text-xs uppercase tracking-wider">
+                Thông Tư 88 &amp; 40-BTC
+              </span>
+              <h2 className="text-xl sm:text-2xl font-black text-zinc-900 tracking-tight">
+                {businessInfo.shop_name}
+              </h2>
+              <button
+                onClick={() => {
+                  setTempInfo(businessInfo);
+                  setIsEditInfoModalOpen(true);
+                }}
+                className="p-1 rounded-lg hover:bg-amber-200/60 text-amber-900 transition cursor-pointer"
+                title="Sửa thông tin Hộ Kinh Doanh"
+              >
+                <Edit3 className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-xs font-bold border border-emerald-300/80">
+                <Database className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Đồng Bộ CSDL SQL</span>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-700">
+              <div>
+                Mã số thuế: <span className="font-bold text-zinc-900 font-mono">{businessInfo.tax_code}</span>
+              </div>
+              <span className="text-zinc-300 hidden sm:inline">•</span>
+              <div>
+                Đại diện: <span className="font-bold text-zinc-900">{businessInfo.owner_name}</span>
+              </div>
+              <span className="text-zinc-300 hidden sm:inline">•</span>
+              <div>
+                Địa chỉ: <span className="text-zinc-800">{businessInfo.business_address}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Các nút Xuất Excel & In Chuẩn A4 */}
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => exportS2aExcel(businessInfo, periodLabel, s2aData.rows, s2aData.summary, s2aData)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold shadow-xs hover:shadow-md transition cursor-pointer"
+              title="Xuất Sổ S2a-HKD ra file Excel chuẩn 2 Sheet"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Xuất Excel S2a</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => exportFullTaxBooksExcel(businessInfo, periodLabel, orders, expenses, ingredients, cashflow, s2aData)}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white hover:bg-zinc-50 border border-zinc-300 text-zinc-800 text-xs font-bold shadow-xs hover:shadow-md transition cursor-pointer"
+              title="Xuất trọn bộ 7 Sổ Kế Toán HKD sang Excel đa Sheet"
+            >
+              <Download className="w-4 h-4 text-zinc-600" />
+              <span>Xuất Trọn Bộ 7 Sổ</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleOpenPrint('S2a-HKD')}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold shadow-xs hover:shadow-md transition cursor-pointer"
+              title="Xem và in mẫu A4 đúng chuẩn Bộ Tài chính"
+            >
+              <Printer className="w-4 h-4" />
+              <span>In Sổ A4 (S2a)</span>
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      {/* ── BỘ LỌC KỲ KẾ TOÁN THUẾ (NGÀY / THÁNG / QUÝ / NĂM) ── */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 bg-white p-3 sm:p-4 rounded-2xl border border-zinc-200/80 shadow-2xs text-xs">
+        
+        {/* Chọn khoảng thời gian */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-zinc-600 flex items-center gap-1">
+            <Calendar className="w-3.5 h-3.5 text-zinc-500" />
+            Kỳ kê khai:
+          </span>
+          <span className="font-black text-zinc-900 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200/60">
+            {periodLabel}
+          </span>
+
+          <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-xl ml-1">
+            <button
+              onClick={() => setPeriodPreset('today')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                periodPreset === 'today' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Hôm nay
+            </button>
+            <button
+              onClick={() => setPeriodPreset('month')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                periodPreset === 'month' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Tháng này
+            </button>
+            <button
+              onClick={() => setPeriodPreset('quarter')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                periodPreset === 'quarter' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Theo Quý
+            </button>
+            <button
+              onClick={() => setPeriodPreset('year')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                periodPreset === 'year' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Cả Năm
+            </button>
+            <button
+              onClick={() => setPeriodPreset('custom')}
+              className={`px-2.5 py-1 rounded-lg font-bold transition cursor-pointer ${
+                periodPreset === 'custom' ? 'bg-white text-zinc-900 shadow-2xs' : 'text-zinc-600 hover:text-zinc-900'
+              }`}
+            >
+              Tùy chọn
+            </button>
+          </div>
+
+          {/* Chọn Quý cụ thể */}
+          {periodPreset === 'quarter' && (
+            <div className="flex items-center gap-1.5 animate-in fade-in">
+              <select
+                value={selectedQuarter}
+                onChange={(e) => setSelectedQuarter(Number(e.target.value))}
+                className="px-2 py-1 rounded-lg bg-zinc-50 border border-zinc-200 font-bold text-zinc-800"
+              >
+                <option value={1}>Quý 1 (Tháng 1 - 3)</option>
+                <option value={2}>Quý 2 (Tháng 4 - 6)</option>
+                <option value={3}>Quý 3 (Tháng 7 - 9)</option>
+                <option value={4}>Quý 4 (Tháng 10 - 12)</option>
+              </select>
+              <input
+                type="number"
+                value={selectedYear}
+                onChange={(e) => setSelectedYear(Number(e.target.value))}
+                className="w-16 px-2 py-1 rounded-lg bg-zinc-50 border border-zinc-200 font-bold text-zinc-800"
+              />
+            </div>
+          )}
+
+          {/* Tùy chọn ngày */}
+          {periodPreset === 'custom' && (
+            <div className="flex items-center gap-1 bg-white px-2 py-0.5 rounded-xl border border-zinc-200 animate-in fade-in">
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="px-1 py-0.5 text-zinc-800 font-semibold focus:outline-hidden"
+              />
+              <span className="text-zinc-400">-</span>
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="px-1 py-0.5 text-zinc-800 font-semibold focus:outline-hidden"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Thông tin số lượng chứng từ */}
+        <div className="text-xs font-semibold text-zinc-500">
+          Tổng số giao dịch: <span className="font-bold text-zinc-900">{periodOrders.length}</span> đơn hàng
+        </div>
+
+      </div>
+
+      {/* ── 4 THẺ THỐNG KÊ TỔNG NGHĨA VỤ THUẾ (KPI CARDS) ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        
+        {/* Doanh thu chịu thuế */}
+        <div className="bg-white rounded-2xl p-4 border border-zinc-200/80 shadow-2xs">
+          <div className="flex items-center justify-between text-zinc-500 text-xs font-medium">
+            <span>Tổng Doanh Thu Kê Khai</span>
+            <DollarSign className="w-4 h-4 text-emerald-600" />
+          </div>
+          <p className="text-xl sm:text-2xl font-black text-zinc-900 mt-2">
+            {s2aData.totalRevenue.toLocaleString('vi-VN')} đ
+          </p>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            Tổng cộng từ {periodOrders.length} đơn bán hàng POS
+          </p>
+        </div>
+
+        {/* Thuế GTGT */}
+        <div className="bg-white rounded-2xl p-4 border border-zinc-200/80 shadow-2xs">
+          <div className="flex items-center justify-between text-zinc-500 text-xs font-medium">
+            <span>Thuế GTGT Phải Nộp</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+              VAT (1% &amp; 3%)
+            </span>
+          </div>
+          <p className="text-xl sm:text-2xl font-black text-emerald-700 mt-2">
+            {s2aData.totalVat.toLocaleString('vi-VN')} đ
+          </p>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            Chế biến bánh 3%, Phụ kiện tiệc 1%
+          </p>
+        </div>
+
+        {/* Thuế TNCN */}
+        <div className="bg-white rounded-2xl p-4 border border-zinc-200/80 shadow-2xs">
+          <div className="flex items-center justify-between text-zinc-500 text-xs font-medium">
+            <span>Thuế TNCN Phải Nộp</span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">
+              TNCN (0.5% &amp; 1.5%)
+            </span>
+          </div>
+          <p className="text-xl sm:text-2xl font-black text-blue-700 mt-2">
+            {s2aData.totalPit.toLocaleString('vi-VN')} đ
+          </p>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            Chế biến bánh 1.5%, Phụ kiện 0.5%
+          </p>
+        </div>
+
+        {/* Tổng thuế NSNN */}
+        <div className="bg-amber-50 rounded-2xl p-4 border border-amber-200 shadow-2xs">
+          <div className="flex items-center justify-between text-amber-900 text-xs font-bold">
+            <span>Tổng Nghĩa Vụ Thuế NSNN</span>
+            <ShieldCheck className="w-4 h-4 text-amber-700" />
+          </div>
+          <p className="text-xl sm:text-2xl font-black text-amber-900 mt-2">
+            {s2aData.totalTax.toLocaleString('vi-VN')} đ
+          </p>
+          <p className="text-[11px] text-amber-800 mt-1 font-medium">
+            Tương đương {s2aData.totalRevenue > 0 ? ((s2aData.totalTax / s2aData.totalRevenue) * 100).toFixed(2) : 0}% tổng doanh thu
+          </p>
+        </div>
+
+      </div>
+
+      {/* ── BỘ ĐIỀU HƯỚNG CÁC SỔ KẾ TOÁN & TỜ KHAI (SUB-TABS) ── */}
+      <div className="flex items-center gap-1.5 bg-zinc-200/80 p-1.5 rounded-2xl overflow-x-auto scrollbar-none">
+        <button
+          onClick={() => setActiveBookTab('S2a')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+            activeBookTab === 'S2a' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+          }`}
+        >
+          <FileText className="w-4 h-4 text-amber-600" />
+          <span>Sổ S2a-HKD: Doanh Thu &amp; Thuế</span>
+        </button>
+
+        <button
+          onClick={() => setActiveBookTab('S2c')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+            activeBookTab === 'S2c' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+          }`}
+        >
+          <TrendingUp className="w-4 h-4 text-emerald-600" />
+          <span>Sổ S2c-HKD: Doanh Thu &amp; Chi Phí</span>
+        </button>
+
+        <button
+          onClick={() => setActiveBookTab('S2d')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+            activeBookTab === 'S2d' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+          }`}
+        >
+          <Package className="w-4 h-4 text-indigo-600" />
+          <span>Sổ S2d-HKD: Kho Vật Tư &amp; Bánh</span>
+        </button>
+
+        <button
+          onClick={() => setActiveBookTab('S2e')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+            activeBookTab === 'S2e' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+          }`}
+        >
+          <Wallet className="w-4 h-4 text-blue-600" />
+          <span>Sổ S2e-HKD: Sổ Chi Tiết Tiền</span>
+        </button>
+
+        <button
+          onClick={() => setActiveBookTab('01_CNKD')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+            activeBookTab === '01_CNKD' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+          }`}
+        >
+          <Receipt className="w-4 h-4 text-rose-600" />
+          <span>Tờ Khai Thuế Mẫu 01/CNKD</span>
+        </button>
+
+        <button
+          onClick={() => setActiveBookTab('other_books')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+            activeBookTab === 'other_books' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+          }`}
+        >
+          <Layers className="w-4 h-4 text-zinc-600" />
+          <span>Bộ Sổ Khác (S1a, S2b, S3a)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveBookTab('settings')}
+          className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+            activeBookTab === 'settings' ? 'bg-white text-zinc-900 shadow-sm' : 'text-zinc-600 hover:text-zinc-900'
+          }`}
+        >
+          <Settings className="w-4 h-4 text-zinc-600" />
+          <span>Cấu Hình Thuế &amp; Hộ KD</span>
+        </button>
+      </div>
+
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* ── SUB-TAB 1: SỔ S2A-HKD: DOANH THU & THUẾ THEO % ── */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {activeBookTab === 'S2a' && (
+        <div className="space-y-5">
+          
+          {/* Bảng tổng hợp theo 5 nhóm ngành nghề chuẩn Tổng cục Thuế */}
+          <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <h3 className="font-bold text-sm text-zinc-900 flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                Tổng Hợp Nghĩa Vụ Thuế Theo 5 Nhóm Ngành Nghề (Thông tư 88/2021/TT-BTC)
+              </h3>
+              <span className="text-xs text-zinc-500">
+                Áp dụng tính thuế theo % Doanh thu
+              </span>
+            </div>
+
+            <div className="overflow-x-auto mt-3">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-zinc-500 font-bold bg-zinc-50/60">
+                    <th className="p-2.5">Nhóm Ngành Nghề</th>
+                    <th className="p-2.5 text-center">Tỷ lệ GTGT</th>
+                    <th className="p-2.5 text-center">Tỷ lệ TNCN</th>
+                    <th className="p-2.5 text-center">Tổng Thuế</th>
+                    <th className="p-2.5 text-right">Doanh Thu (VNĐ)</th>
+                    <th className="p-2.5 text-right">Thuế GTGT</th>
+                    <th className="p-2.5 text-right">Thuế TNCN</th>
+                    <th className="p-2.5 text-right">Tổng Thuế Phải Nộp</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100 font-medium">
+                  {s2aData.summary.map((g) => (
+                    <tr key={g.group_id} className="hover:bg-zinc-50/80">
+                      <td className="p-2.5">
+                        <div className="font-bold text-zinc-900">
+                          {g.group_id}. {g.group_name}
+                        </div>
+                        <div className="text-[11px] text-zinc-400">
+                          {TAX_BUSINESS_GROUPS.find((bg) => bg.id === g.group_id)?.example}
+                        </div>
+                      </td>
+                      <td className="p-2.5 text-center font-semibold text-emerald-700">{g.vat_percent}%</td>
+                      <td className="p-2.5 text-center font-semibold text-blue-700">{g.pit_percent}%</td>
+                      <td className="p-2.5 text-center font-bold text-amber-700">{g.vat_percent + g.pit_percent}%</td>
+                      <td className="p-2.5 text-right font-bold text-zinc-900">
+                        {g.total_revenue.toLocaleString('vi-VN')}
+                      </td>
+                      <td className="p-2.5 text-right text-emerald-800">
+                        {g.total_vat.toLocaleString('vi-VN')}
+                      </td>
+                      <td className="p-2.5 text-right text-blue-800">
+                        {g.total_pit.toLocaleString('vi-VN')}
+                      </td>
+                      <td className="p-2.5 text-right font-black text-amber-900">
+                        {g.total_tax.toLocaleString('vi-VN')}
+                      </td>
+                    </tr>
+                  ))}
+                  
+                  {/* Dòng tổng cộng */}
+                  <tr className="bg-amber-50/70 font-bold border-t-2 border-amber-200">
+                    <td colSpan={4} className="p-3 text-amber-950 uppercase">
+                      TỔNG CỘNG TOÀN TIỆM ({periodOrders.length} đơn hàng)
+                    </td>
+                    <td className="p-3 text-right font-black text-sm text-zinc-950">
+                      {s2aData.totalRevenue.toLocaleString('vi-VN')} đ
+                    </td>
+                    <td className="p-3 text-right font-black text-emerald-900">
+                      {s2aData.totalVat.toLocaleString('vi-VN')} đ
+                    </td>
+                    <td className="p-3 text-right font-black text-blue-900">
+                      {s2aData.totalPit.toLocaleString('vi-VN')} đ
+                    </td>
+                    <td className="p-3 text-right font-black text-base text-amber-950">
+                      {s2aData.totalTax.toLocaleString('vi-VN')} đ
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Bảng Chi tiết từng Giao dịch Bán Hàng Ghi Sổ S2a */}
+          <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-sm text-zinc-900">
+                  Chi Tiết Chứng Từ Bán Hàng Ghi Sổ (S2a-HKD)
+                </h3>
+                <p className="text-xs text-zinc-500">
+                  Tự động đồng bộ từ các đơn hàng POS đã thanh toán
+                </p>
+              </div>
+
+              {/* Ô tìm kiếm & lọc nhóm */}
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Tìm mã đơn, tên bánh..."
+                    className="pl-8 pr-3 py-1.5 text-xs bg-zinc-50 rounded-xl border border-zinc-200 focus:outline-hidden focus:border-amber-500 w-44 sm:w-56"
+                  />
+                </div>
+
+                <select
+                  value={filterTaxGroup}
+                  onChange={(e) => setFilterTaxGroup(Number(e.target.value))}
+                  className="px-2.5 py-1.5 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold text-zinc-700"
+                >
+                  <option value={0}>Tất cả nhóm</option>
+                  <option value={1}>Nhóm 1: Phụ kiện (1.5%)</option>
+                  <option value={2}>Nhóm 2: Dịch vụ (7%)</option>
+                  <option value={3}>Nhóm 3: Tiệm bánh (4.5%)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead>
+                  <tr className="border-b border-zinc-200 text-zinc-500 font-bold bg-zinc-50/60">
+                    <th className="p-2.5 w-12 text-center">STT</th>
+                    <th className="p-2.5 w-32">Ký hiệu chứng từ</th>
+                    <th className="p-2.5 w-28">Ngày bán</th>
+                    <th className="p-2.5">Diễn giải mặt hàng</th>
+                    <th className="p-2.5 w-44">Nhóm ngành nghề</th>
+                    <th className="p-2.5 text-right w-28">Doanh thu</th>
+                    <th className="p-2.5 text-right w-24">Thuế GTGT</th>
+                    <th className="p-2.5 text-right w-24">Thuế TNCN</th>
+                    <th className="p-2.5 text-right w-28">Tổng thuế</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {filteredRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="p-8 text-center text-zinc-400 italic">
+                        Không có giao dịch nào phù hợp với bộ lọc trong kỳ này.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredRows.slice(0, 100).map((row, idx) => (
+                      <tr key={row.id} className="hover:bg-zinc-50/80">
+                        <td className="p-2.5 text-center text-zinc-400">{idx + 1}</td>
+                        <td className="p-2.5 font-mono font-bold text-zinc-900">{row.voucher_no}</td>
+                        <td className="p-2.5 text-zinc-600">{row.voucher_date}</td>
+                        <td className="p-2.5 font-medium text-zinc-800">{row.description}</td>
+                        <td className="p-2.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                              row.group_id === 3
+                                ? 'bg-amber-100 text-amber-800'
+                                : row.group_id === 1
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-zinc-100 text-zinc-700'
+                            }`}
+                          >
+                            Nhóm {row.group_id} ({TAX_BUSINESS_GROUPS.find((b) => b.id === row.group_id)?.total_tax_percent}%)
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-right font-bold text-zinc-900">
+                          {row.revenue.toLocaleString('vi-VN')}
+                        </td>
+                        <td className="p-2.5 text-right text-emerald-700 font-semibold">
+                          {row.vat_amount.toLocaleString('vi-VN')}
+                        </td>
+                        <td className="p-2.5 text-right text-blue-700 font-semibold">
+                          {row.pit_amount.toLocaleString('vi-VN')}
+                        </td>
+                        <td className="p-2.5 text-right font-bold text-amber-900">
+                          {(row.vat_amount + row.pit_amount).toLocaleString('vi-VN')}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredRows.length > 100 && (
+              <p className="text-center text-xs text-zinc-400 pt-2">
+                Đang hiển thị 100/{filteredRows.length} giao dịch đầu tiên. Bấm "Xuất Excel S2a" để xem đầy đủ 100% dữ liệu.
+              </p>
+            )}
+          </div>
+
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* ── SUB-TAB 2: SỔ S2C-HKD: DOANH THU & CHI PHÍ ── */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {activeBookTab === 'S2c' && (
+        <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+            <div>
+              <h3 className="font-bold text-sm text-zinc-900">
+                Sổ S2c-HKD: Sổ Chi Tiết Doanh Thu, Chi Phí
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Theo dõi toàn bộ các khoản doanh thu bán hàng và chi phí sản xuất kinh doanh hợp lý (bột, bơ, điện nước, mặt bằng...)
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenPrint('S2c-HKD')}
+              className="flex items-center gap-1 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-xs font-bold text-zinc-800 transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>In Sổ S2c</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
+              <span className="text-xs font-bold text-emerald-800 uppercase">Tổng Doanh Thu Vào</span>
+              <p className="text-xl font-black text-emerald-900 mt-1">
+                {s2aData.totalRevenue.toLocaleString('vi-VN')} đ
+              </p>
+            </div>
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200">
+              <span className="text-xs font-bold text-rose-800 uppercase">Tổng Chi Phí Hợp Lý Ra</span>
+              <p className="text-xl font-black text-rose-900 mt-1">
+                {expenses.reduce((s, e) => s + e.amount, 0).toLocaleString('vi-VN')} đ
+              </p>
+            </div>
+            <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
+              <span className="text-xs font-bold text-blue-800 uppercase">Thu Nhập Tính Thuế (TN Ròng)</span>
+              <p className="text-xl font-black text-blue-900 mt-1">
+                {Math.max(0, s2aData.totalRevenue - expenses.reduce((s, e) => s + e.amount, 0)).toLocaleString('vi-VN')} đ
+              </p>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-500 font-bold">
+                  <th className="p-2.5">Ký hiệu chứng từ</th>
+                  <th className="p-2.5">Ngày tháng</th>
+                  <th className="p-2.5">Diễn giải nội dung kinh tế</th>
+                  <th className="p-2.5 text-right">Doanh Thu Vào (VNĐ)</th>
+                  <th className="p-2.5 text-right">Chi Phí Ra (VNĐ)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {expenses.slice(0, 15).map((e) => (
+                  <tr key={e.id} className="hover:bg-zinc-50">
+                    <td className="p-2.5 font-mono font-bold text-zinc-800">CP-{e.id}</td>
+                    <td className="p-2.5">{e.date}</td>
+                    <td className="p-2.5 text-zinc-800">
+                      Chi phí: <span className="font-semibold">{e.category}</span> - {e.description}
+                    </td>
+                    <td className="p-2.5 text-right text-zinc-300">-</td>
+                    <td className="p-2.5 text-right font-bold text-rose-700">
+                      {e.amount.toLocaleString('vi-VN')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* ── SUB-TAB 3: SỔ S2D-HKD: KHO VẬT TƯ & BÁNH THÀNH PHẨM ── */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {activeBookTab === 'S2d' && (
+        <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+            <div>
+              <h3 className="font-bold text-sm text-zinc-900">
+                Sổ S2d-HKD: Sổ Chi Tiết Vật Liệu, Dụng Cụ, Sản Phẩm, Hàng Hóa
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Quản lý số lượng và thành tiền nhập - xuất - tồn kho của nguyên vật liệu làm bánh (bột, bơ, sữa, trứng...)
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenPrint('S2d-HKD')}
+              className="flex items-center gap-1 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-xs font-bold text-zinc-800 transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>In Sổ S2d</span>
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-500 font-bold">
+                  <th className="p-2.5">Tên Vật Liệu / Dụng Cụ / Sản Phẩm</th>
+                  <th className="p-2.5 text-center">Đơn vị</th>
+                  <th className="p-2.5 text-right">Tồn Kho Hiện Tại</th>
+                  <th className="p-2.5 text-right">Đơn Giá Vốn (VNĐ)</th>
+                  <th className="p-2.5 text-right">Tổng Giá Trị Tồn Kho</th>
+                  <th className="p-2.5 text-center">Trạng Thái Kho</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {ingredients.map((ing) => {
+                  const isLow = ing.stock_qty <= ing.reorder_level;
+                  const totalVal = (ing.stock_qty || 0) * (ing.avg_cost || 0);
+                  return (
+                    <tr key={ing.id} className="hover:bg-zinc-50">
+                      <td className="p-2.5 font-bold text-zinc-900">{ing.name}</td>
+                      <td className="p-2.5 text-center text-zinc-600">{ing.unit}</td>
+                      <td className="p-2.5 text-right font-semibold">
+                        {(ing.stock_qty || 0).toLocaleString('vi-VN')}
+                      </td>
+                      <td className="p-2.5 text-right">{(ing.avg_cost || 0).toLocaleString('vi-VN')} đ</td>
+                      <td className="p-2.5 text-right font-bold text-zinc-900">
+                        {totalVal.toLocaleString('vi-VN')} đ
+                      </td>
+                      <td className="p-2.5 text-center">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            isLow ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'
+                          }`}
+                        >
+                          {isLow ? 'Cần nhập thêm' : 'Đầy đủ'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* ── SUB-TAB 4: SỔ S2E-HKD: SỔ CHI TIẾT TIỀN ── */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {activeBookTab === 'S2e' && (
+        <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+            <div>
+              <h3 className="font-bold text-sm text-zinc-900">
+                Sổ S2e-HKD: Sổ Chi Tiết Tiền
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Ghi chép các khoản thu - chi tiền mặt tại quầy và tiền gửi tài khoản ngân hàng (VietQR)
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenPrint('S2e-HKD')}
+              className="flex items-center gap-1 px-3 py-1.5 bg-zinc-100 hover:bg-zinc-200 rounded-xl text-xs font-bold text-zinc-800 transition cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>In Sổ S2e</span>
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="border-b border-zinc-200 bg-zinc-50 text-zinc-500 font-bold">
+                  <th className="p-2.5">Ký hiệu chứng từ</th>
+                  <th className="p-2.5">Ngày tháng</th>
+                  <th className="p-2.5">Diễn giải</th>
+                  <th className="p-2.5">Tài khoản / Quỹ</th>
+                  <th className="p-2.5 text-right">Số Tiền Thu (VNĐ)</th>
+                  <th className="p-2.5 text-right">Số Tiền Chi (VNĐ)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {cashflow.slice(0, 15).map((c) => (
+                  <tr key={c.id} className="hover:bg-zinc-50">
+                    <td className="p-2.5 font-mono font-bold text-zinc-800">{c.id}</td>
+                    <td className="p-2.5">{c.date || (c.created_at || '').slice(0, 10)}</td>
+                    <td className="p-2.5">{c.description || c.title}</td>
+                    <td className="p-2.5">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-100 text-zinc-800">
+                        {c.wallet === 'cash' ? 'Quỹ tiền mặt' : 'Ngân hàng VietQR'}
+                      </span>
+                    </td>
+                    <td className="p-2.5 text-right font-bold text-emerald-700">
+                      {c.type === 'in' ? c.amount.toLocaleString('vi-VN') : '-'}
+                    </td>
+                    <td className="p-2.5 text-right font-bold text-rose-700">
+                      {c.type === 'out' ? c.amount.toLocaleString('vi-VN') : '-'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* ── SUB-TAB 5: TỜ KHAI THUẾ MẪU 01/CNKD (THÔNG TƯ 40/2021/TT-BTC) ── */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {activeBookTab === '01_CNKD' && (
+        <div className="bg-white rounded-2xl p-6 border border-zinc-200/80 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-200">
+            <div>
+              <span className="px-2 py-0.5 rounded bg-rose-100 text-rose-800 text-xs font-bold uppercase">
+                Thông tư 40/2021/TT-BTC
+              </span>
+              <h3 className="text-lg font-black text-zinc-900 mt-1">
+                Tờ Khai Thuế Đối Với Cá Nhân Kinh Doanh (Mẫu 01/CNKD)
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Tổng hợp doanh thu và số thuế GTGT, TNCN cần nộp trong kỳ kê khai ({periodLabel})
+              </p>
+            </div>
+
+            <button
+              onClick={() => handleOpenPrint('01/CNKD')}
+              className="flex items-center gap-1.5 px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
+            >
+              <Printer className="w-4 h-4" />
+              <span>In Tờ Khai Mẫu 01/CNKD</span>
+            </button>
+          </div>
+
+          {/* Bảng Kê Chỉ Tiêu Tờ Khai 01/CNKD */}
+          <div className="border border-zinc-200 rounded-xl overflow-hidden">
+            <table className="w-full text-xs text-left">
+              <thead>
+                <tr className="bg-zinc-100 text-zinc-700 font-bold border-b border-zinc-200">
+                  <th className="p-3 w-16 text-center">Chỉ tiêu</th>
+                  <th className="p-3">Nội dung kinh tế kê khai</th>
+                  <th className="p-3 w-32 text-center">Tỷ lệ tính thuế</th>
+                  <th className="p-3 w-40 text-right">Doanh Thu Kê Khai (VNĐ)</th>
+                  <th className="p-3 w-40 text-right">Số Thuế Phải Nộp (VNĐ)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-200 font-medium">
+                
+                {/* [28] Tổng doanh thu */}
+                <tr className="bg-zinc-50/50 font-bold">
+                  <td className="p-3 text-center text-zinc-900 font-mono">[28]</td>
+                  <td className="p-3 text-zinc-900 uppercase">TỔNG DOANH THU TÍNH THUẾ TRONG KỲ</td>
+                  <td className="p-3 text-center">-</td>
+                  <td className="p-3 text-right font-black text-sm text-zinc-900">
+                    {s2aData.totalRevenue.toLocaleString('vi-VN')}
+                  </td>
+                  <td className="p-3 text-right font-black text-sm text-amber-900">
+                    {s2aData.totalTax.toLocaleString('vi-VN')}
+                  </td>
+                </tr>
+
+                {/* Nhóm 1: Phân phối hàng hóa */}
+                <tr>
+                  <td className="p-3 text-center font-mono text-zinc-500">[29]</td>
+                  <td className="p-3">
+                    1. Phân phối, cung cấp hàng hóa (Phụ kiện sinh nhật, nến, mũ, bánh nhập sẵn)
+                  </td>
+                  <td className="p-3 text-center">GTGT: 1% | TNCN: 0.5%</td>
+                  <td className="p-3 text-right font-bold text-zinc-800">
+                    {(s2aData.summary[0]?.total_revenue || 0).toLocaleString('vi-VN')}
+                  </td>
+                  <td className="p-3 text-right font-bold text-zinc-800">
+                    {(s2aData.summary[0]?.total_tax || 0).toLocaleString('vi-VN')}
+                  </td>
+                </tr>
+
+                {/* Nhóm 2: Dịch vụ */}
+                <tr>
+                  <td className="p-3 text-center font-mono text-zinc-500">[30]</td>
+                  <td className="p-3">
+                    2. Dịch vụ, xây dựng không bao thầu NVL (Phí ship riêng, trang trí tiệc)
+                  </td>
+                  <td className="p-3 text-center">GTGT: 5% | TNCN: 2.0%</td>
+                  <td className="p-3 text-right font-bold text-zinc-800">
+                    {(s2aData.summary[1]?.total_revenue || 0).toLocaleString('vi-VN')}
+                  </td>
+                  <td className="p-3 text-right font-bold text-zinc-800">
+                    {(s2aData.summary[1]?.total_tax || 0).toLocaleString('vi-VN')}
+                  </td>
+                </tr>
+
+                {/* Nhóm 3: Sản xuất tiệm bánh */}
+                <tr className="bg-amber-50/40">
+                  <td className="p-3 text-center font-mono text-amber-900 font-bold">[31]</td>
+                  <td className="p-3 font-bold text-amber-950">
+                    3. Sản xuất bánh kem, bánh mì, đồ uống chế biến tại tiệm
+                  </td>
+                  <td className="p-3 text-center font-bold text-amber-900">GTGT: 3% | TNCN: 1.5%</td>
+                  <td className="p-3 text-right font-black text-amber-950">
+                    {(s2aData.summary[2]?.total_revenue || 0).toLocaleString('vi-VN')}
+                  </td>
+                  <td className="p-3 text-right font-black text-amber-950">
+                    {(s2aData.summary[2]?.total_tax || 0).toLocaleString('vi-VN')}
+                  </td>
+                </tr>
+
+                {/* Nhóm 4: Khác */}
+                <tr>
+                  <td className="p-3 text-center font-mono text-zinc-500">[32]</td>
+                  <td className="p-3">
+                    4. Hoạt động kinh doanh khác
+                  </td>
+                  <td className="p-3 text-center">GTGT: 2% | TNCN: 1.0%</td>
+                  <td className="p-3 text-right font-bold text-zinc-800">
+                    {(s2aData.summary[3]?.total_revenue || 0).toLocaleString('vi-VN')}
+                  </td>
+                  <td className="p-3 text-right font-bold text-zinc-800">
+                    {(s2aData.summary[3]?.total_tax || 0).toLocaleString('vi-VN')}
+                  </td>
+                </tr>
+
+                {/* [33] Tổng thuế GTGT */}
+                <tr className="bg-emerald-50/50 font-bold">
+                  <td className="p-3 text-center font-mono text-emerald-800">[33]</td>
+                  <td className="p-3 text-emerald-950">Tổng số thuế GTGT phải nộp trong kỳ:</td>
+                  <td className="p-3 text-center">-</td>
+                  <td className="p-3 text-right">-</td>
+                  <td className="p-3 text-right font-black text-emerald-900 text-sm">
+                    {s2aData.totalVat.toLocaleString('vi-VN')} đ
+                  </td>
+                </tr>
+
+                {/* [34] Tổng thuế TNCN */}
+                <tr className="bg-blue-50/50 font-bold">
+                  <td className="p-3 text-center font-mono text-blue-800">[34]</td>
+                  <td className="p-3 text-blue-950">Tổng số thuế TNCN phải nộp trong kỳ:</td>
+                  <td className="p-3 text-center">-</td>
+                  <td className="p-3 text-right">-</td>
+                  <td className="p-3 text-right font-black text-blue-900 text-sm">
+                    {s2aData.totalPit.toLocaleString('vi-VN')} đ
+                  </td>
+                </tr>
+
+              </tbody>
+            </table>
+          </div>
+
+          <div className="p-4 bg-amber-50/80 rounded-2xl border border-amber-200 text-xs text-amber-950 space-y-1">
+            <p className="font-bold flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-amber-700" />
+              Sẵn sàng kê khai trực tuyến:
+            </p>
+            <p>
+              Chủ hộ kinh doanh có thể sao chép các chỉ tiêu [28], [29], [31], [33], [34] ở bảng trên để điền trực tiếp vào hệ thống Thuế Điện Tử <b>thuedientu.gdt.gov.vn</b> của Tổng cục Thuế, hoặc in nộp bản cứng có chữ ký đại diện hộ kinh doanh.
+            </p>
+          </div>
+
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* ── SUB-TAB 6: BỘ SỔ KHÁC (S1A, S2B, S3A) ── */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {activeBookTab === 'other_books' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          
+          {/* S1a-HKD */}
+          <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="px-2 py-0.5 rounded bg-zinc-100 text-zinc-800 text-xs font-bold">Mẫu S1a-HKD</span>
+                <span className="text-xs text-zinc-400">TT 88/2021</span>
+              </div>
+              <h4 className="font-bold text-zinc-900 text-sm mt-3">
+                Sổ Doanh Thu Bán Hàng Hóa, Dịch Vụ
+              </h4>
+              <p className="text-xs text-zinc-500 mt-1">
+                Dành riêng cho cá nhân kinh doanh thuộc đối tượng không chịu thuế (doanh thu dưới ngưỡng).
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenPrint('S1a-HKD')}
+              className="mt-5 w-full py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>In Mẫu S1a-HKD</span>
+            </button>
+          </div>
+
+          {/* S2b-HKD */}
+          <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-xs font-bold">Mẫu S2b-HKD</span>
+                <span className="text-xs text-zinc-400">TT 88/2021</span>
+              </div>
+              <h4 className="font-bold text-zinc-900 text-sm mt-3">
+                Sổ Chi Tiết Doanh Thu (GTGT % &amp; TNCN Thu Nhập)
+              </h4>
+              <p className="text-xs text-zinc-500 mt-1">
+                Dành cho hộ kinh doanh nộp thuế GTGT theo % doanh thu và thuế TNCN tính trên thu nhập chịu thuế (Doanh thu - Chi phí).
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenPrint('S2b-HKD')}
+              className="mt-5 w-full py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>In Mẫu S2b-HKD</span>
+            </button>
+          </div>
+
+          {/* S3a-HKD */}
+          <div className="bg-white rounded-2xl p-5 border border-zinc-200/80 shadow-xs flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-xs font-bold">Mẫu S3a-HKD</span>
+                <span className="text-xs text-zinc-400">TT 88/2021</span>
+              </div>
+              <h4 className="font-bold text-zinc-900 text-sm mt-3">
+                Sổ Theo Dõi Nghĩa Vụ Thuế Khác
+              </h4>
+              <p className="text-xs text-zinc-500 mt-1">
+                Theo dõi việc thực hiện nghĩa vụ nộp Lệ phí môn bài, thuế sử dụng đất phi nông nghiệp và các khoản nộp ngân sách nhà nước khác.
+              </p>
+            </div>
+            <button
+              onClick={() => handleOpenPrint('S3a-HKD')}
+              className="mt-5 w-full py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5" />
+              <span>In Mẫu S3a-HKD</span>
+            </button>
+          </div>
+
+        </div>
+      )}
+
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* ── SUB-TAB 7: CẤU HÌNH THUẾ & HỘ KINH DOANH ── */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {activeBookTab === 'settings' && (
+        <div className="bg-white rounded-2xl p-6 border border-zinc-200/80 shadow-xs space-y-6">
+          <div>
+            <h3 className="text-base font-black text-zinc-900">
+              Cài Đặt Pháp Lý Hộ Kinh Doanh &amp; Ngưỡng Thuế
+            </h3>
+            <p className="text-xs text-zinc-500">
+              Thông tin này sẽ tự động xuất hiện trên tiêu đề của tất cả 7 sổ kế toán và tờ khai thuế Mẫu 01/CNKD
+            </p>
+          </div>
+
+          <form onSubmit={handleSaveBusinessInfo} className="space-y-4 max-w-2xl">
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 mb-1">
+                Tên Hộ Kinh Doanh / Tiệm Bánh
+              </label>
+              <input
+                type="text"
+                value={businessInfo.shop_name}
+                onChange={(e) => setBusinessInfo({ ...businessInfo, shop_name: e.target.value })}
+                className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Mã Số Thuế (MST)
+                </label>
+                <input
+                  type="text"
+                  value={businessInfo.tax_code}
+                  onChange={(e) => setBusinessInfo({ ...businessInfo, tax_code: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-mono font-bold focus:outline-hidden focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Người Đại Diện Pháp Luật
+                </label>
+                <input
+                  type="text"
+                  value={businessInfo.owner_name}
+                  onChange={(e) => setBusinessInfo({ ...businessInfo, owner_name: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold focus:outline-hidden focus:border-amber-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-zinc-700 mb-1">
+                Địa Chỉ Đăng Ký Kinh Doanh
+              </label>
+              <input
+                type="text"
+                value={businessInfo.business_address}
+                onChange={(e) => setBusinessInfo({ ...businessInfo, business_address: e.target.value })}
+                className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold focus:outline-hidden focus:border-amber-500"
+              />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Số Điện Thoại Liên Hệ
+                </label>
+                <input
+                  type="text"
+                  value={businessInfo.phone}
+                  onChange={(e) => setBusinessInfo({ ...businessInfo, phone: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold focus:outline-hidden focus:border-amber-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Mức Doanh Thu Đăng Ký
+                </label>
+                <select
+                  value={businessInfo.registered_revenue_level}
+                  onChange={(e) => setBusinessInfo({ ...businessInfo, registered_revenue_level: Number(e.target.value) })}
+                  className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold"
+                >
+                  <option value={1}>Dưới 500 triệu đồng/năm (Nhóm 1)</option>
+                  <option value={2}>Từ 500 triệu đến dưới 3 tỷ đồng/năm (Nhóm 2)</option>
+                  <option value={3}>Từ 3 tỷ đến dưới 50 tỷ đồng/năm (Nhóm 3)</option>
+                  <option value={4}>Trên 50 tỷ đồng/năm (Nhóm 4)</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isSqlSaving}
+                onClick={async () => {
+                  setIsSqlSaving(true);
+                  const res = await saveHouseholdBusinessInfoToDb(businessInfo);
+                  setIsSqlSaving(false);
+                  if (res.success) {
+                    setSqlNotice('Đã lưu thiết lập thuế & đồng bộ CSDL SQL thành công!');
+                    setTimeout(() => setSqlNotice(null), 4000);
+                  } else {
+                    alert('Lỗi lưu CSDL SQL: ' + (res.error || 'Vui lòng thử lại'));
+                  }
+                }}
+                className="flex items-center gap-2 px-5 py-2.5 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-xs transition cursor-pointer"
+              >
+                {isSqlSaving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Đang Lưu CSDL SQL...</span>
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-4 h-4" />
+                    <span>Lưu Thiết Lập Thuế &amp; Ghi CSDL SQL</span>
+                  </>
+                )}
+              </button>
+
+              {sqlNotice && (
+                <div className="flex items-center gap-1.5 text-xs text-emerald-800 font-bold bg-emerald-50 px-3 py-2 rounded-xl border border-emerald-300 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  <span>{sqlNotice}</span>
+                </div>
+              )}
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* ── MODAL CHỈNH SỬA THÔNG TIN HỘ KINH DOANH NHANH ── */}
+      {isEditInfoModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-zinc-200 space-y-4">
+            <h3 className="font-bold text-base text-zinc-900">
+              Cập Nhật Thông Tin Hộ Kinh Doanh
+            </h3>
+            <form onSubmit={handleSaveBusinessInfo} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">Tên Tiệm / Hộ KD</label>
+                <input
+                  type="text"
+                  value={tempInfo.shop_name}
+                  onChange={(e) => setTempInfo({ ...tempInfo, shop_name: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">Mã Số Thuế</label>
+                  <input
+                    type="text"
+                    value={tempInfo.tax_code}
+                    onChange={(e) => setTempInfo({ ...tempInfo, tax_code: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-mono font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-zinc-700 mb-1">Đại Diện Pháp Luật</label>
+                  <input
+                    type="text"
+                    value={tempInfo.owner_name}
+                    onChange={(e) => setTempInfo({ ...tempInfo, owner_name: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">Địa Chỉ Kinh Doanh</label>
+                <input
+                  type="text"
+                  value={tempInfo.business_address}
+                  onChange={(e) => setTempInfo({ ...tempInfo, business_address: e.target.value })}
+                  className="w-full px-3 py-2 text-xs bg-zinc-50 rounded-xl border border-zinc-200 font-semibold"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3">
+                <button
+                  type="button"
+                  disabled={isSqlSaving}
+                  onClick={() => setIsEditInfoModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-100 transition cursor-pointer"
+                >
+                  Hủy Bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSqlSaving}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white shadow-xs transition cursor-pointer"
+                >
+                  {isSqlSaving ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Đang Lưu SQL...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Database className="w-3.5 h-3.5" />
+                      <span>Lưu &amp; Đồng Bộ SQL</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL XEM TRƯỚC VÀ IN BẢN CHUẨN A4 ── */}
+      {isPrintModalOpen && (
+        <TaxBookPrintView
+          info={businessInfo}
+          periodLabel={periodLabel}
+          bookCode={currentPrintBook}
+          rows={s2aData.rows}
+          summary={s2aData.summary}
+          totals={s2aData}
+          onClose={() => setIsPrintModalOpen(false)}
+        />
+      )}
+
+    </div>
+  );
+};
