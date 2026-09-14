@@ -18,6 +18,9 @@ export interface CakeStickerData {
   shippingAddress?: string;
   createdAt?: string;
   price?: number;
+  totalAmount?: number;
+  depositAmount?: number;
+  remainingAmount?: number;
   notes?: string;
   flavor?: string;
   cream?: string;
@@ -502,12 +505,33 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
                       <span className="truncate"><b>Nhân:</b> {data.filling}</span>
                     </div>
                   )}
-                  {data.addons && data.addons.length > 0 && (
-                    <div className="sticker-info-line flex items-center gap-1 font-bold text-amber-950 truncate">
-                      <span className="sticker-icon shrink-0 text-[8px]">✨</span>
-                      <span className="truncate"><b>Kèm:</b> {data.addons.join(', ')}</span>
-                    </div>
-                  )}
+                  {/* GIÁ BÁNH VÀ SỐ TIỀN CÒN LẠI CẦN THU (THAY THẾ THÔNG TIN YÊU CẦU/KÈM THEO YÊU CẦU) */}
+                  {(data.totalAmount !== undefined || data.price !== undefined || data.remainingAmount !== undefined) && (() => {
+                    const priceVal = Number(data.totalAmount ?? data.price ?? 0);
+                    const remVal = data.remainingAmount !== undefined 
+                      ? Number(data.remainingAmount)
+                      : (data.totalAmount !== undefined && data.depositAmount !== undefined 
+                          ? Math.max(0, Number(data.totalAmount) - Number(data.depositAmount))
+                          : 0);
+                    return (
+                      <div className="sticker-info-line flex items-center gap-1 font-black text-zinc-950 truncate">
+                        <span className="sticker-icon shrink-0 text-[8px]">💰</span>
+                        <span className="truncate">
+                          <b>Giá:</b> {priceVal.toLocaleString('vi-VN')}đ
+                          {' • '}
+                          {remVal > 0 ? (
+                            <span className="text-red-700 font-black">
+                              <b>Còn thu:</b> {remVal.toLocaleString('vi-VN')}đ
+                            </span>
+                          ) : (
+                            <span className="text-emerald-800 font-bold">
+                              <b>Đã thu đủ</b>
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
 

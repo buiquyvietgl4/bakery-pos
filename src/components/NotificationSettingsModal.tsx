@@ -180,7 +180,11 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
       shippingAddress: order.shipping_address || fromN.shipping_address,
       createdAt: order.created_at,
       price: order.total_amount || fromN.total_amount,
+      totalAmount: order.total_amount || fromN.total_amount,
+      depositAmount: order.deposit_amount ?? fromN.deposit_amount,
+      remainingAmount: order.remaining_amount !== undefined ? order.remaining_amount : fromN.remaining_amount,
       notes: cleanDisplayNotes(order.notes) || fromN.special_request,
+      filling: order.filling || fromN.filling,
     });
   };
 

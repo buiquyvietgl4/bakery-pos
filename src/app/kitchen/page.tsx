@@ -17,7 +17,7 @@ import {
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
   ShoppingBag, Phone, User, Camera, X, AlertTriangle, Volume2, VolumeX, Bell,
   Package, Search, Plus, Minus, ChevronDown, Timer, Play, Calculator, Scale, BookOpen, CheckCheck, Send, History,
-  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft
+  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft, Utensils
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
@@ -39,6 +39,7 @@ import { ConfirmDoneModal } from '@/components/kitchen/ConfirmDoneModal';
 import { CancelRemakeModal } from '@/components/kitchen/CancelRemakeModal';
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { DeliveryPaymentModal } from '@/components/kitchen/DeliveryPaymentModal';
+import CakeBomModal from '@/components/kitchen/CakeBomModal';
 import { addSpoilageLog } from '@/lib/utils/spoilageManager';
 import { parseRecipeItem, formatScaledQty, normalizeRecipe, fetchRecipesFromDb } from '@/lib/utils/recipeCalculator';
 import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
@@ -124,6 +125,13 @@ export default function KitchenPage() {
     const isShip = order.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
     const shipAddr = order.shipping_address || fromN.shipping_address;
     const cakeInfo = getCakeDisplayInfo(order);
+    const totalAmt = order.total_amount ?? (order as any).totalPrice ?? fromN.total_amount ?? (mainItem as any)?.line_total ?? 0;
+    const depAmt = order.deposit_amount ?? (order as any).depositAmount ?? fromN.deposit_amount ?? 0;
+    const remAmt = order.remaining_amount !== undefined 
+      ? order.remaining_amount 
+      : ((order as any).remainingAmount !== undefined 
+          ? (order as any).remainingAmount 
+          : (fromN.remaining_amount !== undefined ? fromN.remaining_amount : Math.max(0, totalAmt - depAmt)));
 
     setStickerModalData({
       orderNumber: order.order_number || (order as any).orderNumber || `DH-${order.id.slice(0, 6)}`,
@@ -135,11 +143,14 @@ export default function KitchenPage() {
       deliveryMethod: isShip ? 'shipping' : 'pickup',
       shippingAddress: shipAddr || undefined,
       createdAt: order.created_at,
+      price: totalAmt,
+      totalAmount: totalAmt,
+      depositAmount: depAmt,
+      remainingAmount: remAmt,
       flavor: cakeInfo.flavor,
       cream: cakeInfo.cream,
       filling: cakeInfo.filling,
       packaging: cakeInfo.packaging,
-      addons: cakeInfo.addons,
     });
     setIsStickerModalOpen(true);
   };
@@ -166,6 +177,10 @@ export default function KitchenPage() {
 
   // ── MODAL XEM CHI TIẾT ĐƠN ĐẶT BÁNH ──
   const [orderDetailModalData, setOrderDetailModalData] = useState<KDSOrder | null>(null);
+
+  // ── MODAL CÔNG THỨC BOM CỐT BÁNH CHO THỢ BẾP ──
+  const [bomModalOrder, setBomModalOrder] = useState<KDSOrder | null>(null);
+  const handleOpenCakeBom = (order: KDSOrder) => setBomModalOrder(order);
 
   // ── MODAL THANH TOÁN & HOÀN THÀNH GIAO HÀNG (BƯỚC 3) ──
   const [deliveryPaymentModalOrder, setDeliveryPaymentModalOrder] = useState<KDSOrder | null>(null);
@@ -2307,24 +2322,33 @@ export default function KitchenPage() {
 
                           {/* 3. Nút Xem chi tiết & In tem & Chuyển bước */}
                           <div className="space-y-2 pt-1">
-                            <div className="flex gap-2">
+                            <div className="grid grid-cols-3 gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => setOrderDetailModalData(order)}
-                                className="flex-1 py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-xs"
+                                className="py-2 px-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                                 title="Xem đầy đủ ảnh mẫu, chữ ghi bánh, yêu cầu và địa chỉ"
                               >
-                                <Eye className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Xem chi tiết</span>
+                                <Eye className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                <span className="truncate">Chi tiết</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleOpenCakeBom(order)}
+                                className="py-2 px-2 rounded-xl bg-pink-950/70 hover:bg-pink-900 border border-pink-700/80 text-pink-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                                title="Xem công thức định mức nguyên vật liệu BOM cốt bánh"
+                              >
+                                <Utensils className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                                <span className="truncate">BOM Bánh</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => handleOpenCakeSticker(order)}
-                                className="py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer shrink-0 active:scale-95 shadow-xs"
+                                className="py-2 px-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                                 title="In tem nhãn dán hộp bánh"
                               >
-                                <Tag className="w-3.5 h-3.5 text-amber-400" />
-                                <span>Tem Hộp</span>
+                                <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                <span className="truncate">Tem Hộp</span>
                               </button>
                             </div>
 
@@ -2518,33 +2542,42 @@ export default function KitchenPage() {
 
                             {/* 3. Nút Xem chi tiết, Tem Hộp, Báo Hỏng, Hoàn Thành Bước 2 */}
                             <div className="space-y-2 pt-1">
-                              <div className="flex gap-2">
+                              <div className="grid grid-cols-4 gap-1.5">
                                 <button
                                   type="button"
                                   onClick={() => setOrderDetailModalData(order)}
-                                  className="flex-1 py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-xs"
+                                  className="py-2 px-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                                   title="Xem chi tiết đầy đủ nội dung đặt bánh"
                                 >
-                                  <Eye className="w-3.5 h-3.5 text-amber-400" />
-                                  <span>Xem chi tiết</span>
+                                  <Eye className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span className="truncate">Chi tiết</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenCakeBom(order)}
+                                  className="py-2 px-1.5 rounded-xl bg-pink-950/70 hover:bg-pink-900 border border-pink-700/80 text-pink-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                                  title="Xem công thức định mức nguyên vật liệu BOM cốt bánh"
+                                >
+                                  <Utensils className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                                  <span className="truncate">BOM</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleOpenCakeSticker(order)}
-                                  className="py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer shrink-0 active:scale-95 shadow-xs"
+                                  className="py-2 px-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                                   title="In tem nhãn dán hộp bánh"
                                 >
-                                  <Tag className="w-3.5 h-3.5 text-amber-400" />
-                                  <span>Tem Hộp</span>
+                                  <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span className="truncate">Tem</span>
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => setCancelRemakeState({ isOpen: true, order })}
-                                  className="py-2 px-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 hover:text-rose-100 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer shrink-0 active:scale-95 shadow-xs"
+                                  className="py-2 px-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 hover:text-rose-100 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                                   title="Bánh hỏng - Hủy để làm lại từ đầu"
                                 >
-                                  <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
-                                  <span>Làm Lại</span>
+                                  <RotateCcw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                                  <span className="truncate">Làm Lại</span>
                                 </button>
                               </div>
 
@@ -2844,33 +2877,42 @@ export default function KitchenPage() {
 
                     {/* 4. Các nút thao tác */}
                     <div className="space-y-2 pt-1">
-                      <div className="flex gap-2">
+                      <div className="grid grid-cols-4 gap-1.5">
                         <button
                           type="button"
                           onClick={() => setOrderDetailModalData(order)}
-                          className="flex-1 py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-xs"
+                          className="py-2 px-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                           title="Xem chi tiết nội dung đặt bánh"
                         >
-                          <Eye className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Xem chi tiết</span>
+                          <Eye className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="truncate">Chi tiết</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCakeBom(order)}
+                          className="py-2 px-1.5 rounded-xl bg-pink-950/70 hover:bg-pink-900 border border-pink-700/80 text-pink-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                          title="Xem công thức định mức nguyên vật liệu BOM cốt bánh"
+                        >
+                          <Utensils className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                          <span className="truncate">BOM</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => handleOpenCakeSticker(order)}
-                          className="py-2 px-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer shrink-0 active:scale-95 shadow-xs"
+                          className="py-2 px-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                           title="In tem nhãn dán hộp bánh"
                         >
-                          <Tag className="w-3.5 h-3.5 text-amber-400" />
-                          <span>Tem Hộp</span>
+                          <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="truncate">Tem</span>
                         </button>
                         <button
                           type="button"
                           onClick={() => setCancelRemakeState({ isOpen: true, order })}
-                          className="py-2 px-2.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 hover:text-rose-100 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer shrink-0 active:scale-95 shadow-xs"
+                          className="py-2 px-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 hover:text-rose-100 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                           title="Bánh bị hỏng tại quầy - Hủy để làm lại từ đầu"
                         >
-                          <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
-                          <span>Làm Lại</span>
+                          <RotateCcw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                          <span className="truncate">Làm Lại</span>
                         </button>
                       </div>
 
@@ -3669,6 +3711,9 @@ export default function KitchenPage() {
         onPrintSticker={(order) => {
           handleOpenCakeSticker(order);
         }}
+        onViewBom={(order) => {
+          handleOpenCakeBom(order);
+        }}
         onOpenLightbox={(url) => setReferenceImageLightbox(url)}
       />
 
@@ -3682,6 +3727,13 @@ export default function KitchenPage() {
           handleConfirmPaymentAndComplete(order, method);
           setDeliveryPaymentModalOrder(null);
         }}
+      />
+
+      {/* ── MODAL CÔNG THỨC BOM CỐT BÁNH CHO THỢ BẾP ── */}
+      <CakeBomModal
+        isOpen={!!bomModalOrder}
+        onClose={() => setBomModalOrder(null)}
+        order={bomModalOrder}
       />
 
       {/* ── MODAL IN TEM DÁN HỘP BÁNH (THERMAL BARCODE STICKER 50x30 / 50x40 - LUÔN HIỆN TRÊN CÙNG) ── */}

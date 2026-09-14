@@ -3939,10 +3939,13 @@ export default function POSPage() {
                                 shippingAddress: po.shipping_address || po.shippingAddress,
                                 createdAt: po.created_at,
                                 price: total,
+                                totalAmount: total,
+                                depositAmount: deposit,
+                                remainingAmount: remaining,
                                 flavor: po.flavor || fromNotes.flavor,
                                 cream: po.cream || fromNotes.cream,
+                                filling: po.filling || fromNotes.filling,
                                 packaging: po.packaging || fromNotes.packaging,
-                                addons: po.addons || fromNotes.addons,
                               });
                             }}
                             className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
@@ -4337,6 +4340,9 @@ export default function POSPage() {
                                 shippingAddress: inv.shipping_address || inv.shippingAddress,
                                 createdAt: inv.created_at,
                                 price: total,
+                                totalAmount: total,
+                                depositAmount: deposit,
+                                remainingAmount: remaining,
                               });
                             }}
                             className="px-2.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
@@ -5463,6 +5469,9 @@ export default function POSPage() {
                       shippingAddress: completedOrder.shippingAddress,
                       createdAt: completedOrder.createdAt,
                       price: completedOrder.totalAmount,
+                      totalAmount: completedOrder.totalAmount,
+                      depositAmount: completedOrder.depositAmount ?? completedOrder.totalAmount,
+                      remainingAmount: completedOrder.remainingAmount ?? 0,
                     });
                   }}
                   className="flex-1 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow-xs"
@@ -6114,11 +6123,14 @@ export default function POSPage() {
               shippingAddress: ord.shipping_address || fromN.shipping_address,
               createdAt: ord.created_at,
               price: ord.total_amount || fromN.total_amount,
+              totalAmount: ord.total_amount || fromN.total_amount,
+              depositAmount: ord.deposit_amount ?? fromN.deposit_amount,
+              remainingAmount: ord.remaining_amount !== undefined ? ord.remaining_amount : fromN.remaining_amount,
               notes: cleanDisplayNotes(ord.notes) || fromN.special_request,
               flavor: ord.flavor || fromN.flavor,
               cream: ord.cream || fromN.cream,
+              filling: ord.filling || fromN.filling,
               packaging: ord.packaging || fromN.packaging,
-              addons: ord.addons || fromN.addons,
             });
           }}
           showNavigationButtons={true}
