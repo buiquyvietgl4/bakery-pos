@@ -588,19 +588,13 @@ export async function syncOrderToSupabase(
         subtotal: Number(order.subtotal || order.total_amount || order.totalPrice || 0),
         total_amount: Number(order.total_amount || order.totalPrice || 0),
         discount_amount: Number(order.discount_amount ?? order.discountAmount ?? 0),
-        final_amount: Number(order.final_amount ?? order.finalAmount ?? order.total_amount ?? order.totalPrice ?? 0),
+        discount_pct: Number(order.discount_pct ?? order.discountPct ?? 0),
         total_cogs: Number(order.total_cogs ?? order.totalCogs ?? 0),
-        deposit_amount: Number(order.deposit_amount ?? order.depositAmount ?? 0),
-        remaining_amount: Number(order.remaining_amount ?? order.remainingAmount ?? 0),
-        shipping_fee: Number(order.shipping_fee ?? order.shippingFee ?? 0),
-        delivery_method: order.delivery_method || order.deliveryMethod || 'pickup',
+        sync_status: 'synced',
       };
 
-      if (order.shipping_address || order.shippingAddress) {
-        orderPayload.shipping_address = order.shipping_address || order.shippingAddress;
-      }
-      if (order.cake_name || order.cakeName) {
-        orderPayload.cake_name = order.cake_name || order.cakeName;
+      if (order.local_id || order.id) {
+        orderPayload.local_id = String(order.local_id || order.id);
       }
 
       // Nếu có id dạng UUID hợp lệ thì dùng id đó
@@ -609,15 +603,10 @@ export async function syncOrderToSupabase(
       }
 
       // Bảo toàn chính xác giờ hẹn giao ban đầu của khách:
-      // Tuyệt đối không fallback về new Date().toISOString() vì sẽ biến giờ hẹn thành giờ ấn nút!
       const rawPickup = order.preorder_pickup_at || order.pickupDateTime;
       if (rawPickup) {
         const parsedIso = parseToIsoTimestamp(rawPickup);
-        if (parsedIso) {
-          orderPayload.preorder_pickup_at = parsedIso;
-        } else {
-          orderPayload.preorder_pickup_at = rawPickup;
-        }
+        orderPayload.preorder_pickup_at = parsedIso || rawPickup;
       }
       const cName = order.customer_name || order.customerName;
       if (cName) orderPayload.customer_name = cName;
@@ -635,14 +624,12 @@ export async function syncOrderToSupabase(
       if (insertErr) {
         console.error('Lỗi INSERT đơn lên Supabase SQL:', insertErr);
       } else if (insertedOrder) {
-        // Ghi các món bánh vào order_items
+        // Ghi các món bánh vào order_items (Chỉ gửi các cột hợp lệ trong CSDL Supabase)
         if (Array.isArray(order.items) && order.items.length > 0) {
           const itemsToInsert = order.items.map((it: any) => {
             const unitPrice = Number(it.unit_price || it.selling_price || it.product?.selling_price || 0);
             const qty = Number(it.quantity || 1);
             const unitCost = Number(it.unit_cost ?? it.unitCost ?? it.cost ?? it.product?.base_cost_price ?? 0);
-            const lineCost = Number(it.line_cost ?? it.lineCost ?? Math.round(unitCost * qty));
-            const subtotal = Number(it.subtotal || it.line_total || Math.round(unitPrice * qty));
             return {
               order_id: insertedOrder.id,
               product_id: it.product_id || it.productId || it.product?.id || null,
@@ -650,15 +637,16 @@ export async function syncOrderToSupabase(
               quantity: qty,
               unit_price: unitPrice,
               unit_cost: unitCost,
-              subtotal: subtotal,
-              line_cost: lineCost,
-              product_type: it.product_type || it.product?.product_type || 'produced',
-              supplier_name: it.supplier_name || it.product?.supplier_name || null,
               notes: it.notes || '',
             };
           });
 
-          await supabase.from('order_items').insert(itemsToInsert);
+          const { error: itemsErr } = await supabase.from('order_items').insert(itemsToInsert);
+          if (itemsErr) {
+            console.warn('Lỗi insert order_items lần 1, thử lại với product_id=null:', itemsErr);
+            const fallbackItems = itemsToInsert.map((it: any) => ({ ...it, product_id: null }));
+            await supabase.from('order_items').insert(fallbackItems);
+          }
         }
 
         // Ghi thanh toán / tiền cọc vào payments

@@ -18,7 +18,7 @@ export interface LocalOrder {
   notes?: string;
   custom_cake?: any;
   items: Array<{
-    product_id: string;
+    product_id?: string;
     variant_id?: string;
     product_name_snapshot: string;
     quantity: number;

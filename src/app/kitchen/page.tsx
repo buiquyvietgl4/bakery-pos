@@ -851,9 +851,9 @@ export default function KitchenPage() {
                 shipping_address: so.shipping_address || existing?.shipping_address || sbNotes.shipping_address || '',
                 shipping_fee: so.shipping_fee || existing?.shipping_fee || 0,
                 notes: so.notes || existing?.notes || '',
-                customer_name: so.customer_name || existing?.customer_name || '',
-                customer_phone: so.customer_phone || existing?.customer_phone || '',
-                cake_message: so.cake_message || existing?.cake_message || '',
+                customer_name: so.customer_name || existing?.customer_name || sbNotes.customer_name || '',
+                customer_phone: so.customer_phone || existing?.customer_phone || sbNotes.customer_phone || '',
+                cake_message: so.cake_message || existing?.cake_message || sbNotes.cake_message || '',
                 total_amount: so.total_amount || existing?.total_amount,
                 deposit_amount: so.deposit_amount !== undefined ? so.deposit_amount : (existing?.deposit_amount !== undefined ? existing?.deposit_amount : sbNotes.deposit_amount),
                 remaining_amount: so.remaining_amount !== undefined ? so.remaining_amount : (existing?.remaining_amount !== undefined ? existing?.remaining_amount : sbNotes.remaining_amount),
@@ -919,7 +919,22 @@ export default function KitchenPage() {
         return true;
       });
 
-      setOrders(activeOrders);
+      setOrders((prev) => {
+        const activeMap = new Map<string, KDSOrder>();
+        activeOrders.forEach((o) => activeMap.set(o.order_number, o));
+
+        // Bảo toàn các đơn vừa nhận qua Realtime Broadcast mà chưa kịp đồng bộ xong xuống local/Supabase
+        (prev || []).forEach((po) => {
+          if (!po || !po.order_number) return;
+          if (!activeMap.has(po.order_number)) {
+            if (po.status === 'pending' || po.status === 'preparing' || po.status === 'ready') {
+              activeMap.set(po.order_number, po);
+            }
+          }
+        });
+
+        return Array.from(activeMap.values());
+      });
       setLastUpdated(new Date().toLocaleTimeString('vi-VN'));
     } catch (err) {
       console.error('Lỗi tải đơn KDS:', err);
@@ -1024,8 +1039,10 @@ export default function KitchenPage() {
             if (raw) {
               const parsed = JSON.parse(raw);
               if (Array.isArray(parsed)) {
+                let found = false;
                 const updated = parsed.map((o: any) => {
                   if (o.order_number === payload.order_number || o.id === payload.order_number) {
+                    found = true;
                     const fromN = parsePreorderFromNotes(o.notes || payload.order_data?.notes);
                     const isS = o.delivery_method === 'shipping' || payload.order_data?.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
                     return {
@@ -1041,6 +1058,38 @@ export default function KitchenPage() {
                   }
                   return o;
                 });
+
+                // Nếu đơn hàng chưa từng có trong localStorage của máy này, thêm ngay vào!
+                if (!found && payload.order_data) {
+                  const od = payload.order_data;
+                  const odNotes = parsePreorderFromNotes(od.notes);
+                  const isShip = od.delivery_method === 'shipping' || od.deliveryMethod === 'shipping' || odNotes.delivery_method === 'shipping';
+                  updated.unshift({
+                    id: String(od.id || payload.order_number),
+                    order_number: String(od.order_number || payload.order_number),
+                    order_type: od.order_type || 'takeaway',
+                    status: payload.status,
+                    created_at: od.created_at || new Date().toISOString(),
+                    preorder_pickup_at: od.preorder_pickup_at || od.pickupDateTime || '',
+                    delivery_method: isShip ? 'shipping' : 'pickup',
+                    shipping_address: od.shipping_address || od.shippingAddress || odNotes.shipping_address || '',
+                    shipping_fee: od.shipping_fee || od.shippingFee || 0,
+                    notes: od.notes || '',
+                    customer_name: od.customer_name || od.customerName || odNotes.customer_name || '',
+                    customer_phone: od.customer_phone || od.customerPhone || odNotes.customer_phone || '',
+                    cake_message: od.cake_message || od.cakeMessage || odNotes.cake_message || '',
+                    total_amount: od.total_amount || od.totalPrice,
+                    deposit_amount: od.deposit_amount !== undefined ? od.deposit_amount : (od.depositAmount !== undefined ? od.depositAmount : odNotes.deposit_amount),
+                    remaining_amount: od.remaining_amount !== undefined ? od.remaining_amount : (od.remainingAmount !== undefined ? od.remainingAmount : odNotes.remaining_amount),
+                    reference_image_url: od.reference_image_url || od.referenceImageUrl || odNotes.reference_image_url || '',
+                    flavor: od.flavor || odNotes.flavor || '',
+                    cream: od.cream || odNotes.cream || '',
+                    packaging: od.packaging || odNotes.packaging || '',
+                    addons: Array.isArray(od.addons) && od.addons.length > 0 ? od.addons : (odNotes.addons || []),
+                    items: Array.isArray(od.items) ? od.items : [],
+                  });
+                }
+
                 localStorage.setItem('bakery_orders', JSON.stringify(updated));
               }
             }

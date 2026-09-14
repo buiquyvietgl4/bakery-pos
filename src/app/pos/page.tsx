@@ -1202,7 +1202,7 @@ export default function POSPage() {
           ...itemsWithCost,
           ...(fulfillmentType === 'shipping' && (posShippingFee || 0) > 0 ? [
             {
-              product_id: generateUUID(),
+              id: generateUUID(),
               product_name_snapshot: `Phí giao hàng tận nơi (Ship bánh)`,
               quantity: 1,
               unit_price: posShippingFee || 0,
@@ -1223,7 +1223,7 @@ export default function POSPage() {
 
       // 1. Lưu ngay lập tức vào Dexie IndexedDB & localStorage
       try {
-        await db.orders.add(orderData);
+        await db.orders.add(orderData as any);
       } catch (dbErr) {
         console.warn('Lỗi ghi Dexie:', dbErr);
       }
