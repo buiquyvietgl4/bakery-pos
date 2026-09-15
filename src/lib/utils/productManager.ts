@@ -140,7 +140,8 @@ export async function deleteProductEverywhere(
   let method: 'hard' | 'soft' | 'local_only' = 'local_only';
 
   // 4. Đồng bộ Supabase Cloud
-  if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
+  const isOnline = typeof navigator === 'undefined' || (navigator.onLine !== false);
+  if (isOnline && !isLocalMode()) {
     try {
       // 4.1 Tháo gỡ khóa ngoại an toàn (order_items đã lưu snapshot tên/giá/cost đầy đủ)
       try {
