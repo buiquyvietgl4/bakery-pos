@@ -142,18 +142,43 @@ export async function deleteProductEverywhere(
   // 4. Đồng bộ Supabase Cloud
   if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
     try {
-      // Thử hard-delete trước
+      // 4.1 Tháo gỡ khóa ngoại an toàn (order_items đã lưu snapshot tên/giá/cost đầy đủ)
+      try {
+        await supabase.from('order_items').update({ product_id: null }).eq('product_id', id);
+      } catch {}
+      try {
+        await supabase.from('recipes').update({ product_id: null }).eq('product_id', id);
+      } catch {}
+      try {
+        await supabase.from('product_variants').delete().eq('product_id', id);
+      } catch {}
+
+      // 4.2 Thử hard-delete theo ID và theo Tên
+      let hardDeleted = false;
       const { error: hardErr } = await supabase.from('products').delete().eq('id', id);
-      if (hardErr) {
-        console.warn('Hard delete Supabase thất bại (có thể do ràng buộc khóa ngoại order_items), chuyển sang soft-delete:', hardErr.message);
-        // Fallback sang soft-delete để không vi phạm ràng buộc dữ liệu lịch sử bán hàng
-        const { error: softErr } = await supabase
+      if (!hardErr) {
+        hardDeleted = true;
+      }
+      if (name) {
+        try {
+          const { error: nameErr } = await supabase.from('products').delete().eq('name', name);
+          if (!nameErr) hardDeleted = true;
+        } catch {}
+      }
+
+      if (!hardDeleted) {
+        console.warn('Hard delete Supabase thất bại, chuyển sang soft-delete is_active=false');
+        await supabase
           .from('products')
           .update({ is_active: false, show_on_menu: false })
           .eq('id', id);
-        if (!softErr) {
-          method = 'soft';
+        if (name) {
+          await supabase
+            .from('products')
+            .update({ is_active: false, show_on_menu: false })
+            .eq('name', name);
         }
+        method = 'soft';
       } else {
         method = 'hard';
       }

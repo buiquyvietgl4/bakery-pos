@@ -1230,6 +1230,10 @@ export default function AdminDashboard() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_products', JSON.stringify(currentProds));
       }
+      try {
+        await db.products.clear();
+        await db.products.bulkPut(currentProds);
+      } catch {}
 
       // 2. Load Ingredients from Supabase
       const { data: ingData } = await supabase
