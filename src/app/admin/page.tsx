@@ -21,6 +21,13 @@ import { generateUUID } from '@/lib/utils/uuid';
 import { exportToCSV, exportMultiSheetExcel } from '@/lib/utils/exportExcel';
 import { broadcastProductChange, broadcastRecipeChange, subscribeCrossDeviceSync } from '@/lib/supabase/realtimeSync';
 import {
+  deleteProductEverywhere,
+  filterActiveProducts,
+  getDeletedProductIds,
+  markProductAsDeleted,
+  unmarkProductDeleted,
+} from '@/lib/utils/productManager';
+import {
   getTelegramConfig,
   fetchTelegramConfigFromDb,
   saveTelegramConfigToDb,
@@ -427,8 +434,9 @@ export default function AdminDashboard() {
         const stockMap = rawStocks ? JSON.parse(rawStocks) : {};
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.map((p: any) => ({
+          if (Array.isArray(parsed)) {
+            const active = filterActiveProducts(parsed);
+            return active.map((p: any) => ({
               ...p,
               stock_qty: stockMap[p.id] ?? (p.name ? stockMap[p.name.toLowerCase().trim()] : undefined) ?? p.stock_qty ?? 10,
             }));
@@ -436,7 +444,7 @@ export default function AdminDashboard() {
         }
       } catch {}
     }
-    return DEFAULT_BAKERY_PRODUCTS.map((p: any) => ({ ...p, stock_qty: p.stock_qty ?? 10 }));
+    return filterActiveProducts(DEFAULT_BAKERY_PRODUCTS).map((p: any) => ({ ...p, stock_qty: p.stock_qty ?? 10 }));
   });
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -1162,17 +1170,19 @@ export default function AdminDashboard() {
   // Load products & ingredients from DB
   const loadData = async () => {
     try {
-      // 1. Load Products with offline cache priority
-      let currentProds: any[] = DEFAULT_BAKERY_PRODUCTS;
+      // 1. Load Products with offline cache priority & strict deletion filtering
+      let currentProds: any[] = filterActiveProducts(DEFAULT_BAKERY_PRODUCTS);
       let localProds: any[] = [];
+      const deletedIds = getDeletedProductIds();
+
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem('bakery_products');
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              localProds = parsed;
-              currentProds = parsed;
+            if (Array.isArray(parsed)) {
+              localProds = filterActiveProducts(parsed);
+              currentProds = localProds;
             }
           } catch {}
         }
@@ -1181,12 +1191,20 @@ export default function AdminDashboard() {
       try {
         const cached = await db.products.toArray();
         if (cached && cached.length > 0) {
-          // Merge: if localProds has custom images, keep them
-          const localMap = new Map(localProds.map((p) => [p.id, p]));
-          currentProds = cached.map((cp) => {
-            const lp = localMap.get(cp.id);
-            return lp && lp.image_url ? { ...cp, image_url: lp.image_url } : cp;
-          });
+          // Clean up any deleted in Dexie
+          for (const cp of cached) {
+            if (deletedIds.has(cp.id) || (cp.name && deletedIds.has(cp.name.toLowerCase().trim())) || cp.is_active === false) {
+              await db.products.delete(cp.id);
+            }
+          }
+          const validCached = filterActiveProducts(cached);
+          if (validCached.length > 0) {
+            const localMap = new Map(localProds.map((p) => [p.id, p]));
+            currentProds = validCached.map((cp) => {
+              const lp = localMap.get(cp.id);
+              return lp && lp.image_url ? { ...cp, image_url: lp.image_url } : cp;
+            });
+          }
         } else if (localProds.length > 0) {
           await db.products.bulkPut(localProds);
         }
@@ -1195,14 +1213,19 @@ export default function AdminDashboard() {
       if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         const { data: prodData } = await supabase
           .from('products')
-          .select('id, name, category, image_url, selling_price, base_cost_price, food_cost_pct, is_preorder_only')
+          .select('id, name, category, image_url, selling_price, base_cost_price, food_cost_pct, is_preorder_only, is_active, show_on_menu, cake_type_label, product_type, supplier_name, barcode')
+          .eq('is_active', true)
           .order('created_at', { ascending: false });
 
         if (prodData && prodData.length > 0) {
-          currentProds = prodData;
+          const activeSupabaseProds = filterActiveProducts(prodData);
+          if (activeSupabaseProds.length > 0) {
+            currentProds = activeSupabaseProds;
+          }
         }
       }
 
+      currentProds = filterActiveProducts(currentProds);
       setProducts(currentProds);
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_products', JSON.stringify(currentProds));
@@ -1541,6 +1564,7 @@ export default function AdminDashboard() {
 
     setSavingRecipe(true);
     const newId = generateUUID();
+    unmarkProductDeleted(newId, newProdName);
     const formattedItems = newRecipeItems.map((item) => {
       const ing = ingredients.find((i) => i.id === item.ingredient_id);
       const lineCost = calculateItemCost(item.ingredient_id, item.quantity);
@@ -2055,21 +2079,11 @@ export default function AdminDashboard() {
 
   const handleDeleteProduct = async (id: string, name: string) => {
     if (confirm(`Bạn có chắc chắn muốn xóa bánh "${name}" khỏi thực đơn?`)) {
-      const updated = products.filter((p) => p.id !== id);
+      const updated = products.filter(
+        (p) => p.id !== id && String(p.name).toLowerCase().trim() !== String(name).toLowerCase().trim()
+      );
       setProducts(updated);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('bakery_products', JSON.stringify(updated));
-        window.dispatchEvent(new Event('bakery_products_updated'));
-      }
-      try {
-        await db.products.delete(id);
-      } catch {}
-      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
-        await supabase.from('products').delete().eq('id', id);
-      }
-
-      // Phát sóng xóa sản phẩm sang các thiết bị khác
-      await broadcastProductChange({ action: 'delete', product: { id } });
+      await deleteProductEverywhere(id, name);
     }
   };
 

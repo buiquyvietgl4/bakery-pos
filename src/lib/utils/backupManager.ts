@@ -7,6 +7,7 @@ import {
   AutoBackupConfig 
 } from '@/lib/types/backup';
 import { DEFAULT_BAKERY_PRODUCTS, DEFAULT_BAKERY_RECIPES } from '@/lib/constants/bakeryData';
+import { filterActiveProducts, getDeletedProductIds } from '@/lib/utils/productManager';
 import { getStockAdjustmentLogs } from './stockAdjustmentManager';
 import { getSpoilageLogs } from './spoilageManager';
 import { supabase } from '@/lib/supabase/client';

@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase/client';
 import { db } from '@/lib/db/dexie';
 import { getStockAdjustmentLogs } from './stockAdjustmentManager';
 import { getSpoilageLogs, saveSpoilageLogs } from './spoilageManager';
+import { filterActiveProducts } from './productManager';
 
 const BASE_BUCKET = 'bakery-images';
 
@@ -42,13 +43,14 @@ async function fetchCurrentSystemState() {
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem('bakery_products');
-      if (raw) currentProducts = JSON.parse(raw);
+      if (raw) currentProducts = filterActiveProducts(JSON.parse(raw));
     } catch {}
   }
   try {
     const { data: dbProds } = await supabase.from('products').select('*').limit(500);
     if (dbProds && dbProds.length > 0) {
-      dbProds.forEach((dp) => {
+      const activeDbProds = filterActiveProducts(dbProds);
+      activeDbProds.forEach((dp) => {
         const idx = currentProducts.findIndex((p) => p.id === dp.id || p.name?.toLowerCase().trim() === dp.name?.toLowerCase().trim());
         if (idx >= 0) {
           currentProducts[idx] = { ...currentProducts[idx], ...dp };
@@ -58,6 +60,7 @@ async function fetchCurrentSystemState() {
       });
     }
   } catch {}
+  currentProducts = filterActiveProducts(currentProducts);
 
   // 2. Nguyên vật liệu
   let currentIngredients: any[] = [];

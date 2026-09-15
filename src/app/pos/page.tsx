@@ -4,6 +4,11 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { db, CachedProduct } from '@/lib/db/dexie';
 import { DEFAULT_BAKERY_PRODUCTS } from '@/lib/constants/bakeryData';
+import {
+  filterActiveProducts,
+  getDeletedProductIds,
+  markProductAsDeleted,
+} from '@/lib/utils/productManager';
 import { generateUUID } from '@/lib/utils/uuid';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, 
@@ -743,11 +748,14 @@ export default function POSPage() {
           is_semi_finished: p.is_semi_finished !== undefined ? p.is_semi_finished : (def?.is_semi_finished ?? false),
         };
       });
+      const deletedIds = getDeletedProductIds();
       DEFAULT_BAKERY_PRODUCTS.forEach((def) => {
-        if (!currentProducts.some((p) => p.id === def.id)) {
+        const isDeleted = deletedIds.has(def.id) || (def.name && deletedIds.has(def.name.toLowerCase().trim()));
+        if (!isDeleted && !currentProducts.some((p) => p.id === def.id || (p.name && def.name && p.name.toLowerCase().trim() === def.name.toLowerCase().trim()))) {
           currentProducts.push(def);
         }
       });
+      currentProducts = filterActiveProducts(currentProducts);
 
       setProducts(currentProducts);
       if (typeof window !== 'undefined') {
@@ -764,7 +772,8 @@ export default function POSPage() {
           .order('name');
 
         if (!error && data && data.length > 0) {
-          const merged = data.map((d: any) => {
+          const nonDeleted = filterActiveProducts(data);
+          const merged = nonDeleted.map((d: any) => {
             const existing = currentProducts.find((cp) => cp.id === d.id);
             const def = defMap.get(d.id);
             const price = Number(d.selling_price ?? existing?.selling_price ?? def?.selling_price ?? 0);
