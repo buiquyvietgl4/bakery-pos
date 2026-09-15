@@ -1743,6 +1743,7 @@ export default function KitchenPage() {
       cream,
       filling,
       packaging,
+      tiers: spec?.tiers || [],
       addons: allAddons,
       allAddons,
       extraItems,
@@ -2388,21 +2389,37 @@ export default function KitchenPage() {
                             )}
 
                             {/* Cốt & Kem & Nhân & Hộp (Chỉ hiển thị cho Bánh Sinh Nhật / Bánh Kem) */}
-                            {cakeInfo.isBirthdayCake && (cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
+                            {cakeInfo.isBirthdayCake && (Boolean(cakeInfo.tiers && cakeInfo.tiers.length > 1) || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
                               <div className="pt-1.5 border-t border-pink-900/30 text-[11px] space-y-0.5">
-                                {(cakeInfo.flavor || cakeInfo.cream) && (
-                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                    <span className="text-pink-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                                    <span className="text-zinc-100 font-semibold truncate">
-                                      {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
-                                    </span>
+                                {cakeInfo.tiers && cakeInfo.tiers.length > 1 ? (
+                                  <div className="space-y-0.5">
+                                    <div className="font-bold text-pink-300 text-[10px] uppercase">🎂 Bánh {cakeInfo.tiers.length} Tầng:</div>
+                                    {cakeInfo.tiers.map((t: any, idx: number) => (
+                                      <div key={idx} className="flex items-center gap-1 text-[10px] text-zinc-300 truncate">
+                                        <span className="font-bold text-amber-300 shrink-0">{t.tierName || `T${idx + 1}`}:</span>
+                                        <span className="text-zinc-100 truncate">
+                                          {t.sizeName} • {t.cakeBase?.name || 'Vani'} • {t.creamCoating?.name || 'Kem tươi'}{t.filling?.name ? ` • ${t.filling.name}` : ''}
+                                        </span>
+                                      </div>
+                                    ))}
                                   </div>
-                                )}
-                                {cakeInfo.filling && (
-                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                    <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
-                                    <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
-                                  </div>
+                                ) : (
+                                  <>
+                                    {(cakeInfo.flavor || cakeInfo.cream) && (
+                                      <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                        <span className="text-pink-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                                        <span className="text-zinc-100 font-semibold truncate">
+                                          {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
+                                        </span>
+                                      </div>
+                                    )}
+                                    {cakeInfo.filling && (
+                                      <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                        <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
+                                        <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                                 {cakeInfo.packaging && (
                                   <div className="flex items-center gap-1 text-zinc-300 truncate">
@@ -2612,21 +2629,37 @@ export default function KitchenPage() {
                               )}
 
                               {/* Cốt & Kem & Nhân & Hộp (Chỉ hiển thị cho Bánh Sinh Nhật / Bánh Kem) */}
-                              {cakeInfo.isBirthdayCake && (cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
+                              {cakeInfo.isBirthdayCake && (Boolean(cakeInfo.tiers && cakeInfo.tiers.length > 1) || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
                                 <div className="pt-1.5 border-t border-blue-900/30 text-[11px] space-y-0.5">
-                                  {(cakeInfo.flavor || cakeInfo.cream) && (
-                                    <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                      <span className="text-blue-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                                      <span className="text-zinc-100 font-semibold truncate">
-                                        {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
-                                      </span>
+                                  {cakeInfo.tiers && cakeInfo.tiers.length > 1 ? (
+                                    <div className="space-y-0.5">
+                                      <div className="font-bold text-blue-300 text-[10px] uppercase">🎂 Bánh {cakeInfo.tiers.length} Tầng:</div>
+                                      {cakeInfo.tiers.map((t: any, idx: number) => (
+                                        <div key={idx} className="flex items-center gap-1 text-[10px] text-zinc-300 truncate">
+                                          <span className="font-bold text-amber-300 shrink-0">{t.tierName || `T${idx + 1}`}:</span>
+                                          <span className="text-zinc-100 truncate">
+                                            {t.sizeName} • {t.cakeBase?.name || 'Vani'} • {t.creamCoating?.name || 'Kem tươi'}{t.filling?.name ? ` • ${t.filling.name}` : ''}
+                                          </span>
+                                        </div>
+                                      ))}
                                     </div>
-                                  )}
-                                  {cakeInfo.filling && (
-                                    <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                      <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
-                                      <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
-                                    </div>
+                                  ) : (
+                                    <>
+                                      {(cakeInfo.flavor || cakeInfo.cream) && (
+                                        <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                          <span className="text-blue-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                                          <span className="text-zinc-100 font-semibold truncate">
+                                            {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
+                                          </span>
+                                        </div>
+                                      )}
+                                      {cakeInfo.filling && (
+                                        <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                          <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
+                                          <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                                        </div>
+                                      )}
+                                    </>
                                   )}
                                   {cakeInfo.packaging && (
                                     <div className="flex items-center gap-1 text-zinc-300 truncate">
@@ -2922,21 +2955,37 @@ export default function KitchenPage() {
                       )}
 
                       {/* Cốt & Kem & Nhân & Hộp (Chỉ hiển thị cho Bánh Sinh Nhật / Bánh Kem) */}
-                      {cakeInfo.isBirthdayCake && (cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
+                      {cakeInfo.isBirthdayCake && (Boolean(cakeInfo.tiers && cakeInfo.tiers.length > 1) || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
                         <div className="pt-1.5 border-t border-emerald-900/30 text-[11px] space-y-0.5">
-                          {(cakeInfo.flavor || cakeInfo.cream) && (
-                            <div className="flex items-center gap-1 text-zinc-300 truncate">
-                              <span className="text-emerald-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                              <span className="text-zinc-100 font-semibold truncate">
-                                {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
-                              </span>
+                          {cakeInfo.tiers && cakeInfo.tiers.length > 1 ? (
+                            <div className="space-y-0.5">
+                              <div className="font-bold text-emerald-300 text-[10px] uppercase">🎂 Bánh {cakeInfo.tiers.length} Tầng:</div>
+                              {cakeInfo.tiers.map((t: any, idx: number) => (
+                                <div key={idx} className="flex items-center gap-1 text-[10px] text-zinc-300 truncate">
+                                  <span className="font-bold text-amber-300 shrink-0">{t.tierName || `T${idx + 1}`}:</span>
+                                  <span className="text-zinc-100 truncate">
+                                    {t.sizeName} • {t.cakeBase?.name || 'Vani'} • {t.creamCoating?.name || 'Kem tươi'}{t.filling?.name ? ` • ${t.filling.name}` : ''}
+                                  </span>
+                                </div>
+                              ))}
                             </div>
-                          )}
-                          {cakeInfo.filling && (
-                            <div className="flex items-center gap-1 text-zinc-300 truncate">
-                              <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
-                              <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
-                            </div>
+                          ) : (
+                            <>
+                              {(cakeInfo.flavor || cakeInfo.cream) && (
+                                <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                  <span className="text-emerald-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
+                                  <span className="text-zinc-100 font-semibold truncate">
+                                    {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
+                                  </span>
+                                </div>
+                              )}
+                              {cakeInfo.filling && (
+                                <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                  <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
+                                  <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                                </div>
+                              )}
+                            </>
                           )}
                           {cakeInfo.packaging && (
                             <div className="flex items-center gap-1 text-zinc-300 truncate">

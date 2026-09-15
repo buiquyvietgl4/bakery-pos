@@ -1176,18 +1176,38 @@ export default function POSPage() {
       const unitPrice = Number(orderPayload.unitPrice || Math.round(finalPrice / orderQuantity));
 
       // Xây dựng ghi chú chi tiết theo định dạng đơn KDS
-      const cakeSummary = cakeOrderSpec ? [
-        cakeOrderSpec.baseName ? `Cốt: ${cakeOrderSpec.baseName} (${cakeOrderSpec.baseSizeName})` : '',
-        cakeOrderSpec.creamName ? `Kem: ${cakeOrderSpec.creamName}` : '',
-        cakeOrderSpec.fillingName ? `Nhân: ${cakeOrderSpec.fillingName}` : '',
-        cakeOrderSpec.packagingName ? `Hộp: ${cakeOrderSpec.packagingName}` : '',
-        cakeOrderSpec.decorNotes ? `Decor: ${cakeOrderSpec.decorNotes}` : '',
-        cakeOrderSpec.cakeMessage ? `Chữ: "${cakeOrderSpec.cakeMessage}"` : '',
-      ].filter(Boolean).join(' | ') : '';
+      let cakeSummary = '';
+      if (cakeOrderSpec) {
+        if (cakeOrderSpec.tiers && cakeOrderSpec.tiers.length > 1) {
+          const tiersSummary = cakeOrderSpec.tiers.map((t: any) => 
+            `[${t.tierName}: ${t.sizeName} • Cốt: ${t.cakeBase?.name || ''} • Kem: ${t.creamCoating?.name || ''}${t.filling?.name ? ` • Nhân: ${t.filling.name}` : ''}]`
+          ).join(' | ');
+          cakeSummary = [
+            `Bánh ${cakeOrderSpec.tiers.length} Tầng: ${tiersSummary}`,
+            cakeOrderSpec.packaging?.name ? `Hộp: ${cakeOrderSpec.packaging.name}` : (cakeOrderSpec.packagingName ? `Hộp: ${cakeOrderSpec.packagingName}` : ''),
+            cakeOrderSpec.decorNotes ? `Decor: ${cakeOrderSpec.decorNotes}` : '',
+            cakeOrderSpec.cakeMessage ? `Chữ: "${cakeOrderSpec.cakeMessage}"` : '',
+          ].filter(Boolean).join(' | ');
+        } else {
+          cakeSummary = [
+            cakeOrderSpec.cakeBase?.name ? `Cốt: ${cakeOrderSpec.cakeBase.name} (${cakeOrderSpec.sizeName || ''})` : (cakeOrderSpec.baseName ? `Cốt: ${cakeOrderSpec.baseName} (${cakeOrderSpec.baseSizeName || ''})` : ''),
+            cakeOrderSpec.creamCoating?.name ? `Kem: ${cakeOrderSpec.creamCoating.name}` : (cakeOrderSpec.creamName ? `Kem: ${cakeOrderSpec.creamName}` : ''),
+            cakeOrderSpec.filling?.name ? `Nhân: ${cakeOrderSpec.filling.name}` : (cakeOrderSpec.fillingName ? `Nhân: ${cakeOrderSpec.fillingName}` : ''),
+            cakeOrderSpec.packaging?.name ? `Hộp: ${cakeOrderSpec.packaging.name}` : (cakeOrderSpec.packagingName ? `Hộp: ${cakeOrderSpec.packagingName}` : ''),
+            cakeOrderSpec.decorNotes ? `Decor: ${cakeOrderSpec.decorNotes}` : '',
+            cakeOrderSpec.cakeMessage ? `Chữ: "${cakeOrderSpec.cakeMessage}"` : '',
+          ].filter(Boolean).join(' | ');
+        }
+      }
 
       const notes = `[🎂 BÁNH_SINH_NHẬT] Khách: ${customerName} (${customerPhone || 'Không SĐT'}) | Hẹn: ${pickupDateTime || 'Trong ngày'}${orderDeliveryType === 'ship' ? ` | Giao hàng: ${deliveryAddress}` : ' | Lấy tại tiệm'} | ${cakeSummary}`;
 
       const totalCost = cakeOrderSpec?.costBreakdown?.totalCost || Math.round(unitPrice * 0.365);
+
+      const isMultiTierCake = cakeOrderSpec?.tiers && cakeOrderSpec.tiers.length > 1;
+      const cakeDisplayName = isMultiTierCake
+        ? `${product.name || 'Bánh Sinh Nhật'} (${cakeOrderSpec.tiers.length} Tầng)`
+        : (product.name || 'Bánh Sinh Nhật');
 
       const unifiedOrder: any = {
         id: localId,
@@ -1200,8 +1220,8 @@ export default function POSPage() {
         customerName: customerName,
         customer_phone: customerPhone,
         customerPhone: customerPhone,
-        cake_name: product.name,
-        cake_size: cakeOrderSpec?.baseSizeName || 'Tiêu chuẩn',
+        cake_name: cakeDisplayName,
+        cake_size: cakeOrderSpec?.sizeName || cakeOrderSpec?.baseSizeName || 'Tiêu chuẩn',
         cake_message: cakeOrderSpec?.cakeMessage || '',
         preorder_pickup_at: pickupDateTime ? new Date(pickupDateTime).toISOString() : now.toISOString(),
         pickupDateTime: pickupDateTime,
@@ -1977,8 +1997,8 @@ export default function POSPage() {
         {/* NÚT ĐẶT BÁNH TRỰC TIẾP TRÊN MOBILE */}
         <button
           onClick={() => {
-            setPreorderError(null);
-            setIsPreorderModalOpen(true);
+            setBirthdayOrderProduct(null);
+            setIsBirthdayOrderModalOpen(true);
           }}
           className="flex-1 py-2 px-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition bg-pink-600 text-white shadow-sm shadow-pink-600/25 active:scale-95 cursor-pointer"
         >
@@ -2193,19 +2213,6 @@ export default function POSPage() {
                 )}
               </div>
             </div>
-
-            {/* Nút Đặt Bánh Sinh Nhật Nổi Bật Dành Cho Điện Thoại */}
-            <button
-              type="button"
-              onClick={() => {
-                setBirthdayOrderProduct(null);
-                setIsBirthdayOrderModalOpen(true);
-              }}
-              className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-rose-600 hover:from-rose-600 hover:to-pink-700 text-white text-xs font-black shadow-md shadow-rose-500/20 flex items-center justify-center gap-2 active:scale-98 transition cursor-pointer"
-            >
-              <Cake className="w-4 h-4 animate-bounce duration-1000" />
-              <span>🎂 Đặt Bánh Sinh Nhật Mới (BOM & Tồn Kho)</span>
-            </button>
 
             {/* Tầng 2: Cặp Thẻ Nghiệp Vụ Cân Đối 50/50 (1 Dòng Duy Nhất) */}
             <div className="grid grid-cols-2 gap-2">

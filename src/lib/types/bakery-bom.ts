@@ -117,10 +117,39 @@ export interface FullCakeBomConfig {
   birthdayBomPresets: BirthdayCakeBomPreset[];
 }
 
+// Cấu hình chi tiết cho từng tầng bánh (Bánh 1 tầng, 2 tầng, 3 tầng...)
+export interface CakeTierSpec {
+  tierIndex: number; // 1: Tầng 1 (Đáy), 2: Tầng 2 (Trên), 3: Tầng 3 (Chóp)...
+  tierName: string; // "Tầng 1 (Đáy)", "Tầng 2",...
+  sizeId: string;
+  sizeName: string; // "Size 22cm"
+  diameterCm?: number;
+  cakeBase: {
+    id: string;
+    name: string;
+    cost: number;
+    bomIngredients?: CakeBomItem[];
+  };
+  creamCoating: {
+    id: string;
+    name: string;
+    cost: number;
+    bomIngredients?: CakeBomItem[];
+  };
+  filling?: {
+    id: string;
+    name: string;
+    cost: number;
+  };
+  tierCost: number; // Tổng giá vốn của riêng tầng này
+}
+
 // Chi tiết cấu hình bánh sinh nhật đặt trong 1 đơn hàng (KDS hiển thị & nút xem BOM)
 export interface CakeOrderSpec {
   isBirthdayCake: boolean;
   bomPresetId?: string;
+  tierCount?: number; // Số tầng bánh (1, 2, 3...)
+  tiers?: CakeTierSpec[]; // Danh sách cấu hình chi tiết từng tầng bánh
   sizeName: string;
   diameterCm?: number;
   cakeBase: {

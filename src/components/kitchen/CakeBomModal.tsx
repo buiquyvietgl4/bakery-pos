@@ -49,7 +49,23 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
 
   // 1. LẤY NGUYÊN LIỆU CỐT BÁNH
   let baseBomIngredients: CakeBomItem[] = [];
-  if (spec?.cakeBase?.bomIngredients && spec.cakeBase.bomIngredients.length > 0) {
+  if (spec?.tiers && spec.tiers.length > 1) {
+    const ingMap = new Map<string, CakeBomItem>();
+    spec.tiers.forEach((t) => {
+      const ings = t.cakeBase?.bomIngredients || [];
+      ings.forEach((ing) => {
+        const key = ing.id || ing.name;
+        if (ingMap.has(key)) {
+          const existing = ingMap.get(key)!;
+          existing.quantity += Number(ing.quantity || 0);
+          existing.totalCost = (existing.totalCost || 0) + (ing.totalCost || 0);
+        } else {
+          ingMap.set(key, { ...ing });
+        }
+      });
+    });
+    baseBomIngredients = Array.from(ingMap.values());
+  } else if (spec?.cakeBase?.bomIngredients && spec.cakeBase.bomIngredients.length > 0) {
     baseBomIngredients = spec.cakeBase.bomIngredients;
   } else {
     // Fallback qua legacy config
@@ -80,7 +96,23 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
 
   // 2. LẤY NGUYÊN LIỆU KEM PHỦ
   let creamBomIngredients: CakeBomItem[] = [];
-  if (spec?.creamCoating?.bomIngredients && spec.creamCoating.bomIngredients.length > 0) {
+  if (spec?.tiers && spec.tiers.length > 1) {
+    const ingMap = new Map<string, CakeBomItem>();
+    spec.tiers.forEach((t) => {
+      const ings = t.creamCoating?.bomIngredients || [];
+      ings.forEach((ing) => {
+        const key = ing.id || ing.name;
+        if (ingMap.has(key)) {
+          const existing = ingMap.get(key)!;
+          existing.quantity += Number(ing.quantity || 0);
+          existing.totalCost = (existing.totalCost || 0) + (ing.totalCost || 0);
+        } else {
+          ingMap.set(key, { ...ing });
+        }
+      });
+    });
+    creamBomIngredients = Array.from(ingMap.values());
+  } else if (spec?.creamCoating?.bomIngredients && spec.creamCoating.bomIngredients.length > 0) {
     creamBomIngredients = spec.creamCoating.bomIngredients;
   } else if (fullBomConfig.creamCoatings?.[0]?.sizes?.[0]?.bomIngredients) {
     creamBomIngredients = fullBomConfig.creamCoatings[0].sizes[0].bomIngredients;
@@ -241,17 +273,42 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
               <h3 className="font-black text-base text-zinc-100 uppercase leading-snug">
                 {cakeName}
               </h3>
-              <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
-                <span className="px-2.5 py-0.5 rounded-lg bg-pink-950/80 text-pink-300 border border-pink-700/80 font-black">
-                  📏 {rawSize || 'Size tiêu chuẩn'}
-                </span>
-                <span className="text-zinc-400 font-semibold">
-                  🌾 {flavor}
-                </span>
-                <span className="text-zinc-400 font-semibold">
-                  🍦 {cream}
-                </span>
-              </div>
+              {spec?.tiers && spec.tiers.length > 1 ? (
+                <div className="mt-2 space-y-1.5">
+                  <div className="text-[11px] font-black text-pink-400 uppercase tracking-wider">
+                    🎂 Cấu Trúc Bánh {spec.tiers.length} Tầng:
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5">
+                    {spec.tiers.map((t, idx) => (
+                      <div key={idx} className="bg-zinc-900/90 p-2 rounded-xl border border-zinc-800 text-xs">
+                        <div className="font-black text-amber-300 flex items-center justify-between pb-1 border-b border-zinc-800">
+                          <span>{t.tierName}</span>
+                          <span className="text-zinc-300 text-[11px] font-bold bg-zinc-800 px-1.5 py-0.5 rounded">{t.sizeName}</span>
+                        </div>
+                        <div className="text-[11px] text-zinc-300 mt-1 space-y-0.5">
+                          <div>🌾 Cốt: <span className="font-semibold text-zinc-100">{t.cakeBase?.name || 'Vani'}</span></div>
+                          <div>🍦 Kem: <span className="font-semibold text-zinc-100">{t.creamCoating?.name || 'Kem tươi'}</span></div>
+                          {t.filling?.name && (
+                            <div>🍓 Nhân: <span className="font-semibold text-pink-300">{t.filling.name}</span></div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
+                  <span className="px-2.5 py-0.5 rounded-lg bg-pink-950/80 text-pink-300 border border-pink-700/80 font-black">
+                    📏 {rawSize || 'Size tiêu chuẩn'}
+                  </span>
+                  <span className="text-zinc-400 font-semibold">
+                    🌾 {flavor}
+                  </span>
+                  <span className="text-zinc-400 font-semibold">
+                    🍦 {cream}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Điều chỉnh số lượng mẻ làm */}

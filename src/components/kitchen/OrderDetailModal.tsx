@@ -280,7 +280,36 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               </div>
 
               {/* Grid thông số: Cốt, Kem, Nhân, Hộp (Chỉ hiển thị cho Bánh Sinh Nhật) */}
-              {isBirthdayCake && (flavor || cream || filling || packaging) && (
+              {isBirthdayCake && spec?.tiers && spec.tiers.length > 1 ? (
+                <div className="space-y-2">
+                  <div className="text-[11px] font-black text-pink-400 uppercase tracking-wider flex items-center gap-1.5">
+                    🎂 Cấu Trúc Bánh {spec.tiers.length} Tầng Chi Tiết:
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {spec.tiers.map((t: any, idx: number) => (
+                      <div key={idx} className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-1 text-xs">
+                        <div className="font-black text-amber-300 flex items-center justify-between border-b border-zinc-800 pb-1">
+                          <span>{t.tierName || `Tầng ${idx + 1}`}</span>
+                          <span className="text-zinc-300 font-bold bg-zinc-800 px-2 py-0.5 rounded-md text-[11px]">{t.sizeName}</span>
+                        </div>
+                        <div className="text-[11px] text-zinc-300 space-y-0.5 pt-0.5">
+                          <div>🌾 Cốt: <span className="font-bold text-zinc-100">{t.cakeBase?.name || 'Vani'}</span></div>
+                          <div>🍦 Kem: <span className="font-bold text-zinc-100">{t.creamCoating?.name || 'Kem tươi'}</span></div>
+                          {t.filling?.name && (
+                            <div>🍓 Nhân: <span className="font-bold text-pink-300">{t.filling.name}</span></div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {packaging && (
+                    <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
+                      <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">📦 Hộp đóng gói:</span>
+                      <span className="text-blue-300 font-extrabold text-xs">{packaging}</span>
+                    </div>
+                  )}
+                </div>
+              ) : isBirthdayCake && (flavor || cream || filling || packaging) ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   {flavor && (
                     <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
@@ -307,7 +336,7 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                     </div>
                   )}
                 </div>
-              )}
+              ) : null}
 
               {/* Danh sách sản phẩm / Phụ kiện bán kèm trong đơn */}
               {attachedItems.length > 0 && (

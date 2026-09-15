@@ -1,5 +1,5 @@
 // src/components/pos/BirthdayCakeOrderModal.tsx
-// Modal Đặt Bánh Sinh Nhật Theo Cơ Chế Mới (Flowchart Excel)
+// Modal Đặt Bánh Sinh Nhật Mobile-First & Bánh Nhiều Tầng (Multi-Tier) Theo Flowchart Excel
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -13,11 +13,10 @@ import {
   CakeDecorAddonModel,
   BirthdayCakeBomPreset,
   CakeOrderSpec,
+  CakeTierSpec,
 } from '@/lib/types/bakery-bom';
 import {
   getFullCakeBomConfig,
-  calculateCakeCostDetails,
-  buildCakeOrderSpec,
 } from '@/lib/utils/cakeBomManager';
 import {
   Cake,
@@ -30,6 +29,14 @@ import {
   Boxes,
   Percent,
   CheckCircle2,
+  Clock,
+  Truck,
+  Store,
+  Calendar,
+  AlertCircle,
+  Plus,
+  Minus,
+  Check,
 } from 'lucide-react';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
@@ -40,6 +47,14 @@ interface BirthdayCakeOrderModalProps {
   onConfirmOrder: (orderPayload: any) => void;
 }
 
+interface TierState {
+  cakeBaseId: string;
+  cakeBaseSizeId: string;
+  creamCoatingId: string;
+  creamCoatingSizeId: string;
+  fillingId: string;
+}
+
 export function BirthdayCakeOrderModal({
   isOpen,
   onClose,
@@ -48,22 +63,29 @@ export function BirthdayCakeOrderModal({
 }: BirthdayCakeOrderModalProps) {
   const [config, setConfig] = useState<FullCakeBomConfig>(() => getFullCakeBomConfig());
 
+  // 2 Chế độ theo yêu cầu: 1. Bánh có sẵn (Preset) | 2. Bánh tùy chọn (Custom)
   const [mode, setMode] = useState<'preset' | 'custom'>('preset');
   const [selectedPresetId, setSelectedPresetId] = useState<string>('');
 
-  const [selectedBaseId, setSelectedBaseId] = useState<string>('');
-  const [selectedBaseSizeId, setSelectedBaseSizeId] = useState<string>('');
-  const [selectedCreamId, setSelectedCreamId] = useState<string>('');
-  const [selectedCreamSizeId, setSelectedCreamSizeId] = useState<string>('');
-  const [selectedFillingId, setSelectedFillingId] = useState<string>('');
+  // Bánh tùy chọn: Hỗ trợ 1 - 3 tầng bánh độc lập
+  const [tierCount, setTierCount] = useState<number>(1);
+  const [tiers, setTiers] = useState<TierState[]>([
+    { cakeBaseId: '', cakeBaseSizeId: '', creamCoatingId: '', creamCoatingSizeId: '', fillingId: '' },
+    { cakeBaseId: '', cakeBaseSizeId: '', creamCoatingId: '', creamCoatingSizeId: '', fillingId: '' },
+    { cakeBaseId: '', cakeBaseSizeId: '', creamCoatingId: '', creamCoatingSizeId: '', fillingId: '' },
+  ]);
+
+  // Phụ kiện, hộp & quà tặng dùng chung cho cả chiếc bánh
   const [selectedPackagingId, setSelectedPackagingId] = useState<string>('');
   const [selectedFreeAccessoryIds, setSelectedFreeAccessoryIds] = useState<string[]>([]);
   const [selectedDecorAddonIds, setSelectedDecorAddonIds] = useState<string[]>([]);
 
+  // Tỷ lệ markup và giá bán
   const [customMarkupPct, setCustomMarkupPct] = useState<number>(36.5);
   const [finalPriceInput, setFinalPriceInput] = useState<number>(0);
   const [orderQuantity, setOrderQuantity] = useState<number>(1);
 
+  // Thông tin khách hàng & Lịch hẹn giao
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [pickupDate, setPickupDate] = useState(() => {
@@ -74,92 +96,228 @@ export function BirthdayCakeOrderModal({
   const [pickupTime, setPickupTime] = useState('15:00');
   const [orderDeliveryType, setOrderDeliveryType] = useState<'store' | 'ship'>('store');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [shippingFee, setShippingFee] = useState<number>(0);
   const [cakeMessage, setCakeMessage] = useState('');
   const [decorNotes, setDecorNotes] = useState('');
 
+  // Khởi tạo và đồng bộ khi mở modal
   useEffect(() => {
     const currentConfig = getFullCakeBomConfig();
     setConfig(currentConfig);
     setCustomMarkupPct(currentConfig.targetFoodCostPct || 36.5);
     setOrderQuantity(1);
 
+    // Mặc định nạp mẫu Preset nếu sản phẩm có sẵn preset
     const defaultPreset =
       (product?.bom_preset_id && currentConfig.birthdayBomPresets.find((p) => p.id === product.bom_preset_id)) ||
       currentConfig.birthdayBomPresets[0];
 
     if (defaultPreset) {
       applyPreset(defaultPreset, currentConfig);
-    } else {
-      applyDefaultCustom(currentConfig);
     }
+
+    // Thiết lập mặc định cho 3 tầng bánh tùy chọn
+    const defaultBase = currentConfig.cakeBases[0];
+    const defaultCream = currentConfig.creamCoatings[0];
+    const defaultFilling = currentConfig.fillings[0]?.id || '';
+
+    // Tầng 1 (Đáy): ưu tiên size 20 hoặc 18
+    const sizeT1 = defaultBase?.sizes[2]?.id || defaultBase?.sizes[0]?.id || '';
+    const creamSizeT1 = defaultCream?.sizes[2]?.id || defaultCream?.sizes[0]?.id || '';
+
+    // Tầng 2 (Trên): ưu tiên size 16
+    const sizeT2 = defaultBase?.sizes[1]?.id || defaultBase?.sizes[0]?.id || '';
+    const creamSizeT2 = defaultCream?.sizes[1]?.id || defaultCream?.sizes[0]?.id || '';
+
+    // Tầng 3 (Chóp): ưu tiên size 14
+    const sizeT3 = defaultBase?.sizes[0]?.id || '';
+    const creamSizeT3 = defaultCream?.sizes[0]?.id || '';
+
+    setTiers([
+      {
+        cakeBaseId: defaultBase?.id || '',
+        cakeBaseSizeId: sizeT1,
+        creamCoatingId: defaultCream?.id || '',
+        creamCoatingSizeId: creamSizeT1,
+        fillingId: defaultFilling,
+      },
+      {
+        cakeBaseId: defaultBase?.id || '',
+        cakeBaseSizeId: sizeT2,
+        creamCoatingId: defaultCream?.id || '',
+        creamCoatingSizeId: creamSizeT2,
+        fillingId: defaultFilling,
+      },
+      {
+        cakeBaseId: defaultBase?.id || '',
+        cakeBaseSizeId: sizeT3,
+        creamCoatingId: defaultCream?.id || '',
+        creamCoatingSizeId: creamSizeT3,
+        fillingId: defaultFilling,
+      },
+    ]);
+
+    setSelectedPackagingId(currentConfig.packagings[0]?.id || '');
+    setSelectedFreeAccessoryIds(currentConfig.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id));
+    setSelectedDecorAddonIds([]);
   }, [product, isOpen]);
 
   const applyPreset = (preset: BirthdayCakeBomPreset, currentConfig: FullCakeBomConfig) => {
     setSelectedPresetId(preset.id);
-    setSelectedBaseId(preset.cakeBaseId);
-    setSelectedBaseSizeId(preset.cakeBaseSizeId);
-    setSelectedCreamId(preset.creamCoatingId);
-    setSelectedCreamSizeId(preset.creamCoatingSizeId);
-    setSelectedFillingId(preset.fillingId || currentConfig.fillings[0]?.id || '');
     setSelectedPackagingId(preset.packagingId || currentConfig.packagings[0]?.id || '');
     setSelectedFreeAccessoryIds(preset.freeAccessoryIds || []);
     setSelectedDecorAddonIds(preset.decorAddonIds || []);
-  };
 
-  const applyDefaultCustom = (currentConfig: FullCakeBomConfig) => {
-    const base = currentConfig.cakeBases[0];
-    const cream = currentConfig.creamCoatings[0];
-    setSelectedBaseId(base?.id || '');
-    setSelectedBaseSizeId(base?.sizes[0]?.id || '');
-    setSelectedCreamId(cream?.id || '');
-    setSelectedCreamSizeId(cream?.sizes[0]?.id || '');
-    setSelectedFillingId(currentConfig.fillings[0]?.id || '');
-    setSelectedPackagingId(currentConfig.packagings[0]?.id || '');
-    setSelectedFreeAccessoryIds(currentConfig.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id));
-    setSelectedDecorAddonIds([]);
-  };
-
-  const costResult = useMemo(() => {
-    if (!selectedBaseId || !selectedBaseSizeId) {
-      return { totalCost: 0, suggestedPrice: 0, baseCost: 0, creamCost: 0, fillingCost: 0, packagingCost: 0, freeAccessoriesCost: 0, decorCost: 0, markupPctUsed: 36.5 };
-    }
-    return calculateCakeCostDetails(
+    // Gán vào tầng 1
+    setTiers((prev) => [
       {
-        cakeBaseId: selectedBaseId,
-        cakeBaseSizeId: selectedBaseSizeId,
-        creamCoatingId: selectedCreamId,
-        creamCoatingSizeId: selectedCreamSizeId,
-        fillingId: selectedFillingId,
-        packagingId: selectedPackagingId,
-        freeAccessoryIds: selectedFreeAccessoryIds,
-        decorAddonIds: selectedDecorAddonIds,
-        customMarkupPct: customMarkupPct,
+        cakeBaseId: preset.cakeBaseId,
+        cakeBaseSizeId: preset.cakeBaseSizeId,
+        creamCoatingId: preset.creamCoatingId,
+        creamCoatingSizeId: preset.creamCoatingSizeId,
+        fillingId: preset.fillingId || currentConfig.fillings[0]?.id || '',
       },
-      config
-    );
-  }, [
-    selectedBaseId,
-    selectedBaseSizeId,
-    selectedCreamId,
-    selectedCreamSizeId,
-    selectedFillingId,
-    selectedPackagingId,
-    selectedFreeAccessoryIds,
-    selectedDecorAddonIds,
-    customMarkupPct,
-    config,
-  ]);
+      prev[1],
+      prev[2],
+    ]);
+  };
 
-  useEffect(() => {
-    if (costResult.suggestedPrice > 0) {
-      setFinalPriceInput(costResult.suggestedPrice);
+  const updateTier = (index: number, patch: Partial<TierState>) => {
+    setTiers((prev) => {
+      const next = [...prev];
+      next[index] = { ...next[index], ...patch };
+      return next;
+    });
+  };
+
+  // ── TÍNH TOÁN CHI PHÍ TỪNG TẦNG BÁNH ──
+  const tierCostBreakdown = useMemo(() => {
+    if (mode === 'preset') {
+      const preset = config.birthdayBomPresets.find((p) => p.id === selectedPresetId) || config.birthdayBomPresets[0];
+      const base = config.cakeBases.find((b) => b.id === preset?.cakeBaseId) || config.cakeBases[0];
+      const baseSize = base?.sizes.find((s) => s.id === preset?.cakeBaseSizeId) || base?.sizes[0];
+      const baseCost = baseSize?.baseCost ?? 0;
+
+      const cream = config.creamCoatings.find((c) => c.id === preset?.creamCoatingId) || config.creamCoatings[0];
+      const creamSize = cream?.sizes.find((s) => s.id === preset?.creamCoatingSizeId) || cream?.sizes[0];
+      const creamCost = creamSize?.baseCost ?? 0;
+
+      const filling = config.fillings.find((f) => f.id === preset?.fillingId);
+      const fillingCost = filling?.costPrice ?? 0;
+
+      return [
+        {
+          tierIndex: 1,
+          tierName: 'Mẫu Bánh Có Sẵn',
+          cakeBaseId: base?.id || '',
+          cakeBaseName: base?.name || '',
+          cakeBaseCost: baseCost,
+          sizeId: baseSize?.id || '',
+          sizeName: baseSize?.sizeName || '',
+          diameterCm: baseSize?.diameterCm || 18,
+          creamId: cream?.id || '',
+          creamName: cream?.name || '',
+          creamCost: creamCost,
+          fillingId: filling?.id || '',
+          fillingName: filling?.name || '',
+          fillingCost: fillingCost,
+          tierCost: baseCost + creamCost + fillingCost,
+        },
+      ];
     }
-  }, [costResult.suggestedPrice]);
+
+    // Chế độ Custom: Tính toán chi tiết cho từng tầng đang chọn (1, 2 hoặc 3 tầng)
+    const active = tiers.slice(0, tierCount);
+    return active.map((t, idx) => {
+      const base = config.cakeBases.find((b) => b.id === t.cakeBaseId) || config.cakeBases[0];
+      const baseSize = base?.sizes.find((s) => s.id === t.cakeBaseSizeId) || base?.sizes[0];
+      const baseCost = baseSize?.baseCost ?? 0;
+
+      const cream = config.creamCoatings.find((c) => c.id === t.creamCoatingId) || config.creamCoatings[0];
+      const creamSize = cream?.sizes.find((s) => s.id === t.creamCoatingSizeId) || cream?.sizes[0];
+      const creamCost = creamSize?.baseCost ?? 0;
+
+      const filling = config.fillings.find((f) => f.id === t.fillingId);
+      const fillingCost = filling?.costPrice ?? 0;
+
+      const tierName =
+        tierCount === 1
+          ? 'Tầng 1 (Tiêu chuẩn)'
+          : idx === 0
+          ? 'Tầng 1 (Tầng Đáy)'
+          : idx === 1 && tierCount === 2
+          ? 'Tầng 2 (Tầng Trên)'
+          : idx === 1
+          ? 'Tầng 2 (Tầng Giữa)'
+          : 'Tầng 3 (Tầng Chóp)';
+
+      return {
+        tierIndex: idx + 1,
+        tierName,
+        cakeBaseId: base?.id || '',
+        cakeBaseName: base?.name || '',
+        cakeBaseCost: baseCost,
+        sizeId: baseSize?.id || '',
+        sizeName: baseSize?.sizeName || '',
+        diameterCm: baseSize?.diameterCm || (idx === 0 ? 20 : idx === 1 ? 16 : 14),
+        creamId: cream?.id || '',
+        creamName: cream?.name || '',
+        creamCost: creamCost,
+        fillingId: filling?.id || '',
+        fillingName: filling?.name || '',
+        fillingCost: fillingCost,
+        tierCost: baseCost + creamCost + fillingCost,
+      };
+    });
+  }, [mode, selectedPresetId, tierCount, tiers, config]);
+
+  // ── TỔNG HỢP TOÀN BỘ CHI PHÍ & GIÁ GỢI Ý ──
+  const totalCalculation = useMemo(() => {
+    const totalTiersCost = tierCostBreakdown.reduce((sum, t) => sum + t.tierCost, 0);
+
+    // Hộp và bao bì
+    const pkg = config.packagings.find((p) => p.id === selectedPackagingId);
+    const packagingCost = pkg?.costPrice ?? 0;
+
+    // Vật tư tặng kèm
+    let freeAccCost = 0;
+    for (const accId of selectedFreeAccessoryIds) {
+      const acc = config.freeAccessories.find((a) => a.id === accId);
+      if (acc) freeAccCost += (acc.costPrice || 0) * (acc.quantityDefault || 1);
+    }
+
+    // Phụ kiện trang trí thêm
+    let decorCost = 0;
+    for (const dId of selectedDecorAddonIds) {
+      const d = config.decorAddons.find((item) => item.id === dId);
+      if (d) decorCost += d.costPrice || 0;
+    }
+
+    const totalCost = totalTiersCost + packagingCost + freeAccCost + decorCost;
+    const factor = customMarkupPct > 0 ? customMarkupPct / 100 : 0.365;
+    const rawSuggested = totalCost / factor;
+    const suggestedPrice = Math.round(rawSuggested / 5000) * 5000;
+
+    return {
+      totalTiersCost,
+      packagingCost,
+      freeAccessoriesCost: freeAccCost,
+      decorCost,
+      totalCost,
+      suggestedPrice,
+      markupPct: customMarkupPct,
+    };
+  }, [tierCostBreakdown, selectedPackagingId, selectedFreeAccessoryIds, selectedDecorAddonIds, customMarkupPct, config]);
+
+  // Tự động điền giá gợi ý khi thay đổi cấu hình
+  useEffect(() => {
+    if (totalCalculation.suggestedPrice > 0) {
+      setFinalPriceInput(totalCalculation.suggestedPrice);
+    }
+  }, [totalCalculation.suggestedPrice]);
 
   if (!isOpen) return null;
 
-  const currentBase = config.cakeBases.find((b) => b.id === selectedBaseId);
-  const currentCream = config.creamCoatings.find((c) => c.id === selectedCreamId);
   const cakeStock = Number(product?.stock_qty ?? product?.stock ?? 0);
   const hasStock = cakeStock >= orderQuantity;
 
@@ -169,43 +327,113 @@ export function BirthdayCakeOrderModal({
       return;
     }
 
-    const orderSpec: CakeOrderSpec = buildCakeOrderSpec(
-      {
-        cakeBaseId: selectedBaseId,
-        cakeBaseSizeId: selectedBaseSizeId,
-        creamCoatingId: selectedCreamId,
-        creamCoatingSizeId: selectedCreamSizeId,
-        fillingId: selectedFillingId,
-        packagingId: selectedPackagingId,
-        freeAccessoryIds: selectedFreeAccessoryIds,
-        decorAddonIds: selectedDecorAddonIds,
-        customMarkupPct: customMarkupPct,
-        finalPrice: finalPriceInput,
-        cakeMessage: cakeMessage,
-        decorNotes: decorNotes,
-        bomPresetId: mode === 'preset' ? selectedPresetId : undefined,
+    const primaryTier = tierCostBreakdown[0];
+    const isMultiTier = mode === 'custom' && tierCount > 1;
+
+    const orderSpec: CakeOrderSpec = {
+      isBirthdayCake: true,
+      bomPresetId: mode === 'preset' ? selectedPresetId : undefined,
+      tierCount: mode === 'preset' ? 1 : tierCount,
+      tiers: tierCostBreakdown.map((t) => ({
+        tierIndex: t.tierIndex,
+        tierName: t.tierName,
+        sizeId: t.sizeId,
+        sizeName: t.sizeName,
+        diameterCm: t.diameterCm,
+        cakeBase: {
+          id: t.cakeBaseId,
+          name: t.cakeBaseName,
+          cost: t.cakeBaseCost,
+        },
+        creamCoating: {
+          id: t.creamId,
+          name: t.creamName,
+          cost: t.creamCost,
+        },
+        filling: t.fillingId
+          ? {
+              id: t.fillingId,
+              name: t.fillingName,
+              cost: t.fillingCost,
+            }
+          : undefined,
+        tierCost: t.tierCost,
+      })),
+      sizeName: isMultiTier
+        ? `${tierCount} Tầng (${tierCostBreakdown.map((t) => t.sizeName.split(' ')[1] || t.sizeName).join(' + ')})`
+        : primaryTier.sizeName,
+      diameterCm: primaryTier.diameterCm,
+      cakeBase: {
+        id: primaryTier.cakeBaseId,
+        name: primaryTier.cakeBaseName,
+        cost: primaryTier.cakeBaseCost,
       },
-      config
-    );
+      creamCoating: {
+        id: primaryTier.creamId,
+        name: primaryTier.creamName,
+        cost: primaryTier.creamCost,
+      },
+      filling: primaryTier.fillingId
+        ? {
+            id: primaryTier.fillingId,
+            name: primaryTier.fillingName,
+            cost: primaryTier.fillingCost,
+          }
+        : undefined,
+      packaging: selectedPackagingId
+        ? {
+            id: selectedPackagingId,
+            name: config.packagings.find((p) => p.id === selectedPackagingId)?.name || 'Hộp tiêu chuẩn',
+            cost: totalCalculation.packagingCost,
+          }
+        : undefined,
+      freeAccessories: selectedFreeAccessoryIds.map((id) => {
+        const acc = config.freeAccessories.find((a) => a.id === id);
+        return {
+          id,
+          name: acc?.name || '',
+          quantity: acc?.quantityDefault || 1,
+          cost: acc?.costPrice || 0,
+        };
+      }),
+      decorAddons: selectedDecorAddonIds.map((id) => {
+        const d = config.decorAddons.find((item) => item.id === id);
+        return {
+          id,
+          name: d?.name || '',
+          price: d?.sellingPrice || 0,
+          cost: d?.costPrice || 0,
+        };
+      }),
+      cakeMessage,
+      decorNotes,
+      totalCost: totalCalculation.totalCost,
+      targetFoodCostPct: customMarkupPct,
+      suggestedPrice: totalCalculation.suggestedPrice,
+      finalPrice: finalPriceInput,
+    };
 
     const initialStatus = hasStock ? 'ready' : 'pending';
 
     const orderPayload = {
       product: {
         id: product?.id || 'birthday-cake-' + Date.now(),
-        name: product?.name || 'Bánh Sinh Nhật Đặt Theo Yêu Cầu',
+        name: isMultiTier
+          ? `${product?.name || 'Bánh Sinh Nhật'} (${tierCount} Tầng)`
+          : (product?.name || 'Bánh Sinh Nhật Đặt Theo Yêu Cầu'),
         selling_price: finalPriceInput,
         cake_type_label: 'birthday',
       },
       cakeOrderSpec: orderSpec,
       quantity: orderQuantity,
       unitPrice: finalPriceInput,
-      finalPrice: finalPriceInput * orderQuantity,
+      finalPrice: finalPriceInput * orderQuantity + (orderDeliveryType === 'ship' ? shippingFee : 0),
       customerName: customerName || 'Khách Đặt Bánh Sinh Nhật',
       customerPhone,
       pickupDateTime: `${pickupDate}T${pickupTime}`,
-      orderDeliveryType,
+      orderDeliveryType: orderDeliveryType === 'ship' ? 'ship' : 'pickup',
       deliveryAddress: orderDeliveryType === 'ship' ? deliveryAddress : undefined,
+      shippingFee: orderDeliveryType === 'ship' ? shippingFee : 0,
       initialKdsStatus: initialStatus,
       hasStock: hasStock,
     };
@@ -215,24 +443,27 @@ export function BirthdayCakeOrderModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-      <div className="bg-white w-full max-w-4xl rounded-3xl shadow-2xl border border-pink-200 p-5 space-y-4 max-h-[95vh] flex flex-col animate-in zoom-in-95 duration-150">
-        <div className="flex items-center justify-between pb-3 border-b border-pink-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shadow-md shadow-pink-500/30">
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+      {/* Container dài chuẩn di động - Chiều rộng max-w-2xl, cuộn mượt mà */}
+      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-pink-200 p-4 sm:p-6 space-y-4 max-h-[92dvh] flex flex-col animate-in zoom-in-95 duration-150">
+        
+        {/* HEADER MODAL */}
+        <div className="flex items-center justify-between pb-3 border-b border-pink-100 shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shadow-md shadow-pink-500/30 shrink-0">
               <Cake className="w-5 h-5" />
             </div>
-            <div>
-              <h3 className="font-black text-base text-zinc-900 flex items-center gap-2">
+            <div className="min-w-0">
+              <h3 className="font-black text-base text-zinc-900 flex items-center gap-2 flex-wrap">
                 <span>Đặt Bánh Sinh Nhật Mới</span>
                 {product?.name && (
-                  <span className="text-xs text-pink-700 font-bold px-2.5 py-0.5 rounded-full bg-pink-50 border border-pink-200">
+                  <span className="text-[11px] text-pink-700 font-bold px-2 py-0.5 rounded-full bg-pink-50 border border-pink-200 truncate max-w-[180px]">
                     {product.name}
                   </span>
                 )}
               </h3>
-              <p className="text-xs text-zinc-500">
-                Định mức BOM tự động tính giá cost & gợi ý giá bán chuẩn xác theo flowchart tiệm bánh.
+              <p className="text-[11px] text-zinc-500 truncate">
+                Định mức BOM tính vốn chuẩn xác & phân luồng thợ bếp
               </p>
             </div>
           </div>
@@ -240,7 +471,7 @@ export function BirthdayCakeOrderModal({
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+            className="p-2 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
@@ -248,7 +479,7 @@ export function BirthdayCakeOrderModal({
 
         {/* THÔNG BÁO TỒN KHO THEO FLOWCHART */}
         <div
-          className={`p-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-bold ${
+          className={`p-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs font-bold shrink-0 ${
             hasStock
               ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
               : 'bg-amber-50 border border-amber-200 text-amber-800'
@@ -265,49 +496,52 @@ export function BirthdayCakeOrderModal({
               )}
             </span>
           </div>
-          <span className="text-[11px] font-black px-2.5 py-1 rounded-xl bg-white/80 shadow-2xs">
+          <span className="text-[10px] sm:text-[11px] font-black px-2 py-0.5 rounded-xl bg-white/80 shadow-2xs">
             {hasStock
-              ? '⚡ Đủ tồn: Đơn tự động nhảy sang Bước 3 (Chờ Ship / Sẵn Sàng)'
-              : '👨‍🍳 Thiếu/Hết tồn: Đơn tự động nhả vào Bếp để thợ làm bánh'}
+              ? '⚡ Đủ tồn: Đơn vào Bước 3 (Chờ Giao / Sẵn Sàng)'
+              : '👨‍🍳 Thiếu tồn: Đơn vào Bếp Bước 1 (Làm Mới)'}
           </span>
         </div>
 
-        {/* CHỌN NHÁNH */}
-        <div className="flex items-center gap-2 bg-pink-50/60 p-1 rounded-2xl border border-pink-200">
+        {/* CHỌN 2 MỤC: 1. BÁNH CÓ SẴN & 2. BÁNH TÙY CHỌN */}
+        <div className="flex items-center gap-2 bg-pink-50/80 p-1.5 rounded-2xl border border-pink-200 shrink-0">
           <button
             type="button"
             onClick={() => setMode('preset')}
-            className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
               mode === 'preset'
-                ? 'bg-pink-600 text-white shadow-xs'
+                ? 'bg-pink-600 text-white shadow-sm'
                 : 'text-zinc-600 hover:text-zinc-900 hover:bg-white/60'
             }`}
           >
-            <Boxes className="w-3.5 h-3.5" />
-            <span>Nhánh 1: Chọn BOM Bánh Có Sẵn (Preset)</span>
+            <Boxes className="w-4 h-4" />
+            <span>1. Bánh có sẵn</span>
           </button>
           <button
             type="button"
             onClick={() => setMode('custom')}
-            className={`flex-1 py-2 rounded-xl text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+            className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
               mode === 'custom'
-                ? 'bg-pink-600 text-white shadow-xs'
+                ? 'bg-pink-600 text-white shadow-sm'
                 : 'text-zinc-600 hover:text-zinc-900 hover:bg-white/60'
             }`}
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Nhánh 2: Chọn Loại Bánh Tùy Chọn (Custom Từng Món)</span>
+            <Sparkles className="w-4 h-4" />
+            <span>2. Bánh tùy chọn</span>
           </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 space-y-4 pr-1">
+        {/* VÙNG CUỘN DỌC NỘI DUNG CHÍNH THOÁNG ĐÃNG */}
+        <div className="overflow-y-auto flex-1 space-y-4 pr-1 overscroll-contain">
+          
+          {/* ══════════════ MỤC 1: BÁNH CÓ SẴN (PRESET BOM) ══════════════ */}
           {mode === 'preset' && (
-            <div className="space-y-2 bg-zinc-50 p-3 rounded-2xl border border-zinc-200">
-              <label className="font-black text-zinc-900 text-xs flex items-center gap-1.5">
-                <Boxes className="w-3.5 h-3.5 text-pink-600" />
-                <span>Chọn Mẫu BOM Sinh Nhật Chuẩn:</span>
+            <div className="space-y-3 bg-zinc-50/70 p-3 sm:p-4 rounded-2xl border border-zinc-200">
+              <label className="font-black text-zinc-900 text-xs sm:text-sm flex items-center gap-1.5">
+                <Boxes className="w-4 h-4 text-pink-600" />
+                <span>Chọn Mẫu Bánh Định Mức Chuẩn:</span>
               </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {config.birthdayBomPresets.map((preset) => {
                   const isSel = selectedPresetId === preset.id;
                   return (
@@ -315,14 +549,19 @@ export function BirthdayCakeOrderModal({
                       key={preset.id}
                       type="button"
                       onClick={() => applyPreset(preset, config)}
-                      className={`p-3 rounded-2xl text-left border transition cursor-pointer active:scale-95 ${
+                      className={`p-3.5 rounded-2xl text-left border transition cursor-pointer active:scale-98 ${
                         isSel
-                          ? 'bg-pink-50 border-pink-600 ring-2 ring-pink-200 text-pink-900 shadow-xs'
-                          : 'bg-white border-zinc-200 text-zinc-700 hover:border-pink-300'
+                          ? 'bg-pink-50 border-pink-600 ring-2 ring-pink-300 text-pink-950 shadow-sm'
+                          : 'bg-white border-zinc-200 text-zinc-700 hover:border-pink-300 hover:bg-pink-50/20'
                       }`}
                     >
-                      <div className="font-bold text-xs line-clamp-1">{preset.name}</div>
-                      <div className="text-[11px] text-zinc-500 mt-1 line-clamp-1">{preset.notes}</div>
+                      <div className="font-bold text-xs sm:text-sm flex items-center justify-between">
+                        <span className="line-clamp-1">{preset.name}</span>
+                        {isSel && <Check className="w-4 h-4 text-pink-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] text-zinc-500 mt-1 line-clamp-2 leading-relaxed">
+                        {preset.notes || 'Mẫu bánh sinh nhật định mức BOM chuẩn'}
+                      </div>
                     </button>
                   );
                 })}
@@ -330,417 +569,469 @@ export function BirthdayCakeOrderModal({
             </div>
           )}
 
-          {/* 1. CỐT BÁNH & SIZE */}
-          <div className="p-3.5 rounded-2xl bg-pink-50/40 border border-pink-200 space-y-2.5">
-            <span className="font-black text-xs text-pink-900 flex items-center gap-1.5">
-              <Cake className="w-4 h-4 text-pink-600" />
-              <span>1. Chọn Cốt Bánh & Kích Thước (Size)</span>
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-              <div>
-                <label className="font-bold text-zinc-600 block mb-1">Loại Cốt Bánh:</label>
-                <select
-                  value={selectedBaseId}
-                  onChange={(e) => {
-                    setSelectedBaseId(e.target.value);
-                    const b = config.cakeBases.find((x) => x.id === e.target.value);
-                    if (b && b.sizes[0]) setSelectedBaseSizeId(b.sizes[0].id);
-                  }}
-                  className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold"
-                >
-                  {config.cakeBases.map((b) => (
-                    <option key={b.id} value={b.id}>
-                      {b.name}
-                    </option>
+          {/* ══════════════ MỤC 2: BÁNH TÙY CHỌN (HỖ TRỢ 1 - 3 TẦNG BÁNH) ══════════════ */}
+          {mode === 'custom' && (
+            <div className="space-y-4">
+              
+              {/* BỘ CHỌN SỐ TẦNG BÁNH */}
+              <div className="p-3.5 bg-gradient-to-r from-pink-50 to-rose-50 rounded-2xl border border-pink-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-xs sm:text-sm text-pink-950 flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-pink-600" />
+                    <span>Chọn Số Tầng Bánh:</span>
+                  </span>
+                  <span className="text-[11px] text-pink-700 font-bold bg-white px-2 py-0.5 rounded-full border border-pink-200">
+                    {tierCount === 1 ? 'Bánh đơn 1 tầng' : `Bánh ${tierCount} tầng xếp chồng`}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  {[1, 2, 3].map((num) => (
+                    <button
+                      key={num}
+                      type="button"
+                      onClick={() => setTierCount(num)}
+                      className={`py-2.5 px-2 rounded-xl text-xs font-black transition flex flex-col items-center justify-center gap-1 cursor-pointer border ${
+                        tierCount === num
+                          ? 'bg-pink-600 text-white border-pink-600 shadow-sm'
+                          : 'bg-white text-zinc-700 border-pink-200 hover:bg-pink-100/50'
+                      }`}
+                    >
+                      <span className="text-base leading-none">
+                        {num === 1 ? '🎂' : num === 2 ? '🎂🎂' : '🎂🎂🎂'}
+                      </span>
+                      <span>{num === 1 ? '1 Tầng' : num === 2 ? '2 Tầng' : '3 Tầng'}</span>
+                    </button>
                   ))}
-                </select>
+                </div>
               </div>
 
-              <div>
-                <label className="font-bold text-zinc-600 block mb-1">Size Cốt Bánh:</label>
-                <select
-                  value={selectedBaseSizeId}
-                  onChange={(e) => setSelectedBaseSizeId(e.target.value)}
-                  className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold text-pink-800"
-                >
-                  {currentBase?.sizes.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.sizeName} — Vốn: {s.baseCost.toLocaleString('vi-VN')}₫
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
+              {/* CẤU HÌNH CHI TIẾT TỪNG TẦNG BÁNH */}
+              {tiers.slice(0, tierCount).map((tier, idx) => {
+                const tierInfo = tierCostBreakdown[idx] || {
+                  tierName: `Tầng ${idx + 1}`,
+                  tierCost: 0,
+                };
+                const currentBase = config.cakeBases.find((b) => b.id === tier.cakeBaseId) || config.cakeBases[0];
+                const currentCream = config.creamCoatings.find((c) => c.id === tier.creamCoatingId) || config.creamCoatings[0];
 
-          {/* 2. KEM PHỦ & SIZE */}
-          <div className="p-3.5 rounded-2xl bg-pink-50/40 border border-pink-200 space-y-2.5">
-            <span className="font-black text-xs text-pink-900 flex items-center gap-1.5">
-              <Layers className="w-4 h-4 text-pink-600" />
-              <span>2. Chọn Loại Kem Phủ & Size Kem</span>
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-              <div>
-                <label className="font-bold text-zinc-600 block mb-1">Loại Kem Phủ:</label>
-                <select
-                  value={selectedCreamId}
-                  onChange={(e) => {
-                    setSelectedCreamId(e.target.value);
-                    const c = config.creamCoatings.find((x) => x.id === e.target.value);
-                    if (c && c.sizes[0]) setSelectedCreamSizeId(c.sizes[0].id);
-                  }}
-                  className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold"
-                >
-                  {config.creamCoatings.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="font-bold text-zinc-600 block mb-1">Size Kem Phủ:</label>
-                <select
-                  value={selectedCreamSizeId}
-                  onChange={(e) => setSelectedCreamSizeId(e.target.value)}
-                  className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold text-pink-800"
-                >
-                  {currentCream?.sizes.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.sizeName} — Vốn: {s.baseCost.toLocaleString('vi-VN')}₫
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-
-          {/* 3. NHÂN BÁNH, HỘP */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
-            <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
-              <span className="font-bold text-zinc-900 flex items-center gap-1">
-                <Utensils className="w-3.5 h-3.5 text-pink-600" /> 3. Nhân Bánh:
-              </span>
-              <select
-                value={selectedFillingId}
-                onChange={(e) => setSelectedFillingId(e.target.value)}
-                className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold"
-              >
-                {config.fillings.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name} {f.extraPrice > 0 ? `(+ ${f.extraPrice.toLocaleString('vi-VN')}₫)` : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
-              <span className="font-bold text-zinc-900 flex items-center gap-1">
-                <Package className="w-3.5 h-3.5 text-pink-600" /> 4. Hộp & Bao Bì:
-              </span>
-              <select
-                value={selectedPackagingId}
-                onChange={(e) => setSelectedPackagingId(e.target.value)}
-                className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold"
-              >
-                {config.packagings.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} {p.sellingPrice > 0 ? `(+ ${p.sellingPrice.toLocaleString('vi-VN')}₫)` : '(Tiêu chuẩn)'}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* 5. VẬT TƯ TẶNG KÈM MẶC ĐỊNH */}
-          <div className="p-3 bg-rose-50/40 rounded-2xl border border-rose-200 space-y-2">
-            <span className="font-bold text-rose-900 text-xs flex items-center gap-1.5">
-              <Gift className="w-3.5 h-3.5 text-rose-600" />
-              <span>5. Vật Tư Tặng Kèm (Mặc định trong bánh sinh nhật):</span>
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {config.freeAccessories.map((acc) => {
-                const isChecked = selectedFreeAccessoryIds.includes(acc.id);
                 return (
-                  <label
-                    key={acc.id}
-                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition ${
-                      isChecked
-                        ? 'bg-rose-600 text-white border-rose-600 shadow-2xs'
-                        : 'bg-white text-zinc-600 border-zinc-200'
-                    }`}
+                  <div
+                    key={idx}
+                    className="p-3.5 sm:p-4 rounded-2xl bg-white border-2 border-pink-200 shadow-xs space-y-3"
                   >
-                    <input
-                      type="checkbox"
-                      checked={isChecked}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedFreeAccessoryIds([...selectedFreeAccessoryIds, acc.id]);
-                        } else {
-                          setSelectedFreeAccessoryIds(selectedFreeAccessoryIds.filter((id) => id !== acc.id));
-                        }
-                      }}
-                      className="hidden"
-                    />
-                    <span>🎁 {acc.name}</span>
-                  </label>
+                    {/* Header từng tầng */}
+                    <div className="flex items-center justify-between pb-2 border-b border-pink-100">
+                      <span className="font-black text-xs sm:text-sm text-pink-900 flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-pink-100 text-pink-700 flex items-center justify-center text-xs">
+                          {idx + 1}
+                        </span>
+                        <span>{tierInfo.tierName}</span>
+                      </span>
+                      <span className="text-xs font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+                        Vốn: {tierInfo.tierCost.toLocaleString('vi-VN')}₫
+                      </span>
+                    </div>
+
+                    {/* 1. Chọn Size đường kính bánh */}
+                    <div>
+                      <label className="text-[11px] font-bold text-zinc-700 block mb-1">
+                        Kích thước (Đường kính):
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {currentBase?.sizes.map((s) => {
+                          const isSel = tier.cakeBaseSizeId === s.id;
+                          return (
+                            <button
+                              key={s.id}
+                              type="button"
+                              onClick={() => {
+                                updateTier(idx, { cakeBaseSizeId: s.id });
+                                // Tự động đồng bộ size kem tương ứng
+                                const matchingCreamSize = currentCream?.sizes.find((cs) => cs.diameterCm === s.diameterCm) || currentCream?.sizes[0];
+                                if (matchingCreamSize) {
+                                  updateTier(idx, { creamCoatingSizeId: matchingCreamSize.id });
+                                }
+                              }}
+                              className={`p-2 rounded-xl text-center border text-xs font-bold transition cursor-pointer ${
+                                isSel
+                                  ? 'bg-pink-600 text-white border-pink-600 shadow-2xs'
+                                  : 'bg-zinc-50 border-zinc-200 text-zinc-700 hover:bg-pink-50'
+                              }`}
+                            >
+                              <div className="text-xs font-black">{s.diameterCm}cm</div>
+                              <div className="text-[10px] opacity-80 mt-0.5">~{s.baseCost.toLocaleString('vi-VN')}₫</div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* 2. Cốt bánh, Kem phủ & Nhân bánh */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                      <div>
+                        <label className="font-bold text-zinc-700 block mb-1">Cốt bánh:</label>
+                        <select
+                          value={tier.cakeBaseId}
+                          onChange={(e) => {
+                            const newBaseId = e.target.value;
+                            const b = config.cakeBases.find((x) => x.id === newBaseId);
+                            updateTier(idx, {
+                              cakeBaseId: newBaseId,
+                              cakeBaseSizeId: b?.sizes[0]?.id || '',
+                            });
+                          }}
+                          className="w-full p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 font-bold text-zinc-900 text-xs focus:bg-white"
+                        >
+                          {config.cakeBases.map((b) => (
+                            <option key={b.id} value={b.id}>
+                              {b.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="font-bold text-zinc-700 block mb-1">Kem phủ:</label>
+                        <select
+                          value={tier.creamCoatingId}
+                          onChange={(e) => {
+                            const newCreamId = e.target.value;
+                            const c = config.creamCoatings.find((x) => x.id === newCreamId);
+                            updateTier(idx, {
+                              creamCoatingId: newCreamId,
+                              creamCoatingSizeId: c?.sizes[0]?.id || '',
+                            });
+                          }}
+                          className="w-full p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 font-bold text-zinc-900 text-xs focus:bg-white"
+                        >
+                          {config.creamCoatings.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="font-bold text-zinc-700 block mb-1">Nhân bánh:</label>
+                        <select
+                          value={tier.fillingId}
+                          onChange={(e) => updateTier(idx, { fillingId: e.target.value })}
+                          className="w-full p-2.5 rounded-xl bg-zinc-50 border border-zinc-200 font-bold text-zinc-900 text-xs focus:bg-white"
+                        >
+                          {config.fillings.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.name} {f.costPrice > 0 ? `(+${f.costPrice.toLocaleString('vi-VN')}₫)` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
                 );
               })}
             </div>
-          </div>
+          )}
 
-          {/* 6. PHỤ KIỆN & DECOR */}
-          <div className="p-3 bg-pink-50/40 rounded-2xl border border-pink-200 space-y-2">
-            <span className="font-bold text-pink-900 text-xs flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-pink-600" />
-              <span>6. Phụ Kiện Decor Thêm:</span>
+          {/* ══════════════ PHỤ KIỆN & BAO BÌ CHUNG ══════════════ */}
+          <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-3 text-xs">
+            <span className="font-black text-zinc-900 flex items-center gap-1.5 text-xs sm:text-sm">
+              <Package className="w-4 h-4 text-pink-600" />
+              <span>Hộp Đóng Gói & Quà Tặng Kèm:</span>
             </span>
-            <div className="flex flex-wrap gap-2">
-              {config.decorAddons.map((dec) => {
-                const isSelected = selectedDecorAddonIds.includes(dec.id);
-                return (
-                  <button
-                    key={dec.id}
-                    type="button"
-                    onClick={() => {
-                      if (isSelected) {
-                        setSelectedDecorAddonIds(selectedDecorAddonIds.filter((id) => id !== dec.id));
-                      } else {
-                        setSelectedDecorAddonIds([...selectedDecorAddonIds, dec.id]);
-                      }
-                    }}
-                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      isSelected
-                        ? 'bg-pink-600 text-white border-pink-600 shadow-2xs'
-                        : 'bg-white text-zinc-700 border-zinc-200 hover:border-pink-300'
-                    }`}
-                  >
-                    <span>{dec.icon || '✨'}</span>
-                    <span>{dec.name}</span>
-                    <span className={`text-[10px] ${isSelected ? 'text-pink-100' : 'text-pink-700 font-black'}`}>
-                      +{dec.sellingPrice.toLocaleString('vi-VN')}₫
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
 
-          {/* THÔNG TIN KHÁCH HÀNG & GIAO BÁNH */}
-          <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-3 text-xs">
-            <span className="font-bold text-zinc-900 block">Thông Tin Khách Đặt & Giao Nhận Bánh:</span>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Tên khách hàng *"
-                className="p-2 rounded-xl bg-white border border-zinc-200 font-bold"
-              />
-              <input
-                type="tel"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                placeholder="Số điện thoại khách *"
-                className="p-2 rounded-xl bg-white border border-zinc-200 font-bold"
-              />
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Loại Hộp Đựng Bánh:</label>
+                <select
+                  value={selectedPackagingId}
+                  onChange={(e) => setSelectedPackagingId(e.target.value)}
+                  className="w-full p-2.5 rounded-xl bg-white border border-zinc-200 font-bold text-zinc-900 text-xs"
+                >
+                  {config.packagings.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} {p.costPrice > 0 ? `(~${p.costPrice.toLocaleString('vi-VN')}₫)` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Vật tư tặng kèm (Miễn phí):</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {config.freeAccessories.map((acc) => {
+                    const isSel = selectedFreeAccessoryIds.includes(acc.id);
+                    return (
+                      <button
+                        key={acc.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedFreeAccessoryIds((prev) =>
+                            isSel ? prev.filter((x) => x !== acc.id) : [...prev, acc.id]
+                          );
+                        }}
+                        className={`px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition cursor-pointer border ${
+                          isSel
+                            ? 'bg-pink-100 text-pink-800 border-pink-300'
+                            : 'bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-100'
+                        }`}
+                      >
+                        {isSel ? '✓ ' : '+ '} {acc.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            {/* Phụ kiện decor tính thêm */}
+            <div>
+              <label className="font-bold text-zinc-700 block mb-1">Phụ kiện & Decor đặt thêm (nếu có):</label>
+              <div className="flex flex-wrap gap-1.5">
+                {config.decorAddons.map((addon) => {
+                  const isSel = selectedDecorAddonIds.includes(addon.id);
+                  return (
+                    <button
+                      key={addon.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedDecorAddonIds((prev) =>
+                          isSel ? prev.filter((x) => x !== addon.id) : [...prev, addon.id]
+                        );
+                      }}
+                      className={`px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition cursor-pointer border ${
+                        isSel
+                          ? 'bg-amber-100 text-amber-900 border-amber-300 font-black'
+                          : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
+                      }`}
+                    >
+                      {isSel ? '✓ ' : '+ '} {addon.name} (+{(addon.sellingPrice || addon.costPrice).toLocaleString('vi-VN')}₫)
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Ghi chữ & Dặn dò tạo hình */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
               <div>
-                <label className="font-semibold text-zinc-500 block mb-1">Ngày lấy bánh:</label>
+                <label className="font-bold text-zinc-700 block mb-1">Ghi chữ lên bánh:</label>
+                <input
+                  type="text"
+                  value={cakeMessage}
+                  onChange={(e) => setCakeMessage(e.target.value)}
+                  placeholder="VD: Chúc mừng sinh nhật bé Bắp"
+                  className="w-full p-2.5 rounded-xl bg-white border border-zinc-200 font-bold text-xs text-zinc-900"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Yêu cầu tạo hình / Dặn thợ:</label>
+                <input
+                  type="text"
+                  value={decorNotes}
+                  onChange={(e) => setDecorNotes(e.target.value)}
+                  placeholder="VD: Tone màu hồng pastel, ít ngọt"
+                  className="w-full p-2.5 rounded-xl bg-white border border-zinc-200 font-medium text-xs text-zinc-900"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ══════════════ THÔNG TIN KHÁCH HÀNG & GIAO NHẬN ══════════════ */}
+          <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200 space-y-3 text-xs">
+            <span className="font-black text-blue-900 flex items-center gap-1.5 text-xs sm:text-sm">
+              <Calendar className="w-4 h-4 text-blue-600" />
+              <span>Thông Tin Khách Hàng & Hẹn Giờ Giao Nhận:</span>
+            </span>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Tên khách hàng:</label>
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="VD: Chị Mai"
+                  className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
+                />
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Số điện thoại:</label>
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="VD: 0988..."
+                  className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
+                />
+              </div>
+            </div>
+
+            {/* Hình thức nhận */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setOrderDeliveryType('store')}
+                className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition border text-xs cursor-pointer ${
+                  orderDeliveryType === 'store'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                    : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+                }`}
+              >
+                <Store className="w-4 h-4" /> Khách lấy tại tiệm
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderDeliveryType('ship')}
+                className={`py-2 px-3 rounded-xl font-bold flex items-center justify-center gap-1.5 transition border text-xs cursor-pointer ${
+                  orderDeliveryType === 'ship'
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                    : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+                }`}
+              >
+                <Truck className="w-4 h-4" /> Giao hàng tận nơi
+              </button>
+            </div>
+
+            {orderDeliveryType === 'ship' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                <div className="sm:col-span-2">
+                  <label className="font-bold text-zinc-700 block mb-1">Địa chỉ nhận bánh chi tiết *:</label>
+                  <input
+                    type="text"
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    placeholder="Số nhà, tên đường, phường/xã..."
+                    className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Phí ship (₫):</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formatCurrencyInput(shippingFee)}
+                    onChange={(e) => setShippingFee(parseCurrencyInput(e.target.value))}
+                    placeholder="0"
+                    className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900 text-right"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Ngày giờ hẹn */}
+            <div className="grid grid-cols-2 gap-2.5">
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">Ngày hẹn:</label>
                 <input
                   type="date"
                   value={pickupDate}
                   onChange={(e) => setPickupDate(e.target.value)}
-                  className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold"
+                  className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
                 />
               </div>
               <div>
-                <label className="font-semibold text-zinc-500 block mb-1">Giờ lấy:</label>
+                <label className="font-bold text-zinc-700 block mb-1">Giờ hẹn:</label>
                 <input
                   type="time"
                   value={pickupTime}
                   onChange={(e) => setPickupTime(e.target.value)}
-                  className="w-full p-2 rounded-xl bg-white border border-zinc-200 font-bold"
+                  className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
                 />
               </div>
-              <div>
-                <label className="font-semibold text-zinc-500 block mb-1">Hình thức nhận:</label>
-                <div className="flex items-center gap-2 mt-1">
-                  <button
-                    type="button"
-                    onClick={() => setOrderDeliveryType('store')}
-                    className={`flex-1 py-1.5 rounded-lg font-bold border transition ${
-                      orderDeliveryType === 'store'
-                        ? 'bg-amber-600 text-white border-amber-600'
-                        : 'bg-white text-zinc-600 border-zinc-200'
-                    }`}
-                  >
-                    Tại quầy
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setOrderDeliveryType('ship')}
-                    className={`flex-1 py-1.5 rounded-lg font-bold border transition ${
-                      orderDeliveryType === 'ship'
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-zinc-600 border-zinc-200'
-                    }`}
-                  >
-                    Đơn ship
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {orderDeliveryType === 'ship' && (
-              <input
-                type="text"
-                value={deliveryAddress}
-                onChange={(e) => setDeliveryAddress(e.target.value)}
-                placeholder="Địa chỉ giao bánh chi tiết *"
-                className="w-full p-2 rounded-xl bg-white border border-blue-200 font-bold text-zinc-900"
-              />
-            )}
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <input
-                type="text"
-                value={cakeMessage}
-                onChange={(e) => setCakeMessage(e.target.value)}
-                placeholder="Chữ viết lên bánh (VD: Chúc Mừng Sinh Nhật Bé Bo 3 Tuổi)..."
-                className="p-2 rounded-xl bg-white border border-pink-200 font-bold text-pink-900"
-              />
-              <input
-                type="text"
-                value={decorNotes}
-                onChange={(e) => setDecorNotes(e.target.value)}
-                placeholder="Ghi chú thợ trang trí (Tone màu xanh, ít ngọt, nến số 3)..."
-                className="p-2 rounded-xl bg-white border border-zinc-200"
-              />
             </div>
           </div>
         </div>
 
-        {/* ── BẢNG TÍNH GIÁ COST TẤT CẢ & GIÁ BÁN GỢI Ý ── */}
-        <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-4 text-xs text-zinc-600">
-              <div>
-                Cốt: <b className="text-zinc-900">{costResult.baseCost.toLocaleString('vi-VN')}₫</b>
-              </div>
-              <div>
-                Kem: <b className="text-zinc-900">{costResult.creamCost.toLocaleString('vi-VN')}₫</b>
-              </div>
-              <div>
-                Nhân: <b className="text-zinc-900">{costResult.fillingCost.toLocaleString('vi-VN')}₫</b>
-              </div>
-              <div>
-                Hộp: <b className="text-zinc-900">{costResult.packagingCost.toLocaleString('vi-VN')}₫</b>
-              </div>
-              <div>
-                Quà: <b className="text-zinc-900">{costResult.freeAccessoriesCost.toLocaleString('vi-VN')}₫</b>
-              </div>
+        {/* ══════════════ FOOTER CỐ ĐỊNH Ở ĐÁY (STICKY FOOTER) ══════════════ */}
+        <div className="pt-3 border-t border-zinc-200 shrink-0 space-y-3 bg-white">
+          {/* Tóm tắt chi phí BOM */}
+          <div className="flex items-center justify-between text-xs bg-pink-50/60 p-2.5 rounded-xl border border-pink-200">
+            <div>
+              <span className="text-[10px] text-zinc-500 block">Tổng Vốn BOM ({mode === 'custom' ? `${tierCount} tầng` : '1 tầng'}):</span>
+              <span className="font-black text-rose-600 text-sm">
+                {totalCalculation.totalCost.toLocaleString('vi-VN')}₫
+              </span>
             </div>
 
-            <div className="flex items-center gap-4">
-              <div>
-                <span className="text-[10px] text-zinc-500 block">Tổng Cost BOM:</span>
-                <span className="font-black text-rose-600 text-sm">
-                  {costResult.totalCost.toLocaleString('vi-VN')}₫
-                </span>
-              </div>
-
-              <div className="flex items-center gap-1 bg-white px-2.5 py-1 rounded-xl border border-pink-200">
-                <span className="text-[10px] text-pink-700 font-bold">Markup:</span>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={customMarkupPct}
-                  onChange={(e) => setCustomMarkupPct(parseFloat(e.target.value) || 36.5)}
-                  className="w-12 text-center font-black text-xs text-pink-700 bg-pink-50 rounded py-0.5 border-none focus:outline-none"
-                  title="Nhập tỷ lệ mong muốn (mặc định mốc 36.5%)"
-                />
-                <span className="text-[10px] text-zinc-500">%</span>
-              </div>
-
-              <div className="pl-3 border-l border-zinc-200">
-                <span className="text-[10px] text-pink-700 font-bold block">
-                  Giá Gợi Ý (~{customMarkupPct}%):
-                </span>
-                <span className="font-black text-pink-700 text-sm">
-                  {costResult.suggestedPrice.toLocaleString('vi-VN')}₫
-                </span>
-              </div>
+            <div className="text-right">
+              <span className="text-[10px] text-pink-700 font-bold block">
+                Giá Gợi Ý (~{customMarkupPct}%):
+              </span>
+              <span className="font-black text-pink-700 text-sm">
+                {totalCalculation.suggestedPrice.toLocaleString('vi-VN')}₫
+              </span>
             </div>
           </div>
 
-          {/* CHỐT GIÁ BÁN & HOÀN THÀNH ĐƠN ĐẶT HÀNG */}
-          <div className="pt-3 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Chọn số lượng bánh */}
-              <div className="flex items-center gap-1.5 bg-pink-50/80 p-1 rounded-xl border border-pink-200">
-                <span className="text-xs font-bold text-pink-900 pl-1">Số lượng:</span>
-                <div className="flex items-center bg-white rounded-lg border border-pink-300">
-                  <button
-                    type="button"
-                    onClick={() => setOrderQuantity((q) => Math.max(1, q - 1))}
-                    className="w-7 h-7 flex items-center justify-center text-zinc-600 font-bold hover:bg-zinc-100 rounded-l-lg cursor-pointer active:scale-90"
-                  >
-                    -
-                  </button>
-                  <span className="w-8 text-center font-black text-xs text-zinc-900">
-                    {orderQuantity}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => setOrderQuantity((q) => q + 1)}
-                    className="w-7 h-7 flex items-center justify-center text-zinc-600 font-bold hover:bg-zinc-100 rounded-r-lg cursor-pointer active:scale-90"
-                  >
-                    +
-                  </button>
-                </div>
+          {/* Hàng điều khiển số lượng, giá chốt và nút đặt */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+            <div className="flex items-center justify-between sm:justify-start gap-2">
+              {/* Stepper số lượng */}
+              <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-xl border border-zinc-300">
+                <button
+                  type="button"
+                  onClick={() => setOrderQuantity((q) => Math.max(1, q - 1))}
+                  className="w-8 h-8 rounded-lg bg-white hover:bg-zinc-200 text-zinc-800 font-bold flex items-center justify-center shadow-2xs active:scale-90"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <span className="w-7 text-center font-black text-xs text-zinc-900">
+                  {orderQuantity}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setOrderQuantity((q) => q + 1)}
+                  className="w-8 h-8 rounded-lg bg-white hover:bg-zinc-200 text-zinc-800 font-bold flex items-center justify-center shadow-2xs active:scale-90"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-black text-zinc-900">Đơn Giá (VND) *:</span>
+              {/* Ô chốt giá bán */}
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-bold text-zinc-700 hidden sm:inline">Giá:</span>
                 <input
                   type="text"
                   inputMode="numeric"
                   value={formatCurrencyInput(finalPriceInput)}
                   onChange={(e) => setFinalPriceInput(parseCurrencyInput(e.target.value))}
-                  className="w-32 px-3 py-1.5 rounded-xl border-2 border-pink-500 bg-white font-black text-base text-pink-700 focus:outline-none text-center shadow-xs"
+                  placeholder="Giá bán chốt"
+                  className="w-28 sm:w-32 px-2.5 py-1.5 rounded-xl border-2 border-pink-500 bg-white font-black text-sm text-pink-700 focus:outline-none text-center shadow-xs"
                 />
               </div>
 
               {orderQuantity > 1 && (
-                <div className="text-xs font-bold text-zinc-600">
-                  Tổng: <span className="font-black text-pink-700">{(finalPriceInput * orderQuantity).toLocaleString('vi-VN')}₫</span>
+                <div className="text-[11px] font-bold text-zinc-600">
+                  Tổng: <b className="text-pink-700">{(finalPriceInput * orderQuantity).toLocaleString('vi-VN')}₫</b>
                 </div>
               )}
             </div>
 
+            {/* Nút Hủy & Chốt đơn */}
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2.5 rounded-xl bg-zinc-200 hover:bg-zinc-300 text-zinc-700 font-bold text-xs cursor-pointer"
+                className="px-3.5 py-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs cursor-pointer"
               >
-                Hủy Bỏ
+                Hủy
               </button>
               <button
                 type="button"
                 onClick={handleConfirm}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 text-white font-black text-xs shadow-md shadow-pink-600/30 flex items-center gap-2 cursor-pointer active:scale-95"
+                className="flex-1 sm:flex-initial px-5 py-2.5 rounded-xl bg-gradient-to-r from-pink-600 via-rose-600 to-pink-700 hover:from-pink-700 hover:to-rose-800 text-white font-black text-xs sm:text-sm shadow-md shadow-pink-600/30 flex items-center justify-center gap-2 cursor-pointer active:scale-95 transition"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Chốt Giá & Đặt Bánh Vào Hệ Thống</span>
+                <span>Chốt Giá & Đặt Bánh</span>
               </button>
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );
