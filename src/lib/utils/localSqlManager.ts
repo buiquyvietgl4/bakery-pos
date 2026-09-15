@@ -130,7 +130,7 @@ export async function selectLocalSqlDirectory(): Promise<{ success: boolean; fol
 }
 
 // ── 2. TRÌNH TẠO TỆP SQL DUMP VÀ SCHEMA (DDL & DML) ──
-function sqlEscape(val: any): string {
+export function sqlEscape(val: any): string {
   if (val === null || val === undefined) return 'NULL';
   if (typeof val === 'number') return isNaN(val) ? '0' : String(val);
   if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
@@ -802,6 +802,10 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
       } catch {}
     }
 
+    if (Array.isArray(data.ingredients)) {
+      localSnapshot['bakery_ingredients'] = JSON.stringify(data.ingredients);
+    }
+
     if (Array.isArray(data.orders)) {
       localSnapshot['bakery_orders'] = JSON.stringify(data.orders);
       const preorders = data.orders.filter((o: any) => o.order_type === 'preorder' || o.orderType === 'preorder');
@@ -920,6 +924,8 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
     return { success: false, message: err.message || 'Lỗi khi khôi phục dữ liệu vào Local' };
   }
 }
+
+export const importFromLocalSqlDump = restoreLocalFromBackupData;
 
 /**
  * ⚡ 1-Click: Tải toàn bộ dữ liệu mới nhất từ Cloud SQL về máy và nạp vào Chế độ Local
