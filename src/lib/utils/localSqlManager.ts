@@ -383,6 +383,20 @@ CREATE TABLE IF NOT EXISTS tax_policy_config (
     tax_groups TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS bakery_bom_settings (
+    id TEXT PRIMARY KEY,
+    version TEXT,
+    target_food_cost_pct NUMERIC DEFAULT 36.5,
+    cake_bases TEXT,
+    cream_coatings TEXT,
+    fillings TEXT,
+    packagings TEXT,
+    free_accessories TEXT,
+    decor_addons TEXT,
+    birthday_bom_presets TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 }
 
@@ -663,6 +677,19 @@ INSERT INTO tax_policy_config (id, policy_name, circular_citation, annual_thresh
 `;
   }
 
+  // ----------------------------------------------------------------------------
+  // 18. BẢNG ĐỊNH MỨC BOM BÁNH SINH NHẬT THEO FLOWCHART (BAKERY_BOM_SETTINGS)
+  // ----------------------------------------------------------------------------
+  const bomConfig = data?.bakery_bom_settings || data?.bakery_full_bom_config || data?.settings?.full_cake_bom_config;
+  if (bomConfig) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 18. BẢNG ĐỊNH MỨC BOM BÁNH SINH NHẬT (BAKERY_BOM_SETTINGS)
+-- ----------------------------------------------------------------------------
+INSERT INTO bakery_bom_settings (id, version, target_food_cost_pct, cake_bases, cream_coatings, fillings, packagings, free_accessories, decor_addons, birthday_bom_presets, updated_at) VALUES ('primary', ${sqlEscape(bomConfig.version || '2.0.0')}, ${sqlEscape(bomConfig.targetFoodCostPct || 36.5)}, ${sqlEscape(JSON.stringify(bomConfig.cakeBases || []))}, ${sqlEscape(JSON.stringify(bomConfig.creamCoatings || []))}, ${sqlEscape(JSON.stringify(bomConfig.fillings || []))}, ${sqlEscape(JSON.stringify(bomConfig.packagings || []))}, ${sqlEscape(JSON.stringify(bomConfig.freeAccessories || []))}, ${sqlEscape(JSON.stringify(bomConfig.decorAddons || []))}, ${sqlEscape(JSON.stringify(bomConfig.birthdayBomPresets || []))}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
   return sql;
 }
 
@@ -858,6 +885,11 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
     const taxPolicy = data.tax_policy_config || data.tax_policy || data.settings?.tax_policy;
     if (taxPolicy) {
       localSnapshot['bakery_tax_policy_config'] = JSON.stringify(taxPolicy);
+    }
+
+    const fullBom = data.bakery_bom_settings || data.bakery_full_bom_config || data.full_cake_bom_config || data.settings?.full_cake_bom_config;
+    if (fullBom) {
+      localSnapshot['bakery_full_bom_config'] = JSON.stringify(fullBom);
     }
 
     // Áp dụng vào hệ thống

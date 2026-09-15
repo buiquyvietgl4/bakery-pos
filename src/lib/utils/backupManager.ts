@@ -523,6 +523,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   let cakeCostingConfig: any = null;
   let taxHouseholdConfig: any = null;
   let taxPolicyConfig: any = null;
+  let fullCakeBomConfig: any = null;
   let accountingClosings: any[] = [];
 
   if (typeof window !== 'undefined') {
@@ -541,6 +542,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawTax) taxHouseholdConfig = JSON.parse(rawTax);
       const rawTaxPol = localStorage.getItem('bakery_tax_policy_config');
       if (rawTaxPol) taxPolicyConfig = JSON.parse(rawTaxPol);
+      const rawBom = localStorage.getItem('bakery_full_bom_config');
+      if (rawBom) fullCakeBomConfig = JSON.parse(rawBom);
     } catch {}
   }
   printerConfig = getPrinterConfig();
@@ -682,6 +685,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       cake_costing: cakeCostingConfig,
       tax_household: taxHouseholdConfig,
       tax_policy: taxPolicyConfig,
+      full_cake_bom_config: fullCakeBomConfig,
     },
   };
 }

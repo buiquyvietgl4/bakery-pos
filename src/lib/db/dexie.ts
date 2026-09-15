@@ -70,9 +70,14 @@ export interface CachedProduct {
   is_active: boolean;
   is_preorder_only?: boolean;
   stock_qty?: number;
+  stock?: number;
   min_stock_alert?: number;
   unit?: string;
   is_semi_finished?: boolean;
+  cake_type_label?: 'standard' | 'pre_order' | 'birthday';
+  show_on_menu?: boolean;
+  bom_preset_id?: string;
+  menu_display_qty?: number;
 }
 
 export class BakeryDB extends Dexie {

@@ -90,6 +90,7 @@ interface KDSOrder {
   reference_image_url?: string;
   remake_reason?: string;
   remake_notes?: string;
+  cake_order_spec?: any;
   items: OrderItem[];
 }
 
@@ -1637,18 +1638,20 @@ export default function KitchenPage() {
     const isPreorder = order.order_type === 'preorder' || order.order_number?.startsWith('BK-PRE') || !!order.preorder_pickup_at;
 
     const parsedCake = cleanCakeNameAndSize(rawFullName, fromN.cake_size || (order as any).cake_size || (order as any).size || '');
+    const spec = order.cake_order_spec || (mainItem as any)?.cake_order_spec;
+
     let name = parsedCake.name;
-    let size = parsedCake.size;
+    let size = spec?.sizeName || spec?.baseSizeName || parsedCake.size;
     if (!size) {
       const cmMatch = rawFullName.match(/(\d+\s*cm)/i);
       if (cmMatch) size = cmMatch[1].toUpperCase();
     }
 
-    // Trích xuất Cốt, Kem, Nhân, Hộp
-    const rawFlavor = (order as any).flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
-    const rawCream = (order as any).cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
-    const rawFilling = (order as any).filling || fromN.filling || fromItemN.filling || (mainItem as any)?.filling || '';
-    const rawPackaging = (order as any).packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
+    // Trích xuất Cốt, Kem, Nhân, Hộp (Ưu tiên từ BOM CakeOrderSpec nếu có)
+    const rawFlavor = spec?.cakeBase?.name || (order as any).flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
+    const rawCream = spec?.creamCoating?.name || (order as any).cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
+    const rawFilling = spec?.filling?.name || (order as any).filling || fromN.filling || fromItemN.filling || (mainItem as any)?.filling || '';
+    const rawPackaging = spec?.packaging?.name || (order as any).packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
 
     const flavor = rawFlavor || (isPreorder ? 'Cốt Vani' : '');
     const cream = rawCream || (isPreorder ? 'Kem tươi' : '');
@@ -1657,18 +1660,24 @@ export default function KitchenPage() {
 
     // Trích xuất Phụ kiện đặt thêm (Addons)
     let initialAddons: string[] = [];
+    if (spec?.decorAddons && Array.isArray(spec.decorAddons)) {
+      initialAddons.push(...spec.decorAddons.map((d: any) => d.name));
+    }
+    if (spec?.freeAccessories && Array.isArray(spec.freeAccessories)) {
+      initialAddons.push(...spec.freeAccessories.map((a: any) => `${a.name} (x${a.quantity || 1})`));
+    }
     if (Array.isArray((order as any).addons) && (order as any).addons.length > 0) {
-      initialAddons = (order as any).addons;
+      initialAddons.push(...(order as any).addons);
     } else if (Array.isArray((order as any).selected_addons)) {
-      initialAddons = (order as any).selected_addons.map((a: any) => (typeof a === 'string' ? a : a.name)).filter(Boolean);
+      initialAddons.push(...(order as any).selected_addons.map((a: any) => (typeof a === 'string' ? a : a.name)).filter(Boolean));
     } else if (Array.isArray((order as any).cost_breakdown?.selectedAddons)) {
-      initialAddons = (order as any).cost_breakdown.selectedAddons.map((a: any) => a.name).filter(Boolean);
+      initialAddons.push(...(order as any).cost_breakdown.selectedAddons.map((a: any) => a.name).filter(Boolean));
     } else if (Array.isArray((mainItem as any)?.addons)) {
-      initialAddons = (mainItem as any).addons;
+      initialAddons.push(...(mainItem as any).addons);
     } else if (Array.isArray(fromN.addons) && fromN.addons.length > 0) {
-      initialAddons = fromN.addons;
+      initialAddons.push(...fromN.addons);
     } else if (Array.isArray(fromItemN.addons) && fromItemN.addons.length > 0) {
-      initialAddons = fromItemN.addons;
+      initialAddons.push(...fromItemN.addons);
     }
 
     // Phụ kiện đính kèm thêm trong danh sách món (order.items từ index 1 trở đi)
@@ -1685,7 +1694,7 @@ export default function KitchenPage() {
       });
     }
 
-    const specialRequest = fromN.special_request || cleanDisplayNotes(order.notes) || '';
+    const specialRequest = spec?.decorNotes || fromN.special_request || cleanDisplayNotes(order.notes) || '';
 
     const allAddons = Array.from(
       new Set([

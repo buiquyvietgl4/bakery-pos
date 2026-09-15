@@ -11,7 +11,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, QrCode, Copy, Check, Building2,
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
-  Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle
+  Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -796,6 +796,9 @@ export default function AdminDashboard() {
   const [newProdSupplierName, setNewProdSupplierName] = useState('');
   const [newProdBarcode, setNewProdBarcode] = useState('');
   const [newProdIsPreorder, setNewProdIsPreorder] = useState(false);
+  const [newProdCakeLabel, setNewProdCakeLabel] = useState<'standard' | 'pre_order' | 'birthday'>('standard');
+  const [newProdShowOnMenu, setNewProdShowOnMenu] = useState<boolean>(true);
+  const [newProdBomPresetId, setNewProdBomPresetId] = useState<string>('');
   const [newProdImageUrl, setNewProdImageUrl] = useState('');
   const [newProdStockQty, setNewProdStockQty] = useState<number>(10);
   const [creatingProduct, setCreatingProduct] = useState(false);
@@ -1787,6 +1790,43 @@ export default function AdminDashboard() {
     }
   };
 
+  // ── XỬ LÝ BẬT/TẮT ĐƯA RA MENU & ĐỔI NHÃN BÁNH THEO FLOWCHART EXCEL ──
+  const handleToggleProductMenu = async (productId: string, currentShow: boolean) => {
+    const nextShow = !currentShow;
+    const updated = products.map((p) => (p.id === productId ? { ...p, show_on_menu: nextShow } : p));
+    setProducts(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bakery_products', JSON.stringify(updated));
+      window.dispatchEvent(new Event('bakery_products_updated'));
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
+        await supabase.from('products').update({ show_on_menu: nextShow }).eq('id', productId);
+      }
+      await db.products.update(productId, { show_on_menu: nextShow });
+      await broadcastProductChange({ action: 'update', product: updated.find((p) => p.id === productId) });
+    } catch {}
+  };
+
+  const handleUpdateProductCakeLabel = async (productId: string, label: 'standard' | 'pre_order' | 'birthday') => {
+    const isPreorder = label === 'pre_order';
+    const updated = products.map((p) =>
+      p.id === productId ? { ...p, cake_type_label: label, is_preorder_only: isPreorder } : p
+    );
+    setProducts(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bakery_products', JSON.stringify(updated));
+      window.dispatchEvent(new Event('bakery_products_updated'));
+    }
+    try {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
+        await supabase.from('products').update({ cake_type_label: label, is_preorder_only: isPreorder }).eq('id', productId);
+      }
+      await db.products.update(productId, { cake_type_label: label, is_preorder_only: isPreorder });
+      await broadcastProductChange({ action: 'update', product: updated.find((p) => p.id === productId) });
+    } catch {}
+  };
+
   // ── XỬ LÝ TẠO MỚI SẢN PHẨM BÁNH (HỖ TRỢ CẢ BÁNH TỰ LÀM & HÀNG NHẬP VỀ BÁN) ──
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1815,7 +1855,10 @@ export default function AdminDashboard() {
       image_url: newProdImageUrl || (isImported 
         ? 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&auto=format&fit=crop'
         : 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop'),
-      is_preorder_only: isImported ? false : newProdIsPreorder,
+      is_preorder_only: isImported ? false : (newProdCakeLabel === 'pre_order' || newProdIsPreorder),
+      cake_type_label: isImported ? 'standard' : newProdCakeLabel,
+      show_on_menu: newProdShowOnMenu,
+      bom_preset_id: newProdCakeLabel === 'birthday' ? newProdBomPresetId : undefined,
       stock_qty: Math.max(0, Number(newProdStockQty) || 0),
       is_active: true,
     };
@@ -1837,7 +1880,10 @@ export default function AdminDashboard() {
           barcode: newProductObj.barcode || null,
           stock_qty: newProductObj.stock_qty ?? 0,
           image_url: newProductObj.image_url,
-          is_preorder_only: isImported ? false : newProdIsPreorder,
+          is_preorder_only: isImported ? false : (newProdCakeLabel === 'pre_order' || newProdIsPreorder),
+          cake_type_label: newProductObj.cake_type_label || 'standard',
+          show_on_menu: newProductObj.show_on_menu !== false,
+          bom_preset_id: newProductObj.bom_preset_id || null,
           is_active: true,
         });
       }
@@ -2941,20 +2987,26 @@ export default function AdminDashboard() {
                       </div>
                     )}
                     <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
-                      {p.product_type === 'imported' ? (
+                      {/* NHÃN BÁNH THEO FLOWCHART: THƯỜNG / ĐẶT TRƯỚC / SINH NHẬT */}
+                      {p.cake_type_label === 'birthday' ? (
+                        <span className="px-2 py-0.5 rounded-md bg-pink-600 text-white text-[10px] font-black shadow-xs flex items-center gap-1">
+                          🎂 Bánh Sinh Nhật
+                        </span>
+                      ) : (p.cake_type_label === 'pre_order' || p.is_preorder_only) ? (
+                        <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-black shadow-xs flex items-center gap-1">
+                          ⏳ Bánh Đặt Trước
+                        </span>
+                      ) : p.product_type === 'imported' ? (
                         <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-[10px] font-bold shadow-xs flex items-center gap-1">
                           📦 Hàng nhập
                         </span>
                       ) : (
-                        <span className="px-2 py-0.5 rounded-md bg-amber-600/90 text-white text-[10px] font-bold shadow-xs">
-                          🥖 Tiệm làm
+                        <span className="px-2 py-0.5 rounded-md bg-zinc-700 text-white text-[10px] font-bold shadow-xs">
+                          🥖 Bánh thường
                         </span>
                       )}
-                      {p.is_preorder_only && (
-                        <span className="px-2 py-0.5 rounded-md bg-pink-500 text-white text-[10px] font-bold shadow-xs">
-                          🎂 Nhận đặt trước
-                        </span>
-                      )}
+
+                      {/* BADGE TỒN KHO */}
                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-xs flex items-center gap-1 ${
                         (p.stock_qty ?? 10) === 0
                           ? 'bg-rose-600 text-white'
@@ -2963,13 +3015,43 @@ export default function AdminDashboard() {
                           : 'bg-emerald-600 text-white'
                       }`}>
                         <Package className="w-3 h-3" />
-                        {(p.stock_qty ?? 10) === 0 ? 'Hết bánh' : `Còn ${p.stock_qty ?? 10} cái`}
+                        {(p.stock_qty ?? 10) === 0 ? 'Hết bánh (0)' : `Còn ${p.stock_qty ?? 10} cái`}
                       </span>
+                    </div>
+
+                    {/* NÚT TOGGLE ĐƯA RA MENU GÓC PHẢI TRÊN ẢNH */}
+                    <div className="absolute top-2 right-2">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleProductMenu(p.id, p.show_on_menu !== false)}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-black shadow-md transition flex items-center gap-1 cursor-pointer ${
+                          p.show_on_menu !== false
+                            ? 'bg-emerald-500 text-white hover:bg-emerald-600'
+                            : 'bg-zinc-800/80 text-zinc-300 hover:bg-zinc-900'
+                        }`}
+                        title={p.show_on_menu !== false ? 'Bấm để ẩn khỏi menu POS' : 'Bấm để đưa ra menu POS'}
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>{p.show_on_menu !== false ? 'Hiện Menu' : 'Ẩn Menu'}</span>
+                      </button>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-zinc-400">{p.category}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold text-zinc-400">{p.category}</span>
+                      {/* CHỌN NHÃN BÁNH NHANH */}
+                      <select
+                        value={p.cake_type_label || (p.is_preorder_only ? 'pre_order' : 'standard')}
+                        onChange={(e) => handleUpdateProductCakeLabel(p.id, e.target.value as any)}
+                        className="text-[10px] font-bold bg-zinc-100 border border-zinc-200 rounded-md px-1.5 py-0.5 text-zinc-700 cursor-pointer"
+                        title="Đổi nhãn bánh theo cơ chế mới"
+                      >
+                        <option value="standard">🥖 Bánh thường</option>
+                        <option value="pre_order">⏳ Đặt trước</option>
+                        <option value="birthday">🎂 Sinh nhật</option>
+                      </select>
+                    </div>
                     <button
                       onClick={() => handleDeleteProduct(p.id, p.name)}
                       className="text-zinc-300 hover:text-rose-500 p-1 transition cursor-pointer"
@@ -3495,20 +3577,74 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              {/* CHỌN NHÃN BÁNH THEO FLOWCHART EXCEL */}
               {addProductMode !== 'imported' && (
-                <div className="p-3 bg-pink-50 rounded-xl border border-pink-100 flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    id="preorder_toggle"
-                    checked={newProdIsPreorder}
-                    onChange={(e) => setNewProdIsPreorder(e.target.checked)}
-                    className="w-4 h-4 accent-pink-600 rounded cursor-pointer"
-                  />
-                  <label htmlFor="preorder_toggle" className="font-bold text-pink-800 cursor-pointer">
-                    Đây là mẫu bánh sinh nhật / bánh kem nhận đặt trước
+                <div className="p-3 bg-pink-50/70 rounded-2xl border border-pink-200 space-y-2.5">
+                  <label className="font-black text-pink-900 text-xs block">
+                    🏷️ Nhãn phân loại bánh (Cơ chế POS & Bếp mới):
                   </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    <label className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition ${
+                      newProdCakeLabel === 'standard' ? 'bg-white border-pink-600 ring-2 ring-pink-200 text-zinc-900 shadow-xs' : 'bg-white/50 border-zinc-200 text-zinc-600'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="cake_label_radio"
+                        value="standard"
+                        checked={newProdCakeLabel === 'standard'}
+                        onChange={() => { setNewProdCakeLabel('standard'); setNewProdIsPreorder(false); }}
+                        className="accent-pink-600"
+                      />
+                      <span>🥖 Bánh Thường</span>
+                    </label>
+
+                    <label className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition ${
+                      newProdCakeLabel === 'pre_order' ? 'bg-amber-50 border-amber-500 ring-2 ring-amber-200 text-amber-900 shadow-xs' : 'bg-white/50 border-zinc-200 text-zinc-600'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="cake_label_radio"
+                        value="pre_order"
+                        checked={newProdCakeLabel === 'pre_order'}
+                        onChange={() => { setNewProdCakeLabel('pre_order'); setNewProdIsPreorder(true); }}
+                        className="accent-amber-600"
+                      />
+                      <span>⏳ Bánh Đặt Trước</span>
+                    </label>
+
+                    <label className={`p-2.5 rounded-xl border text-xs font-bold flex items-center gap-2 cursor-pointer transition ${
+                      newProdCakeLabel === 'birthday' ? 'bg-pink-100 border-pink-600 ring-2 ring-pink-200 text-pink-900 shadow-xs' : 'bg-white/50 border-zinc-200 text-zinc-600'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="cake_label_radio"
+                        value="birthday"
+                        checked={newProdCakeLabel === 'birthday'}
+                        onChange={() => { setNewProdCakeLabel('birthday'); setNewProdIsPreorder(false); }}
+                        className="accent-pink-600"
+                      />
+                      <span>🎂 Bánh Sinh Nhật</span>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-pink-700 italic">
+                    💡 Bánh đặt trước khi đặt sẽ nhả thẳng vào bếp để làm; Bánh sinh nhật sẽ mở cửa sổ đặt theo định mức BOM.
+                  </p>
                 </div>
               )}
+
+              {/* TÙY CHỌN ĐƯA RA MENU POS */}
+              <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 flex items-center justify-between">
+                <div>
+                  <span className="font-bold text-zinc-900 block text-xs">Đưa ra menu POS bán hàng ngay</span>
+                  <span className="text-[10px] text-zinc-500">Chỉ những loại bánh bật tính năng này mới hiển thị ngoài màn hình thu ngân</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={newProdShowOnMenu}
+                  onChange={(e) => setNewProdShowOnMenu(e.target.checked)}
+                  className="w-5 h-5 accent-emerald-600 rounded cursor-pointer"
+                />
+              </div>
 
               <div className="flex gap-2 pt-2">
                 <button

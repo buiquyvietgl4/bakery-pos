@@ -41,6 +41,9 @@ const BAKERY_DATA_KEYS = [
   'bakery_telegram_config',
   'bakery_store_branding',
   'bakery_cake_costing_config',
+  'bakery_full_bom_config',
+  'bakery_tax_household_config',
+  'bakery_tax_policy_config',
 ];
 
 const DEFAULT_CONFIG: SqlModeConfig = {

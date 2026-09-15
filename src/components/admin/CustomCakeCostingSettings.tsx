@@ -3,23 +3,25 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  CustomCakeCostingConfig,
-  CakeSizeOption,
-  CakeSizeBomItem,
-  CakeFlavorOption,
-  CakeCreamOption,
-  CakeFillingOption,
-  CakePackagingOption,
-  CakeAddonOption,
-  DEFAULT_CUSTOM_CAKE_CONFIG,
-  DEFAULT_CAKE_FILLINGS,
-} from '@/lib/constants/cakeCostingData';
+  FullCakeBomConfig,
+  CakeBaseModel,
+  CakeBaseSizeConfig,
+  CreamCoatingModel,
+  CreamCoatingSizeConfig,
+  CakeFillingModel,
+  PackagingBoxModel,
+  FreeAccessoryModel,
+  CakeDecorAddonModel,
+  BirthdayCakeBomPreset,
+  CakeBomItem,
+} from '@/lib/types/bakery-bom';
 import {
-  getCakeCostingConfig,
-  saveCakeCostingConfig,
-  resetCakeCostingConfig,
-  fetchCakeCostingFromDb,
-} from '@/lib/utils/customCakeCosting';
+  getFullCakeBomConfig,
+  saveFullCakeBomConfig,
+  fetchFullCakeBomConfigFromDb,
+  calculateCakeCostDetails,
+} from '@/lib/utils/cakeBomManager';
+import { INITIAL_FULL_CAKE_BOM_CONFIG } from '@/lib/constants/defaultCakeBomData';
 import { supabase } from '@/lib/supabase/client';
 import {
   Cake,
@@ -31,33 +33,51 @@ import {
   Sparkles,
   Package,
   Layers,
-  Sliders,
-  X,
   Utensils,
-  Calculator,
+  Gift,
+  Boxes,
+  X,
+  Sliders,
+  Percent,
 } from 'lucide-react';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
 export function CustomCakeCostingSettings() {
-  const [config, setConfig] = useState<CustomCakeCostingConfig>(() => getCakeCostingConfig());
-  const [activeSubTab, setActiveSubTab] = useState<'sizes' | 'flavors_creams' | 'fillings' | 'packagings' | 'addons'>('sizes');
+  const [config, setConfig] = useState<FullCakeBomConfig>(() => getFullCakeBomConfig());
+  const [activeTab, setActiveTab] = useState<
+    'cake_bases' | 'cream_coatings' | 'fillings' | 'packagings' | 'free_accessories' | 'decor_addons' | 'bom_presets'
+  >('cake_bases');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [availableIngredients, setAvailableIngredients] = useState<any[]>([]);
-  const [editingBomSize, setEditingBomSize] = useState<{ index: number; size: CakeSizeOption } | null>(null);
+
+  const [editingBaseBom, setEditingBaseBom] = useState<{
+    baseIndex: number;
+    sizeIndex: number;
+    baseName: string;
+    size: CakeBaseSizeConfig;
+  } | null>(null);
+
+  const [editingCreamBom, setEditingCreamBom] = useState<{
+    creamIndex: number;
+    sizeIndex: number;
+    creamName: string;
+    size: CreamCoatingSizeConfig;
+  } | null>(null);
 
   useEffect(() => {
-    fetchCakeCostingFromDb().then((remote) => {
+    fetchFullCakeBomConfigFromDb().then((remote) => {
       if (remote) setConfig(remote);
     });
 
     const loadIngredients = async () => {
       try {
-        const { data: dbIngs } = await supabase.from('ingredients').select('id, name, unit, avg_cost');
+        const { data: dbIngs } = await supabase.from('ingredients').select('id, name, unit, avg_cost, category');
         if (dbIngs && dbIngs.length > 0) {
           setAvailableIngredients(dbIngs);
           return;
         }
       } catch {}
+
       try {
         const local = localStorage.getItem('bakery_ingredients');
         if (local) {
@@ -72,654 +92,699 @@ export function CustomCakeCostingSettings() {
   }, []);
 
   const handleSave = () => {
-    saveCakeCostingConfig(config);
+    saveFullCakeBomConfig(config);
     setSaveSuccess(true);
     setTimeout(() => setSaveSuccess(false), 4000);
   };
 
-  const handleReset = () => {
-    if (confirm('Bạn có chắc chắn muốn khôi phục toàn bộ bảng định mức bánh sinh nhật về mặc định ban đầu?')) {
-      const def = resetCakeCostingConfig();
-      setConfig(def);
+  const handleResetToDefault = () => {
+    if (confirm('Bạn có chắc chắn muốn khôi phục toàn bộ bảng định mức BOM bánh sinh nhật về mẫu chuẩn ban đầu?')) {
+      setConfig(INITIAL_FULL_CAKE_BOM_CONFIG);
+      saveFullCakeBomConfig(INITIAL_FULL_CAKE_BOM_CONFIG);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     }
   };
 
-  // --- HANDLERS CHO SIZES ---
-  const handleUpdateSize = (index: number, field: keyof CakeSizeOption, value: any) => {
-    const updatedSizes = [...config.sizes];
-    updatedSizes[index] = { ...updatedSizes[index], [field]: value };
-    setConfig({ ...config, sizes: updatedSizes });
-  };
-
-  const handleAddSize = () => {
-    const newSize: CakeSizeOption = {
-      id: 'size-' + Date.now(),
-      name: 'Size mới 24cm',
-      diameterCm: 24,
-      servings: '16 - 20 người',
-      baseCost: 190000,
-      suggestedPrice: 650000,
-      bomIngredients: [
-        { name: 'Trứng gà tươi', quantity: 6, unit: 'quả', unitCost: 3500 },
-        { name: 'Bột mì số 8 chuyên dụng', quantity: 200, unit: 'g', unitCost: 40 },
-        { name: 'Đường cát tinh luyện', quantity: 180, unit: 'g', unitCost: 30 },
-        { name: 'Sữa tươi & Bơ lạt Anchor', quantity: 150, unit: 'ml', unitCost: 150 },
-        { name: 'Kem Whipping & Topping phết nền', quantity: 450, unit: 'ml', unitCost: 190 },
+  // 1. CỐT BÁNH HANDLERS
+  const handleAddCakeBase = () => {
+    const newBase: CakeBaseModel = {
+      id: 'base-' + Date.now(),
+      name: 'Cốt Bánh Mới',
+      description: 'Mô tả cốt bánh mới',
+      sizes: [
+        {
+          id: 'size-16-' + Date.now(),
+          sizeName: 'Size 16cm (4 - 6 người)',
+          diameterCm: 16,
+          servings: '4 - 6 người',
+          baseCost: 20000,
+          bomIngredients: [
+            { name: 'Bột mì số 8', unit: 'g', quantity: 90, unitCost: 24, totalCost: 2160 },
+            { name: 'Trứng gà ta', unit: 'quả', quantity: 3, unitCost: 3500, totalCost: 10500 },
+            { name: 'Đường cát trắng', unit: 'g', quantity: 65, unitCost: 20, totalCost: 1300 },
+          ],
+        },
+        {
+          id: 'size-18-' + Date.now(),
+          sizeName: 'Size 18cm (6 - 8 người)',
+          diameterCm: 18,
+          servings: '6 - 8 người',
+          baseCost: 28000,
+          bomIngredients: [
+            { name: 'Bột mì số 8', unit: 'g', quantity: 120, unitCost: 24, totalCost: 2880 },
+            { name: 'Trứng gà ta', unit: 'quả', quantity: 4, unitCost: 3500, totalCost: 14000 },
+            { name: 'Đường cát trắng', unit: 'g', quantity: 85, unitCost: 20, totalCost: 1700 },
+          ],
+        },
       ],
     };
-    const totalBom = newSize.bomIngredients!.reduce((sum, it) => sum + (it.quantity * it.unitCost), 0);
-    if (totalBom > 0) newSize.baseCost = totalBom;
-    setConfig({ ...config, sizes: [...config.sizes, newSize] });
+    setConfig({ ...config, cakeBases: [...config.cakeBases, newBase] });
   };
 
-  const handleDeleteSize = (index: number) => {
-    if (config.sizes.length <= 1) {
-      alert('Phải giữ lại ít nhất 1 kích thước bánh!');
+  const handleUpdateCakeBase = (baseIdx: number, field: keyof CakeBaseModel, value: any) => {
+    const updated = [...config.cakeBases];
+    updated[baseIdx] = { ...updated[baseIdx], [field]: value };
+    setConfig({ ...config, cakeBases: updated });
+  };
+
+  const handleDeleteCakeBase = (baseIdx: number) => {
+    if (config.cakeBases.length <= 1) {
+      alert('Phải giữ lại ít nhất 1 loại cốt bánh!');
       return;
     }
-    const updatedSizes = config.sizes.filter((_, i) => i !== index);
-    setConfig({ ...config, sizes: updatedSizes });
+    setConfig({ ...config, cakeBases: config.cakeBases.filter((_, i) => i !== baseIdx) });
   };
 
-  // --- HANDLERS CHO BOM MODAL ---
-  const handleOpenBomModal = (index: number, size: CakeSizeOption) => {
-    const clonedSize = JSON.parse(JSON.stringify(size));
-    if (!clonedSize.bomIngredients || clonedSize.bomIngredients.length === 0) {
-      clonedSize.bomIngredients = [
-        { name: 'Trứng gà tươi', quantity: 4, unit: 'quả', unitCost: 3500 },
-        { name: 'Bột mì làm bánh', quantity: 150, unit: 'g', unitCost: 40 },
-        { name: 'Đường cát trắng', quantity: 120, unit: 'g', unitCost: 30 },
-        { name: 'Kem tươi phết nền', quantity: 250, unit: 'ml', unitCost: 180 },
-      ];
-    }
-    setEditingBomSize({ index, size: clonedSize });
-  };
-
-  const handleAddBomItem = () => {
-    if (!editingBomSize) return;
-    const newItem: CakeSizeBomItem = {
-      name: '',
-      quantity: 100,
-      unit: 'g',
-      unitCost: 50,
+  const handleAddBaseSize = (baseIdx: number) => {
+    const base = config.cakeBases[baseIdx];
+    const newSize: CakeBaseSizeConfig = {
+      id: 'size-' + Date.now(),
+      sizeName: 'Size mới 22cm',
+      diameterCm: 22,
+      servings: '12 - 16 người',
+      baseCost: 45000,
+      bomIngredients: [
+        { name: 'Bột mì số 8', unit: 'g', quantity: 180, unitCost: 24, totalCost: 4320 },
+        { name: 'Trứng gà tươi', unit: 'quả', quantity: 6, unitCost: 3500, totalCost: 21000 },
+      ],
     };
-    const updatedBom = [...(editingBomSize.size.bomIngredients || []), newItem];
-    setEditingBomSize({
-      ...editingBomSize,
-      size: { ...editingBomSize.size, bomIngredients: updatedBom },
-    });
+    const updatedSizes = [...base.sizes, newSize];
+    handleUpdateCakeBase(baseIdx, 'sizes', updatedSizes);
   };
 
-  const handleUpdateBomItem = (itemIdx: number, field: keyof CakeSizeBomItem, value: any) => {
-    if (!editingBomSize) return;
-    const updatedBom = [...(editingBomSize.size.bomIngredients || [])];
-    updatedBom[itemIdx] = { ...updatedBom[itemIdx], [field]: value };
-    setEditingBomSize({
-      ...editingBomSize,
-      size: { ...editingBomSize.size, bomIngredients: updatedBom },
-    });
+  const handleDeleteBaseSize = (baseIdx: number, sizeIdx: number) => {
+    const base = config.cakeBases[baseIdx];
+    if (base.sizes.length <= 1) {
+      alert('Cốt bánh phải có ít nhất 1 kích thước!');
+      return;
+    }
+    const updatedSizes = base.sizes.filter((_, i) => i !== sizeIdx);
+    handleUpdateCakeBase(baseIdx, 'sizes', updatedSizes);
   };
 
-  const handleSelectIngredientForBom = (itemIdx: number, ingredientId: string) => {
-    if (!editingBomSize) return;
+  const handleSaveBaseBomModal = () => {
+    if (!editingBaseBom) return;
+    const { baseIndex, sizeIndex, size } = editingBaseBom;
+    const totalBomCost = size.bomIngredients.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+    const updatedSize = { ...size, baseCost: totalBomCost };
+
+    const base = config.cakeBases[baseIndex];
+    const updatedSizes = [...base.sizes];
+    updatedSizes[sizeIndex] = updatedSize;
+
+    handleUpdateCakeBase(baseIndex, 'sizes', updatedSizes);
+    setEditingBaseBom(null);
+  };
+
+  // 2. KEM PHỦ HANDLERS
+  const handleAddCreamCoating = () => {
+    const newCream: CreamCoatingModel = {
+      id: 'cream-' + Date.now(),
+      name: 'Kem Phủ Mới',
+      description: 'Mô tả loại kem phủ mới',
+      sizes: [
+        {
+          id: 'cream-size-16-' + Date.now(),
+          sizeName: 'Size 16cm',
+          diameterCm: 16,
+          baseCost: 35000,
+          bomIngredients: [
+            { name: 'Kem tươi whipping', unit: 'ml', quantity: 250, unitCost: 120, totalCost: 30000 },
+            { name: 'Đường bột', unit: 'g', quantity: 30, unitCost: 25, totalCost: 750 },
+          ],
+        },
+        {
+          id: 'cream-size-18-' + Date.now(),
+          sizeName: 'Size 18cm',
+          diameterCm: 18,
+          baseCost: 50000,
+          bomIngredients: [
+            { name: 'Kem tươi whipping', unit: 'ml', quantity: 380, unitCost: 120, totalCost: 45600 },
+            { name: 'Đường bột', unit: 'g', quantity: 45, unitCost: 25, totalCost: 1125 },
+          ],
+        },
+      ],
+    };
+    setConfig({ ...config, creamCoatings: [...config.creamCoatings, newCream] });
+  };
+
+  const handleUpdateCreamCoating = (creamIdx: number, field: keyof CreamCoatingModel, value: any) => {
+    const updated = [...config.creamCoatings];
+    updated[creamIdx] = { ...updated[creamIdx], [field]: value };
+    setConfig({ ...config, creamCoatings: updated });
+  };
+
+  const handleDeleteCreamCoating = (creamIdx: number) => {
+    if (config.creamCoatings.length <= 1) {
+      alert('Phải giữ lại ít nhất 1 loại kem phủ!');
+      return;
+    }
+    setConfig({ ...config, creamCoatings: config.creamCoatings.filter((_, i) => i !== creamIdx) });
+  };
+
+  const handleAddCreamSize = (creamIdx: number) => {
+    const cream = config.creamCoatings[creamIdx];
+    const newSize: CreamCoatingSizeConfig = {
+      id: 'cream-size-' + Date.now(),
+      sizeName: 'Size mới 20cm',
+      diameterCm: 20,
+      baseCost: 65000,
+      bomIngredients: [
+        { name: 'Kem tươi whipping', unit: 'ml', quantity: 480, unitCost: 120, totalCost: 57600 },
+      ],
+    };
+    const updatedSizes = [...cream.sizes, newSize];
+    handleUpdateCreamCoating(creamIdx, 'sizes', updatedSizes);
+  };
+
+  const handleDeleteCreamSize = (creamIdx: number, sizeIdx: number) => {
+    const cream = config.creamCoatings[creamIdx];
+    if (cream.sizes.length <= 1) {
+      alert('Kem phủ phải có ít nhất 1 kích thước!');
+      return;
+    }
+    const updatedSizes = cream.sizes.filter((_, i) => i !== sizeIdx);
+    handleUpdateCreamCoating(creamIdx, 'sizes', updatedSizes);
+  };
+
+  const handleSaveCreamBomModal = () => {
+    if (!editingCreamBom) return;
+    const { creamIndex, sizeIndex, size } = editingCreamBom;
+    const totalBomCost = size.bomIngredients.reduce((sum, item) => sum + item.quantity * item.unitCost, 0);
+    const updatedSize = { ...size, baseCost: totalBomCost };
+
+    const cream = config.creamCoatings[creamIndex];
+    const updatedSizes = [...cream.sizes];
+    updatedSizes[sizeIndex] = updatedSize;
+
+    handleUpdateCreamCoating(creamIndex, 'sizes', updatedSizes);
+    setEditingCreamBom(null);
+  };
+
+  // 3. NHÂN BÁNH HANDLERS
+  const handleAddFilling = () => {
+    const newFill: CakeFillingModel = {
+      id: 'fill-' + Date.now(),
+      name: 'Nhân mới (VD: Mứt Dâu Tây)',
+      costPrice: 15000,
+      extraPrice: 20000,
+    };
+    setConfig({ ...config, fillings: [...config.fillings, newFill] });
+  };
+
+  const handleUpdateFilling = (idx: number, field: keyof CakeFillingModel, value: any) => {
+    const updated = [...config.fillings];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setConfig({ ...config, fillings: updated });
+  };
+
+  const handleDeleteFilling = (idx: number) => {
+    setConfig({ ...config, fillings: config.fillings.filter((_, i) => i !== idx) });
+  };
+
+  // 4. HỘP VÀ BAO BÌ HANDLERS
+  const handleAddPackaging = () => {
+    const newPkg: PackagingBoxModel = {
+      id: 'pkg-' + Date.now(),
+      name: 'Hộp Mica Trong Suốt 18cm',
+      costPrice: 20000,
+      sellingPrice: 25000,
+    };
+    setConfig({ ...config, packagings: [...config.packagings, newPkg] });
+  };
+
+  const handleImportPackagingFromInventory = (ingredientId: string) => {
     const found = availableIngredients.find((i) => i.id === ingredientId);
     if (!found) return;
-
-    const updatedBom = [...(editingBomSize.size.bomIngredients || [])];
-    updatedBom[itemIdx] = {
-      ...updatedBom[itemIdx],
-      ingredientId: found.id,
+    const newPkg: PackagingBoxModel = {
+      id: 'pkg-' + Date.now(),
       name: found.name,
-      unit: found.unit || 'g',
-      unitCost: Number(found.avg_cost) || updatedBom[itemIdx].unitCost || 0,
+      ingredientId: found.id,
+      costPrice: Number(found.avg_cost) || 0,
+      sellingPrice: Math.round((Number(found.avg_cost) || 0) * 1.3),
     };
-    setEditingBomSize({
-      ...editingBomSize,
-      size: { ...editingBomSize.size, bomIngredients: updatedBom },
-    });
+    setConfig({ ...config, packagings: [...config.packagings, newPkg] });
   };
 
-  const handleDeleteBomItem = (itemIdx: number) => {
-    if (!editingBomSize) return;
-    const updatedBom = (editingBomSize.size.bomIngredients || []).filter((_, i) => i !== itemIdx);
-    setEditingBomSize({
-      ...editingBomSize,
-      size: { ...editingBomSize.size, bomIngredients: updatedBom },
-    });
-  };
-
-  const handleSaveBomToSize = () => {
-    if (!editingBomSize) return;
-    const bom = editingBomSize.size.bomIngredients || [];
-    const calculatedBaseCost = bom.reduce((sum, it) => sum + (Number(it.quantity || 0) * Number(it.unitCost || 0)), 0);
-
-    const updatedSizes = [...config.sizes];
-    updatedSizes[editingBomSize.index] = {
-      ...updatedSizes[editingBomSize.index],
-      bomIngredients: bom,
-      baseCost: calculatedBaseCost > 0 ? calculatedBaseCost : updatedSizes[editingBomSize.index].baseCost,
-    };
-
-    setConfig({ ...config, sizes: updatedSizes });
-    setEditingBomSize(null);
-  };
-
-  // --- HANDLERS CHO FILLINGS (NHÂN BÁNH SINH NHẬT) ---
-  const currentFillings = config.fillings && config.fillings.length > 0 ? config.fillings : DEFAULT_CAKE_FILLINGS;
-
-  const handleUpdateFilling = (index: number, field: keyof CakeFillingOption, value: any) => {
-    const list = [...currentFillings];
-    list[index] = { ...list[index], [field]: value };
-    setConfig({ ...config, fillings: list });
-  };
-
-  const handleAddFilling = () => {
-    const item: CakeFillingOption = {
-      id: 'fill-' + Date.now(),
-      name: 'Nhân mứt mới',
-      extraCost: 15000,
-      extraPrice: 30000,
-      icon: '🍓',
-    };
-    setConfig({ ...config, fillings: [...currentFillings, item] });
-  };
-
-  const handleDeleteFilling = (index: number) => {
-    if (currentFillings.length <= 1) {
-      alert('Phải giữ lại ít nhất 1 loại nhân (hoặc Không nhân)!');
-      return;
-    }
-    setConfig({ ...config, fillings: currentFillings.filter((_, i) => i !== index) });
-  };
-
-  // --- HANDLERS CHO FLAVORS & CREAMS ---
-  const handleUpdateFlavor = (index: number, field: keyof CakeFlavorOption, value: any) => {
-    const updated = [...config.flavors];
-    updated[index] = { ...updated[index], [field]: value };
-    setConfig({ ...config, flavors: updated });
-  };
-
-  const handleAddFlavor = () => {
-    const item: CakeFlavorOption = {
-      id: 'flavor-' + Date.now(),
-      name: 'Cốt bánh mới',
-      extraCost: 15000,
-      extraPrice: 30000,
-      icon: '🎂',
-    };
-    setConfig({ ...config, flavors: [...config.flavors, item] });
-  };
-
-  const handleDeleteFlavor = (index: number) => {
-    if (config.flavors.length <= 1) return;
-    setConfig({ ...config, flavors: config.flavors.filter((_, i) => i !== index) });
-  };
-
-  const handleUpdateCream = (index: number, field: keyof CakeCreamOption, value: any) => {
-    const updated = [...config.creams];
-    updated[index] = { ...updated[index], [field]: value };
-    setConfig({ ...config, creams: updated });
-  };
-
-  const handleAddCream = () => {
-    const item: CakeCreamOption = {
-      id: 'cream-' + Date.now(),
-      name: 'Loại kem mới',
-      extraCost: 20000,
-      extraPrice: 35000,
-      icon: '🍦',
-    };
-    setConfig({ ...config, creams: [...config.creams, item] });
-  };
-
-  const handleDeleteCream = (index: number) => {
-    if (config.creams.length <= 1) return;
-    setConfig({ ...config, creams: config.creams.filter((_, i) => i !== index) });
-  };
-
-  // --- HANDLERS CHO PACKAGINGS ---
-  const handleUpdatePackaging = (index: number, field: keyof CakePackagingOption, value: any) => {
+  const handleUpdatePackaging = (idx: number, field: keyof PackagingBoxModel, value: any) => {
     const updated = [...config.packagings];
-    updated[index] = { ...updated[index], [field]: value };
+    updated[idx] = { ...updated[idx], [field]: value };
     setConfig({ ...config, packagings: updated });
   };
 
-  const handleAddPackaging = () => {
-    const item: CakePackagingOption = {
-      id: 'pack-' + Date.now(),
-      name: 'Hộp bánh mới',
-      extraCost: 20000,
-      extraPrice: 35000,
-      icon: '📦',
+  const handleDeletePackaging = (idx: number) => {
+    setConfig({ ...config, packagings: config.packagings.filter((_, i) => i !== idx) });
+  };
+
+  // 5. VẬT TƯ TẶNG KÈM HANDLERS
+  const handleAddFreeAccessory = () => {
+    const newAcc: FreeAccessoryModel = {
+      id: 'acc-' + Date.now(),
+      name: 'Vật tư tặng kèm mới',
+      costPrice: 3000,
+      isDefaultIncluded: true,
+      quantityDefault: 1,
     };
-    setConfig({ ...config, packagings: [...config.packagings, item] });
+    setConfig({ ...config, freeAccessories: [...config.freeAccessories, newAcc] });
   };
 
-  const handleDeletePackaging = (index: number) => {
-    if (config.packagings.length <= 1) return;
-    setConfig({ ...config, packagings: config.packagings.filter((_, i) => i !== index) });
-  };
-
-  // --- HANDLERS CHO ADDONS ---
-  const handleUpdateAddon = (index: number, field: keyof CakeAddonOption, value: any) => {
-    const updated = [...config.addons];
-    updated[index] = { ...updated[index], [field]: value };
-    setConfig({ ...config, addons: updated });
-  };
-
-  const handleAddAddon = () => {
-    const item: CakeAddonOption = {
-      id: 'addon-' + Date.now(),
-      name: 'Phụ kiện mới',
-      category: 'other',
-      cost: 20000,
-      price: 35000,
-      icon: '🎁',
+  const handleImportFreeAccessoryFromInventory = (ingredientId: string) => {
+    const found = availableIngredients.find((i) => i.id === ingredientId);
+    if (!found) return;
+    const newAcc: FreeAccessoryModel = {
+      id: 'acc-' + Date.now(),
+      name: found.name,
+      ingredientId: found.id,
+      costPrice: Number(found.avg_cost) || 0,
+      isDefaultIncluded: true,
+      quantityDefault: 1,
     };
-    setConfig({ ...config, addons: [...config.addons, item] });
+    setConfig({ ...config, freeAccessories: [...config.freeAccessories, newAcc] });
   };
 
-  const handleDeleteAddon = (index: number) => {
-    setConfig({ ...config, addons: config.addons.filter((_, i) => i !== index) });
+  const handleUpdateFreeAccessory = (idx: number, field: keyof FreeAccessoryModel, value: any) => {
+    const updated = [...config.freeAccessories];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setConfig({ ...config, freeAccessories: updated });
+  };
+
+  const handleDeleteFreeAccessory = (idx: number) => {
+    setConfig({ ...config, freeAccessories: config.freeAccessories.filter((_, i) => i !== idx) });
+  };
+
+  // 6. PHỤ KIỆN VÀ DECOR HANDLERS
+  const handleAddDecorAddon = () => {
+    const newAddon: CakeDecorAddonModel = {
+      id: 'decor-' + Date.now(),
+      name: 'Vương miện / Đèn LED mới',
+      category: 'decor',
+      costPrice: 15000,
+      sellingPrice: 30000,
+      icon: '👑',
+    };
+    setConfig({ ...config, decorAddons: [...config.decorAddons, newAddon] });
+  };
+
+  const handleUpdateDecorAddon = (idx: number, field: keyof CakeDecorAddonModel, value: any) => {
+    const updated = [...config.decorAddons];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setConfig({ ...config, decorAddons: updated });
+  };
+
+  const handleDeleteDecorAddon = (idx: number) => {
+    setConfig({ ...config, decorAddons: config.decorAddons.filter((_, i) => i !== idx) });
+  };
+
+  // 7. BOM BÁNH SINH NHẬT HANDLERS
+  const handleAddBomPreset = () => {
+    const defaultBase = config.cakeBases[0];
+    const defaultCream = config.creamCoatings[0];
+    const newPreset: BirthdayCakeBomPreset = {
+      id: 'bom-preset-' + Date.now(),
+      name: 'BOM Mẫu Bánh Sinh Nhật Mới',
+      cakeBaseId: defaultBase?.id || '',
+      cakeBaseSizeId: defaultBase?.sizes[0]?.id || '',
+      creamCoatingId: defaultCream?.id || '',
+      creamCoatingSizeId: defaultCream?.sizes[0]?.id || '',
+      fillingId: config.fillings[0]?.id,
+      packagingId: config.packagings[0]?.id,
+      freeAccessoryIds: config.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id),
+      decorAddonIds: [],
+      targetFoodCostPct: config.targetFoodCostPct || 36.5,
+      suggestedSellingPrice: 350000,
+      notes: 'Mẫu bánh sinh nhật định mức chuẩn',
+    };
+    setConfig({ ...config, birthdayBomPresets: [...config.birthdayBomPresets, newPreset] });
+  };
+
+  const handleUpdateBomPreset = (idx: number, field: keyof BirthdayCakeBomPreset, value: any) => {
+    const updated = [...config.birthdayBomPresets];
+    updated[idx] = { ...updated[idx], [field]: value };
+    setConfig({ ...config, birthdayBomPresets: updated });
+  };
+
+  const handleDeleteBomPreset = (idx: number) => {
+    setConfig({ ...config, birthdayBomPresets: config.birthdayBomPresets.filter((_, i) => i !== idx) });
   };
 
   return (
-    <div className="bg-white rounded-3xl p-5 sm:p-7 border border-pink-200 shadow-sm space-y-6 text-zinc-800">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-pink-100">
+    <div className="space-y-6">
+      {/* HEADER SECTION & ACTIONS */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-3xl bg-gradient-to-r from-pink-500/10 via-rose-500/10 to-amber-500/10 border border-pink-200">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-pink-100 text-pink-600 flex items-center justify-center shadow-xs">
-            <Cake className="w-6 h-6" />
+          <div className="w-10 h-10 rounded-2xl bg-pink-600 text-white flex items-center justify-center shadow-md shadow-pink-600/20">
+            <Sparkles className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="font-black text-lg sm:text-xl text-zinc-900">
-                Tùy Chọn Định Mức Bánh Đặt (Size & Phụ Kiện)
-              </h3>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-pink-50 text-pink-700 border border-pink-200 uppercase">
-                Costing Engine
+            <h2 className="font-black text-base text-zinc-900 flex items-center gap-2">
+              Mục Định Mức Đặt Bánh & Cài Đặt BOM
+              <span className="px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 text-[10px] font-black border border-pink-200">
+                Sơ đồ Flowchart Mới
               </span>
-            </div>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              Cài đặt chi phí vốn và giá bán gợi ý cho từng kích thước, cốt bánh, kem, hộp và phụ kiện trang trí khi khách đặt bánh sinh nhật.
+            </h2>
+            <p className="text-xs text-zinc-600">
+              Quản lý định mức BOM 7 thành phần: Cốt bánh, Kem phủ, Nhân, Hộp, Quà tặng kèm, Decor và BOM tổng hợp.
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+          {/* Ô TỰ NHẬP BIÊN LỢI NHUẬN / FOOD COST MỤC TIÊU (MẶC ĐỊNH 36.5%) */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-white border border-pink-200 shadow-xs">
+            <Percent className="w-3.5 h-3.5 text-pink-600" />
+            <span className="text-[11px] font-bold text-zinc-600">Markup COGS:</span>
+            <input
+              type="number"
+              step="0.5"
+              min="10"
+              max="100"
+              value={config.targetFoodCostPct}
+              onChange={(e) => setConfig({ ...config, targetFoodCostPct: parseFloat(e.target.value) || 36.5 })}
+              className="w-14 text-center font-black text-xs text-pink-700 bg-pink-50 rounded-lg py-0.5 border border-pink-200 focus:outline-none"
+              title="Tỷ lệ giá vốn mục tiêu, mặc định 36.5%. Tự động tính giá bán gợi ý = Cost / %"
+            />
+            <span className="text-xs font-bold text-zinc-500">%</span>
+          </div>
+
           <button
             type="button"
-            onClick={handleReset}
-            className="px-3 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:text-zinc-800 bg-zinc-100 hover:bg-zinc-200 transition flex items-center gap-1.5 cursor-pointer"
+            onClick={handleResetToDefault}
+            className="px-3 py-2 rounded-2xl bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-600 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            title="Khôi phục về mẫu định mức chuẩn"
           >
-            <RotateCcw className="w-3.5 h-3.5" /> Khôi Phục Mặc Định
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Khôi phục</span>
           </button>
+
           <button
             type="button"
             onClick={handleSave}
-            className="px-4 py-2 rounded-xl text-xs font-black text-white bg-pink-600 hover:bg-pink-700 active:scale-95 shadow-md shadow-pink-200 transition flex items-center gap-1.5 cursor-pointer"
+            className="px-4 py-2 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white text-xs font-black shadow-md shadow-pink-600/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95"
           >
-            <Save className="w-4 h-4" /> Lưu Cài Đặt
+            <Save className="w-4 h-4" />
+            <span>Lưu Định Mức</span>
           </button>
         </div>
       </div>
 
       {saveSuccess && (
-        <div className="p-3.5 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center justify-between animate-in fade-in duration-200">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <span>Đã lưu thành công định mức chi phí bánh sinh nhật! Toàn bộ Quầy POS và Bếp đã được cập nhật tức thì.</span>
-          </div>
+        <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+          Đã lưu thành công toàn bộ bảng định mức BOM! Mọi máy POS và Bếp KDS tự động cập nhật.
         </div>
       )}
 
-      {/* Target Food Cost Setting Bar */}
-      <div className="bg-pink-50/60 rounded-2xl p-4 border border-pink-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2.5">
-          <Sparkles className="w-5 h-5 text-pink-600 shrink-0" />
-          <div>
-            <span className="font-bold text-xs text-zinc-900 block">Tỷ Lệ Chi Phí Vốn Mục Tiêu (Target Food Cost %):</span>
-            <span className="text-[11px] text-zinc-500">
-              Tỷ lệ lý tưởng của tiệm bánh ngọt là 28% - 35% giá bán (giúp tiệm luôn đạt tỷ suất lợi nhuận gộp 65% - 72%).
-            </span>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            min="15"
-            max="60"
-            value={config.targetFoodCostPct}
-            onChange={(e) => setConfig({ ...config, targetFoodCostPct: Math.max(15, Math.min(60, Number(e.target.value) || 33)) })}
-            className="w-20 p-2 text-center rounded-xl bg-white border border-pink-300 font-black text-pink-700 text-sm"
-          />
-          <span className="font-black text-pink-800 text-sm">%</span>
-        </div>
+      {/* ── 7 TABS THEO ĐÚNG NGUYÊN VĂN FLOWCHART EXCEL ── */}
+      <div className="flex items-center gap-1.5 bg-zinc-100 p-1.5 rounded-2xl overflow-x-auto scrollbar-none border border-zinc-200">
+        {[
+          { id: 'cake_bases', label: '1. Cốt Bánh', icon: Cake, count: config.cakeBases.length },
+          { id: 'cream_coatings', label: '2. Kem Phủ Bánh', icon: Layers, count: config.creamCoatings.length },
+          { id: 'fillings', label: '3. Nhân Bánh', icon: Utensils, count: config.fillings.length },
+          { id: 'packagings', label: '4. Hộp & Bao Bì', icon: Package, count: config.packagings.length },
+          { id: 'free_accessories', label: '5. Vật Tư Tặng Kèm', icon: Gift, count: config.freeAccessories.length },
+          { id: 'decor_addons', label: '6. Phụ Kiện & Decor', icon: Sparkles, count: config.decorAddons.length },
+          { id: 'bom_presets', label: '7. BOM Bánh Sinh Nhật', icon: Boxes, count: config.birthdayBomPresets.length },
+        ].map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id as any)}
+              className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                isActive
+                  ? 'bg-pink-600 text-white shadow-xs'
+                  : 'text-zinc-600 hover:text-zinc-900 hover:bg-white/60'
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              <span>{tab.label}</span>
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                  isActive ? 'bg-pink-700 text-white' : 'bg-zinc-200 text-zinc-700'
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Navigation Sub-Tabs */}
-      <div className="flex flex-wrap gap-2 border-b border-zinc-100 pb-2">
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('sizes')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-            activeSubTab === 'sizes'
-              ? 'bg-pink-600 text-white shadow-xs'
-              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-          }`}
-        >
-          <Cake className="w-3.5 h-3.5" /> 1. Kích Thước Bánh & BOM ({config.sizes.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('flavors_creams')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-            activeSubTab === 'flavors_creams'
-              ? 'bg-pink-600 text-white shadow-xs'
-              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5" /> 2. Cốt Bánh & Kem ({config.flavors.length + config.creams.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('fillings')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-            activeSubTab === 'fillings'
-              ? 'bg-pink-600 text-white shadow-xs'
-              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-          }`}
-        >
-          <Utensils className="w-3.5 h-3.5" /> 3. Nhân Bánh ({currentFillings.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('packagings')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-            activeSubTab === 'packagings'
-              ? 'bg-pink-600 text-white shadow-xs'
-              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-          }`}
-        >
-          <Package className="w-3.5 h-3.5" /> 4. Hộp & Bao Bì ({config.packagings.length})
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveSubTab('addons')}
-          className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
-            activeSubTab === 'addons'
-              ? 'bg-pink-600 text-white shadow-xs'
-              : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5" /> 5. Phụ Kiện & Decor ({config.addons.length})
-        </button>
-      </div>
-
-      {/* SUB-TAB 1: SIZES & BOM */}
-      {activeSubTab === 'sizes' && (
+      {/* TAB 1: CỐT BÁNH */}
+      {activeTab === 'cake_bases' && (
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="font-black text-sm text-zinc-900">Bảng Định Mức Vốn BOM & Giá Gợi Ý Theo Kích Thước</h4>
-              <p className="text-[11px] text-zinc-500">
-                Thay vì nhập số tiền vốn thủ công, bạn bấm <strong>&ldquo;Cài đặt BOM&rdquo;</strong> để nhập công thức làm cốt bánh. Hệ thống sẽ tự động tính chính xác giá vốn.
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
+                <Cake className="w-4 h-4 text-pink-600" />
+                <span>1. Danh Mục Cốt Bánh & Định Mức BOM Từng Size</span>
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Mỗi size bánh có 1 nút <strong>&ldquo;Cài BOM Cốt Bánh&rdquo;</strong> riêng và bảng tính giá cost tự động từ nguyên liệu kho.
               </p>
             </div>
             <button
               type="button"
-              onClick={handleAddSize}
+              onClick={handleAddCakeBase}
               className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" /> Thêm Size
+              <Plus className="w-3.5 h-3.5" /> Thêm Cốt Bánh
             </button>
           </div>
 
-          <div className="overflow-x-auto border border-zinc-200 rounded-2xl">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
-                <tr>
-                  <th className="p-3">Tên Size & Phục Vụ</th>
-                  <th className="p-3 text-center">Đường kính (cm)</th>
-                  <th className="p-3 text-right text-rose-700">Chi Phí Vốn Cốt Bánh (BOM)</th>
-                  <th className="p-3 text-right text-emerald-700">Giá Bán Đề Xuất (VND)</th>
-                  <th className="p-3 text-center">Tỷ lệ Food Cost</th>
-                  <th className="p-3 text-center w-12">Xóa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100 font-medium">
-                {config.sizes.map((s, idx) => {
-                  const fc = s.suggestedPrice > 0 ? ((s.baseCost / s.suggestedPrice) * 100).toFixed(1) : '0';
-                  const bomCount = s.bomIngredients?.length || 0;
+          <div className="space-y-4">
+            {config.cakeBases.map((base, baseIdx) => (
+              <div key={base.id} className="p-4 rounded-2xl bg-white border border-zinc-200 space-y-3 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-zinc-100">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="w-6 h-6 rounded-lg bg-pink-100 text-pink-700 font-black text-xs flex items-center justify-center">
+                      {baseIdx + 1}
+                    </span>
+                    <input
+                      type="text"
+                      value={base.name}
+                      onChange={(e) => handleUpdateCakeBase(baseIdx, 'name', e.target.value)}
+                      className="font-black text-sm text-zinc-900 bg-transparent border-b border-dashed border-zinc-300 focus:border-pink-600 focus:outline-none flex-1 min-w-0"
+                      placeholder="Tên loại cốt bánh"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleAddBaseSize(baseIdx)}
+                      className="px-2.5 py-1 rounded-lg bg-pink-50 hover:bg-pink-100 text-pink-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Thêm Size
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCakeBase(baseIdx)}
+                      className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 transition cursor-pointer"
+                      title="Xóa loại cốt bánh này"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
 
-                  return (
-                    <tr key={s.id} className="hover:bg-pink-50/40 transition">
-                      <td className="p-2.5 min-w-[200px]">
-                        <input
-                          type="text"
-                          value={s.name}
-                          onChange={(e) => handleUpdateSize(idx, 'name', e.target.value)}
-                          className="w-full p-1.5 rounded-lg border border-zinc-200 font-bold text-zinc-900"
-                        />
-                      </td>
-                      <td className="p-2.5 text-center min-w-[90px]">
-                        <input
-                          type="number"
-                          value={s.diameterCm}
-                          onChange={(e) => handleUpdateSize(idx, 'diameterCm', Number(e.target.value) || 0)}
-                          className="w-16 p-1.5 text-center rounded-lg border border-zinc-200 font-bold"
-                        />
-                      </td>
-                      <td className="p-2.5 text-right min-w-[200px]">
-                        <div className="flex items-center justify-end gap-2">
-                          <div className="text-right">
-                            <span className="font-black text-rose-700 block text-xs">
-                              {s.baseCost.toLocaleString('vi-VN')} đ
-                            </span>
-                            <span className="text-[10px] text-zinc-400 font-medium">
-                              {bomCount > 0 ? `${bomCount} nguyên liệu BOM` : 'Chưa có BOM'}
-                            </span>
-                          </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {base.sizes.map((sz, szIdx) => (
+                    <div
+                      key={sz.id}
+                      className="p-3 rounded-xl bg-pink-50/40 border border-pink-200/80 space-y-2 flex flex-col justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <input
+                            type="text"
+                            value={sz.sizeName}
+                            onChange={(e) => {
+                              const updatedSizes = [...base.sizes];
+                              updatedSizes[szIdx] = { ...sz, sizeName: e.target.value };
+                              handleUpdateCakeBase(baseIdx, 'sizes', updatedSizes);
+                            }}
+                            className="font-bold text-xs text-pink-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none w-full"
+                          />
                           <button
                             type="button"
-                            onClick={() => handleOpenBomModal(idx, s)}
-                            className="px-2.5 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold text-xs flex items-center gap-1 transition shadow-2xs cursor-pointer shrink-0"
-                            title="Cài đặt công thức nguyên liệu BOM cho size này"
+                            onClick={() => handleDeleteBaseSize(baseIdx, szIdx)}
+                            className="text-zinc-400 hover:text-rose-600 p-0.5 cursor-pointer"
                           >
-                            <Sliders className="w-3.5 h-3.5" />
-                            <span>Cài đặt BOM</span>
+                            <X className="w-3.5 h-3.5" />
                           </button>
                         </div>
-                      </td>
-                      <td className="p-2.5 text-right min-w-[140px]">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={formatCurrencyInput(s.suggestedPrice)}
-                          onChange={(e) => handleUpdateSize(idx, 'suggestedPrice', parseCurrencyInput(e.target.value))}
-                          className="w-32 p-1.5 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40"
-                        />
-                      </td>
-                      <td className="p-2.5 text-center font-bold text-zinc-600">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] ${
-                          Number(fc) > 40 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'
-                        }`}>
-                          {fc}%
-                        </span>
-                      </td>
-                      <td className="p-2.5 text-center">
+                        <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                          <span>Đường kính: Ø{sz.diameterCm}cm</span>
+                          <span>{sz.bomIngredients?.length || 0} nguyên liệu</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-pink-200/60 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-600 font-medium">Giá vốn cốt:</span>
+                          <span className="font-black text-rose-600">
+                            {(sz.baseCost || 0).toLocaleString('vi-VN')}₫
+                          </span>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => handleDeleteSize(idx)}
-                          className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                          onClick={() =>
+                            setEditingBaseBom({
+                              baseIndex: baseIdx,
+                              sizeIndex: szIdx,
+                              baseName: base.name,
+                              size: JSON.parse(JSON.stringify(sz)),
+                            })
+                          }
+                          className="w-full py-1.5 rounded-lg bg-white hover:bg-pink-600 hover:text-white text-pink-700 border border-pink-300 font-bold text-xs flex items-center justify-center gap-1 shadow-2xs transition cursor-pointer"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Sliders className="w-3 h-3" />
+                          <span>Cài BOM Size Này</span>
                         </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* SUB-TAB 2: FLAVORS & CREAMS */}
-      {activeSubTab === 'flavors_creams' && (
-        <div className="space-y-6 animate-in fade-in duration-150">
-          {/* CỐT BÁNH */}
-          <div className="space-y-3 p-4 rounded-2xl border border-zinc-200 bg-zinc-50/50">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-black text-sm text-zinc-900">Cốt Bánh (Vani, Socola, Matcha...)</h4>
-                <p className="text-[10px] text-zinc-500">Chi phí nguyên liệu thêm và phụ thu cho từng loại cốt.</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddFlavor}
-                className="px-2.5 py-1 rounded-lg bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3 h-3" /> Thêm Cốt
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {config.flavors.map((f, idx) => (
-                <div key={f.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={f.icon || '🎂'}
-                      onChange={(e) => handleUpdateFlavor(idx, 'icon', e.target.value)}
-                      className="w-9 p-1 text-center rounded-lg border border-zinc-200 text-sm shrink-0"
-                      title="Biểu tượng cốt bánh"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Tên loại cốt bánh (vd: Cốt Vani, Cốt Socola...)"
-                      value={f.name}
-                      onChange={(e) => handleUpdateFlavor(idx, 'name', e.target.value)}
-                      className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteFlavor(idx)}
-                      className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
-                      title="Xóa loại cốt này"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                    <div className="flex items-center gap-1 flex-1 min-w-0">
-                      <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatCurrencyInput(f.extraCost)}
-                        onChange={(e) => handleUpdateFlavor(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                        className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1 flex-1 min-w-0">
-                      <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ Thu:</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatCurrencyInput(f.extraPrice)}
-                        onChange={(e) => handleUpdateFlavor(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                        className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* LOẠI KEM */}
-          <div className="space-y-3 p-4 rounded-2xl border border-zinc-200 bg-zinc-50/50">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-black text-sm text-zinc-900">Loại Kem (Topping, Whipping, Phô mai...)</h4>
-                <p className="text-[10px] text-zinc-500">Chi phí kem cao cấp và mức phụ thu đối với khách.</p>
-              </div>
-              <button
-                type="button"
-                onClick={handleAddCream}
-                className="px-2.5 py-1 rounded-lg bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-              >
-                <Plus className="w-3 h-3" /> Thêm Kem
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {config.creams.map((c, idx) => (
-                <div key={c.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={c.icon || '🍦'}
-                      onChange={(e) => handleUpdateCream(idx, 'icon', e.target.value)}
-                      className="w-9 p-1 text-center rounded-lg border border-zinc-200 text-sm shrink-0"
-                      title="Biểu tượng loại kem"
-                    />
-                    <input
-                      type="text"
-                      placeholder="Tên loại kem (vd: Kem Topping, Kem Whipping, Phô mai...)"
-                      value={c.name}
-                      onChange={(e) => handleUpdateCream(idx, 'name', e.target.value)}
-                      className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteCream(idx)}
-                      className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
-                      title="Xóa loại kem này"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                    <div className="flex items-center gap-1 flex-1 min-w-0">
-                      <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatCurrencyInput(c.extraCost)}
-                        onChange={(e) => handleUpdateCream(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                        className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1 flex-1 min-w-0">
-                      <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ Thu:</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={formatCurrencyInput(c.extraPrice)}
-                        onChange={(e) => handleUpdateCream(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                        className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                      />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* SUB-TAB 3: FILLINGS (NHÂN BÁNH SINH NHẬT) */}
-      {activeSubTab === 'fillings' && (
+      {/* TAB 2: KEM PHỦ BÁNH */}
+      {activeTab === 'cream_coatings' && (
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="font-black text-sm text-zinc-900">Danh Mục Nhân Bánh Sinh Nhật</h4>
-              <p className="text-[11px] text-zinc-500">
-                Các loại nhân mứt trái cây, socola ganache, phô mai hoặc trứng muối bên trong bánh. Khi khách chọn, hệ thống sẽ tự tính phụ thu và báo thợ bếp.
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
+                <Layers className="w-4 h-4 text-pink-600" />
+                <span>2. Danh Mục Kem Phủ & Định Mức BOM Từng Size</span>
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Mỗi size kem phủ có 1 nút <strong>&ldquo;Cài BOM Kem Phủ&rdquo;</strong> riêng và bảng tính giá cost tự động theo công thức kem.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddCreamCoating}
+              className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" /> Thêm Kem Phủ
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {config.creamCoatings.map((cream, creamIdx) => (
+              <div key={cream.id} className="p-4 rounded-2xl bg-white border border-zinc-200 space-y-3 shadow-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-zinc-100">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="w-6 h-6 rounded-lg bg-pink-100 text-pink-700 font-black text-xs flex items-center justify-center">
+                      {creamIdx + 1}
+                    </span>
+                    <input
+                      type="text"
+                      value={cream.name}
+                      onChange={(e) => handleUpdateCreamCoating(creamIdx, 'name', e.target.value)}
+                      className="font-black text-sm text-zinc-900 bg-transparent border-b border-dashed border-zinc-300 focus:border-pink-600 focus:outline-none flex-1 min-w-0"
+                      placeholder="Tên loại kem phủ"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleAddCreamSize(creamIdx)}
+                      className="px-2.5 py-1 rounded-lg bg-pink-50 hover:bg-pink-100 text-pink-700 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" /> Thêm Size Kem
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteCreamCoating(creamIdx)}
+                      className="p-1 rounded-lg text-zinc-400 hover:text-rose-600 transition cursor-pointer"
+                      title="Xóa loại kem phủ này"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {cream.sizes.map((sz, szIdx) => (
+                    <div
+                      key={sz.id}
+                      className="p-3 rounded-xl bg-pink-50/40 border border-pink-200/80 space-y-2 flex flex-col justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <input
+                            type="text"
+                            value={sz.sizeName}
+                            onChange={(e) => {
+                              const updatedSizes = [...cream.sizes];
+                              updatedSizes[szIdx] = { ...sz, sizeName: e.target.value };
+                              handleUpdateCreamCoating(creamIdx, 'sizes', updatedSizes);
+                            }}
+                            className="font-bold text-xs text-pink-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none w-full"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCreamSize(creamIdx, szIdx)}
+                            className="text-zinc-400 hover:text-rose-600 p-0.5 cursor-pointer"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                          <span>Đường kính: Ø{sz.diameterCm}cm</span>
+                          <span>{sz.bomIngredients?.length || 0} nguyên liệu</span>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-pink-200/60 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="text-zinc-600 font-medium">Giá vốn kem:</span>
+                          <span className="font-black text-rose-600">
+                            {(sz.baseCost || 0).toLocaleString('vi-VN')}₫
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEditingCreamBom({
+                              creamIndex: creamIdx,
+                              sizeIndex: szIdx,
+                              creamName: cream.name,
+                              size: JSON.parse(JSON.stringify(sz)),
+                            })
+                          }
+                          className="w-full py-1.5 rounded-lg bg-white hover:bg-pink-600 hover:text-white text-pink-700 border border-pink-300 font-bold text-xs flex items-center justify-center gap-1 shadow-2xs transition cursor-pointer"
+                        >
+                          <Sliders className="w-3 h-3" />
+                          <span>Cài BOM Kem Size Này</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: NHÂN BÁNH */}
+      {activeTab === 'fillings' && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
+                <Utensils className="w-4 h-4 text-pink-600" />
+                <span>3. Danh Mục Loại Nhân Bánh & Giá Cost</span>
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Nhập trực tiếp giá vốn (cost) của từng loại nhân bánh và phụ thu bán khi khách chọn thêm.
               </p>
             </div>
             <button
@@ -727,200 +792,368 @@ export function CustomCakeCostingSettings() {
               onClick={handleAddFilling}
               className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" /> Thêm Loại Nhân
+              <Plus className="w-3.5 h-3.5" /> Thêm Nhân Bánh
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {currentFillings.map((f, idx) => (
-              <div key={f.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={f.icon || '🍓'}
-                    onChange={(e) => handleUpdateFilling(idx, 'icon', e.target.value)}
-                    className="w-9 p-1 text-center rounded-lg border border-zinc-200 text-sm shrink-0"
-                    title="Biểu tượng nhân bánh"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Tên loại nhân bánh (vd: Mứt Dâu Tây Đà Lạt...)"
-                    value={f.name}
-                    onChange={(e) => handleUpdateFilling(idx, 'name', e.target.value)}
-                    className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteFilling(idx)}
-                    className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
-                    title="Xóa loại nhân này"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(f.extraCost)}
-                      onChange={(e) => handleUpdateFilling(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                      className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ Thu:</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(f.extraPrice)}
-                      onChange={(e) => handleUpdateFilling(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                      className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto border border-zinc-200 rounded-2xl bg-white shadow-xs">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
+                <tr>
+                  <th className="p-3">Tên Loại Nhân Bánh</th>
+                  <th className="p-3 w-40">Giá Cost Vốn (VND)</th>
+                  <th className="p-3 w-40">Phụ Thu Bán (VND)</th>
+                  <th className="p-3 w-28 text-center">Mặc Định</th>
+                  <th className="p-3 w-16 text-center">Xóa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {config.fillings.map((fill, idx) => (
+                  <tr key={fill.id} className="hover:bg-pink-50/30 transition">
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={fill.name}
+                        onChange={(e) => handleUpdateFilling(idx, 'name', e.target.value)}
+                        className="w-full font-bold text-zinc-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={formatCurrencyInput(fill.costPrice || 0)}
+                        onChange={(e) => handleUpdateFilling(idx, 'costPrice', parseCurrencyInput(e.target.value))}
+                        className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={formatCurrencyInput(fill.extraPrice || 0)}
+                        onChange={(e) => handleUpdateFilling(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
+                        className="w-full font-bold text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3 text-center">
+                      <input
+                        type="radio"
+                        name="default_filling"
+                        checked={!!fill.isDefault}
+                        onChange={() => {
+                          const updated = config.fillings.map((f, i) => ({ ...f, isDefault: i === idx }));
+                          setConfig({ ...config, fillings: updated });
+                        }}
+                        className="w-4 h-4 text-pink-600 focus:ring-pink-500 cursor-pointer"
+                      />
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFilling(idx)}
+                        className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* SUB-TAB 4: PACKAGINGS */}
-      {activeSubTab === 'packagings' && (
+      {/* TAB 4: HỘP VÀ BAO BÌ */}
+      {activeTab === 'packagings' && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h4 className="font-black text-sm text-zinc-900">Hộp Đóng Gói & Bao Bì Bánh</h4>
-              <p className="text-[11px] text-zinc-500">Định mức giá vốn và mức phụ thu đối với các loại hộp đặc biệt (như hộp mica trong suốt cao cấp).</p>
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-pink-600" />
+                <span>4. Hộp Đựng & Bao Bì Bánh Sinh Nhật</span>
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Theo flowchart: Sẽ nhập trực tiếp từ kho vật tư, giá cost tự động lấy từ giá nhập vào kho.
+              </p>
             </div>
-            <button
-              type="button"
-              onClick={handleAddPackaging}
-              className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" /> Thêm Hộp Mới
-            </button>
+            <div className="flex items-center gap-2">
+              {availableIngredients.length > 0 && (
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleImportPackagingFromInventory(e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none"
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    + Nạp từ Kho Vật Tư...
+                  </option>
+                  {availableIngredients.map((ing) => (
+                    <option key={ing.id} value={ing.id}>
+                      📦 {ing.name} (Vốn: {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫)
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={handleAddPackaging}
+                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm Hộp Mới
+              </button>
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {config.packagings.map((pkg, idx) => (
-              <div key={pkg.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition shadow-xs">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={pkg.icon || '📦'}
-                    onChange={(e) => handleUpdatePackaging(idx, 'icon', e.target.value)}
-                    className="w-9 p-1 text-center rounded-lg border border-zinc-200 text-sm shrink-0"
-                    title="Biểu tượng hộp bánh"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Tên loại hộp bánh (vd: Hộp giấy tiêu chuẩn, Hộp mica trong suốt...)"
-                    value={pkg.name}
-                    onChange={(e) => handleUpdatePackaging(idx, 'name', e.target.value)}
-                    className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleDeletePackaging(idx)}
-                    className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
-                    title="Xóa hộp này"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(pkg.extraCost)}
-                      onChange={(e) => handleUpdatePackaging(idx, 'extraCost', parseCurrencyInput(e.target.value))}
-                      className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
-                    />
-                  </div>
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    <span className="text-[10px] text-emerald-600 font-bold shrink-0">Phụ Thu:</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(pkg.extraPrice)}
-                      onChange={(e) => handleUpdatePackaging(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                      className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
-                    />
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-x-auto border border-zinc-200 rounded-2xl bg-white shadow-xs">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
+                <tr>
+                  <th className="p-3">Tên Hộp & Bao Bì</th>
+                  <th className="p-3 w-40">Giá Cost Nhập Vào (VND)</th>
+                  <th className="p-3 w-40">Phụ Thu Bán (VND)</th>
+                  <th className="p-3 w-28 text-center">Mặc Định</th>
+                  <th className="p-3 w-16 text-center">Xóa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {config.packagings.map((pkg, idx) => (
+                  <tr key={pkg.id} className="hover:bg-pink-50/30 transition">
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={pkg.name}
+                        onChange={(e) => handleUpdatePackaging(idx, 'name', e.target.value)}
+                        className="w-full font-bold text-zinc-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={formatCurrencyInput(pkg.costPrice || 0)}
+                        onChange={(e) => handleUpdatePackaging(idx, 'costPrice', parseCurrencyInput(e.target.value))}
+                        className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={formatCurrencyInput(pkg.sellingPrice || 0)}
+                        onChange={(e) => handleUpdatePackaging(idx, 'sellingPrice', parseCurrencyInput(e.target.value))}
+                        className="w-full font-bold text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3 text-center">
+                      <input
+                        type="radio"
+                        name="default_packaging"
+                        checked={!!pkg.isDefault}
+                        onChange={() => {
+                          const updated = config.packagings.map((p, i) => ({ ...p, isDefault: i === idx }));
+                          setConfig({ ...config, packagings: updated });
+                        }}
+                        className="w-4 h-4 text-pink-600 focus:ring-pink-500 cursor-pointer"
+                      />
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleDeletePackaging(idx)}
+                        className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
 
-      {/* SUB-TAB 4: ADDONS */}
-      {activeSubTab === 'addons' && (
+      {/* TAB 5: VẬT TƯ TẶNG KÈM */}
+      {activeTab === 'free_accessories' && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div>
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
+                <Gift className="w-4 h-4 text-pink-600" />
+                <span>5. Vật Tư Tặng Kèm (Mũ, Nến, Dao, Đĩa...)</span>
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Nhập trực tiếp từ kho vật tư, giá cost là giá nhập kho. Mặc định tự động tặng kèm trong bánh sinh nhật.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {availableIngredients.length > 0 && (
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleImportFreeAccessoryFromInventory(e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none"
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    + Nạp từ Kho Vật Tư...
+                  </option>
+                  {availableIngredients.map((ing) => (
+                    <option key={ing.id} value={ing.id}>
+                      🎁 {ing.name} (Vốn: {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫)
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={handleAddFreeAccessory}
+                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm Món Tặng Kèm
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto border border-zinc-200 rounded-2xl bg-white shadow-xs">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
+                <tr>
+                  <th className="p-3">Tên Vật Tư Tặng Kèm</th>
+                  <th className="p-3 w-32">Số Lượng Tặng</th>
+                  <th className="p-3 w-40">Giá Cost Vốn (VND)</th>
+                  <th className="p-3 w-36 text-center">Tặng Kèm Mặc Định</th>
+                  <th className="p-3 w-16 text-center">Xóa</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {config.freeAccessories.map((acc, idx) => (
+                  <tr key={acc.id} className="hover:bg-pink-50/30 transition">
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={acc.name}
+                        onChange={(e) => handleUpdateFreeAccessory(idx, 'name', e.target.value)}
+                        className="w-full font-bold text-zinc-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3">
+                      <input
+                        type="number"
+                        min="1"
+                        value={acc.quantityDefault || 1}
+                        onChange={(e) =>
+                          handleUpdateFreeAccessory(idx, 'quantityDefault', parseInt(e.target.value) || 1)
+                        }
+                        className="w-20 font-black text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-center focus:bg-white focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3">
+                      <input
+                        type="text"
+                        value={formatCurrencyInput(acc.costPrice || 0)}
+                        onChange={(e) =>
+                          handleUpdateFreeAccessory(idx, 'costPrice', parseCurrencyInput(e.target.value))
+                        }
+                        className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
+                      />
+                    </td>
+                    <td className="p-3 text-center">
+                      <input
+                        type="checkbox"
+                        checked={acc.isDefaultIncluded}
+                        onChange={(e) => handleUpdateFreeAccessory(idx, 'isDefaultIncluded', e.target.checked)}
+                        className="w-4 h-4 text-pink-600 rounded-md focus:ring-pink-500 cursor-pointer"
+                      />
+                    </td>
+                    <td className="p-3 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteFreeAccessory(idx)}
+                        className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 6: PHỤ KIỆN VÀ DECOR */}
+      {activeTab === 'decor_addons' && (
         <div className="space-y-4 animate-in fade-in duration-150">
           <div className="flex items-center justify-between">
             <div>
-              <h4 className="font-black text-sm text-zinc-900">Phụ Kiện Trang Trí & Decor Bánh</h4>
-              <p className="text-[11px] text-zinc-500">Quầy POS có thể tích chọn nhanh các phụ kiện này khi tạo đơn đặt bánh sinh nhật.</p>
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-pink-600" />
+                <span>6. Phụ Kiện & Decor Trang Trí Thêm (Giữ nguyên)</span>
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Các phụ kiện trang trí cộng thêm như Vương miện ngọc trai, Đèn LED, Topper mica, Quả cầu vàng...
+              </p>
             </div>
             <button
               type="button"
-              onClick={handleAddAddon}
+              onClick={handleAddDecorAddon}
               className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" /> Thêm Phụ Kiện
             </button>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {config.addons.map((a, idx) => (
-              <div key={a.id} className="p-3 bg-white rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-300 transition">
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={a.icon || '✨'}
-                    onChange={(e) => handleUpdateAddon(idx, 'icon', e.target.value)}
-                    className="w-9 p-1 text-center rounded-lg border border-zinc-200 text-sm"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Tên phụ kiện (vd: Vương miện, Nến số, Topper...)"
-                    value={a.name}
-                    onChange={(e) => handleUpdateAddon(idx, 'name', e.target.value)}
-                    className="flex-1 min-w-0 p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-400"
-                  />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {config.decorAddons.map((dec, idx) => (
+              <div key={dec.id} className="p-3.5 rounded-2xl bg-white border border-zinc-200 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <input
+                      type="text"
+                      value={dec.icon || '🎁'}
+                      onChange={(e) => handleUpdateDecorAddon(idx, 'icon', e.target.value)}
+                      className="w-8 h-8 text-center bg-pink-50 rounded-xl text-base border border-pink-200"
+                    />
+                    <input
+                      type="text"
+                      value={dec.name}
+                      onChange={(e) => handleUpdateDecorAddon(idx, 'name', e.target.value)}
+                      className="font-bold text-xs text-zinc-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none flex-1 min-w-0"
+                    />
+                  </div>
                   <button
                     type="button"
-                    onClick={() => handleDeleteAddon(idx)}
-                    className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer shrink-0"
-                    title="Xóa phụ kiện này"
+                    onClick={() => handleDeleteDecorAddon(idx)}
+                    className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-100 text-xs">
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    <span className="text-[10px] text-rose-600 font-bold shrink-0">Giá Vốn:</span>
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-100">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block">Giá Vốn Cost:</span>
                     <input
                       type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(a.cost)}
-                      onChange={(e) => handleUpdateAddon(idx, 'cost', parseCurrencyInput(e.target.value))}
-                      className="w-full p-1 text-right rounded-lg border border-rose-200 font-bold text-rose-700 bg-rose-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-rose-400"
+                      value={formatCurrencyInput(dec.costPrice || 0)}
+                      onChange={(e) => handleUpdateDecorAddon(idx, 'costPrice', parseCurrencyInput(e.target.value))}
+                      className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:outline-none"
                     />
                   </div>
-                  <div className="flex items-center gap-1 flex-1 min-w-0">
-                    <span className="text-[10px] text-emerald-600 font-bold shrink-0">Giá Bán:</span>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block">Giá Bán Thu:</span>
                     <input
                       type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(a.price)}
-                      onChange={(e) => handleUpdateAddon(idx, 'price', parseCurrencyInput(e.target.value))}
-                      className="w-full p-1 text-right rounded-lg border border-emerald-200 font-bold text-emerald-700 bg-emerald-50/40 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                      value={formatCurrencyInput(dec.sellingPrice || 0)}
+                      onChange={(e) => handleUpdateDecorAddon(idx, 'sellingPrice', parseCurrencyInput(e.target.value))}
+                      className="w-full font-black text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:outline-none"
                     />
                   </div>
                 </div>
@@ -930,191 +1163,656 @@ export function CustomCakeCostingSettings() {
         </div>
       )}
 
-      {/* ── MODAL CÀI ĐẶT ĐỊNH MỨC NGUYÊN LIỆU BOM CHO CỐT BÁNH ── */}
-      {editingBomSize && (
-        <div className="fixed inset-0 z-[10000005] bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-zinc-200 text-zinc-900 animate-in zoom-in-95 duration-150 my-auto">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between gap-3 border-b border-zinc-100 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">
-                  <Sliders className="w-5 h-5" />
+      {/* TAB 7: BOM BÁNH SINH NHẬT */}
+      {activeTab === 'bom_presets' && (
+        <div className="space-y-4 animate-in fade-in duration-150">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
+                <Boxes className="w-4 h-4 text-pink-600" />
+                <span>7. Cấu Hình BOM Bánh Sinh Nhật Chuẩn (Presets)</span>
+              </h3>
+              <p className="text-xs text-zinc-500">
+                Tạo mẫu BOM bánh sinh nhật tổng hợp từ: Cốt bánh + Kem phủ + Nhân + Hộp + Quà tặng kèm + Decor.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleAddBomPreset}
+              className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" /> Tạo Mẫu BOM Mới
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {config.birthdayBomPresets.map((preset, pIdx) => {
+              const calc = calculateCakeCostDetails(
+                {
+                  cakeBaseId: preset.cakeBaseId,
+                  cakeBaseSizeId: preset.cakeBaseSizeId,
+                  creamCoatingId: preset.creamCoatingId,
+                  creamCoatingSizeId: preset.creamCoatingSizeId,
+                  fillingId: preset.fillingId,
+                  packagingId: preset.packagingId,
+                  freeAccessoryIds: preset.freeAccessoryIds,
+                  decorAddonIds: preset.decorAddonIds,
+                  customMarkupPct: preset.targetFoodCostPct || config.targetFoodCostPct,
+                },
+                config
+              );
+
+              const currentBase = config.cakeBases.find((b) => b.id === preset.cakeBaseId);
+              const currentCream = config.creamCoatings.find((c) => c.id === preset.creamCoatingId);
+
+              return (
+                <div
+                  key={preset.id}
+                  className="p-4 rounded-3xl bg-white border border-zinc-200 shadow-xs space-y-3.5"
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-100">
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <span className="w-6 h-6 rounded-lg bg-pink-600 text-white font-black text-xs flex items-center justify-center">
+                        {pIdx + 1}
+                      </span>
+                      <input
+                        type="text"
+                        value={preset.name}
+                        onChange={(e) => handleUpdateBomPreset(pIdx, 'name', e.target.value)}
+                        className="font-black text-sm text-zinc-900 bg-transparent border-b border-dashed border-zinc-300 focus:border-pink-600 focus:outline-none flex-1 min-w-0"
+                        placeholder="Tên mẫu BOM bánh sinh nhật"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteBomPreset(pIdx)}
+                      className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer self-end sm:self-auto"
+                      title="Xóa mẫu BOM này"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  {/* CÁC THÀNH PHẦN CỦA BOM BÁNH SINH NHẬT */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                    <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
+                      <span className="font-bold text-pink-800 flex items-center gap-1">🍰 Cốt Bánh & Size:</span>
+                      <select
+                        value={preset.cakeBaseId}
+                        onChange={(e) => {
+                          const base = config.cakeBases.find((b) => b.id === e.target.value);
+                          handleUpdateBomPreset(pIdx, 'cakeBaseId', e.target.value);
+                          if (base && base.sizes[0]) {
+                            handleUpdateBomPreset(pIdx, 'cakeBaseSizeId', base.sizes[0].id);
+                          }
+                        }}
+                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 font-bold"
+                      >
+                        {config.cakeBases.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={preset.cakeBaseSizeId}
+                        onChange={(e) => handleUpdateBomPreset(pIdx, 'cakeBaseSizeId', e.target.value)}
+                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 text-[11px]"
+                      >
+                        {currentBase?.sizes.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.sizeName} ({s.baseCost.toLocaleString('vi-VN')}₫)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
+                      <span className="font-bold text-pink-800 flex items-center gap-1">🍦 Kem Phủ & Size:</span>
+                      <select
+                        value={preset.creamCoatingId}
+                        onChange={(e) => {
+                          const cream = config.creamCoatings.find((c) => c.id === e.target.value);
+                          handleUpdateBomPreset(pIdx, 'creamCoatingId', e.target.value);
+                          if (cream && cream.sizes[0]) {
+                            handleUpdateBomPreset(pIdx, 'creamCoatingSizeId', cream.sizes[0].id);
+                          }
+                        }}
+                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 font-bold"
+                      >
+                        {config.creamCoatings.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={preset.creamCoatingSizeId}
+                        onChange={(e) => handleUpdateBomPreset(pIdx, 'creamCoatingSizeId', e.target.value)}
+                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 text-[11px]"
+                      >
+                        {currentCream?.sizes.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.sizeName} ({s.baseCost.toLocaleString('vi-VN')}₫)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
+                      <span className="font-bold text-pink-800 flex items-center gap-1">🍓 Loại Nhân:</span>
+                      <select
+                        value={preset.fillingId || ''}
+                        onChange={(e) => handleUpdateBomPreset(pIdx, 'fillingId', e.target.value)}
+                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 font-bold"
+                      >
+                        {config.fillings.map((f) => (
+                          <option key={f.id} value={f.id}>
+                            {f.name} (+{f.costPrice.toLocaleString('vi-VN')}₫)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
+                      <span className="font-bold text-pink-800 flex items-center gap-1">📦 Hộp & Bao Bì:</span>
+                      <select
+                        value={preset.packagingId || ''}
+                        onChange={(e) => handleUpdateBomPreset(pIdx, 'packagingId', e.target.value)}
+                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 font-bold"
+                      >
+                        {config.packagings.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} ({p.costPrice.toLocaleString('vi-VN')}₫)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* THỐNG KÊ CHI TIẾT VỐN & GIÁ BÁN GỢI Ý */}
+                  <div className="p-3 rounded-2xl bg-zinc-50 border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-4 text-zinc-600">
+                      <div>
+                        Cốt: <b className="text-zinc-900">{calc.baseCost.toLocaleString('vi-VN')}₫</b>
+                      </div>
+                      <div>
+                        Kem: <b className="text-zinc-900">{calc.creamCost.toLocaleString('vi-VN')}₫</b>
+                      </div>
+                      <div>
+                        Nhân: <b className="text-zinc-900">{calc.fillingCost.toLocaleString('vi-VN')}₫</b>
+                      </div>
+                      <div>
+                        Hộp: <b className="text-zinc-900">{calc.packagingCost.toLocaleString('vi-VN')}₫</b>
+                      </div>
+                      <div>
+                        Quà tặng: <b className="text-zinc-900">{calc.freeAccessoriesCost.toLocaleString('vi-VN')}₫</b>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <span className="text-[10px] text-zinc-500 block">Tổng Cost BOM:</span>
+                        <span className="font-black text-rose-600 text-sm">
+                          {calc.totalCost.toLocaleString('vi-VN')}₫
+                        </span>
+                      </div>
+                      <div className="pl-4 border-l border-zinc-200">
+                        <span className="text-[10px] text-pink-700 block font-bold">
+                          Giá Bán Gợi Ý (~{preset.targetFoodCostPct || config.targetFoodCostPct}%):
+                        </span>
+                        <span className="font-black text-pink-700 text-base">
+                          {calc.suggestedPrice.toLocaleString('vi-VN')}₫
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL CÀI BOM CHO 1 SIZE CỐT BÁNH */}
+      {editingBaseBom && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-zinc-200 p-5 space-y-4 max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center">
+                  <Cake className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="font-black text-base sm:text-lg text-zinc-900 flex items-center gap-2">
-                    Công Thức BOM Cốt Bánh: <span className="text-pink-600 uppercase">{editingBomSize.size.name}</span>
-                  </h3>
-                  <p className="text-xs text-zinc-500 font-medium">
-                    Nhập định mức nguyên liệu làm cốt bánh bông lan và kem nền. Tổng giá vốn các nguyên liệu sẽ tự động trở thành Giá Vốn Chuẩn.
+                  <h4 className="font-black text-sm text-zinc-900">
+                    Cài Đặt BOM: {editingBaseBom.baseName} — {editingBaseBom.size.sizeName}
+                  </h4>
+                  <p className="text-[11px] text-zinc-500">
+                    Nhập công thức nguyên liệu chuẩn cho kích thước cốt bánh này.
                   </p>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setEditingBomSize(null)}
-                className="text-zinc-400 hover:text-zinc-700 p-1.5 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
+                onClick={() => setEditingBaseBom(null)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Bảng nguyên liệu BOM */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-black text-xs text-zinc-700 flex items-center gap-1.5">
-                  <Utensils className="w-3.5 h-3.5 text-pink-600" />
-                  Danh Sách Nguyên Liệu ({editingBomSize.size.bomIngredients?.length || 0})
-                </span>
+            <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
+                  <tr>
+                    <th className="p-2">Nguyên Liệu</th>
+                    <th className="p-2 w-24">Định Mức</th>
+                    <th className="p-2 w-20">Đơn Vị</th>
+                    <th className="p-2 w-28">Đơn Giá Vốn</th>
+                    <th className="p-2 w-28 text-right">Thành Tiền</th>
+                    <th className="p-2 w-10 text-center">Xóa</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {editingBaseBom.size.bomIngredients.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-pink-50/20">
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => {
+                            const updated = [...editingBaseBom.size.bomIngredients];
+                            updated[idx] = { ...item, name: e.target.value };
+                            setEditingBaseBom({
+                              ...editingBaseBom,
+                              size: { ...editingBaseBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const qty = parseFloat(e.target.value) || 0;
+                            const updated = [...editingBaseBom.size.bomIngredients];
+                            updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
+                            setEditingBaseBom({
+                              ...editingBaseBom,
+                              size: { ...editingBaseBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="w-full font-black text-center bg-zinc-50 border border-zinc-200 rounded-lg py-1"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          value={item.unit}
+                          onChange={(e) => {
+                            const updated = [...editingBaseBom.size.bomIngredients];
+                            updated[idx] = { ...item, unit: e.target.value };
+                            setEditingBaseBom({
+                              ...editingBaseBom,
+                              size: { ...editingBaseBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="w-full text-center text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg py-1"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={item.unitCost}
+                          onChange={(e) => {
+                            const cost = parseFloat(e.target.value) || 0;
+                            const updated = [...editingBaseBom.size.bomIngredients];
+                            updated[idx] = { ...item, unitCost: cost, totalCost: item.quantity * cost };
+                            setEditingBaseBom({
+                              ...editingBaseBom,
+                              size: { ...editingBaseBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="w-full font-bold text-right bg-zinc-50 border border-zinc-200 rounded-lg py-1 px-1"
+                        />
+                      </td>
+                      <td className="p-2 font-black text-rose-600 text-right">
+                        {(item.quantity * item.unitCost).toLocaleString('vi-VN')}₫
+                      </td>
+                      <td className="p-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = editingBaseBom.size.bomIngredients.filter((_, i) => i !== idx);
+                            setEditingBaseBom({
+                              ...editingBaseBom,
+                              size: { ...editingBaseBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="text-zinc-400 hover:text-rose-600 p-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="flex items-center justify-between pt-2">
                 <button
                   type="button"
-                  onClick={handleAddBomItem}
-                  className="px-2.5 py-1 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer transition border border-pink-200"
+                  onClick={() => {
+                    const newItem: CakeBomItem = {
+                      name: 'Nguyên liệu mới',
+                      unit: 'g',
+                      quantity: 50,
+                      unitCost: 30,
+                      totalCost: 1500,
+                    };
+                    setEditingBaseBom({
+                      ...editingBaseBom,
+                      size: {
+                        ...editingBaseBom.size,
+                        bomIngredients: [...editingBaseBom.size.bomIngredients, newItem],
+                      },
+                    });
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Thêm Nguyên Liệu
+                  <Plus className="w-3.5 h-3.5" /> Thêm Dòng Nguyên Liệu
                 </button>
-              </div>
 
-              <div className="overflow-x-auto border border-zinc-200 rounded-2xl max-h-[42vh] overflow-y-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200 sticky top-0 z-10">
-                    <tr>
-                      <th className="p-2.5">Tên Nguyên Liệu</th>
-                      <th className="p-2.5 text-center w-24">Định Lượng</th>
-                      <th className="p-2.5 text-center w-20">Đơn Vị</th>
-                      <th className="p-2.5 text-right w-28">Đơn Giá Vốn (đ)</th>
-                      <th className="p-2.5 text-right w-28 text-rose-700">Thành Tiền</th>
-                      <th className="p-2.5 text-center w-10">Xóa</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100 font-medium">
-                    {(editingBomSize.size.bomIngredients || []).map((it, bIdx) => {
-                      const itemTotal = Number(it.quantity || 0) * Number(it.unitCost || 0);
-
-                      return (
-                        <tr key={bIdx} className="hover:bg-zinc-50/70 transition">
-                          <td className="p-2 min-w-[180px]">
-                            {/* Chọn nhanh từ kho nếu có, hoặc nhập tay */}
-                            <div className="space-y-1">
-                              <input
-                                type="text"
-                                placeholder="Tên nguyên liệu..."
-                                value={it.name}
-                                onChange={(e) => handleUpdateBomItem(bIdx, 'name', e.target.value)}
-                                className="w-full p-1.5 rounded-lg border border-zinc-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                              />
-                              {availableIngredients.length > 0 && (
-                                <select
-                                  value={it.ingredientId || ''}
-                                  onChange={(e) => handleSelectIngredientForBom(bIdx, e.target.value)}
-                                  className="w-full text-[10px] p-1 rounded-md border border-dashed border-zinc-300 text-zinc-500 bg-white"
-                                >
-                                  <option value="">-- Chọn nhanh từ kho nguyên liệu --</option>
-                                  {availableIngredients.map((ing) => (
-                                    <option key={ing.id} value={ing.id}>
-                                      {ing.name} ({ing.unit}) - {Number(ing.avg_cost || 0).toLocaleString()}đ
-                                    </option>
-                                  ))}
-                                </select>
-                              )}
-                            </div>
-                          </td>
-                          <td className="p-2 text-center">
-                            <input
-                              type="number"
-                              step="any"
-                              min={0}
-                              value={it.quantity}
-                              onChange={(e) => handleUpdateBomItem(bIdx, 'quantity', Number(e.target.value) || 0)}
-                              className="w-20 p-1.5 text-center rounded-lg border border-zinc-200 font-bold text-xs focus:outline-none focus:ring-1 focus:ring-pink-500"
-                            />
-                          </td>
-                          <td className="p-2 text-center">
-                            <input
-                              type="text"
-                              placeholder="g"
-                              value={it.unit}
-                              onChange={(e) => handleUpdateBomItem(bIdx, 'unit', e.target.value)}
-                              className="w-16 p-1.5 text-center rounded-lg border border-zinc-200 font-bold text-xs focus:outline-none focus:ring-1 focus:ring-pink-500"
-                            />
-                          </td>
-                          <td className="p-2 text-right">
-                            <input
-                              type="text"
-                              inputMode="numeric"
-                              value={formatCurrencyInput(it.unitCost)}
-                              onChange={(e) => handleUpdateBomItem(bIdx, 'unitCost', parseCurrencyInput(e.target.value))}
-                              className="w-24 p-1.5 text-right rounded-lg border border-zinc-200 font-bold text-xs focus:outline-none focus:ring-1 focus:ring-pink-500"
-                            />
-                          </td>
-                          <td className="p-2 text-right font-black text-rose-700 text-xs">
-                            {itemTotal.toLocaleString('vi-VN')} đ
-                          </td>
-                          <td className="p-2 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteBomItem(bIdx)}
-                              className="p-1 text-zinc-400 hover:text-rose-600 rounded-lg transition cursor-pointer"
-                              title="Xóa nguyên liệu này"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {availableIngredients.length > 0 && (
+                  <select
+                    onChange={(e) => {
+                      const ing = availableIngredients.find((i) => i.id === e.target.value);
+                      if (ing) {
+                        const newItem: CakeBomItem = {
+                          ingredientId: ing.id,
+                          name: ing.name,
+                          unit: ing.unit || 'g',
+                          quantity: 100,
+                          unitCost: Number(ing.avg_cost) || 50,
+                          totalCost: 100 * (Number(ing.avg_cost) || 50),
+                        };
+                        setEditingBaseBom({
+                          ...editingBaseBom,
+                          size: {
+                            ...editingBaseBom.size,
+                            bomIngredients: [...editingBaseBom.size.bomIngredients, newItem],
+                          },
+                        });
+                        e.target.value = '';
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-zinc-100 text-zinc-700 font-bold text-xs"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      + Chọn từ Kho Nguyên Liệu...
+                    </option>
+                    {availableIngredients.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name} ({i.unit})
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </div>
 
-            {/* Khối Tổng Kết Tính Toán Giá Vốn */}
-            {(() => {
-              const totalBom = (editingBomSize.size.bomIngredients || []).reduce(
-                (sum, it) => sum + (Number(it.quantity || 0) * Number(it.unitCost || 0)),
-                0
-              );
-              const sugPrice = editingBomSize.size.suggestedPrice || 0;
-              const estFoodCost = sugPrice > 0 ? ((totalBom / sugPrice) * 100).toFixed(1) : '0';
+            <div className="flex items-center justify-between pt-3 border-t border-zinc-100">
+              <div>
+                <span className="text-xs text-zinc-500">Tổng Vốn Cốt Bánh (BOM):</span>
+                <span className="font-black text-rose-600 text-base ml-2">
+                  {editingBaseBom.size.bomIngredients
+                    .reduce((sum, it) => sum + it.quantity * it.unitCost, 0)
+                    .toLocaleString('vi-VN')}
+                  ₫
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingBaseBom(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs cursor-pointer"
+                >
+                  Hủy Bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveBaseBomModal}
+                  className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-xs cursor-pointer shadow-md shadow-pink-600/20"
+                >
+                  Lưu Công Thức BOM
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
-              return (
-                <div className="bg-rose-50/70 p-3.5 rounded-2xl border border-rose-200 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-rose-900 flex items-center gap-1.5">
-                      <Calculator className="w-4 h-4 text-rose-600" />
-                      TỔNG GIÁ VỐN NGUYÊN LIỆU (BOM):
-                    </span>
-                    <span className="text-base font-black text-rose-700 font-mono">
-                      {totalBom.toLocaleString('vi-VN')} đ
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-zinc-600 pt-1 border-t border-rose-200/80">
-                    <span>
-                      Giá bán đề xuất hiện tại: <strong>{sugPrice.toLocaleString('vi-VN')} đ</strong>
-                    </span>
-                    <span className="font-bold">
-                      Tỷ lệ Food Cost: <span className={Number(estFoodCost) > 40 ? 'text-amber-600' : 'text-emerald-700 font-black'}>{estFoodCost}%</span>
-                    </span>
-                  </div>
+      {/* MODAL CÀI BOM CHO 1 SIZE KEM PHỦ */}
+      {editingCreamBom && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-zinc-200 p-5 space-y-4 max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center">
+                  <Layers className="w-4 h-4" />
                 </div>
-              );
-            })()}
+                <div>
+                  <h4 className="font-black text-sm text-zinc-900">
+                    Cài Đặt BOM Kem: {editingCreamBom.creamName} — {editingCreamBom.size.sizeName}
+                  </h4>
+                  <p className="text-[11px] text-zinc-500">
+                    Nhập công thức nguyên liệu kem phủ chuẩn cho kích thước bánh này.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingCreamBom(null)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
-            {/* Modal Actions */}
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-zinc-100">
-              <button
-                type="button"
-                onClick={() => setEditingBomSize(null)}
-                className="px-4 py-2 rounded-xl border border-zinc-200 text-zinc-600 hover:bg-zinc-50 font-bold text-xs transition cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveBomToSize}
-                className="px-5 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-xs flex items-center gap-1.5 shadow-md shadow-pink-200 transition cursor-pointer"
-              >
-                <Save className="w-4 h-4" /> Áp Dụng Vào Size Bánh
-              </button>
+            <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
+                  <tr>
+                    <th className="p-2">Nguyên Liệu</th>
+                    <th className="p-2 w-24">Định Mức</th>
+                    <th className="p-2 w-20">Đơn Vị</th>
+                    <th className="p-2 w-28">Đơn Giá Vốn</th>
+                    <th className="p-2 w-28 text-right">Thành Tiền</th>
+                    <th className="p-2 w-10 text-center">Xóa</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {editingCreamBom.size.bomIngredients.map((item, idx) => (
+                    <tr key={idx} className="hover:bg-pink-50/20">
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => {
+                            const updated = [...editingCreamBom.size.bomIngredients];
+                            updated[idx] = { ...item, name: e.target.value };
+                            setEditingCreamBom({
+                              ...editingCreamBom,
+                              size: { ...editingCreamBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const qty = parseFloat(e.target.value) || 0;
+                            const updated = [...editingCreamBom.size.bomIngredients];
+                            updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
+                            setEditingCreamBom({
+                              ...editingCreamBom,
+                              size: { ...editingCreamBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="w-full font-black text-center bg-zinc-50 border border-zinc-200 rounded-lg py-1"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="text"
+                          value={item.unit}
+                          onChange={(e) => {
+                            const updated = [...editingCreamBom.size.bomIngredients];
+                            updated[idx] = { ...item, unit: e.target.value };
+                            setEditingCreamBom({
+                              ...editingCreamBom,
+                              size: { ...editingCreamBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="w-full text-center text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg py-1"
+                        />
+                      </td>
+                      <td className="p-2">
+                        <input
+                          type="number"
+                          value={item.unitCost}
+                          onChange={(e) => {
+                            const cost = parseFloat(e.target.value) || 0;
+                            const updated = [...editingCreamBom.size.bomIngredients];
+                            updated[idx] = { ...item, unitCost: cost, totalCost: item.quantity * cost };
+                            setEditingCreamBom({
+                              ...editingCreamBom,
+                              size: { ...editingCreamBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="w-full font-bold text-right bg-zinc-50 border border-zinc-200 rounded-lg py-1 px-1"
+                        />
+                      </td>
+                      <td className="p-2 font-black text-rose-600 text-right">
+                        {(item.quantity * item.unitCost).toLocaleString('vi-VN')}₫
+                      </td>
+                      <td className="p-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const updated = editingCreamBom.size.bomIngredients.filter((_, i) => i !== idx);
+                            setEditingCreamBom({
+                              ...editingCreamBom,
+                              size: { ...editingCreamBom.size, bomIngredients: updated },
+                            });
+                          }}
+                          className="text-zinc-400 hover:text-rose-600 p-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              <div className="flex items-center justify-between pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newItem: CakeBomItem = {
+                      name: 'Nguyên liệu kem mới',
+                      unit: 'ml',
+                      quantity: 50,
+                      unitCost: 120,
+                      totalCost: 6000,
+                    };
+                    setEditingCreamBom({
+                      ...editingCreamBom,
+                      size: {
+                        ...editingCreamBom.size,
+                        bomIngredients: [...editingCreamBom.size.bomIngredients, newItem],
+                      },
+                    });
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Thêm Dòng Nguyên Liệu
+                </button>
+
+                {availableIngredients.length > 0 && (
+                  <select
+                    onChange={(e) => {
+                      const ing = availableIngredients.find((i) => i.id === e.target.value);
+                      if (ing) {
+                        const newItem: CakeBomItem = {
+                          ingredientId: ing.id,
+                          name: ing.name,
+                          unit: ing.unit || 'ml',
+                          quantity: 100,
+                          unitCost: Number(ing.avg_cost) || 120,
+                          totalCost: 100 * (Number(ing.avg_cost) || 120),
+                        };
+                        setEditingCreamBom({
+                          ...editingCreamBom,
+                          size: {
+                            ...editingCreamBom.size,
+                            bomIngredients: [...editingCreamBom.size.bomIngredients, newItem],
+                          },
+                        });
+                        e.target.value = '';
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded-xl bg-zinc-100 text-zinc-700 font-bold text-xs"
+                    defaultValue=""
+                  >
+                    <option value="" disabled>
+                      + Chọn từ Kho Nguyên Liệu...
+                    </option>
+                    {availableIngredients.map((i) => (
+                      <option key={i.id} value={i.id}>
+                        {i.name} ({i.unit})
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-zinc-100">
+              <div>
+                <span className="text-xs text-zinc-500">Tổng Vốn Kem Phủ (BOM):</span>
+                <span className="font-black text-rose-600 text-base ml-2">
+                  {editingCreamBom.size.bomIngredients
+                    .reduce((sum, it) => sum + it.quantity * it.unitCost, 0)
+                    .toLocaleString('vi-VN')}
+                  ₫
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingCreamBom(null)}
+                  className="px-4 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs cursor-pointer"
+                >
+                  Hủy Bỏ
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCreamBomModal}
+                  className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-xs cursor-pointer shadow-md shadow-pink-600/20"
+                >
+                  Lưu Công Thức BOM
+                </button>
+              </div>
             </div>
           </div>
         </div>

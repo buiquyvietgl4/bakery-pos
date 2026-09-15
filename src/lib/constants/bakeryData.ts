@@ -15,6 +15,10 @@ export interface BakeryProduct {
   food_cost_pct?: number;
   is_active: boolean;
   is_preorder_only?: boolean;
+  cake_type_label?: 'standard' | 'pre_order' | 'birthday'; // Nhãn bánh: thường, đặt trước, sinh nhật
+  show_on_menu?: boolean; // Tùy chọn đưa ra menu POS hay không
+  bom_preset_id?: string; // ID mẫu BOM liên kết nếu là bánh sinh nhật
+  menu_display_qty?: number; // Số lượng bánh hiển thị ngoài menu (đồng bộ kho)
   stock_qty?: number; // Số lượng tồn kho hiện có
   min_stock_alert?: number; // Mức cảnh báo sắp hết (mặc định 3-5)
   unit?: string; // cái, hộp, ổ, cốt

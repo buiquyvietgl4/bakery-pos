@@ -122,6 +122,7 @@ export interface BakeryBackupData {
     cake_costing?: any;
     tax_household?: any;
     tax_policy?: any;
+    full_cake_bom_config?: any;
   };
 }
 

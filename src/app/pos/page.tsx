@@ -68,6 +68,7 @@ import {
   CustomCakeCostingConfig,
   DEFAULT_CUSTOM_CAKE_CONFIG,
 } from '@/lib/constants/cakeCostingData';
+import { BirthdayCakeOrderModal } from '@/components/pos/BirthdayCakeOrderModal';
 
 interface CartItem {
   product: CachedProduct;
@@ -207,6 +208,10 @@ export default function POSPage() {
   const [posShippingFee, setPosShippingFee] = useState<number>(0);
   const [posDepositAmount, setPosDepositAmount] = useState<number | null>(null);
   const [cartNotes, setCartNotes] = useState<string>('');
+
+  // ── MODAL ĐẶT BÁNH SINH NHẬT THEO CƠ CHẾ FLOWCHART MỚI ──
+  const [isBirthdayOrderModalOpen, setIsBirthdayOrderModalOpen] = useState(false);
+  const [birthdayOrderProduct, setBirthdayOrderProduct] = useState<any | null>(null);
 
   // ── INVENTORY & STOCK MANAGEMENT STATE ──
   const [isInventoryModalOpen, setIsInventoryModalOpen] = useState(false);
@@ -991,6 +996,9 @@ export default function POSPage() {
   };
 
   const filteredProducts = products.filter((p) => {
+    // THEO FLOWCHART: Chỉ có thể đưa ra menu những loại bánh có trong mục quản lí bánh được bật hiển thị
+    if (p.show_on_menu === false) return false;
+
     const matchCat = selectedCategory === 'Tất cả' || p.category === selectedCategory;
     const q = searchQuery.toLowerCase().trim();
     const matchSearch =
@@ -1002,8 +1010,15 @@ export default function POSPage() {
   });
 
   const addToCart = (product: CachedProduct, forceDirectCart: boolean = false) => {
-    // Nếu bánh chuyên nhận đặt trước và không bấm trực tiếp bán tại quầy: mở ngay Modal Đặt Bánh Kem điền sẵn mẫu bánh!
-    if (product.is_preorder_only && !forceDirectCart) {
+    // 1. FLOWCHART: Với bánh có nhãn bánh sinh nhật sẽ hiện cửa sổ đặt bánh sinh nhật có BOM
+    if (product.cake_type_label === 'birthday' && !forceDirectCart) {
+      setBirthdayOrderProduct(product);
+      setIsBirthdayOrderModalOpen(true);
+      return;
+    }
+
+    // 2. FLOWCHART: Bánh có nhãn đặt trước ấn đặt sẽ nhả thẳng vào bếp để làm
+    if ((product.cake_type_label === 'pre_order' || product.is_preorder_only) && !forceDirectCart) {
       setPreorderForm((prev) => ({
         ...prev,
         cakeName: product.name,
@@ -1126,6 +1141,171 @@ export default function POSPage() {
   const expectedCashInRegister = (Number(shift.openingCash) || 0) + (Number(shift.cashSales) || 0);
   const shiftCashDifference = (Number(closingCashInput) || 0) - expectedCashInRegister;
 
+  // Handler cho đơn Bánh Sinh Nhật theo cơ chế Flowchart mới (BOM & Tồn kho & 36.5% cost)
+  const handleConfirmBirthdayCakeOrder = async (orderPayload: any) => {
+    try {
+      setProcessingOrder(true);
+      const now = new Date();
+      const prefix = orderPayload.orderDeliveryType === 'ship' ? 'BK-SHIP' : 'BK-CAKE';
+      const orderNumber = `${prefix}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+        now.getDate()
+      ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
+      const localId = generateUUID();
+
+      const { product, cakeOrderSpec, customerName, customerPhone, pickupDateTime, orderDeliveryType, deliveryAddress, finalPrice, initialKdsStatus } = orderPayload;
+
+      // Xây dựng ghi chú chi tiết theo định dạng đơn KDS
+      const cakeSummary = cakeOrderSpec ? [
+        cakeOrderSpec.baseName ? `Cốt: ${cakeOrderSpec.baseName} (${cakeOrderSpec.baseSizeName})` : '',
+        cakeOrderSpec.creamName ? `Kem: ${cakeOrderSpec.creamName}` : '',
+        cakeOrderSpec.fillingName ? `Nhân: ${cakeOrderSpec.fillingName}` : '',
+        cakeOrderSpec.packagingName ? `Hộp: ${cakeOrderSpec.packagingName}` : '',
+        cakeOrderSpec.decorNotes ? `Decor: ${cakeOrderSpec.decorNotes}` : '',
+        cakeOrderSpec.cakeMessage ? `Chữ: "${cakeOrderSpec.cakeMessage}"` : '',
+      ].filter(Boolean).join(' | ') : '';
+
+      const notes = `[🎂 BÁNH_SINH_NHẬT] Khách: ${customerName} (${customerPhone || 'Không SĐT'}) | Hẹn: ${pickupDateTime || 'Trong ngày'}${orderDeliveryType === 'ship' ? ` | Giao hàng: ${deliveryAddress}` : ' | Lấy tại tiệm'} | ${cakeSummary}`;
+
+      const totalCost = cakeOrderSpec?.costBreakdown?.totalCost || Math.round(finalPrice * 0.365);
+
+      const unifiedOrder: any = {
+        id: localId,
+        local_id: localId,
+        order_number: orderNumber,
+        orderNumber: orderNumber,
+        order_type: 'birthday_cake',
+        status: initialKdsStatus, // 'ready' nếu còn bánh sẵn (Bước 3), 'pending' nếu cần thợ bánh làm (Bước 1)
+        customer_name: customerName,
+        customerName: customerName,
+        customer_phone: customerPhone,
+        customerPhone: customerPhone,
+        cake_name: product.name,
+        cake_size: cakeOrderSpec?.baseSizeName || 'Tiêu chuẩn',
+        cake_message: cakeOrderSpec?.cakeMessage || '',
+        preorder_pickup_at: pickupDateTime ? new Date(pickupDateTime).toISOString() : now.toISOString(),
+        pickupDateTime: pickupDateTime,
+        delivery_method: orderDeliveryType === 'ship' ? 'shipping' : 'pickup',
+        shipping_address: deliveryAddress,
+        notes: notes,
+        subtotal: finalPrice,
+        discount_amount: 0,
+        total_amount: finalPrice,
+        deposit_amount: finalPrice,
+        remaining_amount: 0,
+        payment_method: 'cash',
+        total_cogs: totalCost,
+        cake_order_spec: cakeOrderSpec,
+        created_at: now.toISOString(),
+        items: [
+          {
+            id: generateUUID(),
+            product_id: product.id,
+            product_name_snapshot: product.name,
+            quantity: 1,
+            unit_price: finalPrice,
+            unit_cost: totalCost,
+            line_total: finalPrice,
+            line_cost: totalCost,
+            cake_order_spec: cakeOrderSpec,
+            notes: cakeSummary,
+          }
+        ],
+        payments: [
+          {
+            method: 'cash',
+            amount: finalPrice,
+          }
+        ]
+      };
+
+      // Lưu Dexie & localStorage
+      try {
+        await db.orders.add(unifiedOrder as any);
+      } catch (dbErr) {
+        console.warn('Lỗi ghi Dexie birthday order:', dbErr);
+      }
+
+      if (typeof window !== 'undefined') {
+        const recentOrders = JSON.parse(localStorage.getItem('bakery_orders') || '[]');
+        recentOrders.unshift(unifiedOrder);
+        localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 100)));
+        localStorage.setItem('bakery_kds_seeded', 'true');
+        setInvoicesList(recentOrders.slice(0, 100));
+
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+        soundManager.playNewOrderChime();
+
+        // Push alert thợ bếp
+        triggerServerPush({
+          type: 'urgent_alert',
+          isUrgent: true,
+          title: `🎂 ĐƠN BÁNH SINH NHẬT MỚI #${unifiedOrder.order_number}`,
+          body: `${unifiedOrder.customer_name} • ${unifiedOrder.cake_name}`,
+          url: '/kitchen',
+          orderNumber: unifiedOrder.order_number,
+        }).catch(() => {});
+
+        setOrderToast({
+          id: String(Date.now()),
+          title: initialKdsStatus === 'ready' ? '🎂 Đơn Bánh Sinh Nhật Có Sẵn (Chờ Ship/Giao)' : '🎂 Bếp Đang Làm Bánh Sinh Nhật!',
+          subtitle: initialKdsStatus === 'ready' ? 'Đã chuyển sang bước 3 (Chờ giao/ship)' : 'Đã chuyển đơn vào bếp thợ làm bánh',
+          orderNumber: unifiedOrder.order_number,
+          customerInfo: `${unifiedOrder.customer_name} (${unifiedOrder.customer_phone})`,
+          pickupTime: pickupDateTime,
+          details: `${unifiedOrder.cake_name}`,
+          type: 'new_order',
+        });
+      }
+
+      // Sync Supabase & Broadcast
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          await syncOrderToSupabase(unifiedOrder, initialKdsStatus);
+        } catch (sErr) {
+          console.warn('Lỗi syncOrderToSupabase birthday order:', sErr);
+        }
+        try {
+          await broadcastNewOrder(unifiedOrder);
+        } catch (bErr) {
+          console.warn('Lỗi broadcastNewOrder birthday order:', bErr);
+        }
+      }
+
+      // Mở modal hóa đơn/phiếu hẹn
+      setCompletedOrder({
+        orderNumber,
+        deliveryMethod: orderDeliveryType === 'ship' ? 'shipping' : 'pickup',
+        shippingAddress: deliveryAddress,
+        shippingFee: 0,
+        items: [
+          {
+            product: {
+              name: `[🎂 BÁNH SINH NHẬT] ${product.name}`,
+              selling_price: finalPrice,
+            },
+            quantity: 1,
+          },
+        ],
+        subtotal: finalPrice,
+        discountAmount: 0,
+        totalAmount: finalPrice,
+        depositAmount: finalPrice,
+        remainingAmount: 0,
+        paymentMethod: 'cash',
+        cakeMessage: cakeOrderSpec?.cakeMessage || '',
+        pickupDateTimeStr: pickupDateTime,
+        customerName: customerName,
+        customerPhone: customerPhone,
+        createdAt: now.toLocaleString('vi-VN'),
+        cashier: user?.name || 'Thu Ngân',
+      });
+    } catch (err) {
+      console.error('Lỗi tạo đơn bánh sinh nhật:', err);
+    } finally {
+      setProcessingOrder(false);
+    }
+  };
+
   // Checkout Handler for regular & pre-order / shipping sales
   const handleCompleteOrder = async () => {
     if (cart.length === 0) return;
@@ -1157,10 +1337,20 @@ export default function POSPage() {
         fullNotes = `[GIAO_HÀNG_TẬN_NƠI] Khách: ${posCustomerName || 'Khách đặt'} ${posCustomerPhone ? '(' + posCustomerPhone + ')' : ''} | Đ/C: ${posShippingAddress || 'Chưa có địa chỉ'} | Hẹn giao: ${posPickupTime} ngày ${posPickupDate}${posCakeMessage ? ' | Chữ: "' + posCakeMessage + '"' : ''} | Phí ship: ${(posShippingFee || 0).toLocaleString('vi-VN')}₫ | Tổng: ${grandTotal.toLocaleString('vi-VN')}₫ | Đã cọc: ${dueNow.toLocaleString('vi-VN')}₫ | CẦN THU KHI GIAO: ${remainingCOD.toLocaleString('vi-VN')}₫${cartNotes ? ' | Dặn: ' + cartNotes : ''}`;
       }
 
-      // Đơn bán bánh có sẵn tại quầy:
-      // - Nếu takeaway (Khách lấy ngay tại quầy) -> 'completed' (đã trả bánh xong)
-      // - Nếu pickup (Khách hẹn giờ lấy) hoặc shipping (Ship tận nơi) -> 'ready' (Bánh ĐÃ CÓ SẴN tại tiệm, nhảy thẳng vào mục Chờ Giao / Sẵn sàng giao, KHÔNG đẩy vào hàng chờ làm từ đầu!)
-      const initialStatus = fulfillmentType === 'takeaway' ? ('completed' as const) : ('ready' as const);
+      // Đơn bán bánh theo Flowchart Excel:
+      // - Nếu takeaway (Khách mua lấy ngay tại quầy):
+      //   + Nếu còn tồn kho: 'completed' (Hoàn thành đơn ngay)
+      //   + Nếu hết tồn kho: 'pending' (Bếp nướng gấp để trả khách)
+      // - Nếu shipping (Ship tận nơi) hoặc pickup (Hẹn giờ lấy):
+      //   + Nếu còn tồn kho: 'ready' (Bước 3 trong bếp: Chờ ship / Sẵn sàng giao)
+      //   + Nếu hết tồn kho: 'pending' (Bước 1 trong bếp: Bếp làm bánh)
+      const allItemsInStock = cart.every((item) => (item.product.stock_qty ?? item.product.stock ?? 0) > 0);
+      let initialStatus: 'completed' | 'ready' | 'pending';
+      if (fulfillmentType === 'takeaway') {
+        initialStatus = allItemsInStock ? 'completed' : 'pending';
+      } else {
+        initialStatus = allItemsInStock ? 'ready' : 'pending';
+      }
 
       // Tính toán giá vốn hàng bán COGS chính xác theo từng sản phẩm (bánh tự làm hoặc hàng nhập bán)
       const itemsWithCost = cart.map((item) => {
@@ -2295,17 +2485,20 @@ export default function POSPage() {
                         </div>
                       )}
 
-                      {/* Tag nhận đặt - Góc trên bên trái */}
-                      {product.is_preorder_only && (
-                        <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-xl bg-rose-500/95 text-white text-[10px] font-black shadow-md shadow-rose-500/25 flex items-center gap-1 backdrop-blur-xs z-10">
-                          <Cake className="w-3 h-3" /> Nhận đặt
+                      {/* Tag nhãn bánh theo Flowchart Excel: Bánh sinh nhật / Bánh đặt trước / Hàng nhập */}
+                      {product.cake_type_label === 'birthday' ? (
+                        <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-xl bg-pink-600 text-white text-[10px] font-black shadow-md shadow-pink-600/30 flex items-center gap-1 backdrop-blur-xs z-10">
+                          <Cake className="w-3 h-3" /> 🎂 Bánh sinh nhật
                         </span>
-                      )}
-                      {product.product_type === 'imported' && (
+                      ) : (product.cake_type_label === 'pre_order' || product.is_preorder_only) ? (
+                        <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-xl bg-amber-500 text-white text-[10px] font-black shadow-md shadow-amber-500/30 flex items-center gap-1 backdrop-blur-xs z-10">
+                          <Clock className="w-3 h-3" /> ⏳ Đặt trước
+                        </span>
+                      ) : product.product_type === 'imported' ? (
                         <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-xl bg-blue-600/95 text-white text-[10px] font-black shadow-md shadow-blue-600/25 flex items-center gap-1 backdrop-blur-xs z-10">
                           <Package className="w-3 h-3" /> Hàng nhập
                         </span>
-                      )}
+                      ) : null}
 
                       {/* Huy hiệu số lượng đã có trong giỏ hàng - Góc trên bên phải */}
                       {itemInCart && (
@@ -6167,6 +6360,14 @@ export default function POSPage() {
       <PrinterSettingsModal
         isOpen={isPrinterSettingsOpen}
         onClose={() => setIsPrinterSettingsOpen(false)}
+      />
+
+      {/* ── MODAL ĐẶT BÁNH SINH NHẬT THEO CƠ CHẾ FLOWCHART MỚI ── */}
+      <BirthdayCakeOrderModal
+        isOpen={isBirthdayOrderModalOpen}
+        onClose={() => setIsBirthdayOrderModalOpen(false)}
+        product={birthdayOrderProduct}
+        onConfirmOrder={handleConfirmBirthdayCakeOrder}
       />
 
     </div>
