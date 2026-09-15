@@ -79,6 +79,10 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   // 1. Đơn hàng trong kỳ
   const periodOrders = useMemo(() => {
     return orders.filter((o) => {
+      // Skip cancelled orders with zero revenue
+      const amt = Number(o.total_amount || o.totalPrice || 0);
+      if (o.status === 'cancelled' && amt <= 0) return false;
+
       const timeStr = o.created_at || o.createdAt || '';
       if (!timeStr) return true;
       const t = new Date(timeStr).getTime();
@@ -90,6 +94,10 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   const prevPeriodOrders = useMemo(() => {
     if (!prevStartDateMs || !prevEndDateMs) return [];
     return orders.filter((o) => {
+      // Skip cancelled orders with zero revenue
+      const amt = Number(o.total_amount || o.totalPrice || 0);
+      if (o.status === 'cancelled' && amt <= 0) return false;
+
       const timeStr = o.created_at || o.createdAt || '';
       if (!timeStr) return false;
       const t = new Date(timeStr).getTime();

@@ -374,6 +374,15 @@ CREATE TABLE IF NOT EXISTS tax_household_config (
     operating_hours TEXT DEFAULT '06:30 - 22:00',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS tax_policy_config (
+    id TEXT PRIMARY KEY,
+    policy_name TEXT,
+    circular_citation TEXT,
+    annual_threshold NUMERIC DEFAULT 1000000000,
+    tax_groups TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 }
 
@@ -641,6 +650,19 @@ INSERT INTO tax_household_config (id, shop_name, tax_code, business_address, own
 `;
   }
 
+  // ----------------------------------------------------------------------------
+  // 17. BẢNG CẤU HÌNH CHÍNH SÁCH THUẾ (TAX_POLICY_CONFIG)
+  // ----------------------------------------------------------------------------
+  const taxPolicy = data?.tax_policy_config || data?.tax_policy || data?.settings?.tax_policy;
+  if (taxPolicy) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 17. BẢNG CẤU HÌNH CHÍNH SÁCH THUẾ (TAX_POLICY_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO tax_policy_config (id, policy_name, circular_citation, annual_threshold, tax_groups, updated_at) VALUES ('primary', ${sqlEscape(taxPolicy.policy_name || 'Thông Tư 88 & 40-BTC')}, ${sqlEscape(taxPolicy.circular_citation || 'Thông tư 88/2021/TT-BTC & 40/2021/TT-BTC')}, ${sqlEscape(taxPolicy.annual_threshold || 1000000000)}, ${sqlEscape(JSON.stringify(taxPolicy.tax_groups || []))}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
   return sql;
 }
 
@@ -831,6 +853,11 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
     const tax = data.tax_household_config || data.tax_household || data.settings?.tax_household;
     if (tax) {
       localSnapshot['bakery_tax_household_config'] = JSON.stringify(tax);
+    }
+
+    const taxPolicy = data.tax_policy_config || data.tax_policy || data.settings?.tax_policy;
+    if (taxPolicy) {
+      localSnapshot['bakery_tax_policy_config'] = JSON.stringify(taxPolicy);
     }
 
     // Áp dụng vào hệ thống

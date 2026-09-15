@@ -62,6 +62,7 @@ interface KDSOrder {
   order_type: 'dine_in' | 'takeaway' | 'preorder';
   status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
   created_at: string;
+  updated_at?: string;
   preorder_pickup_at?: string;
   pickupDateTime?: string;
   delivery_method?: 'pickup' | 'shipping';
@@ -271,6 +272,14 @@ export default function KitchenPage() {
   // Tuyệt đối không mở lại khi hệ thống polling loadOrders định kỳ mỗi 3 giây hoặc đồng bộ realtime
   const handledOrderParamRef = useRef<string | null>(null);
   const dismissedOrderParamsRef = useRef<Set<string>>(new Set());
+
+  // ── KHÓA CHỐNG LÙI TRẠNG THÁI (OPTIMISTIC TRANSITION LOCK) ──
+  // Khi thợ bếp ấn chuyển bước hoặc hoàn thành đơn, ghi nhận ngay vào lock để
+  // ngăn chặn dữ liệu Supabase/polling trả về trạng thái cũ đè ngược làm đơn bị hiện lại!
+  const localStatusLocksRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
+  const recentlyCompletedOrdersRef = useRef<Map<string, number>>(new Map());
+  const dbChangeDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const reconciledOrdersRef = useRef<Set<string>>(new Set());
 
   // ── XỬ LÝ DEEP LINK XEM CHI TIẾT ĐƠN HÀNG TỪ THÔNG BÁO / URL (?order=...) ──
   useEffect(() => {
@@ -851,10 +860,12 @@ export default function KitchenPage() {
             const unsyncedActiveOrders = localOrders.filter((lo) =>
               lo && lo.order_number &&
               (lo.status === 'pending' || lo.status === 'preparing' || lo.status === 'ready') &&
-              !sbMap.has(lo.order_number)
+              !sbMap.has(lo.order_number) &&
+              !reconciledOrdersRef.current.has(lo.order_number)
             );
             if (unsyncedActiveOrders.length > 0) {
               unsyncedActiveOrders.forEach((lo) => {
+                reconciledOrdersRef.current.add(lo.order_number);
                 syncOrderToSupabase(lo, lo.status as any).catch((err) => console.warn('Lỗi auto-reconcile:', err));
               });
             }
@@ -875,11 +886,36 @@ export default function KitchenPage() {
               const existing = mergedMap.get(so.order_number);
               const sbNotes = parsePreorderFromNotes(so.notes);
               const isShip = so.delivery_method === 'shipping' || existing?.delivery_method === 'shipping' || sbNotes.delivery_method === 'shipping';
+
+              // 🛡️ KHÓA CHỐNG LÙI TRẠNG THÁI (OPTIMISTIC LOCK):
+              // Nếu người dùng vừa ấn chuyển bước trên máy này trong 30s qua, giữ nguyên trạng thái mới
+              // không để dữ liệu Supabase đang trễ/chưa kịp cập nhật kéo lùi đơn lại!
+              let resolvedStatus = so.status || existing?.status || 'pending';
+              const lock = localStatusLocksRef.current.get(so.order_number);
+              if (lock && Date.now() - lock.timestamp < 30000) {
+                if (so.status === lock.status) {
+                  localStatusLocksRef.current.delete(so.order_number);
+                } else {
+                  resolvedStatus = lock.status as any;
+                }
+              } else if (existing?.updated_at && so.updated_at) {
+                const localT = new Date(existing.updated_at).getTime();
+                const sbT = new Date(so.updated_at).getTime();
+                if (localT > sbT) {
+                  resolvedStatus = existing.status || resolvedStatus;
+                }
+              }
+
+              const compT = recentlyCompletedOrdersRef.current.get(so.order_number);
+              if (compT && Date.now() - compT < 60000) {
+                resolvedStatus = 'completed';
+              }
+
               const merged: KDSOrder = {
                 id: String(so.id || existing?.id || so.order_number),
                 order_number: String(so.order_number || existing?.order_number || 'BK-XXX'),
                 order_type: so.order_type || existing?.order_type || 'takeaway',
-                status: so.status || existing?.status || 'pending',
+                status: resolvedStatus,
                 created_at: so.created_at || existing?.created_at || new Date().toISOString(),
                 preorder_pickup_at: so.preorder_pickup_at || existing?.preorder_pickup_at || sbNotes.preorder_pickup_at || '',
                 delivery_method: isShip ? ('shipping' as const) : ('pickup' as const),
@@ -946,6 +982,8 @@ export default function KitchenPage() {
       // Bỏ qua đơn mang về thuần túy 100% là bánh/hàng bán sẵn nhập quầy không cần thợ bếp chế biến
       const activeOrders = (localOrders || []).filter((o) => {
         if (!o || !(o.status === 'pending' || o.status === 'preparing' || o.status === 'ready')) return false;
+        const compT = recentlyCompletedOrdersRef.current.get(o.order_number);
+        if (compT && Date.now() - compT < 60000) return false;
         const items = o.items || [];
         if (items.length > 0) {
           const isTakeawayNoBake = !o.preorder_pickup_at && !o.custom_cake && (!o.notes || !o.notes.includes('PREORDER:'));
@@ -964,6 +1002,8 @@ export default function KitchenPage() {
         // Bảo toàn các đơn vừa nhận qua Realtime Broadcast mà chưa kịp đồng bộ xong xuống local/Supabase
         (prev || []).forEach((po) => {
           if (!po || !po.order_number) return;
+          const compT = recentlyCompletedOrdersRef.current.get(po.order_number);
+          if (compT && Date.now() - compT < 60000) return;
           if (!activeMap.has(po.order_number)) {
             if (po.status === 'pending' || po.status === 'preparing' || po.status === 'ready') {
               activeMap.set(po.order_number, po);
@@ -1008,8 +1048,8 @@ export default function KitchenPage() {
     document.addEventListener('visibilitychange', handleWakeOrOnline);
     window.addEventListener('online', handleWakeOrOnline);
 
-    // 2. Polling định kỳ mỗi 3 giây làm chốt an toàn
-    const pollTimer = setInterval(loadOrders, 3000);
+    // 2. Polling định kỳ mỗi 20 giây làm chốt an toàn dự phòng (đã có Realtime WebSocket tức thì ~50ms)
+    const pollTimer = setInterval(loadOrders, 20000);
 
     // 3. Kênh Supabase Realtime Broadcast & Postgres Changes (Đồng bộ đa thiết bị tức thì ~50ms)
     const unsubscribeSync = subscribeCrossDeviceSync({
@@ -1253,7 +1293,11 @@ export default function KitchenPage() {
       },
       onDbChange: () => {
         // Nhận tín hiệu thay đổi CSDL Postgres từ Supabase (máy khác vừa tạo/sửa đơn)
-        loadOrders();
+        // Debounce 1.5s để gom cụm và không kéo lùi trạng thái đơn đang chuyển bước
+        if (dbChangeDebounceRef.current) clearTimeout(dbChangeDebounceRef.current);
+        dbChangeDebounceRef.current = setTimeout(() => {
+          loadOrders();
+        }, 1500);
       },
       onClearDemo: () => {
         if (typeof window !== 'undefined') {
@@ -1307,19 +1351,35 @@ export default function KitchenPage() {
       document.removeEventListener('visibilitychange', handleWakeOrOnline);
       window.removeEventListener('online', handleWakeOrOnline);
       clearInterval(pollTimer);
+      if (dbChangeDebounceRef.current) clearTimeout(dbChangeDebounceRef.current);
       unsubscribeSync();
     };
   }, [loadOrders]);
 
   // Cập nhật trạng thái đơn (Mới nhận -> Đang làm -> Sẵn sàng -> Hoàn thành)
-  const handleUpdateStatus = async (orderId: string, currentStatus: string) => {
-    let nextStatus: 'preparing' | 'ready' | 'completed' = 'preparing';
-    if (currentStatus === 'pending') nextStatus = 'preparing';
-    else if (currentStatus === 'preparing') nextStatus = 'ready';
-    else if (currentStatus === 'ready') nextStatus = 'completed';
+  const handleUpdateStatus = async (
+    orderId: string, 
+    currentStatus: string,
+    explicitTargetStatus?: 'preparing' | 'ready' | 'completed'
+  ) => {
+    let nextStatus: 'preparing' | 'ready' | 'completed' = explicitTargetStatus || 'preparing';
+    if (!explicitTargetStatus) {
+      if (currentStatus === 'pending') nextStatus = 'preparing';
+      else if (currentStatus === 'preparing') nextStatus = 'ready';
+      else if (currentStatus === 'ready') nextStatus = 'completed';
+    }
 
     const targetOrder = orders.find((o) => o.id === orderId || o.order_number === orderId);
     const orderNum = targetOrder?.order_number || orderId;
+
+    // 0. ĐẶT KHÓA CHỐNG LÙI TRẠNG THÁI NGAY LẬP TỨC:
+    // Ngăn chặn hoàn toàn việc polling/Supabase trả về dữ liệu cũ kéo ngược trạng thái
+    if (nextStatus === 'completed') {
+      recentlyCompletedOrdersRef.current.set(orderNum, Date.now());
+      localStatusLocksRef.current.delete(orderNum);
+    } else {
+      localStatusLocksRef.current.set(orderNum, { status: nextStatus, timestamp: Date.now() });
+    }
 
     // 1. Cập nhật ngay trên giao diện React của thiết bị hiện tại
     setOrders((prev) =>
@@ -1657,6 +1717,10 @@ export default function KitchenPage() {
   const handleConfirmPaymentAndComplete = async (order: KDSOrder, paymentMethod: 'cash' | 'bank_transfer') => {
     const orderId = order.id;
     const orderNum = order.order_number;
+
+    // 0. Khóa đơn đã hoàn thành trong 60 giây, ngăn polling làm hiện lại
+    recentlyCompletedOrdersRef.current.set(orderNum, Date.now());
+    localStatusLocksRef.current.delete(orderNum);
 
     // 1. Cập nhật state cục bộ ngay lập tức (xóa khỏi KDS)
     setOrders((prev) => prev.filter((o) => o.id !== orderId && o.order_number !== orderNum));
@@ -2360,7 +2424,7 @@ export default function KitchenPage() {
                             </div>
 
                             <button
-                              onClick={() => handleUpdateStatus(order.id, 'pending')}
+                              onClick={() => handleUpdateStatus(order.id, 'pending', 'preparing')}
                               className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md cursor-pointer active:scale-95 ${
                                 isPreorder
                                   ? 'bg-pink-600 hover:bg-pink-500 text-white shadow-pink-600/30'
@@ -3679,7 +3743,7 @@ export default function KitchenPage() {
         targetStep={confirmDoneState.targetStep}
         onConfirm={() => {
           if (confirmDoneState.order) {
-            handleUpdateStatus(confirmDoneState.order.id, confirmDoneState.order.status);
+            handleUpdateStatus(confirmDoneState.order.id, confirmDoneState.order.status, confirmDoneState.targetStep);
           }
         }}
       />

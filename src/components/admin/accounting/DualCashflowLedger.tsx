@@ -103,7 +103,63 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
   // Tổng tài sản thanh khoản
   const totalLiquidity = cashBalance + bankBalance;
 
-  // 3. Tổng hợp danh sách giao dịch dòng tiền đầy đủ
+  // 3. Bổ sung giao dịch từ cashflow state vào thẻ thống kê
+  const cfCashIncome = useMemo(() => {
+    return cashflow
+      .filter((c) => {
+        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
+        const isIncome = c.type === 'income' || c.type === 'in';
+        const isCash = !c.method || c.method === 'cash' || c.source === 'cash';
+        return isIncome && isCash;
+      })
+      .reduce((s, c) => s + Number(c.amount || 0), 0);
+  }, [cashflow]);
+
+  const cfCashExpense = useMemo(() => {
+    return cashflow
+      .filter((c) => {
+        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
+        const isExpense = c.type === 'expense' || c.type === 'out';
+        const isCash = !c.method || c.method === 'cash' || c.source === 'cash';
+        return isExpense && isCash;
+      })
+      .reduce((s, c) => s + Number(c.amount || 0), 0);
+  }, [cashflow]);
+
+  const cfBankIncome = useMemo(() => {
+    return cashflow
+      .filter((c) => {
+        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
+        const isIncome = c.type === 'income' || c.type === 'in';
+        const isBank = c.method === 'bank' || c.source === 'bank';
+        return isIncome && isBank;
+      })
+      .reduce((s, c) => s + Number(c.amount || 0), 0);
+  }, [cashflow]);
+
+  const cfBankExpense = useMemo(() => {
+    return cashflow
+      .filter((c) => {
+        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
+        const isExpense = c.type === 'expense' || c.type === 'out';
+        const isBank = c.method === 'bank' || c.source === 'bank';
+        return isExpense && isBank;
+      })
+      .reduce((s, c) => s + Number(c.amount || 0), 0);
+  }, [cashflow]);
+
+  // Tổng hợp bao gồm cả cashflow
+  const totalCashIncome = cashSalesIncome + cfCashIncome;
+  const totalCashExpenses = cashExpenses + cfCashExpense;
+  const totalCashBalance = totalCashIncome - totalCashExpenses;
+
+  const totalBankIncome = bankSalesIncome + cfBankIncome;
+  const totalBankExpenses = bankExpenses + cfBankExpense;
+  const totalBankBalance = totalBankIncome - totalBankExpenses;
+
+  const totalLiquidityFull = totalCashBalance + totalBankBalance;
+
+  // 4. Tổng hợp danh sách giao dịch dòng tiền đầy đủ
   const allTransactions = useMemo(() => {
     const list: any[] = [];
 
@@ -228,17 +284,17 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           </div>
 
           <div className="text-2xl font-black text-zinc-900">
-            {cashBalance.toLocaleString('vi-VN')}₫
+            {totalCashBalance.toLocaleString('vi-VN')}₫
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-zinc-100">
             <div className="text-emerald-600">
               <span className="text-[10px] text-zinc-400 block">Thu tiền mặt:</span>
-              <b>+{cashSalesIncome.toLocaleString('vi-VN')}₫</b>
+              <b>+{totalCashIncome.toLocaleString('vi-VN')}₫</b>
             </div>
             <div className="text-rose-600 text-right">
               <span className="text-[10px] text-zinc-400 block">Chi tiền mặt:</span>
-              <b>-{cashExpenses.toLocaleString('vi-VN')}₫</b>
+              <b>-{totalCashExpenses.toLocaleString('vi-VN')}₫</b>
             </div>
           </div>
         </div>
@@ -261,17 +317,17 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           </div>
 
           <div className="text-2xl font-black text-blue-600">
-            {bankBalance.toLocaleString('vi-VN')}₫
+            {totalBankBalance.toLocaleString('vi-VN')}₫
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-zinc-100">
             <div className="text-emerald-600">
               <span className="text-[10px] text-zinc-400 block">Khách chuyển khoản:</span>
-              <b>+{bankSalesIncome.toLocaleString('vi-VN')}₫</b>
+              <b>+{totalBankIncome.toLocaleString('vi-VN')}₫</b>
             </div>
             <div className="text-rose-600 text-right">
               <span className="text-[10px] text-zinc-400 block">Chi chuyển khoản:</span>
-              <b>-{bankExpenses.toLocaleString('vi-VN')}₫</b>
+              <b>-{totalBankExpenses.toLocaleString('vi-VN')}₫</b>
             </div>
           </div>
         </div>
@@ -289,7 +345,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           </div>
 
           <div className="text-2xl sm:text-3xl font-black text-white">
-            {totalLiquidity.toLocaleString('vi-VN')}₫
+            {totalLiquidityFull.toLocaleString('vi-VN')}₫
           </div>
 
           <p className="text-xs text-emerald-100/90 pt-1 border-t border-emerald-500/50">
