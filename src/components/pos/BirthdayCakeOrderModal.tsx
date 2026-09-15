@@ -62,6 +62,7 @@ export function BirthdayCakeOrderModal({
 
   const [customMarkupPct, setCustomMarkupPct] = useState<number>(36.5);
   const [finalPriceInput, setFinalPriceInput] = useState<number>(0);
+  const [orderQuantity, setOrderQuantity] = useState<number>(1);
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -80,6 +81,7 @@ export function BirthdayCakeOrderModal({
     const currentConfig = getFullCakeBomConfig();
     setConfig(currentConfig);
     setCustomMarkupPct(currentConfig.targetFoodCostPct || 36.5);
+    setOrderQuantity(1);
 
     const defaultPreset =
       (product?.bom_preset_id && currentConfig.birthdayBomPresets.find((p) => p.id === product.bom_preset_id)) ||
@@ -158,8 +160,8 @@ export function BirthdayCakeOrderModal({
 
   const currentBase = config.cakeBases.find((b) => b.id === selectedBaseId);
   const currentCream = config.creamCoatings.find((c) => c.id === selectedCreamId);
-  const cakeStock = product?.stock_qty ?? 0;
-  const hasStock = cakeStock > 0;
+  const cakeStock = Number(product?.stock_qty ?? product?.stock ?? 0);
+  const hasStock = cakeStock >= orderQuantity;
 
   const handleConfirm = () => {
     if (finalPriceInput <= 0) {
@@ -196,12 +198,14 @@ export function BirthdayCakeOrderModal({
         cake_type_label: 'birthday',
       },
       cakeOrderSpec: orderSpec,
+      quantity: orderQuantity,
+      unitPrice: finalPriceInput,
+      finalPrice: finalPriceInput * orderQuantity,
       customerName: customerName || 'Khách Đặt Bánh Sinh Nhật',
       customerPhone,
       pickupDateTime: `${pickupDate}T${pickupTime}`,
       orderDeliveryType,
       deliveryAddress: orderDeliveryType === 'ship' ? deliveryAddress : undefined,
-      finalPrice: finalPriceInput,
       initialKdsStatus: initialStatus,
       hasStock: hasStock,
     };
@@ -244,7 +248,7 @@ export function BirthdayCakeOrderModal({
 
         {/* THÔNG BÁO TỒN KHO THEO FLOWCHART */}
         <div
-          className={`p-3 rounded-2xl flex items-center justify-between text-xs font-bold ${
+          className={`p-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-bold ${
             hasStock
               ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
               : 'bg-amber-50 border border-amber-200 text-amber-800'
@@ -253,13 +257,18 @@ export function BirthdayCakeOrderModal({
           <div className="flex items-center gap-2">
             <Package className="w-4 h-4 shrink-0" />
             <span>
-              Tồn kho tiệm: <b>{hasStock ? `Còn ${cakeStock} cái có sẵn` : 'Hết tồn kho (0 cái)'}</b>
+              Tồn kho tiệm: <b>{cakeStock > 0 ? `Còn ${cakeStock} cái có sẵn` : 'Hết tồn kho (0 cái)'}</b>
+              {orderQuantity > 1 && (
+                <span className="ml-1 text-[11px] font-normal">
+                  (Đặt <b>{orderQuantity}</b> cái {cakeStock >= orderQuantity ? '✓ Đủ tồn' : `⚠️ Thiếu ${orderQuantity - cakeStock} cái`})
+                </span>
+              )}
             </span>
           </div>
           <span className="text-[11px] font-black px-2.5 py-1 rounded-xl bg-white/80 shadow-2xs">
             {hasStock
-              ? '⚡ Có tồn: Đơn tự động nhảy sang Bước 3 (Chờ Ship / Sẵn Sàng)'
-              : '👨‍🍳 Hết tồn: Đơn tự động nhả vào Bếp để thợ làm bánh'}
+              ? '⚡ Đủ tồn: Đơn tự động nhảy sang Bước 3 (Chờ Ship / Sẵn Sàng)'
+              : '👨‍🍳 Thiếu/Hết tồn: Đơn tự động nhả vào Bếp để thợ làm bánh'}
           </span>
         </div>
 
@@ -670,15 +679,47 @@ export function BirthdayCakeOrderModal({
 
           {/* CHỐT GIÁ BÁN & HOÀN THÀNH ĐƠN ĐẶT HÀNG */}
           <div className="pt-3 border-t border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-black text-zinc-900">Chốt Giá Bán Cuối Cùng (VND) *:</span>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatCurrencyInput(finalPriceInput)}
-                onChange={(e) => setFinalPriceInput(parseCurrencyInput(e.target.value))}
-                className="w-36 px-3 py-1.5 rounded-xl border-2 border-pink-500 bg-white font-black text-base text-pink-700 focus:outline-none text-center shadow-xs"
-              />
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Chọn số lượng bánh */}
+              <div className="flex items-center gap-1.5 bg-pink-50/80 p-1 rounded-xl border border-pink-200">
+                <span className="text-xs font-bold text-pink-900 pl-1">Số lượng:</span>
+                <div className="flex items-center bg-white rounded-lg border border-pink-300">
+                  <button
+                    type="button"
+                    onClick={() => setOrderQuantity((q) => Math.max(1, q - 1))}
+                    className="w-7 h-7 flex items-center justify-center text-zinc-600 font-bold hover:bg-zinc-100 rounded-l-lg cursor-pointer active:scale-90"
+                  >
+                    -
+                  </button>
+                  <span className="w-8 text-center font-black text-xs text-zinc-900">
+                    {orderQuantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setOrderQuantity((q) => q + 1)}
+                    className="w-7 h-7 flex items-center justify-center text-zinc-600 font-bold hover:bg-zinc-100 rounded-r-lg cursor-pointer active:scale-90"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-black text-zinc-900">Đơn Giá (VND) *:</span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  value={formatCurrencyInput(finalPriceInput)}
+                  onChange={(e) => setFinalPriceInput(parseCurrencyInput(e.target.value))}
+                  className="w-32 px-3 py-1.5 rounded-xl border-2 border-pink-500 bg-white font-black text-base text-pink-700 focus:outline-none text-center shadow-xs"
+                />
+              </div>
+
+              {orderQuantity > 1 && (
+                <div className="text-xs font-bold text-zinc-600">
+                  Tổng: <span className="font-black text-pink-700">{(finalPriceInput * orderQuantity).toLocaleString('vi-VN')}₫</span>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-2">

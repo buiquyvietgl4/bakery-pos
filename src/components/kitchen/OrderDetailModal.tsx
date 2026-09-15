@@ -58,16 +58,25 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   const cakeName = parsedCake.name;
   const cakeSize = parsedCake.size;
 
-  // Trích xuất Cốt, Kem, Nhân, Hộp (Có giá trị tiêu chuẩn dự phòng cho Bánh đặt trước)
+  // Trích xuất Cốt, Kem, Nhân, Hộp (Chỉ áp dụng khi đơn hàng là Bánh Sinh Nhật)
+  const spec = (order as any).cake_order_spec || (mainItem as any)?.cake_order_spec;
   const rawFlavor = order.flavor || fromN.flavor || fromItemN.flavor || (mainItem as any)?.flavor || '';
   const rawCream = order.cream || fromN.cream || fromItemN.cream || (mainItem as any)?.cream || '';
   const rawFilling = order.filling || fromN.filling || fromItemN.filling || (mainItem as any)?.filling || '';
   const rawPackaging = order.packaging || fromN.packaging || fromItemN.packaging || (mainItem as any)?.packaging || '';
 
-  const flavor = rawFlavor || (isPreorder ? 'Cốt Vani truyền thống' : '');
-  const cream = rawCream || (isPreorder ? 'Kem tươi Topping thanh mát' : '');
-  const filling = rawFilling || '';
-  const packaging = rawPackaging || (isPreorder ? 'Hộp giấy tiêu chuẩn + Đế lót' : '');
+  const isBirthdayCake =
+    order.order_type === 'birthday_cake' ||
+    Boolean(spec?.isBirthdayCake) ||
+    (order as any).cake_type_label === 'birthday' ||
+    (mainItem as any)?.cake_type_label === 'birthday' ||
+    (order.notes?.includes('[🎂 BÁNH_SINH_NHẬT]') ?? false) ||
+    (order.notes?.includes('[ĐẶT BÁNH KEM]') && Boolean(rawFlavor || rawCream));
+
+  const flavor = isBirthdayCake ? (rawFlavor || 'Cốt Vani truyền thống') : '';
+  const cream = isBirthdayCake ? (rawCream || 'Kem tươi Topping thanh mát') : '';
+  const filling = isBirthdayCake ? rawFilling : '';
+  const packaging = isBirthdayCake ? (rawPackaging || 'Hộp giấy tiêu chuẩn + Đế lót') : rawPackaging;
 
   // Trích xuất Phụ kiện đặt thêm từ cấu hình đơn
   let initialAddons: string[] = [];
@@ -270,27 +279,35 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                 </div>
               </div>
 
-              {/* Grid thông số: Cốt, Kem, Nhân, Hộp */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
-                <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                  <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🌾 Cốt bánh:</span>
-                  <span className="text-zinc-100 font-extrabold">{flavor || 'Cốt Vani truyền thống'}</span>
+              {/* Grid thông số: Cốt, Kem, Nhân, Hộp (Chỉ hiển thị cho Bánh Sinh Nhật) */}
+              {isBirthdayCake && (flavor || cream || filling || packaging) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {flavor && (
+                    <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
+                      <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🌾 Cốt bánh:</span>
+                      <span className="text-zinc-100 font-extrabold">{flavor}</span>
+                    </div>
+                  )}
+                  {cream && (
+                    <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
+                      <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🍦 Loại kem:</span>
+                      <span className="text-zinc-100 font-extrabold">{cream}</span>
+                    </div>
+                  )}
+                  {filling && (
+                    <div className="p-2.5 rounded-xl bg-pink-950/40 border border-pink-700/60 sm:col-span-2">
+                      <span className="text-[10px] text-pink-300 font-bold block mb-0.5">🍓 Nhân bánh sinh nhật:</span>
+                      <span className="text-pink-100 font-extrabold text-sm">{filling}</span>
+                    </div>
+                  )}
+                  {packaging && (
+                    <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 sm:col-span-2">
+                      <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">📦 Hộp đóng gói:</span>
+                      <span className="text-blue-300 font-extrabold">{packaging}</span>
+                    </div>
+                  )}
                 </div>
-                <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                  <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🍦 Loại kem:</span>
-                  <span className="text-zinc-100 font-extrabold">{cream || 'Kem tươi Topping thanh mát'}</span>
-                </div>
-                {filling && (
-                  <div className="p-2.5 rounded-xl bg-pink-950/40 border border-pink-700/60 sm:col-span-2">
-                    <span className="text-[10px] text-pink-300 font-bold block mb-0.5">🍓 Nhân bánh sinh nhật:</span>
-                    <span className="text-pink-100 font-extrabold text-sm">{filling}</span>
-                  </div>
-                )}
-                <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 sm:col-span-2">
-                  <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">📦 Hộp đóng gói:</span>
-                  <span className="text-blue-300 font-extrabold">{packaging || 'Hộp giấy tiêu chuẩn + Đế lót'}</span>
-                </div>
-              </div>
+              )}
 
               {/* Danh sách sản phẩm / Phụ kiện bán kèm trong đơn */}
               {attachedItems.length > 0 && (

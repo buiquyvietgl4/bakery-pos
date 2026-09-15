@@ -1026,16 +1026,26 @@ export default function POSPage() {
       return;
     }
 
-    // 2. FLOWCHART: Bánh có nhãn đặt trước ấn đặt sẽ nhả thẳng vào bếp để làm
+    // 2. FLOWCHART: Bánh có nhãn đặt trước (bánh mì, croissant,...) ấn đặt sẽ nhả thẳng vào bếp để làm
+    // Thêm trực tiếp vào giỏ hàng với ghi chú Đặt trước, không mở modal bánh kem để tránh bị gán Cốt Vani / Kem tươi.
     if ((product.cake_type_label === 'pre_order' || product.is_preorder_only) && !forceDirectCart) {
-      setPreorderForm((prev) => ({
-        ...prev,
-        cakeName: product.name,
-        totalPrice: product.selling_price ?? product.price ?? 0,
-        depositAmount: Math.round((product.selling_price ?? product.price ?? 0) * 0.4),
-      }));
-      setIsCustomCake(false);
-      setIsPreorderModalOpen(true);
+      if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+        try { navigator.vibrate(35); } catch {}
+      }
+      setCart((prev) => {
+        const existing = prev.find((item) => item.product.id === product.id);
+        if (existing) {
+          return prev.map((item) =>
+            item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          );
+        }
+        return [...prev, { product, quantity: 1, notes: 'Bánh đặt trước (Bếp làm mới)' }];
+      });
+      setCartToast({
+        name: `${product.name} (Đặt trước)`,
+        qty: 1,
+        time: Date.now(),
+      });
       return;
     }
 
@@ -1162,6 +1172,8 @@ export default function POSPage() {
       const localId = generateUUID();
 
       const { product, cakeOrderSpec, customerName, customerPhone, pickupDateTime, orderDeliveryType, deliveryAddress, finalPrice, initialKdsStatus } = orderPayload;
+      const orderQuantity = Number(orderPayload.quantity || 1);
+      const unitPrice = Number(orderPayload.unitPrice || Math.round(finalPrice / orderQuantity));
 
       // Xây dựng ghi chú chi tiết theo định dạng đơn KDS
       const cakeSummary = cakeOrderSpec ? [
@@ -1175,7 +1187,7 @@ export default function POSPage() {
 
       const notes = `[🎂 BÁNH_SINH_NHẬT] Khách: ${customerName} (${customerPhone || 'Không SĐT'}) | Hẹn: ${pickupDateTime || 'Trong ngày'}${orderDeliveryType === 'ship' ? ` | Giao hàng: ${deliveryAddress}` : ' | Lấy tại tiệm'} | ${cakeSummary}`;
 
-      const totalCost = cakeOrderSpec?.costBreakdown?.totalCost || Math.round(finalPrice * 0.365);
+      const totalCost = cakeOrderSpec?.costBreakdown?.totalCost || Math.round(unitPrice * 0.365);
 
       const unifiedOrder: any = {
         id: localId,
@@ -1202,7 +1214,7 @@ export default function POSPage() {
         deposit_amount: finalPrice,
         remaining_amount: 0,
         payment_method: 'cash',
-        total_cogs: totalCost,
+        total_cogs: totalCost * orderQuantity,
         cake_order_spec: cakeOrderSpec,
         created_at: now.toISOString(),
         items: [
@@ -1210,11 +1222,11 @@ export default function POSPage() {
             id: generateUUID(),
             product_id: product.id,
             product_name_snapshot: product.name,
-            quantity: 1,
-            unit_price: finalPrice,
+            quantity: orderQuantity,
+            unit_price: unitPrice,
             unit_cost: totalCost,
             line_total: finalPrice,
-            line_cost: totalCost,
+            line_cost: totalCost * orderQuantity,
             cake_order_spec: cakeOrderSpec,
             notes: cakeSummary,
           }
@@ -1290,9 +1302,9 @@ export default function POSPage() {
           {
             product: {
               name: `[🎂 BÁNH SINH NHẬT] ${product.name}`,
-              selling_price: finalPrice,
+              selling_price: unitPrice,
             },
-            quantity: 1,
+            quantity: orderQuantity,
           },
         ],
         subtotal: finalPrice,
@@ -1348,17 +1360,29 @@ export default function POSPage() {
 
       // Đơn bán bánh theo Flowchart Excel:
       // - Nếu takeaway (Khách mua lấy ngay tại quầy):
-      //   + Nếu còn tồn kho: 'completed' (Hoàn thành đơn ngay)
-      //   + Nếu hết tồn kho: 'pending' (Bếp nướng gấp để trả khách)
+      //   + Nếu đủ tồn kho (tồn kho >= số lượng đặt cho TẤT CẢ các món): 'completed' (Hoàn thành đơn ngay)
+      //   + Nếu thiếu hàng hoặc hết tồn kho: 'pending' (Bếp nướng gấp để trả khách)
       // - Nếu shipping (Ship tận nơi) hoặc pickup (Hẹn giờ lấy):
-      //   + Nếu còn tồn kho: 'ready' (Bước 3 trong bếp: Chờ ship / Sẵn sàng giao)
-      //   + Nếu hết tồn kho: 'pending' (Bước 1 trong bếp: Bếp làm bánh)
-      const allItemsInStock = cart.every((item) => (item.product.stock_qty ?? item.product.stock ?? 0) > 0);
+      //   + Nếu đủ tồn kho (tồn kho >= số lượng đặt cho TẤT CẢ các món): 'ready' (Bước 3 trong bếp: Chờ ship / Sẵn sàng giao)
+      //   + Nếu thiếu hàng hoặc hết tồn kho: 'pending' (Bước 1 trong bếp: Bếp làm bánh)
+      // - Đơn có món đặt trước hoặc bánh sinh nhật / bánh custom luôn luôn vào Bếp (pending)
+      const allItemsInStock = cart.every((item) => {
+        const availStock = Number(item.product.stock_qty ?? item.product.stock ?? 0);
+        return availStock >= item.quantity;
+      });
+      const hasPreorderOrCustomItem = cart.some((item) =>
+        item.product.cake_type_label === 'pre_order' ||
+        item.product.is_preorder_only ||
+        (item as any).cake_order_spec ||
+        item.product.id?.startsWith('custom-cake-')
+      );
       let initialStatus: 'completed' | 'ready' | 'pending';
-      if (fulfillmentType === 'takeaway') {
-        initialStatus = allItemsInStock ? 'completed' : 'pending';
+      if (hasPreorderOrCustomItem || !allItemsInStock) {
+        initialStatus = 'pending';
+      } else if (fulfillmentType === 'takeaway') {
+        initialStatus = 'completed';
       } else {
-        initialStatus = allItemsInStock ? 'ready' : 'pending';
+        initialStatus = 'ready';
       }
 
       // Tính toán giá vốn hàng bán COGS chính xác theo từng sản phẩm (bánh tự làm hoặc hàng nhập bán)
@@ -2064,11 +2088,25 @@ export default function POSPage() {
                       className="fixed inset-0 z-40 bg-black/20 backdrop-blur-2xs"
                       onClick={() => setIsMobileUtilityMenuOpen(false)}
                     />
-                    <div className="absolute right-0 top-11 z-50 w-60 bg-white rounded-2xl border border-stone-200 shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="absolute right-0 top-11 z-50 w-64 bg-white rounded-2xl border border-stone-200 shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-400 border-b border-stone-100 flex items-center justify-between">
                         <span>Tiện Ích & Cài Đặt</span>
                         <span className="text-[9px] text-amber-600 font-bold">POS Quầy</span>
                       </div>
+
+                      {/* Đặt Bánh Sinh Nhật Mới (BOM) */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBirthdayOrderProduct(null);
+                          setIsBirthdayOrderModalOpen(true);
+                          setIsMobileUtilityMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-700 bg-rose-50/80 hover:bg-rose-100 transition cursor-pointer text-left border border-rose-200"
+                      >
+                        <Cake className="w-4 h-4 text-rose-600 animate-bounce" />
+                        <span>🎂 Đặt Bánh Sinh Nhật (BOM)</span>
+                      </button>
 
                       {/* Bật/Tắt Âm Thanh */}
                       <button
@@ -2156,6 +2194,19 @@ export default function POSPage() {
               </div>
             </div>
 
+            {/* Nút Đặt Bánh Sinh Nhật Nổi Bật Dành Cho Điện Thoại */}
+            <button
+              type="button"
+              onClick={() => {
+                setBirthdayOrderProduct(null);
+                setIsBirthdayOrderModalOpen(true);
+              }}
+              className="w-full py-2.5 px-3 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-rose-600 hover:from-rose-600 hover:to-pink-700 text-white text-xs font-black shadow-md shadow-rose-500/20 flex items-center justify-center gap-2 active:scale-98 transition cursor-pointer"
+            >
+              <Cake className="w-4 h-4 animate-bounce duration-1000" />
+              <span>🎂 Đặt Bánh Sinh Nhật Mới (BOM & Tồn Kho)</span>
+            </button>
+
             {/* Tầng 2: Cặp Thẻ Nghiệp Vụ Cân Đối 50/50 (1 Dòng Duy Nhất) */}
             <div className="grid grid-cols-2 gap-2">
               {/* Thẻ Lịch Hẹn Giao Bánh */}
@@ -2239,13 +2290,16 @@ export default function POSPage() {
               )}
             </div>
 
-            {/* NÚT TẠO ĐƠN ĐẶT BÁNH KEM (PREORDER BUTTON) */}
+            {/* NÚT TẠO ĐƠN ĐẶT BÁNH SINH NHẬT THEO CƠ CHẾ FLOWCHART MỚI */}
             <button
-              onClick={() => setIsPreorderModalOpen(true)}
+              onClick={() => {
+                setBirthdayOrderProduct(null);
+                setIsBirthdayOrderModalOpen(true);
+              }}
               className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-rose-600 hover:from-rose-600 hover:to-pink-700 text-white text-xs font-black shadow-md shadow-rose-500/25 hover:shadow-rose-500/35 transition-all duration-200 hover:scale-[1.02] active:scale-95 cursor-pointer"
             >
               <Cake className="w-4 h-4 animate-bounce duration-1000" />
-              <span>🎂 Đặt Bánh Kem</span>
+              <span>🎂 Đặt Bánh Sinh Nhật</span>
             </button>
 
             {/* Nút Xem Lịch Đơn Đặt Trước */}
@@ -2672,7 +2726,7 @@ export default function POSPage() {
               </div>
               <span className="font-extrabold text-zinc-700 text-sm">Giỏ hàng đang trống</span>
               <span className="text-xs text-zinc-400 text-center max-w-[230px] leading-relaxed">
-                Chọn bánh bên thực đơn hoặc bấm <b>"🎂 Đặt Bánh Kem"</b> để bắt đầu tạo đơn
+                Chọn bánh bên thực đơn hoặc bấm <b>"🎂 Đặt Bánh Sinh Nhật"</b> để bắt đầu tạo đơn
               </span>
               <button
                 onClick={() => setMobileTab('menu')}
@@ -2713,6 +2767,11 @@ export default function POSPage() {
                   <div className="text-xs font-black text-amber-700">
                     {((item.product?.selling_price ?? item.product?.price ?? 0) * (item.quantity || 1)).toLocaleString('vi-VN')}₫
                   </div>
+                  {Number(item.product.stock_qty ?? item.product.stock ?? 0) < item.quantity && (
+                    <div className="mt-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded px-1.5 py-0.5 inline-block">
+                      ⚠️ Đặt {item.quantity} / Tồn {Number(item.product.stock_qty ?? item.product.stock ?? 0)} (Thiếu {item.quantity - Number(item.product.stock_qty ?? item.product.stock ?? 0)} - Bếp sẽ làm mới)
+                    </div>
+                  )}
                 </div>
 
                 {/* Stepper Tăng / Giảm */}
