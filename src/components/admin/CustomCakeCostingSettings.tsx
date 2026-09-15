@@ -70,23 +70,79 @@ export function CustomCakeCostingSettings() {
     });
 
     const loadIngredients = async () => {
+      let loadedIngs: any[] = [];
       try {
         const { data: dbIngs } = await supabase.from('ingredients').select('id, name, unit, avg_cost, category');
         if (dbIngs && dbIngs.length > 0) {
           setAvailableIngredients(dbIngs);
-          return;
+          loadedIngs = dbIngs;
         }
       } catch {}
 
-      try {
-        const local = localStorage.getItem('bakery_ingredients');
-        if (local) {
-          const parsed = JSON.parse(local);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setAvailableIngredients(parsed);
+      if (loadedIngs.length === 0) {
+        try {
+          const local = localStorage.getItem('bakery_ingredients');
+          if (local) {
+            const parsed = JSON.parse(local);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              setAvailableIngredients(parsed);
+              loadedIngs = parsed;
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
+
+      if (loadedIngs.length > 0) {
+        setConfig((prev) => {
+          let changed = false;
+          const updatedBases = prev.cakeBases.map((b) => ({
+            ...b,
+            sizes: b.sizes.map((s) => ({
+              ...s,
+              bomIngredients: s.bomIngredients.map((item) => {
+                if (!item.ingredientId) {
+                  const matched = loadedIngs.find(
+                    (i) => i.name.toLowerCase().trim() === item.name.toLowerCase().trim() ||
+                           i.name.toLowerCase().includes(item.name.toLowerCase()) ||
+                           item.name.toLowerCase().includes(i.name.toLowerCase())
+                  );
+                  if (matched) {
+                    changed = true;
+                    return { ...item, ingredientId: matched.id };
+                  }
+                }
+                return item;
+              }),
+            })),
+          }));
+
+          const updatedCreams = prev.creamCoatings.map((c) => ({
+            ...c,
+            sizes: c.sizes.map((s) => ({
+              ...s,
+              bomIngredients: s.bomIngredients.map((item) => {
+                if (!item.ingredientId) {
+                  const matched = loadedIngs.find(
+                    (i) => i.name.toLowerCase().trim() === item.name.toLowerCase().trim() ||
+                           i.name.toLowerCase().includes(item.name.toLowerCase()) ||
+                           item.name.toLowerCase().includes(i.name.toLowerCase())
+                  );
+                  if (matched) {
+                    changed = true;
+                    return { ...item, ingredientId: matched.id };
+                  }
+                }
+                return item;
+              }),
+            })),
+          }));
+
+          if (!changed) return prev;
+          const mapped = { ...prev, cakeBases: updatedBases, creamCoatings: updatedCreams };
+          saveFullCakeBomConfig(mapped);
+          return mapped;
+        });
+      }
     };
     loadIngredients();
   }, []);
@@ -289,6 +345,19 @@ export function CustomCakeCostingSettings() {
       name: 'Nhân mới (VD: Mứt Dâu Tây)',
       costPrice: 15000,
       extraPrice: 20000,
+    };
+    setConfig({ ...config, fillings: [...config.fillings, newFill] });
+  };
+
+  const handleImportFillingFromInventory = (ingredientId: string) => {
+    const found = availableIngredients.find((i) => i.id === ingredientId);
+    if (!found) return;
+    const newFill: CakeFillingModel = {
+      id: 'fill-' + Date.now(),
+      name: found.name,
+      ingredientId: found.id,
+      costPrice: Number(found.avg_cost) || 0,
+      extraPrice: Math.round((Number(found.avg_cost) || 0) * 1.5),
     };
     setConfig({ ...config, fillings: [...config.fillings, newFill] });
   };
@@ -787,13 +856,36 @@ export function CustomCakeCostingSettings() {
                 Nhập trực tiếp giá vốn (cost) của từng loại nhân bánh và phụ thu bán khi khách chọn thêm.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleAddFilling}
-              className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" /> Thêm Nhân Bánh
-            </button>
+            <div className="flex items-center gap-2">
+              {availableIngredients.length > 0 && (
+                <select
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleImportFillingFromInventory(e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none"
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    + Nạp từ Kho Vật Tư...
+                  </option>
+                  {availableIngredients.map((ing) => (
+                    <option key={ing.id} value={ing.id}>
+                      🍓 {ing.name} (Vốn: {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫)
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={handleAddFilling}
+                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Thêm Nhân Bánh
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto border border-zinc-200 rounded-2xl bg-white shadow-xs">
@@ -1419,19 +1511,55 @@ export function CustomCakeCostingSettings() {
                   {editingBaseBom.size.bomIngredients.map((item, idx) => (
                     <tr key={idx} className="hover:bg-pink-50/20">
                       <td className="p-2">
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={(e) => {
-                            const updated = [...editingBaseBom.size.bomIngredients];
-                            updated[idx] = { ...item, name: e.target.value };
-                            setEditingBaseBom({
-                              ...editingBaseBom,
-                              size: { ...editingBaseBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
-                        />
+                        {availableIngredients.length > 0 ? (
+                          <select
+                            value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
+                            onChange={(e) => {
+                              const ing = availableIngredients.find((i) => i.id === e.target.value);
+                              if (ing) {
+                                const updated = [...editingBaseBom.size.bomIngredients];
+                                const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
+                                updated[idx] = {
+                                  ...item,
+                                  ingredientId: ing.id,
+                                  name: ing.name,
+                                  unit: ing.unit || item.unit || 'g',
+                                  unitCost: unitCost,
+                                  totalCost: item.quantity * unitCost,
+                                };
+                                setEditingBaseBom({
+                                  ...editingBaseBom,
+                                  size: { ...editingBaseBom.size, bomIngredients: updated },
+                                });
+                              }
+                            }}
+                            className="w-full font-bold text-xs text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus:bg-white focus:border-pink-500 focus:outline-none cursor-pointer"
+                          >
+                            <option value="" disabled>-- Chọn nguyên liệu kho --</option>
+                            {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
+                              <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
+                            )}
+                            {availableIngredients.map((ing) => (
+                              <option key={ing.id} value={ing.id}>
+                                {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const updated = [...editingBaseBom.size.bomIngredients];
+                              updated[idx] = { ...item, name: e.target.value };
+                              setEditingBaseBom({
+                                ...editingBaseBom,
+                                size: { ...editingBaseBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
+                          />
+                        )}
                       </td>
                       <td className="p-2">
                         <input
@@ -1640,19 +1768,55 @@ export function CustomCakeCostingSettings() {
                   {editingCreamBom.size.bomIngredients.map((item, idx) => (
                     <tr key={idx} className="hover:bg-pink-50/20">
                       <td className="p-2">
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={(e) => {
-                            const updated = [...editingCreamBom.size.bomIngredients];
-                            updated[idx] = { ...item, name: e.target.value };
-                            setEditingCreamBom({
-                              ...editingCreamBom,
-                              size: { ...editingCreamBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
-                        />
+                        {availableIngredients.length > 0 ? (
+                          <select
+                            value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
+                            onChange={(e) => {
+                              const ing = availableIngredients.find((i) => i.id === e.target.value);
+                              if (ing) {
+                                const updated = [...editingCreamBom.size.bomIngredients];
+                                const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
+                                updated[idx] = {
+                                  ...item,
+                                  ingredientId: ing.id,
+                                  name: ing.name,
+                                  unit: ing.unit || item.unit || 'g',
+                                  unitCost: unitCost,
+                                  totalCost: item.quantity * unitCost,
+                                };
+                                setEditingCreamBom({
+                                  ...editingCreamBom,
+                                  size: { ...editingCreamBom.size, bomIngredients: updated },
+                                });
+                              }
+                            }}
+                            className="w-full font-bold text-xs text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus:bg-white focus:border-pink-500 focus:outline-none cursor-pointer"
+                          >
+                            <option value="" disabled>-- Chọn nguyên liệu kho --</option>
+                            {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
+                              <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
+                            )}
+                            {availableIngredients.map((ing) => (
+                              <option key={ing.id} value={ing.id}>
+                                {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const updated = [...editingCreamBom.size.bomIngredients];
+                              updated[idx] = { ...item, name: e.target.value };
+                              setEditingCreamBom({
+                                ...editingCreamBom,
+                                size: { ...editingCreamBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
+                          />
+                        )}
                       </td>
                       <td className="p-2">
                         <input

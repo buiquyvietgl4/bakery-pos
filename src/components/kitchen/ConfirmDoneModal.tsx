@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { CheckCircle2, X, Clock, MessageSquare, User } from 'lucide-react';
+import { CheckCircle2, X, Clock, MessageSquare, User, Package } from 'lucide-react';
 import { formatPickupDateTime } from '@/lib/supabase/realtimeSync';
 
 interface OrderItem {
@@ -147,6 +147,14 @@ export function ConfirmDoneModal({
               )}
             </div>
           )}
+        </div>
+
+        {/* Banner thông báo tự động trừ tồn kho theo định mức BOM */}
+        <div className="p-2.5 rounded-xl bg-pink-950/40 border border-pink-700/60 flex items-center gap-2 text-xs text-pink-200">
+          <Package className="w-4 h-4 text-pink-400 shrink-0" />
+          <span>
+            Hệ thống sẽ <strong>tự động trừ tồn kho nguyên vật liệu</strong> theo đúng công thức định mức BOM của chiếc bánh này.
+          </span>
         </div>
 
         {/* Hướng dẫn giải thích */}

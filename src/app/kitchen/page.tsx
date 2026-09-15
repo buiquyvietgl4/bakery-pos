@@ -44,6 +44,7 @@ import { addSpoilageLog } from '@/lib/utils/spoilageManager';
 import { parseRecipeItem, formatScaledQty, normalizeRecipe, fetchRecipesFromDb } from '@/lib/utils/recipeCalculator';
 import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 import { cleanCakeNameAndSize, getAddonIcon } from '@/lib/utils/customCakeCosting';
+import { deductOrderIngredients } from '@/lib/utils/inventoryDeductionManager';
 
 interface OrderItem {
   id: string;
@@ -1453,6 +1454,28 @@ export default function KitchenPage() {
     // 4. Đồng bộ nền lên Supabase Database (PostgreSQL) để lưu vĩnh viễn
     if (targetOrder) {
       syncOrderToSupabase(targetOrder, nextStatus);
+    }
+
+    // 4b. TỰ ĐỘNG TRỪ TỒN KHO NGUYÊN VẬT LIỆU THEO ĐỊNH MỨC BOM KHI BÁNH LÀM XONG
+    if (nextStatus === 'ready' || nextStatus === 'completed') {
+      try {
+        const orderToDeduct = targetOrder || { id: orderId, order_number: orderNum };
+        const deductResult = await deductOrderIngredients(orderToDeduct);
+        if (deductResult.success && !deductResult.skipped && deductResult.deductedItems.length > 0) {
+          setKdsToast({
+            id: String(Date.now()),
+            title: '📦 Đã Trừ Tồn Kho Nguyên Liệu!',
+            subtitle: `Tự động trừ ${deductResult.deductedItems.length} loại vật tư theo định mức BOM đơn #${orderNum}`,
+            orderNumber: orderNum,
+            details: deductResult.deductedItems
+              .slice(0, 4)
+              .map((d) => `${d.name}: -${d.deductedQty}${d.unit}`)
+              .join(' • ') + (deductResult.deductedItems.length > 4 ? ` (+${deductResult.deductedItems.length - 4} loại khác)` : ''),
+          });
+        }
+      } catch (deductErr) {
+        console.warn('Lỗi khi tự động trừ kho nguyên liệu:', deductErr);
+      }
     }
 
     // Tự động chuyển tab trên điện thoại nếu đơn vừa chuyển sang bước tiếp theo
