@@ -774,6 +774,22 @@ export async function broadcastTransferApprovalRequest(payload: TransferApproval
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('transfer_approval_requested', { detail: payload }));
     }
+
+    // Bắn Web Push Notification tới máy chủ để đánh thức màn hình khóa điện thoại của Admin
+    try {
+      fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: '⚡ YÊU CẦU DUYỆT CHUYỂN KHOẢN (2 BƯỚC)',
+          body: `Đơn #${payload.order_number}: ${(Number(payload.amount) || 0).toLocaleString('vi-VN')}₫ từ ${payload.requested_by || 'Thu ngân'}. Bấm để mở duyệt ngay!`,
+          url: '/admin?tab=transfer_verification',
+          type: 'transfer_approval',
+          isUrgent: true,
+          orderNumber: payload.order_number,
+        }),
+      }).catch(() => {});
+    } catch {}
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastTransferApprovalRequest:', err);
   }
@@ -798,6 +814,22 @@ export async function broadcastTransferApprovalResolved(payload: TransferApprova
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('transfer_approval_resolved', { detail: payload }));
     }
+
+    // Bắn Web Push Notification thông báo kết quả duyệt về máy thu ngân
+    try {
+      fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: payload.action === 'approved' ? '✅ ĐÃ DUYỆT TIỀN VỀ' : '❌ TỪ CHỐI DUYỆT TIỀN',
+          body: `Đơn #${payload.order_number}: Quản trị viên đã ${payload.action === 'approved' ? 'xác nhận tiền đã về' : 'từ chối giao dịch'}.`,
+          url: '/pos',
+          type: 'transfer_resolved',
+          isUrgent: false,
+          orderNumber: payload.order_number,
+        }),
+      }).catch(() => {});
+    } catch {}
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastTransferApprovalResolved:', err);
   }

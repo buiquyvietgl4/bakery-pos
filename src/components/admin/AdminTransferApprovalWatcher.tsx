@@ -9,6 +9,10 @@ import {
   TransferApprovalPayload,
 } from '@/lib/supabase/realtimeSync';
 import {
+  subscribeCurrentDeviceToPush,
+  isWebPushSupported,
+} from '@/lib/utils/webPushManager';
+import {
   ShieldCheck,
   CheckCircle2,
   XCircle,
@@ -43,7 +47,39 @@ export default function AdminTransferApprovalWatcher() {
   const [pendingList, setPendingList] = useState<TransferApprovalPayload[]>([]);
   const [activeRequest, setActiveRequest] = useState<TransferApprovalPayload | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [showPushPrompt, setShowPushPrompt] = useState(false);
+  const [subscribingPush, setSubscribingPush] = useState(false);
   const notifiedOrderNumsRef = useRef<Set<string>>(new Set());
+
+  // Tự động kích hoạt Web Push nếu quyền đã được cấp trước đó
+  useEffect(() => {
+    if (!isAdmin) return;
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      if (Notification.permission === 'granted') {
+        subscribeCurrentDeviceToPush('Tài khoản Admin').catch(() => {});
+      } else if (Notification.permission === 'default' && isWebPushSupported()) {
+        setShowPushPrompt(true);
+      }
+    }
+  }, [isAdmin]);
+
+  const handleEnablePush = async () => {
+    setSubscribingPush(true);
+    try {
+      const res = await subscribeCurrentDeviceToPush('Tài khoản Admin');
+      if (res.success) {
+        setShowPushPrompt(false);
+        try {
+          soundManager.playPaymentSuccessChime();
+        } catch {}
+        alert('🔔 ĐÃ BẬT THÔNG BÁO KHÓA MÀN HÌNH THÀNH CÔNG!\n\nKhi nhân viên thu ngân gửi duyệt chuyển khoản, điện thoại sẽ rung và đổ chuông ngay cả khi đang khóa màn hình.');
+      } else {
+        alert(`⚠️ ${res.message}`);
+      }
+    } finally {
+      setSubscribingPush(false);
+    }
+  };
 
   // Đọc danh sách yêu cầu chờ duyệt từ Local Storage
   const loadPendingFromStorage = useCallback(() => {
@@ -338,6 +374,41 @@ export default function AdminTransferApprovalWatcher() {
               {pendingList.length}
             </span>
           </button>
+        </div>
+      )}
+
+      {/* ── 3. BANNER NHẮC BẬT THÔNG BÁO KHÓA MÀN HÌNH CHO ADMIN ── */}
+      {showPushPrompt && (
+        <div className="fixed top-3 right-3 z-[9995] max-w-sm w-[calc(100vw-24px)] animate-in slide-in-from-top duration-300">
+          <div className="bg-amber-600 text-white p-3.5 rounded-2xl shadow-2xl flex items-center justify-between gap-3 border border-amber-500">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <Bell className="w-5 h-5 text-white animate-bounce" />
+              </div>
+              <div className="text-left min-w-0">
+                <div className="text-xs font-black truncate">Bật Chuông Khi Khóa Màn Hình</div>
+                <div className="text-[10px] text-amber-100 line-clamp-1">Nhận yêu cầu duyệt tiền cả khi tắt máy</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                disabled={subscribingPush}
+                onClick={handleEnablePush}
+                className="px-3 py-1.5 bg-white hover:bg-amber-50 active:bg-amber-100 text-amber-900 font-black text-xs rounded-xl shadow-xs cursor-pointer transition whitespace-nowrap"
+              >
+                {subscribingPush ? 'Đang bật...' : 'Bật Ngay'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowPushPrompt(false)}
+                className="p-1 text-white/75 hover:text-white rounded-lg cursor-pointer"
+                title="Để sau"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </>

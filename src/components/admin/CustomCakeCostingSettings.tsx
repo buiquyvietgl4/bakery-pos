@@ -1468,227 +1468,94 @@ export function CustomCakeCostingSettings() {
         </div>
       )}
 
-      {/* MODAL CÀI BOM CHO 1 SIZE CỐT BÁNH */}
+      {/* MODAL CÀI BOM CHO 1 SIZE CỐT BÁNH - DẠNG KÉO DÀI LIỀN MẠCH MOBILE UX */}
       {editingBaseBom && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-zinc-200 p-5 space-y-4 max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-zinc-200 p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto my-auto animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center">
-                  <Cake className="w-4 h-4" />
+                <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center shrink-0">
+                  <Cake className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-black text-sm text-zinc-900">
+                  <h4 className="font-black text-sm sm:text-base text-zinc-900">
                     Cài Đặt BOM: {editingBaseBom.baseName} — {editingBaseBom.size.sizeName}
                   </h4>
                   <p className="text-[11px] text-zinc-500">
-                    Nhập công thức nguyên liệu chuẩn cho kích thước cốt bánh này.
+                    Khai báo công thức nguyên liệu chuẩn & thông số nướng lò cho kích thước cốt bánh này
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingBaseBom(null)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="overflow-y-auto flex-1 space-y-3 pr-1">
-              {/* THÔNG SỐ NƯỚNG & GHI CHÚ KỸ THUẬT */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl">
-                <div>
-                  <label className="block text-[11px] font-bold text-amber-900 mb-1">
-                    🔥 Nhiệt Độ Nướng (°C):
-                  </label>
-                  <input
-                    type="text"
-                    value={editingBaseBom.size.bakingTemperature ?? ''}
-                    onChange={(e) => {
-                      setEditingBaseBom({
-                        ...editingBaseBom,
-                        size: { ...editingBaseBom.size, bakingTemperature: e.target.value },
-                      });
-                    }}
-                    placeholder="VD: 155 - 160°C"
-                    className="w-full text-xs font-bold px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-amber-900 mb-1">
-                    ⏱️ Thời Gian Nướng (phút):
-                  </label>
-                  <input
-                    type="text"
-                    value={editingBaseBom.size.bakingTimeMinutes ?? ''}
-                    onChange={(e) => {
-                      setEditingBaseBom({
-                        ...editingBaseBom,
-                        size: { ...editingBaseBom.size, bakingTimeMinutes: e.target.value },
-                      });
-                    }}
-                    placeholder="VD: 45 - 50 phút"
-                    className="w-full text-xs font-bold px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-amber-900 mb-1">
-                    💡 Ghi Chú Kỹ Thuật Thợ:
-                  </label>
-                  <input
-                    type="text"
-                    value={editingBaseBom.size.notes ?? ''}
-                    onChange={(e) => {
-                      setEditingBaseBom({
-                        ...editingBaseBom,
-                        size: { ...editingBaseBom.size, notes: e.target.value },
-                      });
-                    }}
-                    placeholder="VD: Cắm tăm khô trước khi lấy ra"
-                    className="w-full text-xs px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
-                  />
-                </div>
+            {/* THÔNG SỐ NƯỚNG & GHI CHÚ KỸ THUẬT */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-2xl">
+              <div>
+                <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                  🔥 Nhiệt Độ Nướng (°C):
+                </label>
+                <input
+                  type="text"
+                  value={editingBaseBom.size.bakingTemperature ?? ''}
+                  onChange={(e) => {
+                    setEditingBaseBom({
+                      ...editingBaseBom,
+                      size: { ...editingBaseBom.size, bakingTemperature: e.target.value },
+                    });
+                  }}
+                  placeholder="VD: 155 - 160°C"
+                  className="w-full text-xs font-bold px-3 py-2 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
+                />
               </div>
-
-              <div className="overflow-x-auto border border-zinc-200 rounded-2xl shadow-xs">
-                <table className="w-full min-w-[620px] text-xs text-left">
-                  <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
-                    <tr>
-                      <th className="p-2.5 min-w-[240px]">Nguyên Liệu</th>
-                      <th className="p-2.5 w-24">Định Mức</th>
-                      <th className="p-2.5 w-20">Đơn Vị</th>
-                      <th className="p-2.5 w-28">Đơn Giá Vốn</th>
-                      <th className="p-2.5 w-28 text-right">Thành Tiền</th>
-                      <th className="p-2.5 w-10 text-center">Xóa</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {editingBaseBom.size.bomIngredients.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-pink-50/20">
-                        <td className="p-2">
-                          {availableIngredients.length > 0 ? (
-                            <select
-                              value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
-                              onChange={(e) => {
-                                const ing = availableIngredients.find((i) => i.id === e.target.value);
-                                if (ing) {
-                                  const updated = [...editingBaseBom.size.bomIngredients];
-                                  const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
-                                  updated[idx] = {
-                                    ...item,
-                                    ingredientId: ing.id,
-                                    name: ing.name,
-                                    unit: ing.unit || item.unit || 'g',
-                                    unitCost: unitCost,
-                                    totalCost: item.quantity * unitCost,
-                                  };
-                                  setEditingBaseBom({
-                                    ...editingBaseBom,
-                                    size: { ...editingBaseBom.size, bomIngredients: updated },
-                                  });
-                                }
-                              }}
-                              className="w-full font-bold text-xs text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus:bg-white focus:border-pink-500 focus:outline-none cursor-pointer"
-                            >
-                              <option value="" disabled>-- Chọn nguyên liệu kho --</option>
-                              {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
-                                <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
-                              )}
-                              {availableIngredients.map((ing) => (
-                                <option key={ing.id} value={ing.id}>
-                                  {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              value={item.name}
-                              onChange={(e) => {
-                                const updated = [...editingBaseBom.size.bomIngredients];
-                                updated[idx] = { ...item, name: e.target.value };
-                                setEditingBaseBom({
-                                  ...editingBaseBom,
-                                  size: { ...editingBaseBom.size, bomIngredients: updated },
-                                });
-                              }}
-                              className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
-                            />
-                          )}
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            value={item.quantity}
-                            onChange={(e) => {
-                              const qty = parseFloat(e.target.value) || 0;
-                              const updated = [...editingBaseBom.size.bomIngredients];
-                              updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
-                              setEditingBaseBom({
-                                ...editingBaseBom,
-                                size: { ...editingBaseBom.size, bomIngredients: updated },
-                              });
-                            }}
-                            className="w-full font-black text-center bg-zinc-50 border border-zinc-200 rounded-lg py-1"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="text"
-                            value={item.unit}
-                            onChange={(e) => {
-                              const updated = [...editingBaseBom.size.bomIngredients];
-                              updated[idx] = { ...item, unit: e.target.value };
-                              setEditingBaseBom({
-                                ...editingBaseBom,
-                                size: { ...editingBaseBom.size, bomIngredients: updated },
-                              });
-                            }}
-                            className="w-full text-center text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg py-1"
-                          />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            value={item.unitCost}
-                            onChange={(e) => {
-                              const cost = parseFloat(e.target.value) || 0;
-                              const updated = [...editingBaseBom.size.bomIngredients];
-                              updated[idx] = { ...item, unitCost: cost, totalCost: item.quantity * cost };
-                              setEditingBaseBom({
-                                ...editingBaseBom,
-                                size: { ...editingBaseBom.size, bomIngredients: updated },
-                              });
-                            }}
-                            className="w-full font-bold text-right bg-zinc-50 border border-zinc-200 rounded-lg py-1 px-1"
-                          />
-                        </td>
-                        <td className="p-2 font-black text-rose-600 text-right">
-                          {(item.quantity * item.unitCost).toLocaleString('vi-VN')}₫
-                        </td>
-                        <td className="p-2 text-center">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const updated = editingBaseBom.size.bomIngredients.filter((_, i) => i !== idx);
-                              setEditingBaseBom({
-                                ...editingBaseBom,
-                                size: { ...editingBaseBom.size, bomIngredients: updated },
-                              });
-                            }}
-                            className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div>
+                <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                  ⏱️ Thời Gian Nướng (phút):
+                </label>
+                <input
+                  type="text"
+                  value={editingBaseBom.size.bakingTimeMinutes ?? ''}
+                  onChange={(e) => {
+                    setEditingBaseBom({
+                      ...editingBaseBom,
+                      size: { ...editingBaseBom.size, bakingTimeMinutes: e.target.value },
+                    });
+                  }}
+                  placeholder="VD: 45 - 50 phút"
+                  className="w-full text-xs font-bold px-3 py-2 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
+                />
               </div>
+              <div>
+                <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                  💡 Ghi Chú Kỹ Thuật Thợ:
+                </label>
+                <input
+                  type="text"
+                  value={editingBaseBom.size.notes ?? ''}
+                  onChange={(e) => {
+                    setEditingBaseBom({
+                      ...editingBaseBom,
+                      size: { ...editingBaseBom.size, notes: e.target.value },
+                    });
+                  }}
+                  placeholder="VD: Cắm tăm khô trước khi lấy ra"
+                  className="w-full text-xs px-3 py-2 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
+                />
+              </div>
+            </div>
 
-              <div className="flex items-center justify-between pt-2">
+            {/* DANH SÁCH THÀNH PHẦN NGUYÊN LIỆU BOM */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-zinc-800 text-xs">
+                  Định mức nguyên liệu cấu thành ({editingBaseBom.size.bomIngredients.length} thành phần):
+                </label>
                 <button
                   type="button"
                   onClick={() => {
@@ -1707,12 +1574,145 @@ export function CustomCakeCostingSettings() {
                       },
                     });
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                  className="text-xs font-bold text-pink-600 hover:text-pink-700 flex items-center gap-1 cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Thêm Dòng Nguyên Liệu
+                  <Plus className="w-3.5 h-3.5" /> Thêm dòng mới
                 </button>
+              </div>
 
-                {availableIngredients.length > 0 && (
+              <div className="space-y-2.5">
+                {editingBaseBom.size.bomIngredients.map((item, idx) => {
+                  const lineCost = item.quantity * item.unitCost;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-400/60 transition"
+                    >
+                      {/* Hàng 1: Dropdown chọn nguyên liệu full width hiển thị trọn vẹn tên */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-pink-100 text-pink-800 font-black text-[10px] flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        {availableIngredients.length > 0 ? (
+                          <select
+                            value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
+                            onChange={(e) => {
+                              const ing = availableIngredients.find((i) => i.id === e.target.value);
+                              if (ing) {
+                                const updated = [...editingBaseBom.size.bomIngredients];
+                                const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
+                                updated[idx] = {
+                                  ...item,
+                                  ingredientId: ing.id,
+                                  name: ing.name,
+                                  unit: ing.unit || item.unit || 'g',
+                                  unitCost: unitCost,
+                                  totalCost: item.quantity * unitCost,
+                                };
+                                setEditingBaseBom({
+                                  ...editingBaseBom,
+                                  size: { ...editingBaseBom.size, bomIngredients: updated },
+                                });
+                              }
+                            }}
+                            className="w-full p-2 bg-white border border-zinc-200 rounded-xl font-bold text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-pink-500 cursor-pointer"
+                          >
+                            <option value="" disabled>-- Chọn nguyên liệu kho --</option>
+                            {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
+                              <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
+                            )}
+                            {availableIngredients.map((ing) => (
+                              <option key={ing.id} value={ing.id}>
+                                {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const updated = [...editingBaseBom.size.bomIngredients];
+                              updated[idx] = { ...item, name: e.target.value };
+                              setEditingBaseBom({
+                                ...editingBaseBom,
+                                size: { ...editingBaseBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-full p-2 bg-white border border-zinc-200 rounded-xl font-bold text-xs text-zinc-900 focus:border-pink-500 focus:outline-none"
+                            placeholder="Tên nguyên liệu..."
+                          />
+                        )}
+                      </div>
+
+                      {/* Hàng 2: Định lượng, đơn vị, đơn giá, thành tiền và nút xóa */}
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-200/60 text-xs">
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <span className="text-[11px] font-medium text-zinc-500 shrink-0">Định lượng:</span>
+                          <input
+                            type="number"
+                            min={0.1}
+                            step="any"
+                            value={item.quantity}
+                            onChange={(e) => {
+                              const qty = parseFloat(e.target.value) || 0;
+                              const updated = [...editingBaseBom.size.bomIngredients];
+                              updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
+                              setEditingBaseBom({
+                                ...editingBaseBom,
+                                size: { ...editingBaseBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-20 p-1.5 bg-white border border-zinc-200 rounded-lg font-black text-center text-xs focus:ring-1 focus:ring-pink-500"
+                          />
+                          <input
+                            type="text"
+                            value={item.unit}
+                            onChange={(e) => {
+                              const updated = [...editingBaseBom.size.bomIngredients];
+                              updated[idx] = { ...item, unit: e.target.value };
+                              setEditingBaseBom({
+                                ...editingBaseBom,
+                                size: { ...editingBaseBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-14 p-1.5 bg-white border border-zinc-200 rounded-lg font-bold text-center text-xs text-zinc-600 focus:ring-1 focus:ring-pink-500"
+                            placeholder="Đơn vị"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          <div className="text-right">
+                            <span className="text-[10px] text-zinc-400 block leading-tight">Thành tiền</span>
+                            <span className="font-black text-rose-600 text-xs">
+                              {lineCost.toLocaleString('vi-VN')}₫
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = editingBaseBom.size.bomIngredients.filter((_, i) => i !== idx);
+                              setEditingBaseBom({
+                                ...editingBaseBom,
+                                size: { ...editingBaseBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer transition"
+                            title="Xóa nguyên liệu này"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Nút thêm từ kho nhanh */}
+              {availableIngredients.length > 0 && (
+                <div className="pt-1">
                   <select
                     onChange={(e) => {
                       const ing = availableIngredients.find((i) => i.id === e.target.value);
@@ -1735,150 +1735,185 @@ export function CustomCakeCostingSettings() {
                         e.target.value = '';
                       }
                     }}
-                    className="px-2.5 py-1 rounded-xl bg-zinc-100 text-zinc-700 font-bold text-xs"
+                    className="w-full p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200/80 text-zinc-700 font-bold text-xs cursor-pointer border border-zinc-200"
                     defaultValue=""
                   >
                     <option value="" disabled>
-                      + Chọn từ Kho Nguyên Liệu...
+                      + Bấm để chọn thêm nguyên liệu từ Kho Vật Tư...
                     </option>
                     {availableIngredients.map((i) => (
                       <option key={i.id} value={i.id}>
-                        {i.name} ({i.unit})
+                        {i.name} ({i.unit}) • {Number(i.avg_cost || 0).toLocaleString('vi-VN')}₫
                       </option>
                     ))}
                   </select>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-zinc-100">
-              <div>
-                <span className="text-xs text-zinc-500">Tổng Vốn Cốt Bánh (BOM):</span>
-                <span className="font-black text-rose-600 text-base ml-2">
+            {/* TỔNG KẾT VỐN & NÚT BẤM (CUỐI TRANG CUỘN, KHÔNG BỊ CỐ ĐỊNH CHE CHẮN) */}
+            <div className="p-3.5 bg-pink-50/80 rounded-2xl border border-pink-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-pink-900">Tổng Vốn Cốt Bánh (BOM):</span>
+                <span className="font-black text-rose-600 text-lg">
                   {editingBaseBom.size.bomIngredients
                     .reduce((sum, it) => sum + it.quantity * it.unitCost, 0)
                     .toLocaleString('vi-VN')}
                   ₫
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingBaseBom(null)}
-                  className="px-4 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs cursor-pointer"
-                >
-                  Hủy Bỏ
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveBaseBomModal}
-                  className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-xs cursor-pointer shadow-md shadow-pink-600/20"
-                >
-                  Lưu Công Thức BOM
-                </button>
-              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setEditingBaseBom(null)}
+                className="flex-1 py-3 rounded-xl border border-zinc-200 font-bold text-zinc-600 hover:bg-zinc-50 text-xs cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveBaseBomModal}
+                className="flex-2 py-3 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-xs cursor-pointer shadow-md shadow-pink-600/20"
+              >
+                Lưu Công Thức BOM Cốt Bánh
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL CÀI BOM CHO 1 SIZE KEM PHỦ */}
+      {/* MODAL CÀI BOM CHO 1 SIZE KEM PHỦ - DẠNG KÉO DÀI LIỀN MẠCH MOBILE UX */}
       {editingCreamBom && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-zinc-200 p-5 space-y-4 max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-150">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-zinc-200 p-4 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto my-auto animate-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center">
-                  <Layers className="w-4 h-4" />
+                <div className="w-9 h-9 rounded-xl bg-pink-100 text-pink-700 flex items-center justify-center shrink-0">
+                  <Layers className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-black text-sm text-zinc-900">
+                  <h4 className="font-black text-sm sm:text-base text-zinc-900">
                     Cài Đặt BOM Kem: {editingCreamBom.creamName} — {editingCreamBom.size.sizeName}
                   </h4>
                   <p className="text-[11px] text-zinc-500">
-                    Nhập công thức nguyên liệu kem phủ chuẩn cho kích thước bánh này.
+                    Khai báo công thức nguyên liệu kem phủ chuẩn cho kích thước bánh này
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingCreamBom(null)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-zinc-700 cursor-pointer"
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-              <div className="overflow-x-auto border border-zinc-200 rounded-2xl shadow-xs">
-                <table className="w-full min-w-[620px] text-xs text-left">
-                  <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
-                    <tr>
-                      <th className="p-2.5 min-w-[240px]">Nguyên Liệu</th>
-                      <th className="p-2.5 w-24">Định Mức</th>
-                      <th className="p-2.5 w-20">Đơn Vị</th>
-                      <th className="p-2.5 w-28">Đơn Giá Vốn</th>
-                      <th className="p-2.5 w-28 text-right">Thành Tiền</th>
-                      <th className="p-2.5 w-10 text-center">Xóa</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-zinc-100">
-                    {editingCreamBom.size.bomIngredients.map((item, idx) => (
-                      <tr key={idx} className="hover:bg-pink-50/20">
-                        <td className="p-2">
-                          {availableIngredients.length > 0 ? (
-                            <select
-                              value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
-                              onChange={(e) => {
-                                const ing = availableIngredients.find((i) => i.id === e.target.value);
-                                if (ing) {
-                                  const updated = [...editingCreamBom.size.bomIngredients];
-                                  const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
-                                  updated[idx] = {
-                                    ...item,
-                                    ingredientId: ing.id,
-                                    name: ing.name,
-                                    unit: ing.unit || item.unit || 'g',
-                                    unitCost: unitCost,
-                                    totalCost: item.quantity * unitCost,
-                                  };
-                                  setEditingCreamBom({
-                                    ...editingCreamBom,
-                                    size: { ...editingCreamBom.size, bomIngredients: updated },
-                                  });
-                                }
-                              }}
-                              className="w-full font-bold text-xs text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus:bg-white focus:border-pink-500 focus:outline-none cursor-pointer"
-                            >
-                              <option value="" disabled>-- Chọn nguyên liệu kho --</option>
-                              {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
-                                <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
-                              )}
-                              {availableIngredients.map((ing) => (
-                                <option key={ing.id} value={ing.id}>
-                                  {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type="text"
-                              value={item.name}
-                              onChange={(e) => {
+            {/* DANH SÁCH THÀNH PHẦN NGUYÊN LIỆU KEM BOM */}
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="font-bold text-zinc-800 text-xs">
+                  Định mức nguyên liệu cấu thành ({editingCreamBom.size.bomIngredients.length} thành phần):
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newItem: CakeBomItem = {
+                      name: 'Nguyên liệu kem mới',
+                      unit: 'g',
+                      quantity: 50,
+                      unitCost: 50,
+                      totalCost: 2500,
+                    };
+                    setEditingCreamBom({
+                      ...editingCreamBom,
+                      size: {
+                        ...editingCreamBom.size,
+                        bomIngredients: [...editingCreamBom.size.bomIngredients, newItem],
+                      },
+                    });
+                  }}
+                  className="text-xs font-bold text-pink-600 hover:text-pink-700 flex items-center gap-1 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Thêm dòng mới
+                </button>
+              </div>
+
+              <div className="space-y-2.5">
+                {editingCreamBom.size.bomIngredients.map((item, idx) => {
+                  const lineCost = item.quantity * item.unitCost;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-2 hover:border-pink-400/60 transition"
+                    >
+                      {/* Hàng 1: Dropdown chọn nguyên liệu full width hiển thị trọn vẹn tên */}
+                      <div className="flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-pink-100 text-pink-800 font-black text-[10px] flex items-center justify-center shrink-0">
+                          {idx + 1}
+                        </span>
+                        {availableIngredients.length > 0 ? (
+                          <select
+                            value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
+                            onChange={(e) => {
+                              const ing = availableIngredients.find((i) => i.id === e.target.value);
+                              if (ing) {
                                 const updated = [...editingCreamBom.size.bomIngredients];
-                                updated[idx] = { ...item, name: e.target.value };
+                                const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
+                                updated[idx] = {
+                                  ...item,
+                                  ingredientId: ing.id,
+                                  name: ing.name,
+                                  unit: ing.unit || item.unit || 'g',
+                                  unitCost: unitCost,
+                                  totalCost: item.quantity * unitCost,
+                                };
                                 setEditingCreamBom({
                                   ...editingCreamBom,
                                   size: { ...editingCreamBom.size, bomIngredients: updated },
                                 });
-                              }}
-                              className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
-                            />
-                          )}
-                        </td>
-                        <td className="p-2">
+                              }
+                            }}
+                            className="w-full p-2 bg-white border border-zinc-200 rounded-xl font-bold text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-pink-500 cursor-pointer"
+                          >
+                            <option value="" disabled>-- Chọn nguyên liệu kho --</option>
+                            {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
+                              <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
+                            )}
+                            {availableIngredients.map((ing) => (
+                              <option key={ing.id} value={ing.id}>
+                                {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const updated = [...editingCreamBom.size.bomIngredients];
+                              updated[idx] = { ...item, name: e.target.value };
+                              setEditingCreamBom({
+                                ...editingCreamBom,
+                                size: { ...editingCreamBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-full p-2 bg-white border border-zinc-200 rounded-xl font-bold text-xs text-zinc-900 focus:border-pink-500 focus:outline-none"
+                            placeholder="Tên nguyên liệu kem..."
+                          />
+                        )}
+                      </div>
+
+                      {/* Hàng 2: Định lượng, đơn vị, đơn giá, thành tiền và nút xóa */}
+                      <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-200/60 text-xs">
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <span className="text-[11px] font-medium text-zinc-500 shrink-0">Định lượng:</span>
                           <input
                             type="number"
+                            min={0.1}
+                            step="any"
                             value={item.quantity}
                             onChange={(e) => {
                               const qty = parseFloat(e.target.value) || 0;
@@ -1889,10 +1924,8 @@ export function CustomCakeCostingSettings() {
                                 size: { ...editingCreamBom.size, bomIngredients: updated },
                               });
                             }}
-                            className="w-full font-black text-center bg-zinc-50 border border-zinc-200 rounded-lg py-1"
+                            className="w-20 p-1.5 bg-white border border-zinc-200 rounded-lg font-black text-center text-xs focus:ring-1 focus:ring-pink-500"
                           />
-                        </td>
-                        <td className="p-2">
                           <input
                             type="text"
                             value={item.unit}
@@ -1904,29 +1937,19 @@ export function CustomCakeCostingSettings() {
                                 size: { ...editingCreamBom.size, bomIngredients: updated },
                               });
                             }}
-                            className="w-full text-center text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg py-1"
+                            className="w-14 p-1.5 bg-white border border-zinc-200 rounded-lg font-bold text-center text-xs text-zinc-600 focus:ring-1 focus:ring-pink-500"
+                            placeholder="Đơn vị"
                           />
-                        </td>
-                        <td className="p-2">
-                          <input
-                            type="number"
-                            value={item.unitCost}
-                            onChange={(e) => {
-                              const cost = parseFloat(e.target.value) || 0;
-                              const updated = [...editingCreamBom.size.bomIngredients];
-                              updated[idx] = { ...item, unitCost: cost, totalCost: item.quantity * cost };
-                              setEditingCreamBom({
-                                ...editingCreamBom,
-                                size: { ...editingCreamBom.size, bomIngredients: updated },
-                              });
-                            }}
-                            className="w-full font-bold text-right bg-zinc-50 border border-zinc-200 rounded-lg py-1 px-1"
-                          />
-                        </td>
-                        <td className="p-2 font-black text-rose-600 text-right">
-                          {(item.quantity * item.unitCost).toLocaleString('vi-VN')}₫
-                        </td>
-                        <td className="p-2 text-center">
+                        </div>
+
+                        <div className="flex items-center gap-2.5 shrink-0">
+                          <div className="text-right">
+                            <span className="text-[10px] text-zinc-400 block leading-tight">Thành tiền</span>
+                            <span className="font-black text-rose-600 text-xs">
+                              {lineCost.toLocaleString('vi-VN')}₫
+                            </span>
+                          </div>
+
                           <button
                             type="button"
                             onClick={() => {
@@ -1936,42 +1959,21 @@ export function CustomCakeCostingSettings() {
                                 size: { ...editingCreamBom.size, bomIngredients: updated },
                               });
                             }}
-                            className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
+                            className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer transition"
+                            title="Xóa nguyên liệu này"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            <Trash2 className="w-4 h-4" />
                           </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
 
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newItem: CakeBomItem = {
-                      name: 'Nguyên liệu kem mới',
-                      unit: 'ml',
-                      quantity: 50,
-                      unitCost: 120,
-                      totalCost: 6000,
-                    };
-                    setEditingCreamBom({
-                      ...editingCreamBom,
-                      size: {
-                        ...editingCreamBom.size,
-                        bomIngredients: [...editingCreamBom.size.bomIngredients, newItem],
-                      },
-                    });
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-pink-50 hover:bg-pink-100 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
-                >
-                  <Plus className="w-3.5 h-3.5" /> Thêm Dòng Nguyên Liệu
-                </button>
-
-                {availableIngredients.length > 0 && (
+              {/* Nút thêm từ kho nhanh */}
+              {availableIngredients.length > 0 && (
+                <div className="pt-1">
                   <select
                     onChange={(e) => {
                       const ing = availableIngredients.find((i) => i.id === e.target.value);
@@ -1979,10 +1981,10 @@ export function CustomCakeCostingSettings() {
                         const newItem: CakeBomItem = {
                           ingredientId: ing.id,
                           name: ing.name,
-                          unit: ing.unit || 'ml',
+                          unit: ing.unit || 'g',
                           quantity: 100,
-                          unitCost: Number(ing.avg_cost) || 120,
-                          totalCost: 100 * (Number(ing.avg_cost) || 120),
+                          unitCost: Number(ing.avg_cost) || 50,
+                          totalCost: 100 * (Number(ing.avg_cost) || 50),
                         };
                         setEditingCreamBom({
                           ...editingCreamBom,
@@ -1994,48 +1996,50 @@ export function CustomCakeCostingSettings() {
                         e.target.value = '';
                       }
                     }}
-                    className="px-2.5 py-1 rounded-xl bg-zinc-100 text-zinc-700 font-bold text-xs"
+                    className="w-full p-2 rounded-xl bg-zinc-100 hover:bg-zinc-200/80 text-zinc-700 font-bold text-xs cursor-pointer border border-zinc-200"
                     defaultValue=""
                   >
                     <option value="" disabled>
-                      + Chọn từ Kho Nguyên Liệu...
+                      + Bấm để chọn thêm nguyên liệu từ Kho Vật Tư...
                     </option>
                     {availableIngredients.map((i) => (
                       <option key={i.id} value={i.id}>
-                        {i.name} ({i.unit})
+                        {i.name} ({i.unit}) • {Number(i.avg_cost || 0).toLocaleString('vi-VN')}₫
                       </option>
                     ))}
                   </select>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-between pt-3 border-t border-zinc-100">
-              <div>
-                <span className="text-xs text-zinc-500">Tổng Vốn Kem Phủ (BOM):</span>
-                <span className="font-black text-rose-600 text-base ml-2">
+            {/* TỔNG KẾT VỐN & NÚT BẤM (CUỐI TRANG CUỘN, KHÔNG BỊ CỐ ĐỊNH CHE CHẮN) */}
+            <div className="p-3.5 bg-pink-50/80 rounded-2xl border border-pink-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-pink-900">Tổng Vốn Kem Phủ (BOM):</span>
+                <span className="font-black text-rose-600 text-lg">
                   {editingCreamBom.size.bomIngredients
                     .reduce((sum, it) => sum + it.quantity * it.unitCost, 0)
                     .toLocaleString('vi-VN')}
                   ₫
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setEditingCreamBom(null)}
-                  className="px-4 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs cursor-pointer"
-                >
-                  Hủy Bỏ
-                </button>
-                <button
-                  type="button"
-                  onClick={handleSaveCreamBomModal}
-                  className="px-4 py-2 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-xs cursor-pointer shadow-md shadow-pink-600/20"
-                >
-                  Lưu Công Thức BOM
-                </button>
-              </div>
+            </div>
+
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setEditingCreamBom(null)}
+                className="flex-1 py-3 rounded-xl border border-zinc-200 font-bold text-zinc-600 hover:bg-zinc-50 text-xs cursor-pointer"
+              >
+                Hủy Bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCreamBomModal}
+                className="flex-2 py-3 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-black text-xs cursor-pointer shadow-md shadow-pink-600/20"
+              >
+                Lưu Công Thức BOM Kem Phủ
+              </button>
             </div>
           </div>
         </div>

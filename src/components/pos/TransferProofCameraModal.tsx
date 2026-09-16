@@ -34,30 +34,54 @@ export function TransferProofCameraModal({
         mediaStreamRef.current = null;
       }
 
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        setCameraError('Trình duyệt không hỗ trợ truy cập Camera trực tiếp. Vui lòng bấm "Chọn Ảnh Từ Máy / Chụp File".');
+      if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setCameraError('Trình duyệt không hỗ trợ truy cập Camera WebRTC trực tiếp. Vui lòng bấm nút mở Máy Ảnh bên dưới.');
         setCameraActive(false);
         return;
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: mode },
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      });
+      let stream: MediaStream | null = null;
+      // Thử cấp 1: Camera sau với độ phân giải lý tưởng
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: mode },
+            width: { ideal: 1280 },
+            height: { ideal: 720 },
+          },
+          audio: false,
+        });
+      } catch (e1) {
+        // Thử cấp 2: Chỉ yêu cầu facingMode cơ bản
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: mode },
+            audio: false,
+          });
+        } catch (e2) {
+          // Thử cấp 3: Mọi video camera có sẵn
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: false,
+          });
+        }
+      }
+
+      if (!stream) {
+        throw new Error('Không lấy được luồng video');
+      }
 
       mediaStreamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
-        await videoRef.current.play();
+        try {
+          await videoRef.current.play();
+        } catch {}
         setCameraActive(true);
       }
     } catch (err: any) {
       console.warn('Không thể mở camera trực tiếp:', err);
-      setCameraError('Không thể truy cập Camera (chưa cấp quyền hoặc không có camera). Vui lòng dùng nút "Chụp / Tải Ảnh Lên" bên dưới.');
+      setCameraError('Chưa cấp quyền Camera hoặc Camera đang bận. Vui lòng bấm vào khung bên dưới để mở Máy Ảnh chụp trực tiếp!');
       setCameraActive(false);
     }
   }, []);
@@ -216,11 +240,31 @@ export function TransferProofCameraModal({
               className="w-full h-full object-cover"
             />
           ) : (
-            <div className="p-4 text-center text-white space-y-2">
-              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto" />
-              <p className="text-xs text-zinc-300">
-                {cameraError || 'Đang chuẩn bị Camera...'}
-              </p>
+            <div 
+              onClick={() => fileInputRef.current?.click()}
+              className="p-6 text-center text-white space-y-3 cursor-pointer hover:bg-zinc-900 transition flex flex-col items-center justify-center h-full"
+            >
+              <div className="w-12 h-12 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+                <Camera className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-amber-300">
+                  {cameraError || 'Đang chuẩn bị Camera...'}
+                </p>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  👉 <b>Chạm vào đây</b> để mở Camera điện thoại chụp bill ngay
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  startCamera(facingMode);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Thử lại WebRTC
+              </button>
             </div>
           )}
 
@@ -273,11 +317,13 @@ export function TransferProofCameraModal({
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 className={`${
-                  cameraActive ? 'px-4' : 'flex-1'
-                } py-3.5 rounded-2xl border border-zinc-300 hover:bg-zinc-50 text-zinc-700 font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer transition`}
+                  cameraActive
+                    ? 'px-4 border border-zinc-300 hover:bg-zinc-50 text-zinc-700'
+                    : 'flex-1 bg-amber-600 hover:bg-amber-700 text-white shadow-md shadow-amber-600/30 border border-transparent'
+                } py-3.5 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition`}
               >
-                <Upload className="w-4 h-4 text-zinc-500" />
-                <span>{cameraActive ? 'Mở Máy Ảnh Gốc' : 'Bật Máy Ảnh / Chọn Ảnh'}</span>
+                <Camera className="w-4 h-4" />
+                <span>{cameraActive ? 'Mở Camera Điện Thoại' : '📸 Mở Camera Điện Thoại Chụp Bill'}</span>
               </button>
             </div>
           ) : (

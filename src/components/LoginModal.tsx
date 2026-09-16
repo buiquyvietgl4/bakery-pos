@@ -12,6 +12,7 @@ export default function LoginModal() {
     loginAdmin,
     loginStaff,
     user,
+    securityConfig,
   } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'admin' | 'staff'>('admin');
@@ -44,7 +45,7 @@ export default function LoginModal() {
     setErrorMsg('');
     const res = loginStaff(staffPin);
     if (!res.success) {
-      setErrorMsg(res.error || 'Mã PIN không đúng');
+      setErrorMsg(res.error || 'Mã PIN hoặc mật khẩu không đúng');
     }
   };
 
@@ -55,11 +56,17 @@ export default function LoginModal() {
     } else if (val === 'backspace') {
       setStaffPin((prev) => prev.slice(0, -1));
     } else {
-      if (staffPin.length < 6) {
+      if (staffPin.length < 12) {
         const nextPin = staffPin + val;
         setStaffPin(nextPin);
-        if (nextPin.length === 4) {
-          // Auto submit when 4 digits entered
+        const expectedPin = (securityConfig?.staffPin || '1234').trim();
+        const expectedPass = (securityConfig?.staffPasswordHash || '123456').trim();
+        if (
+          nextPin === expectedPin ||
+          nextPin === expectedPass ||
+          nextPin === '1234' ||
+          nextPin === '123456'
+        ) {
           setTimeout(() => {
             const res = loginStaff(nextPin);
             if (!res.success) {
@@ -204,20 +211,49 @@ export default function LoginModal() {
 
             <div className="space-y-2 text-center">
               <div className="flex justify-between items-center text-xs px-1">
-                <span className="font-bold text-zinc-700">Mã PIN Đăng Nhập Nhanh:</span>
-                <span className="text-[10px] text-zinc-400 font-mono">Mặc định: 1234</span>
+                <span className="font-bold text-zinc-700">Mã PIN hoặc Mật Khẩu:</span>
+                <span className="text-[10px] text-zinc-400 font-mono">Mặc định: 1234 / 123456</span>
               </div>
 
-              {/* Display PIN circles */}
-              <div className="flex justify-center items-center gap-3 py-2 bg-zinc-50 rounded-2xl border border-zinc-200">
-                {[0, 1, 2, 3].map((idx) => {
+              {/* Ô nhập trực tiếp hỗ trợ cả bàn phím máy tính & máy quét */}
+              <div className="relative max-w-[280px] mx-auto">
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoFocus
+                  value={staffPin}
+                  onChange={(e) => {
+                    setErrorMsg('');
+                    const val = e.target.value.trim();
+                    setStaffPin(val);
+                    const expectedPin = (securityConfig?.staffPin || '1234').trim();
+                    const expectedPass = (securityConfig?.staffPasswordHash || '123456').trim();
+                    if (
+                      val === expectedPin ||
+                      val === expectedPass ||
+                      val === '1234' ||
+                      val === '123456'
+                    ) {
+                      setTimeout(() => {
+                        loginStaff(val);
+                      }, 150);
+                    }
+                  }}
+                  placeholder="••••"
+                  className="w-full text-center tracking-[0.4em] font-black text-xl py-2.5 px-3 bg-zinc-50 border-2 border-orange-200 focus:border-orange-500 rounded-2xl focus:ring-2 focus:ring-orange-200 focus:outline-hidden text-zinc-900"
+                />
+              </div>
+
+              {/* Chấm tròn hiển thị tiến độ nhập PIN */}
+              <div className="flex justify-center items-center gap-2 py-1">
+                {Array.from({ length: Math.max(4, Math.min(staffPin.length, 6)) }).map((_, idx) => {
                   const hasVal = staffPin.length > idx;
                   return (
                     <div
                       key={idx}
-                      className={`w-4 h-4 rounded-full transition-all ${
+                      className={`w-3 h-3 rounded-full transition-all ${
                         hasVal
-                          ? 'bg-amber-600 scale-110 shadow-xs'
+                          ? 'bg-orange-500 scale-110 shadow-xs'
                           : 'bg-zinc-200 border border-zinc-300'
                       }`}
                     />

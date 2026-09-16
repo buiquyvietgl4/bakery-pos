@@ -934,6 +934,14 @@ export default function POSPage() {
     const handleSync = () => reloadOrdersData();
     const handleStorage = (e: StorageEvent) => {
       if (e.key === 'bakery_orders' || e.key === 'bakery_preorders') reloadOrdersData();
+      if (e.key === 'bakery_transfer_verification_config') {
+        try {
+          if (e.newValue) setTransferVerifyConfig(JSON.parse(e.newValue));
+          else setTransferVerifyConfig(getTransferVerificationConfig());
+        } catch {
+          setTransferVerifyConfig(getTransferVerificationConfig());
+        }
+      }
     };
 
     window.addEventListener('bakery_orders_updated', handleSync);
@@ -1604,7 +1612,10 @@ export default function POSPage() {
     // ── XỬ LÝ CƠ CHẾ XÁC THỰC CHUYỂN KHOẢN 2 BƯỚC ──
     const effectiveProofImage = overrideProofImage ?? capturedTransferProofImage;
     const isTwoStepMode = transferVerifyConfig.mode === 'two_step';
-    const isSkipAdmin = Boolean(transferVerifyConfig.twoStep?.skipForAdmin && isAdmin);
+    const skipAdminSetting = transferVerifyConfig.twoStep?.skipForAdmin !== undefined
+      ? transferVerifyConfig.twoStep.skipForAdmin
+      : (transferVerifyConfig.two_step?.skipForAdmin ?? true);
+    const isSkipAdmin = Boolean(skipAdminSetting && isAdmin);
 
     if (
       effectivePaymentMethod === 'transfer' &&
@@ -6166,7 +6177,12 @@ export default function POSPage() {
                   ) : (
                     <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
                       <span className="flex items-center gap-1.5">
-                        <ShieldCheck className="w-4 h-4 text-amber-600" /> Chế độ: Xác thực 2 bước (Admin duyệt)
+                        <ShieldCheck className="w-4 h-4 text-amber-600" />
+                        {((transferVerifyConfig.twoStep?.skipForAdmin !== undefined
+                          ? transferVerifyConfig.twoStep.skipForAdmin
+                          : (transferVerifyConfig.two_step?.skipForAdmin ?? true)) && isAdmin)
+                          ? 'Xác thực 2 bước: Admin trực tiếp bán (Miễn duyệt)'
+                          : 'Xác thực 2 bước: Cần Admin duyệt tiền về'}
                       </span>
                       <button
                         type="button"
@@ -6409,7 +6425,15 @@ export default function POSPage() {
                 >
                   {processingOrder
                     ? 'Đang xử lý...'
-                    : paymentMethod === 'transfer' && transferVerifyConfig.mode === 'two_step' && !(transferVerifyConfig.twoStep?.skipForAdmin && isAdmin) && !capturedTransferProofImage && !adminApprovedTransfer
+                    : paymentMethod === 'transfer' &&
+                      transferVerifyConfig.mode === 'two_step' &&
+                      !(
+                        (transferVerifyConfig.twoStep?.skipForAdmin !== undefined
+                          ? transferVerifyConfig.twoStep.skipForAdmin
+                          : (transferVerifyConfig.two_step?.skipForAdmin ?? true)) && isAdmin
+                      ) &&
+                      !capturedTransferProofImage &&
+                      !adminApprovedTransfer
                     ? `Gửi Duyệt 2 Bước (${(grandTotal || 0).toLocaleString('vi-VN')}₫)`
                     : fulfillmentType === 'shipping'
                     ? `Xác Nhận Đặt Bánh (Giá cuối: ${(grandTotal || 0).toLocaleString('vi-VN')}₫)`

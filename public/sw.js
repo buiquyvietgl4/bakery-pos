@@ -30,6 +30,14 @@ self.addEventListener('push', (event) => {
     defaultTitle = '🎂 ĐƠN HÀNG MỚI';
     defaultUrl = data.orderNumber ? `/pos?order=${data.orderNumber}` : '/pos';
     vibratePattern = [200, 100, 200, 100, 200];
+  } else if (type === 'transfer_approval') {
+    defaultTitle = '⚡ DUYỆT CHUYỂN KHOẢN (2 BƯỚC)';
+    defaultUrl = data.url || '/admin?tab=transfer_verification';
+    vibratePattern = [500, 200, 500, 200, 500, 200, 800];
+  } else if (type === 'transfer_resolved') {
+    defaultTitle = data.title || '✅ KẾT QUẢ DUYỆT CHUYỂN KHOẢN';
+    defaultUrl = '/pos';
+    vibratePattern = [200, 100, 200];
   } else if (type === 'urgent_alert') {
     defaultTitle = '🚨 BẾP: CẦN GIAO GẤP!';
     defaultUrl = '/kitchen';

@@ -5902,7 +5902,12 @@ export default function AdminDashboard() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {/* Chế độ 1: Không cần xác thực */}
               <div
-                onClick={() => setTransferVerifyConfig({ ...transferVerifyConfig, mode: 'none' })}
+                onClick={() => {
+                  const updated: TransferVerificationConfig = { ...transferVerifyConfig, mode: 'none' };
+                  setTransferVerifyConfig(updated);
+                  saveTransferVerificationConfigLocally(updated);
+                  saveTransferVerificationConfigToDb(updated, securityConfig.adminName || 'Admin').catch(console.error);
+                }}
                 className={`relative p-5 rounded-3xl border-2 transition cursor-pointer flex flex-col justify-between space-y-4 ${
                   transferVerifyConfig.mode === 'none'
                     ? 'border-emerald-500 bg-emerald-50/30 shadow-md ring-2 ring-emerald-500/10'
@@ -5957,7 +5962,12 @@ export default function AdminDashboard() {
 
               {/* Chế độ 2: Xác thực 2 bước qua Admin */}
               <div
-                onClick={() => setTransferVerifyConfig({ ...transferVerifyConfig, mode: 'two_step' })}
+                onClick={() => {
+                  const updated: TransferVerificationConfig = { ...transferVerifyConfig, mode: 'two_step' };
+                  setTransferVerifyConfig(updated);
+                  saveTransferVerificationConfigLocally(updated);
+                  saveTransferVerificationConfigToDb(updated, securityConfig.adminName || 'Admin').catch(console.error);
+                }}
                 className={`relative p-5 rounded-3xl border-2 transition cursor-pointer flex flex-col justify-between space-y-4 ${
                   transferVerifyConfig.mode === 'two_step'
                     ? 'border-amber-500 bg-amber-50/30 shadow-md ring-2 ring-amber-500/10'
@@ -6012,7 +6022,12 @@ export default function AdminDashboard() {
 
               {/* Chế độ 3: Theo dõi thông báo ngân hàng */}
               <div
-                onClick={() => setTransferVerifyConfig({ ...transferVerifyConfig, mode: 'bank_webhook' })}
+                onClick={() => {
+                  const updated: TransferVerificationConfig = { ...transferVerifyConfig, mode: 'bank_webhook' };
+                  setTransferVerifyConfig(updated);
+                  saveTransferVerificationConfigLocally(updated);
+                  saveTransferVerificationConfigToDb(updated, securityConfig.adminName || 'Admin').catch(console.error);
+                }}
                 className={`relative p-5 rounded-3xl border-2 transition cursor-pointer flex flex-col justify-between space-y-4 ${
                   transferVerifyConfig.mode === 'bank_webhook'
                     ? 'border-blue-500 bg-blue-50/30 shadow-md ring-2 ring-blue-500/10'
@@ -6087,18 +6102,22 @@ export default function AdminDashboard() {
                     <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-amber-200/80 cursor-pointer hover:border-amber-400 transition">
                       <input
                         type="checkbox"
-                        checked={transferVerifyConfig.two_step?.skipForAdmin ?? true}
+                        checked={transferVerifyConfig.two_step?.skipForAdmin ?? transferVerifyConfig.twoStep?.skipForAdmin ?? true}
                         onChange={(e) => {
+                          const isSkip = e.target.checked;
                           const updatedSettings = {
-                            skipForAdmin: e.target.checked,
-                            alertSound: transferVerifyConfig.two_step?.alertSound ?? true,
-                            autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? true,
+                            skipForAdmin: isSkip,
+                            alertSound: transferVerifyConfig.two_step?.alertSound ?? transferVerifyConfig.twoStep?.alertSound ?? true,
+                            autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? transferVerifyConfig.twoStep?.autoCompleteOnApprove ?? true,
                           };
-                          setTransferVerifyConfig({
+                          const updatedConfig = {
                             ...transferVerifyConfig,
                             two_step: updatedSettings,
                             twoStep: updatedSettings,
-                          });
+                          };
+                          setTransferVerifyConfig(updatedConfig);
+                          saveTransferVerificationConfigLocally(updatedConfig);
+                          saveTransferVerificationConfigToDb(updatedConfig, securityConfig.adminName || 'Admin').catch(console.error);
                         }}
                         className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
                       />
@@ -6111,18 +6130,22 @@ export default function AdminDashboard() {
                     <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-amber-200/80 cursor-pointer hover:border-amber-400 transition">
                       <input
                         type="checkbox"
-                        checked={transferVerifyConfig.two_step?.alertSound ?? true}
+                        checked={transferVerifyConfig.two_step?.alertSound ?? transferVerifyConfig.twoStep?.alertSound ?? true}
                         onChange={(e) => {
+                          const isAlert = e.target.checked;
                           const updatedSettings = {
-                            skipForAdmin: transferVerifyConfig.two_step?.skipForAdmin ?? true,
-                            alertSound: e.target.checked,
-                            autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? true,
+                            skipForAdmin: transferVerifyConfig.two_step?.skipForAdmin ?? transferVerifyConfig.twoStep?.skipForAdmin ?? true,
+                            alertSound: isAlert,
+                            autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? transferVerifyConfig.twoStep?.autoCompleteOnApprove ?? true,
                           };
-                          setTransferVerifyConfig({
+                          const updatedConfig = {
                             ...transferVerifyConfig,
                             two_step: updatedSettings,
                             twoStep: updatedSettings,
-                          });
+                          };
+                          setTransferVerifyConfig(updatedConfig);
+                          saveTransferVerificationConfigLocally(updatedConfig);
+                          saveTransferVerificationConfigToDb(updatedConfig, securityConfig.adminName || 'Admin').catch(console.error);
                         }}
                         className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
                       />
