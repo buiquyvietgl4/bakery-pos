@@ -17,8 +17,9 @@ import {
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
   ShoppingBag, Phone, User, Camera, X, AlertTriangle, Volume2, VolumeX, Bell,
   Package, Search, Plus, Minus, ChevronDown, Timer, Play, Calculator, Scale, BookOpen, CheckCheck, Send, History,
-  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft, Utensils
+  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft, Utensils, Lock, Shield, KeyRound
 } from 'lucide-react';
+import { useAuth } from '@/lib/auth/AuthContext';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 import { getDeliveryUrgency, getUrgentPreorders, sortPreordersByUrgency } from '@/lib/utils/deliveryAlerts';
@@ -119,6 +120,7 @@ export interface ActiveOvenBatch {
 }
 
 export default function KitchenPage() {
+  const { isAdmin, loginAdmin, user } = useAuth();
   const [orders, setOrders] = useState<KDSOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>('');
@@ -186,6 +188,17 @@ export default function KitchenPage() {
 
   // ── MODAL XEM CHI TIẾT ĐƠN ĐẶT BÁNH ──
   const [orderDetailModalData, setOrderDetailModalData] = useState<KDSOrder | null>(null);
+
+  // ── MODAL XÁC THỰC QUYỀN CHỦ TIỆM (ADMIN) MỞ KHÓA GIAO BÁNH ──
+  const [adminUnlockModalState, setAdminUnlockModalState] = useState<{
+    isOpen: boolean;
+    order: KDSOrder | null;
+  }>({
+    isOpen: false,
+    order: null,
+  });
+  const [adminUnlockPassword, setAdminUnlockPassword] = useState('');
+  const [adminUnlockError, setAdminUnlockError] = useState('');
 
   // ── MODAL CÔNG THỨC BOM CỐT BÁNH CHO THỢ BẾP ──
   const [bomModalOrder, setBomModalOrder] = useState<KDSOrder | null>(null);
@@ -2064,8 +2077,16 @@ export default function KitchenPage() {
     };
   };
 
-  // ⚡ Mở khóa giao hàng khẩn cấp: Xác nhận bếp đã nướng xong đủ bánh để giao ngay
-  const handleForceUnlockDelivery = async (order: KDSOrder) => {
+  // ⚡ Mở khóa giao hàng khẩn cấp: Chỉ Chủ Tiệm (Admin) mới có quyền xác nhận nướng xong đủ bánh để giao ngay
+  const handleForceUnlockDelivery = async (order: KDSOrder, isAlreadyVerifiedAdmin: boolean = false) => {
+    // Kiểm tra quyền Admin
+    if (!isAdmin && !isAlreadyVerifiedAdmin) {
+      setAdminUnlockPassword('');
+      setAdminUnlockError('');
+      setAdminUnlockModalState({ isOpen: true, order });
+      return;
+    }
+
     const orderId = order.id;
     const orderNum = order.order_number;
     const fullQty = order.orderQuantity || ((order.ready_stock_qty || 0) + (order.need_bake_qty || 0)) || 1;
@@ -2165,10 +2186,43 @@ export default function KitchenPage() {
     soundManager.playNewOrderChime();
     setKdsToast({
       id: String(Date.now()),
-      title: '⚡ Đã Mở Khóa Giao Bánh!',
-      subtitle: `Đơn #${orderNum} đã xác nhận đủ ${fullQty} cái bánh, có thể giao ngay.`,
+      title: '⚡ Chủ Tiệm Đã Duyệt Nướng Xong!',
+      subtitle: `Đơn #${orderNum} đã xác nhận đủ ${fullQty} cái bánh, sẵn sàng giao ngay.`,
       orderNumber: orderNum,
     });
+  };
+
+  // Kích hoạt khi bấm nút "Xác Nhận Đã Nướng Xong"
+  const handleRequestUnlockDelivery = (order: KDSOrder) => {
+    if (isAdmin) {
+      if (confirm(`👑 Xác nhận với tư cách Chủ Tiệm (Admin):\nBếp đã hoàn tất nướng đủ bánh cho đơn #${order.order_number}?\n\nBấm OK để mở khóa giao ngay!`)) {
+        handleForceUnlockDelivery(order, true);
+      }
+    } else {
+      setAdminUnlockPassword('');
+      setAdminUnlockError('');
+      setAdminUnlockModalState({ isOpen: true, order });
+    }
+  };
+
+  // Xác thực mật khẩu Chủ Tiệm (Admin) trong modal mở khóa
+  const handleAdminUnlockSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminUnlockError('');
+    if (!adminUnlockPassword.trim()) {
+      setAdminUnlockError('Vui lòng nhập mật khẩu Chủ Tiệm (Admin)!');
+      return;
+    }
+    const res = loginAdmin(adminUnlockPassword);
+    if (!res.success) {
+      setAdminUnlockError(res.error || 'Mật khẩu Admin không chính xác!');
+      return;
+    }
+    if (adminUnlockModalState.order) {
+      handleForceUnlockDelivery(adminUnlockModalState.order, true);
+    }
+    setAdminUnlockModalState({ isOpen: false, order: null });
+    setAdminUnlockPassword('');
   };
 
   // Xác nhận thanh toán & hoàn thành giao hàng ở Bước 3
@@ -3925,11 +3979,25 @@ export default function KitchenPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleForceUnlockDelivery(order)}
-                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-emerald-900/30 cursor-pointer active:scale-95"
-                            title="Bấm để xác nhận bếp đã nướng xong đủ bánh và mở khóa giao ngay lập tức"
+                            onClick={() => handleRequestUnlockDelivery(order)}
+                            className={`w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-md ${
+                              isAdmin
+                                ? 'bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white shadow-emerald-900/30'
+                                : 'bg-zinc-800/90 hover:bg-zinc-700/90 text-amber-300 border border-amber-500/40 shadow-amber-950/30'
+                            }`}
+                            title="Chỉ tài khoản Chủ Tiệm (Admin) mới có quyền xác nhận nướng xong để mở khóa giao hàng"
                           >
-                            <CheckCircle2 className="w-4 h-4" /> ⚡ Xác Nhận Đã Nướng Xong ({order.need_bake_qty} cái) Để Giao Ngay
+                            {isAdmin ? (
+                              <>
+                                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                                <span>⚡ Xác Nhận Đã Nướng Xong ({order.need_bake_qty} cái) Để Giao Ngay</span>
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                <span>Xác Nhận Đã Nướng Xong ({order.need_bake_qty} cái) • <span className="underline font-bold text-amber-200">Chỉ Admin</span></span>
+                              </>
+                            )}
                           </button>
                         </div>
                       ) : (
@@ -4769,6 +4837,96 @@ export default function KitchenPage() {
         onClose={() => setIsStickerModalOpen(false)}
         data={stickerModalData}
       />
+
+      {/* ── MODAL XÁC THỰC QUYỀN CHỦ TIỆM (ADMIN) MỞ KHÓA GIAO BÁNH ── */}
+      {adminUnlockModalState.isOpen && adminUnlockModalState.order && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-[#1e1713] border-2 border-amber-600/70 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-zinc-100">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-amber-900/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm sm:text-base text-amber-200 flex items-center gap-1.5">
+                    Xác Thực Quyền Chủ Tiệm (Admin)
+                  </h3>
+                  <p className="text-[11px] text-zinc-400">Yêu cầu quyền Admin để duyệt nướng xong & mở khóa giao</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAdminUnlockModalState({ isOpen: false, order: null })}
+                className="text-zinc-400 hover:text-white p-1 rounded-xl hover:bg-zinc-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Thông tin đơn hàng cần mở khóa */}
+            <div className="p-3.5 bg-zinc-900/90 rounded-2xl border border-zinc-800 space-y-1.5 text-xs">
+              <div className="flex justify-between items-center text-zinc-300">
+                <span>Mã đơn hàng:</span>
+                <span className="font-mono font-bold text-amber-400">#{adminUnlockModalState.order.order_number}</span>
+              </div>
+              <div className="flex justify-between items-center text-zinc-300">
+                <span>Món bánh:</span>
+                <span className="font-bold text-white truncate max-w-[200px]">
+                  {adminUnlockModalState.order.cake_name || adminUnlockModalState.order.items?.[0]?.product_name_snapshot || 'Bánh sinh nhật'}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-amber-300 pt-1 border-t border-zinc-800">
+                <span>Số bánh cần nướng thêm:</span>
+                <span className="font-black text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-500/40">
+                  {adminUnlockModalState.order.need_bake_qty || 1} cái
+                </span>
+              </div>
+            </div>
+
+            {/* Form nhập mật khẩu Admin */}
+            <form onSubmit={handleAdminUnlockSubmit} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                  <KeyRound className="w-3.5 h-3.5 text-amber-400" /> Mật khẩu Chủ Tiệm (Admin):
+                </label>
+                <input
+                  type="password"
+                  autoFocus
+                  value={adminUnlockPassword}
+                  onChange={(e) => setAdminUnlockPassword(e.target.value)}
+                  placeholder="Nhập mật khẩu Admin..."
+                  className="w-full px-3.5 py-2.5 bg-zinc-950/90 border border-zinc-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 rounded-xl text-sm font-bold text-white placeholder:text-zinc-600 outline-none"
+                />
+                {adminUnlockError && (
+                  <p className="text-xs text-rose-400 font-semibold flex items-center gap-1 mt-1">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {adminUnlockError}
+                  </p>
+                )}
+                <p className="text-[10px] text-zinc-500">
+                  Mật khẩu mặc định: <code className="text-amber-300 font-mono">admin123</code> (hoặc mật khẩu admin bạn đã đổi)
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setAdminUnlockModalState({ isOpen: false, order: null })}
+                  className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs transition cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-900/40 cursor-pointer active:scale-95"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Xác Nhận & Mở Khóa
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
     </div>
   );
