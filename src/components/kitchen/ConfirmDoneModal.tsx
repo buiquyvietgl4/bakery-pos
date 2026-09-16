@@ -54,6 +54,10 @@ export function ConfirmDoneModal({
   const isReadyStep = targetStep === 'ready';
   const isPaid100 = (order.remaining_amount ?? 0) <= 0;
 
+  const matchParent = order.notes?.match(/BỔ SUNG CHO ĐƠN #(BK-[A-Z0-9-]+)/i);
+  const parentOrderNum = (order as any).parent_order_number || (order.order_number?.endsWith('-LAM') ? order.order_number.replace(/-LAM$/, '') : (matchParent ? matchParent[1] : null));
+  const isSupplement = Boolean(parentOrderNum && (order.order_number?.endsWith('-LAM') || (order as any).parent_order_number || matchParent));
+
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
       <div className="bg-zinc-900 border border-zinc-700 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-white animate-in zoom-in-95 duration-150">
@@ -61,7 +65,9 @@ export function ConfirmDoneModal({
         <div className="flex items-start justify-between gap-3 border-b border-zinc-800 pb-3">
           <div className="flex items-center gap-3">
             <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-md ${
-              isReadyStep 
+              isSupplement
+                ? 'bg-amber-600/20 border border-amber-500/40 text-amber-400'
+                : isReadyStep 
                 ? 'bg-blue-600/20 border border-blue-500/40 text-blue-400' 
                 : 'bg-emerald-600/20 border border-emerald-500/40 text-emerald-400'
             }`}>
@@ -69,12 +75,16 @@ export function ConfirmDoneModal({
             </div>
             <div>
               <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                isReadyStep ? 'bg-blue-950 text-blue-300 border border-blue-800' : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                isSupplement
+                  ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                  : isReadyStep 
+                  ? 'bg-blue-950 text-blue-300 border border-blue-800' 
+                  : 'bg-emerald-950 text-emerald-300 border border-emerald-800'
               }`}>
-                {isReadyStep ? 'Xác Nhận Xong Bước 2' : 'Xác Nhận Hoàn Tất Giao Hàng'}
+                {isSupplement ? '👨‍🍳 Hoàn Thành Nướng Bổ Sung' : isReadyStep ? 'Xác Nhận Xong Bước 2' : 'Xác Nhận Hoàn Tất Giao Hàng'}
               </span>
               <h3 className="font-black text-lg sm:text-xl text-white mt-0.5">
-                {isReadyStep ? 'Bánh Đã Làm Xong?' : 'Hoàn Thành Giao Bánh?'}
+                {isSupplement ? `Gộp Vào Đơn #${parentOrderNum}?` : isReadyStep ? 'Bánh Đã Làm Xong?' : 'Hoàn Thành Giao Bánh?'}
               </h3>
             </div>
           </div>
@@ -159,7 +169,11 @@ export function ConfirmDoneModal({
 
         {/* Hướng dẫn giải thích */}
         <p className="text-xs text-zinc-400 leading-relaxed">
-          {isReadyStep ? (
+          {isSupplement ? (
+            <span>
+              Bếp nướng xong sẽ <strong className="text-amber-300">tự động cộng đủ số lượng vào đơn gốc #{parentOrderNum}</strong>, mở khóa ngay nút giao hàng ở Cột 3 và đơn làm bổ sung này sẽ hoàn tất, không bị chia thành 2 đơn.
+            </span>
+          ) : isReadyStep ? (
             <span>
               Khi bấm xác nhận, đơn sẽ chuyển sang cột <strong className="text-blue-400">&ldquo;3. Sẵn Sàng Giao&rdquo;</strong>, tự động gửi chuông thông báo cho thu ngân và shipper rằng bánh đã làm xong.
             </span>
@@ -188,13 +202,15 @@ export function ConfirmDoneModal({
               onClose();
             }}
             className={`py-3 px-4 rounded-2xl font-black text-xs text-white flex items-center justify-center gap-1.5 transition shadow-lg cursor-pointer active:scale-95 ${
-              isReadyStep
+              isSupplement
+                ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/30'
+                : isReadyStep
                 ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/30'
                 : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/30'
             }`}
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>{isReadyStep ? '✅ Xác Nhận Đã Xong' : '✅ Xác Nhận Đã Giao'}</span>
+            <span>{isSupplement ? `✅ Nướng Xong & Gộp Đơn #${parentOrderNum}` : isReadyStep ? '✅ Xác Nhận Đã Xong' : '✅ Xác Nhận Đã Giao'}</span>
           </button>
         </div>
       </div>

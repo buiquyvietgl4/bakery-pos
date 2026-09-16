@@ -789,11 +789,12 @@ export default function KitchenPage() {
                   const isShip = (o.delivery_method || o.deliveryMethod) === 'shipping' || fromNotes.delivery_method === 'shipping';
 
                   // Tự động khôi phục số lượng tồn và thiếu từ ghi chú nếu chưa có trong object
-                  const matchBake = o.notes?.match(/CHỜ BẾP LÀM (\d+) CÁI(?:\s*\(ĐÃ CÓ SẴN (\d+)(?:\/(\d+))? CÁI\))?/i);
-                  const needBakeQty = o.need_bake_qty !== undefined ? Number(o.need_bake_qty) : (matchBake ? Number(matchBake[1]) : undefined);
-                  const readyStockQty = o.ready_stock_qty !== undefined ? Number(o.ready_stock_qty) : (matchBake && matchBake[2] ? Number(matchBake[2]) : undefined);
+                  const isDoneBake = o.bake_status === 'done' || (o.notes && o.notes.includes('ĐÃ BẾP LÀM XONG ĐỦ'));
+                  const matchBake = isDoneBake ? null : o.notes?.match(/CHỜ BẾP LÀM (\d+) CÁI(?:\s*\(ĐÃ CÓ SẴN (\d+)(?:\/(\d+))? CÁI\))?/i);
                   const ordQty = o.orderQuantity !== undefined ? Number(o.orderQuantity) : (matchBake && matchBake[3] ? Number(matchBake[3]) : Number(o.items?.[0]?.quantity || 1));
-                  const bakeStatus = o.bake_status || (needBakeQty && needBakeQty > 0 ? 'pending' : undefined);
+                  const needBakeQty = isDoneBake ? 0 : (o.need_bake_qty !== undefined ? Number(o.need_bake_qty) : (matchBake ? Number(matchBake[1]) : undefined));
+                  const readyStockQty = isDoneBake ? (ordQty || Number(o.ready_stock_qty || 0)) : (o.ready_stock_qty !== undefined ? Number(o.ready_stock_qty) : (matchBake && matchBake[2] ? Number(matchBake[2]) : undefined));
+                  const bakeStatus = isDoneBake ? 'done' : (o.bake_status || (needBakeQty && needBakeQty > 0 ? 'pending' : 'done'));
 
                   const matchParent = o.notes?.match(/BỔ SUNG CHO ĐƠN #(BK-[A-Z0-9-]+)/i);
                   const parentOrderNum = o.parent_order_number || (matchParent ? matchParent[1] : (o.order_number?.endsWith('-LAM') ? o.order_number.replace(/-LAM$/, '') : undefined));
@@ -834,7 +835,7 @@ export default function KitchenPage() {
                       ? o.items.filter((it: any) => it && typeof it === 'object').map((it: any, idx: number) => ({
                           id: String(it.id || `it-${idx}`),
                           product_name_snapshot: it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm',
-                          quantity: Number(it.quantity) || 1,
+                          quantity: (isDoneBake && idx === 0 && ordQty > (Number(it.quantity) || 1)) ? ordQty : (Number(it.quantity) || 1),
                           notes: it.notes || '',
                           cake_order_spec: it.cake_order_spec,
                         }))
@@ -976,9 +977,15 @@ export default function KitchenPage() {
                 selected_addons: so.selected_addons || existing?.selected_addons || [],
                 cost_breakdown: so.cost_breakdown || existing?.cost_breakdown,
                 orderQuantity: existing?.orderQuantity ?? so.orderQuantity,
-                ready_stock_qty: existing?.ready_stock_qty ?? so.ready_stock_qty,
-                need_bake_qty: existing?.need_bake_qty ?? so.need_bake_qty,
-                bake_status: existing?.bake_status ?? so.bake_status,
+                ready_stock_qty: (existing?.bake_status === 'done' || so.bake_status === 'done' || so.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || existing?.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ'))
+                  ? (existing?.orderQuantity ?? so.orderQuantity ?? existing?.ready_stock_qty)
+                  : (existing?.ready_stock_qty ?? so.ready_stock_qty),
+                need_bake_qty: (existing?.bake_status === 'done' || so.bake_status === 'done' || so.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || existing?.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ'))
+                  ? 0
+                  : (existing?.need_bake_qty ?? so.need_bake_qty),
+                bake_status: (existing?.bake_status === 'done' || so.bake_status === 'done' || so.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || existing?.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ'))
+                  ? 'done'
+                  : (existing?.bake_status ?? so.bake_status),
                 linked_bake_order_number: existing?.linked_bake_order_number ?? so.linked_bake_order_number,
                 parent_order_number: existing?.parent_order_number ?? so.parent_order_number,
                 cake_order_spec: existing?.cake_order_spec ?? so.cake_order_spec,
@@ -1418,10 +1425,50 @@ export default function KitchenPage() {
     const targetOrder = orders.find((o) => o.id === orderId || o.order_number === orderId);
     const orderNum = targetOrder?.order_number || orderId;
 
+    // Phát hiện đơn làm bổ sung cho đơn gốc
+    const matchParent = targetOrder?.notes?.match(/BỔ SUNG CHO ĐƠN #(BK-[A-Z0-9-]+)/i);
+    const parentOrderNum = targetOrder?.parent_order_number || (orderNum.endsWith('-LAM') ? orderNum.replace(/-LAM$/, '') : (matchParent ? matchParent[1] : null));
+    const isSupplementOrder = Boolean(parentOrderNum && (orderNum.endsWith('-LAM') || targetOrder?.parent_order_number || matchParent));
+
+    // Nếu là đơn bổ sung nướng xong ở Bước 2 (chuẩn bị chuyển sang ready hoặc completed):
+    // => Đơn bổ sung này PHẢI chuyển thành 'completed' (hoàn tất sứ mệnh làm bánh), GỘP số lượng thiếu vào đơn gốc và MỞ KHÓA GIAO NGAY cho đơn gốc!
+    // TUYỆT ĐỐI KHÔNG ĐƯA ĐƠN BỔ SUNG VÀO CỘT 3 (sẽ bị chia thành 2 đơn)!
+    const isSupplementFinishing = isSupplementOrder && (nextStatus === 'ready' || nextStatus === 'completed');
+    if (isSupplementFinishing) {
+      nextStatus = 'completed';
+    }
+
     // Kiểm tra nếu đơn chưa nướng xong số lượng bổ sung thì không cho hoàn thành
-    if (nextStatus === 'completed' && targetOrder?.need_bake_qty && targetOrder.need_bake_qty > 0 && targetOrder.bake_status !== 'done') {
+    if (nextStatus === 'completed' && !isSupplementOrder && targetOrder?.need_bake_qty && targetOrder.need_bake_qty > 0 && targetOrder.bake_status !== 'done') {
       alert(`Đơn #${orderNum} đang chờ bếp nướng làm thêm ${targetOrder.need_bake_qty} cái bánh bổ sung. Vui lòng đợi thợ bếp nướng xong trước khi hoàn tất giao bánh!`);
       return;
+    }
+
+    // Tính toán thông tin gộp vào đơn gốc nếu là đơn bổ sung nướng xong
+    const supplementQty = Number(targetOrder?.need_bake_qty || targetOrder?.orderQuantity || targetOrder?.items?.[0]?.quantity || 1);
+    const parentOrder = parentOrderNum ? orders.find((o) => o.order_number === parentOrderNum || o.id === parentOrderNum) : null;
+    const parentTargetTotalQty = parentOrder?.orderQuantity || ((parentOrder?.ready_stock_qty || 0) + supplementQty);
+
+    const updatedParentItems = (parentOrder?.items || []).map((it: any, idx: number) => {
+      const cleanName = (it.product_name_snapshot || 'Bánh sinh nhật')
+        .replace(/\s*\(Sẵn\s*\d+\s*cái\s*•\s*Chờ bếp làm\s*\d+\s*cái\)/gi, '')
+        .replace(/\s*\(Sẵn\s*\d+\s*cái\)/gi, '')
+        .trim();
+      return {
+        ...it,
+        quantity: parentTargetTotalQty > 0 ? parentTargetTotalQty : (it.quantity + supplementQty),
+        product_name_snapshot: cleanName,
+      };
+    });
+
+    let rawParentNotes = parentOrder?.notes || '';
+    let updatedParentNotes = rawParentNotes;
+    if (rawParentNotes.includes('CHỜ BẾP LÀM')) {
+      updatedParentNotes = rawParentNotes
+        .replace(/\[⏳\s*CHỜ BẾP LÀM \d+ CÁI(?:\s*\(ĐÃ CÓ SẴN \d+(?:\/\d+)? CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${parentTargetTotalQty} CÁI]`)
+        .replace(/CHỜ BẾP LÀM \d+ CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${parentTargetTotalQty} CÁI`);
+    } else if (parentTargetTotalQty > 0) {
+      updatedParentNotes = `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${parentTargetTotalQty} CÁI] ${rawParentNotes}`.trim();
     }
 
     // 0. ĐẶT KHÓA CHỐNG LÙI TRẠNG THÁI NGAY LẬP TỨC:
@@ -1434,11 +1481,32 @@ export default function KitchenPage() {
     }
 
     // 1. Cập nhật ngay trên giao diện React của thiết bị hiện tại
-    setOrders((prev) =>
-      prev
-        .map((o) => (o.id === orderId || o.order_number === orderId || o.order_number === orderNum ? { ...o, status: nextStatus } : o))
-        .filter((o) => o.status !== 'completed')
-    );
+    if (isSupplementFinishing) {
+      setOrders((prev) =>
+        prev
+          .filter((o) => o.id !== orderId && o.order_number !== orderId && o.order_number !== orderNum)
+          .map((o) => {
+            if (o.order_number === parentOrderNum || o.id === parentOrderNum) {
+              return {
+                ...o,
+                items: updatedParentItems.length > 0 ? updatedParentItems : o.items,
+                orderQuantity: parentTargetTotalQty > 0 ? parentTargetTotalQty : o.orderQuantity,
+                ready_stock_qty: parentTargetTotalQty > 0 ? parentTargetTotalQty : (o.ready_stock_qty || 0) + supplementQty,
+                need_bake_qty: 0,
+                bake_status: 'done' as const,
+                notes: updatedParentNotes,
+              };
+            }
+            return o;
+          })
+      );
+    } else {
+      setOrders((prev) =>
+        prev
+          .map((o) => (o.id === orderId || o.order_number === orderId || o.order_number === orderNum ? { ...o, status: nextStatus } : o))
+          .filter((o) => o.status !== 'completed')
+      );
+    }
 
     // 2. Lưu trạng thái vĩnh viễn vào localStorage để reload trang KHÔNG BAO GIỜ bị hiện lại
     if (typeof window !== 'undefined') {
@@ -1447,6 +1515,7 @@ export default function KitchenPage() {
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
+            let updatedParentObj: any = null;
             const updated = parsed.map((o: any) => {
               if (
                 o.id === orderId || 
@@ -1469,9 +1538,27 @@ export default function KitchenPage() {
                   pickupDateTime: o.pickupDateTime || targetOrder?.pickupDateTime || o.preorder_pickup_at || fromN.preorder_pickup_at || '',
                 };
               }
+              if (isSupplementFinishing && (o.order_number === parentOrderNum || o.orderNumber === parentOrderNum || o.id === parentOrderNum)) {
+                updatedParentObj = {
+                  ...o,
+                  items: updatedParentItems.length > 0 ? updatedParentItems : o.items,
+                  orderQuantity: parentTargetTotalQty > 0 ? parentTargetTotalQty : o.orderQuantity,
+                  ready_stock_qty: parentTargetTotalQty > 0 ? parentTargetTotalQty : (o.ready_stock_qty || 0) + supplementQty,
+                  need_bake_qty: 0,
+                  bake_status: 'done',
+                  notes: updatedParentNotes,
+                  updated_at: new Date().toISOString(),
+                };
+                return updatedParentObj;
+              }
               return o;
             });
             localStorage.setItem('bakery_orders', JSON.stringify(updated));
+
+            if (updatedParentObj) {
+              syncOrderToSupabase(updatedParentObj, updatedParentObj.status || 'ready');
+              broadcastOrderStatusUpdate(parentOrderNum!, updatedParentObj.status || 'ready', updatedParentObj);
+            }
           }
         }
 
@@ -1483,6 +1570,17 @@ export default function KitchenPage() {
             const updatedPo = parsedPo.map((po: any) => {
               if (po.id === orderId || po.orderNumber === orderId || po.orderNumber === orderNum) {
                 return { ...po, status: nextStatus };
+              }
+              if (isSupplementFinishing && (po.order_number === parentOrderNum || po.orderNumber === parentOrderNum || po.id === parentOrderNum)) {
+                return {
+                  ...po,
+                  items: updatedParentItems.length > 0 ? updatedParentItems : po.items,
+                  orderQuantity: parentTargetTotalQty > 0 ? parentTargetTotalQty : po.orderQuantity,
+                  ready_stock_qty: parentTargetTotalQty > 0 ? parentTargetTotalQty : (po.ready_stock_qty || 0) + supplementQty,
+                  need_bake_qty: 0,
+                  bake_status: 'done',
+                  notes: updatedParentNotes,
+                };
               }
               return po;
             });
@@ -1497,13 +1595,42 @@ export default function KitchenPage() {
       }
     }
 
-    // 3. PHÁT SÓNG REALTIME BROADCAST SANG CÁC THIẾT BỊ KHÁC (Điện thoại <-> Máy tính)
-    // Máy tính sẽ nhận được cập nhật tức thì trong vòng ~50ms mà không cần F5!
+    // 3. PHÁT SÓNG REALTIME BROADCAST SANG CÁC THIẾT BỊ KHÁC
     await broadcastOrderStatusUpdate(orderNum, nextStatus, targetOrder);
 
-    // 4. Đồng bộ nền lên Supabase Database (PostgreSQL) để lưu vĩnh viễn
+    // 4. Đồng bộ nền lên Supabase Database (PostgreSQL)
     if (targetOrder) {
       syncOrderToSupabase(targetOrder, nextStatus);
+    }
+    if (isSupplementFinishing && parentOrderNum) {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          supabase.from('orders').update({
+            notes: updatedParentNotes,
+            updated_at: new Date().toISOString(),
+          }).eq('order_number', parentOrderNum).then();
+
+          const { data: parentSbOrder } = await supabase.from('orders').select('id').eq('order_number', parentOrderNum).maybeSingle();
+          if (parentSbOrder?.id) {
+            await supabase.from('order_items').update({
+              quantity: parentTargetTotalQty,
+            }).eq('order_id', parentSbOrder.id);
+          }
+        } catch (sbErr) {
+          console.warn('Lỗi Supabase khi gộp đơn:', sbErr);
+        }
+      }
+      try {
+        (db.orders.where('order_number').equals(parentOrderNum) as any).modify({
+          items: updatedParentItems,
+          orderQuantity: parentTargetTotalQty,
+          ready_stock_qty: parentTargetTotalQty,
+          need_bake_qty: 0,
+          bake_status: 'done',
+          notes: updatedParentNotes,
+          updated_at: new Date().toISOString(),
+        });
+      } catch {}
     }
 
     // 4b. TỰ ĐỘNG TRỪ TỒN KHO NGUYÊN VẬT LIỆU THEO ĐỊNH MỨC BOM KHI BÁNH LÀM XONG
@@ -1528,56 +1655,12 @@ export default function KitchenPage() {
       }
     }
 
-    // 4c. TỰ ĐỘNG MỞ KHÓA GIAO HÀNG CHO ĐƠN GỐC KHI BẾP LÀM XONG BÁNH BỔ SUNG (Bước 2 -> Bước 3)
-    const parentOrderNum = targetOrder?.parent_order_number || (orderNum.endsWith('-LAM') ? orderNum.replace(/-LAM$/, '') : null);
-    if (parentOrderNum && (nextStatus === 'ready' || nextStatus === 'completed')) {
-      // Cập nhật state React
-      setOrders((prev) =>
-        prev.map((o) => {
-          if (o.order_number === parentOrderNum || o.id === parentOrderNum) {
-            return { ...o, bake_status: 'done' as const };
-          }
-          return o;
-        })
-      );
-
-      // Cập nhật localStorage & Dexie & Supabase cho parent order
-      if (typeof window !== 'undefined') {
-        try {
-          const raw = localStorage.getItem('bakery_orders');
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            if (Array.isArray(parsed)) {
-              let updatedParent: any = null;
-              const updated = parsed.map((o: any) => {
-                if (o.order_number === parentOrderNum || o.orderNumber === parentOrderNum || o.id === parentOrderNum) {
-                  updatedParent = { ...o, bake_status: 'done' };
-                  return updatedParent;
-                }
-                return o;
-              });
-              localStorage.setItem('bakery_orders', JSON.stringify(updated));
-              window.dispatchEvent(new Event('bakery_orders_updated'));
-
-              if (updatedParent) {
-                syncOrderToSupabase(updatedParent, updatedParent.status || 'ready');
-                broadcastOrderStatusUpdate(parentOrderNum, updatedParent.status || 'ready', updatedParent);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn('Lỗi cập nhật parent order bake_status:', e);
-        }
-
-        try {
-          (db.orders.where('order_number').equals(parentOrderNum) as any).modify({ bake_status: 'done', updated_at: new Date().toISOString() });
-        } catch {}
-      }
-
+    // 4c. THÔNG BÁO TOAST GỘP ĐƠN THÀNH CÔNG VÀ MỞ KHÓA GIAO NGAY
+    if (isSupplementFinishing && parentOrderNum) {
       setKdsToast({
         id: String(Date.now()),
-        title: '🎂 Đã Nướng Xong Bánh Bổ Sung!',
-        subtitle: `Đơn hàng #${parentOrderNum} đã đủ số lượng bánh và sẵn sàng mở khóa giao cho khách!`,
+        title: '🎂 Đã Gộp Đủ Bánh Vào Đơn Gốc!',
+        subtitle: `Đã nướng xong ${supplementQty} cái bánh thiếu. Đơn hàng #${parentOrderNum} hiện có đủ ${parentTargetTotalQty} cái và đã MỞ KHÓA nút GIAO NGAY!`,
         orderNumber: parentOrderNum,
       });
     }
@@ -1879,6 +1962,7 @@ export default function KitchenPage() {
   const handleConfirmPaymentAndComplete = async (order: KDSOrder, paymentMethod: 'cash' | 'bank_transfer') => {
     const orderId = order.id;
     const orderNum = order.order_number;
+    const linkedBakeOrderNum = order.linked_bake_order_number || `${orderNum}-LAM`;
 
     // Kiểm tra nếu đơn chưa nướng xong số lượng bổ sung thì không cho giao
     if (order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done') {
@@ -1888,10 +1972,12 @@ export default function KitchenPage() {
 
     // 0. Khóa đơn đã hoàn thành trong 60 giây, ngăn polling làm hiện lại
     recentlyCompletedOrdersRef.current.set(orderNum, Date.now());
+    recentlyCompletedOrdersRef.current.set(linkedBakeOrderNum, Date.now());
     localStatusLocksRef.current.delete(orderNum);
+    localStatusLocksRef.current.delete(linkedBakeOrderNum);
 
-    // 1. Cập nhật state cục bộ ngay lập tức (xóa khỏi KDS)
-    setOrders((prev) => prev.filter((o) => o.id !== orderId && o.order_number !== orderNum));
+    // 1. Cập nhật state cục bộ ngay lập tức (xóa khỏi KDS cả đơn chính và đơn làm bổ sung nếu có)
+    setOrders((prev) => prev.filter((o) => o.id !== orderId && o.order_number !== orderNum && o.order_number !== linkedBakeOrderNum));
 
     // 2. Cập nhật vĩnh viễn vào localStorage
     if (typeof window !== 'undefined') {
@@ -1919,6 +2005,13 @@ export default function KitchenPage() {
                   updated_at: new Date().toISOString(),
                 };
               }
+              if (o.order_number === linkedBakeOrderNum || o.orderNumber === linkedBakeOrderNum) {
+                return {
+                  ...o,
+                  status: 'completed',
+                  updated_at: new Date().toISOString(),
+                };
+              }
               return o;
             });
             localStorage.setItem('bakery_orders', JSON.stringify(updated));
@@ -1942,6 +2035,13 @@ export default function KitchenPage() {
                   updated_at: new Date().toISOString(),
                 };
               }
+              if (po.orderNumber === linkedBakeOrderNum) {
+                return {
+                  ...po,
+                  status: 'completed',
+                  updated_at: new Date().toISOString(),
+                };
+              }
               return po;
             });
             localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo));
@@ -1961,9 +2061,16 @@ export default function KitchenPage() {
       remaining_amount: 0,
     };
     await broadcastOrderStatusUpdate(orderNum, 'completed', updatedOrder);
+    await broadcastOrderStatusUpdate(linkedBakeOrderNum, 'completed');
 
     // 4. Đồng bộ CSDL Supabase
     syncOrderToSupabase(updatedOrder, 'completed');
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      supabase.from('orders').update({
+        status: 'completed',
+        updated_at: new Date().toISOString(),
+      }).eq('order_number', linkedBakeOrderNum).then();
+    }
 
     // 5. Gửi thông báo Telegram
     sendTelegramDeliveredSuccessAlert(updatedOrder).catch(() => {});
@@ -2012,9 +2119,35 @@ export default function KitchenPage() {
     }
   };
 
-  const pendingOrders = (orders || []).filter((o) => o && o.status === 'pending');
-  const preparingOrders = (orders || []).filter((o) => o && o.status === 'preparing');
-  const readyOrders = (orders || []).filter((o) => o && o.status === 'ready');
+  const pendingOrders = (orders || []).filter((o) => {
+    if (!o || o.status !== 'pending') return false;
+    const pNum = o.parent_order_number || (o.order_number?.endsWith('-LAM') ? o.order_number.replace(/-LAM$/, '') : null);
+    if (pNum) {
+      const parent = orders.find((p) => p.order_number === pNum || p.id === pNum);
+      if (parent && (parent.bake_status === 'done' || parent.status === 'completed')) return false;
+    }
+    return true;
+  });
+
+  const preparingOrders = (orders || []).filter((o) => {
+    if (!o || o.status !== 'preparing') return false;
+    const pNum = o.parent_order_number || (o.order_number?.endsWith('-LAM') ? o.order_number.replace(/-LAM$/, '') : null);
+    if (pNum) {
+      const parent = orders.find((p) => p.order_number === pNum || p.id === pNum);
+      if (parent && (parent.bake_status === 'done' || parent.status === 'completed')) return false;
+    }
+    return true;
+  });
+
+  const readyOrders = (orders || []).filter((o) => {
+    if (!o || o.status !== 'ready') return false;
+    // Đơn phụ bổ sung (-LAM) hoặc có parent_order_number sau khi nướng xong sẽ gộp vào đơn gốc,
+    // TUYỆT ĐỐI không bao giờ xuất hiện thành 1 đơn giao riêng ở Cột 3!
+    if (o.parent_order_number || o.order_number?.endsWith('-LAM') || o.notes?.includes('BỔ SUNG CHO ĐƠN')) {
+      return false;
+    }
+    return true;
+  });
 
   const getElapsedMinutes = (dateStr?: string) => {
     if (!dateStr) return 0;
@@ -3231,22 +3364,27 @@ export default function KitchenPage() {
                           <h3 className="font-black text-sm sm:text-base text-zinc-100 uppercase leading-snug">
                             {cakeInfo.name}
                           </h3>
-                          {Boolean(order.need_bake_qty && order.need_bake_qty > 0) ? (
+                          {Boolean(order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done') ? (
                             <span className="shrink-0 px-2 py-0.5 rounded-lg bg-amber-600 text-white font-black text-xs">
                               Có sẵn: {order.ready_stock_qty ?? ((order.orderQuantity || 0) - (order.need_bake_qty || 0))}/{order.orderQuantity || (order.ready_stock_qty || 0) + (order.need_bake_qty || 0)} cái
                             </span>
-                          ) : cakeInfo.quantity > 1 && (
+                          ) : (order.orderQuantity || cakeInfo.quantity) > 1 ? (
                             <span className="shrink-0 px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-black text-xs">
-                              {cakeInfo.quantity}x
+                              {order.orderQuantity || cakeInfo.quantity}x
                             </span>
-                          )}
+                          ) : null}
                         </div>
-                        {Boolean(order.need_bake_qty && order.need_bake_qty > 0) && (
+                        {Boolean(order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done') ? (
                           <div className="p-1.5 px-2.5 rounded-lg bg-amber-950/80 border border-amber-600/60 text-amber-200 text-[11px] font-extrabold flex items-center justify-between">
                             <span>📦 Có sẵn chờ ship: <b>{order.ready_stock_qty ?? ((order.orderQuantity || 0) - (order.need_bake_qty || 0))} cái</b></span>
                             <span className="text-amber-400">⏳ Bếp cần làm: <b>{order.need_bake_qty} cái</b></span>
                           </div>
-                        )}
+                        ) : Boolean(order.bake_status === 'done' && (order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || (order.orderQuantity && order.orderQuantity > 1))) ? (
+                          <div className="p-1.5 px-2.5 rounded-lg bg-emerald-950/80 border border-emerald-600/60 text-emerald-200 text-[11px] font-extrabold flex items-center justify-between">
+                            <span>✓ Đã có đủ: <b>{order.orderQuantity || cakeInfo.quantity} cái bánh</b></span>
+                            <span className="text-emerald-400">Đã gộp đủ • Sẵn sàng</span>
+                          </div>
+                        ) : null}
                         {cakeInfo.size && (
                           <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 font-extrabold text-xs">
                             <span>📐 Kích thước:</span>
@@ -3575,27 +3713,27 @@ export default function KitchenPage() {
                         </div>
                       ) : (
                         <>
-                          {Boolean(order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status === 'done') && (
-                            <div className="p-1.5 px-2.5 rounded-lg bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-[11px] font-bold flex items-center gap-1.5 mb-1.5">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                              <span>✓ Đã làm xong đủ {order.orderQuantity || (order.ready_stock_qty || 0) + (order.need_bake_qty || 0)} cái (Sẵn {order.ready_stock_qty || 0} + Bếp làm {order.need_bake_qty})</span>
+                          {Boolean(order.bake_status === 'done' && (order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || (order.orderQuantity && order.orderQuantity > 1) || (order.need_bake_qty !== undefined && order.need_bake_qty > 0))) && (
+                            <div className="p-2 px-2.5 rounded-xl bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 text-xs font-bold flex items-center gap-2 mb-2 shadow-xs">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                              <span>✓ Đã làm xong đủ <b>{order.orderQuantity || (order.ready_stock_qty || 0) + (order.need_bake_qty || 0)} cái bánh</b> • Sẵn sàng giao ngay!</span>
                             </div>
                           )}
                           {isPaid100 ? (
                             <button
                               type="button"
                               onClick={() => setConfirmDoneState({ isOpen: true, order, targetStep: 'completed' })}
-                              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-95"
+                              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-95"
                             >
-                              <CheckCircle2 className="w-4 h-4" /> Hoàn Thành Giao Bánh
+                              <CheckCircle2 className="w-4 h-4" /> Giao Ngay / Hoàn Thành Giao Bánh
                             </button>
                           ) : (
                             <button
                               type="button"
                               onClick={() => setDeliveryPaymentModalOrder(order)}
-                              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-rose-600/30 cursor-pointer active:scale-95 animate-pulse"
+                              className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-rose-600/30 cursor-pointer active:scale-95 animate-pulse"
                             >
-                              <Banknote className="w-4 h-4" /> Giao Hàng & Thu Tiền ({remAmt.toLocaleString('vi-VN')}₫)
+                              <Banknote className="w-4 h-4" /> Giao Ngay & Thu Tiền ({remAmt.toLocaleString('vi-VN')}₫)
                             </button>
                           )}
                         </>
