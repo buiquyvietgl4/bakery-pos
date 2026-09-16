@@ -46,8 +46,21 @@ export interface BakeApprovalResolvedPayload {
   order_data?: any;
 }
 
+export interface PaymentReceivedPayload {
+  order_number?: string;
+  order_code?: string;
+  amount: number;
+  gateway?: string;
+  transaction_id?: string;
+  account_number?: string;
+  content: string;
+  received_at: string;
+  matched?: boolean;
+}
+
 type BakeApprovalCallback = (payload: BakeApprovalPayload) => void;
 type BakeApprovalResolvedCallback = (payload: BakeApprovalResolvedPayload) => void;
+export type PaymentReceivedCallback = (payload: PaymentReceivedPayload) => void;
 
 const statusListeners = new Set<StatusCallback>();
 const newOrderListeners = new Set<NewOrderCallback>();
@@ -61,6 +74,7 @@ const vietqrConfigListeners = new Set<VietqrConfigCallback>();
 const ewalletConfigListeners = new Set<EwalletConfigCallback>();
 const bakeApprovalListeners = new Set<BakeApprovalCallback>();
 const bakeApprovalResolvedListeners = new Set<BakeApprovalResolvedCallback>();
+const paymentReceivedListeners = new Set<PaymentReceivedCallback>();
 
 const recentlyNotifiedOrders = new Map<string, number>();
 
@@ -251,6 +265,20 @@ function ensureSyncChannel() {
               cb(payload);
             } catch (e) {
               console.warn('Lỗi bakeApprovalResolvedListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'payment_received' }, ({ payload }: any) => {
+        if (payload) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('bakery_payment_received', { detail: payload }));
+          }
+          paymentReceivedListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi paymentReceivedListener:', e);
             }
           });
         }
@@ -532,6 +560,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   onEwalletConfigChange?: EwalletConfigCallback;
   onBakeApprovalRequest?: BakeApprovalCallback;
   onBakeApprovalResolved?: BakeApprovalResolvedCallback;
+  onPaymentReceived?: PaymentReceivedCallback;
 }) {
   ensureSyncChannel();
 
@@ -548,6 +577,7 @@ export function subscribeCrossDeviceSync(callbacks: {
     onEwalletConfigChange,
     onBakeApprovalRequest,
     onBakeApprovalResolved,
+    onPaymentReceived,
   } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
@@ -562,6 +592,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onEwalletConfigChange) ewalletConfigListeners.add(onEwalletConfigChange);
   if (onBakeApprovalRequest) bakeApprovalListeners.add(onBakeApprovalRequest);
   if (onBakeApprovalResolved) bakeApprovalResolvedListeners.add(onBakeApprovalResolved);
+  if (onPaymentReceived) paymentReceivedListeners.add(onPaymentReceived);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
@@ -576,7 +607,42 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onEwalletConfigChange) ewalletConfigListeners.delete(onEwalletConfigChange);
     if (onBakeApprovalRequest) bakeApprovalListeners.delete(onBakeApprovalRequest);
     if (onBakeApprovalResolved) bakeApprovalResolvedListeners.delete(onBakeApprovalResolved);
+    if (onPaymentReceived) paymentReceivedListeners.delete(onPaymentReceived);
   };
+}
+
+/**
+ * Đăng ký lắng nghe trực tiếp sự kiện nhận tiền ngân hàng tự động (Auto Bank Webhook)
+ */
+export function subscribeToPaymentReceived(callback: PaymentReceivedCallback): () => void {
+  paymentReceivedListeners.add(callback);
+  return () => {
+    paymentReceivedListeners.delete(callback);
+  };
+}
+
+/**
+ * Phát sóng sự kiện nhận tiền chuyển khoản thành công từ Webhook tới toàn bộ màn hình POS / Kitchen
+ */
+export async function broadcastPaymentReceived(payload: PaymentReceivedPayload) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'payment_received',
+        payload: {
+          ...payload,
+          received_at: payload.received_at || new Date().toISOString(),
+        },
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bakery_payment_received', { detail: payload }));
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastPaymentReceived:', err);
+  }
 }
 
 /**

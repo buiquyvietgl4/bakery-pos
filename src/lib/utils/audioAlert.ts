@@ -134,6 +134,78 @@ class AudioManager {
       console.warn('Urgent sound play error:', e);
     }
   }
+
+  /**
+   * Âm chuông "Ting Ting Ting" ngân vang báo nhận tiền chuyển khoản thành công
+   * Hợp âm thăng tiến tươi sáng: C6 (1046.5Hz) -> E6 (1318.5Hz) -> G6 (1567.9Hz) -> C7 (2093Hz)
+   */
+  public playPaymentSuccessChime() {
+    if (!this.soundEnabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+
+    try {
+      const now = ctx.currentTime;
+      const notes = [
+        { freq: 1046.5, time: 0, dur: 0.35, gain: 0.25 },
+        { freq: 1318.51, time: 0.1, dur: 0.4, gain: 0.28 },
+        { freq: 1567.98, time: 0.2, dur: 0.5, gain: 0.32 },
+        { freq: 2093.0, time: 0.32, dur: 0.9, gain: 0.35 },
+      ];
+
+      notes.forEach(({ freq, time, dur, gain: targetGain }) => {
+        const osc = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + time);
+
+        gainNode.gain.setValueAtTime(0, now + time);
+        gainNode.gain.linearRampToValueAtTime(targetGain, now + time + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.0005, now + time + dur);
+
+        osc.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        osc.start(now + time);
+        osc.stop(now + time + dur + 0.05);
+      });
+    } catch (e) {
+      console.warn('Payment success sound play error:', e);
+    }
+  }
+
+  /**
+   * Đọc thông báo nhận tiền bằng tiếng Việt qua Web Speech API
+   * Ví dụ: "Đã nhận thành công 150.000 đồng đơn hàng 123"
+   */
+  public speakPaymentSuccess(amount: number, orderCode?: string) {
+    if (!this.soundEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
+
+      const formattedAmount = Number(amount || 0).toLocaleString('vi-VN');
+      let text = `Đã nhận thành công ${formattedAmount} đồng`;
+      if (orderCode) {
+        const cleanCode = orderCode.replace(/^(DH|BK-SHIP-|BK-PRE-|BK-)/i, '');
+        text += ` cho đơn hàng ${cleanCode || orderCode}`;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = 'vi-VN';
+      utterance.rate = 1.05;
+      utterance.pitch = 1.0;
+
+      const voices = window.speechSynthesis.getVoices();
+      const viVoice = voices.find((v) => v.lang === 'vi-VN' || v.lang.startsWith('vi'));
+      if (viVoice) {
+        utterance.voice = viVoice;
+      }
+
+      window.speechSynthesis.speak(utterance);
+    } catch (e) {
+      console.warn('Speech synthesis error:', e);
+    }
+  }
 }
 
 export const soundManager = new AudioManager();

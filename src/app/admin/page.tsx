@@ -11,8 +11,10 @@ import {
   ArrowDownCircle, ArrowUpCircle, QrCode, Copy, Check, Building2,
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
-  Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff
+  Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff,
+  Zap, Link2, Settings2, ShieldCheck, Volume2, Mic
 } from 'lucide-react';
+import { soundManager } from '@/lib/utils/audioAlert';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
 import { DEFAULT_BAKERY_PRODUCTS } from '@/lib/constants/bakeryData';
@@ -99,6 +101,11 @@ import {
   saveEwalletConfigToDb,
   VietqrConfig,
   EwalletConfig,
+  getAutoBankConfig,
+  saveAutoBankConfigLocally,
+  fetchAutoBankConfigFromDb,
+  saveAutoBankConfigToDb,
+  AutoBankWebhookConfig,
 } from '@/lib/utils/paymentSync';
 
 export const VIETQR_BANKS = [
@@ -282,6 +289,14 @@ export default function AdminDashboard() {
   const [testWalletAmount, setTestWalletAmount] = useState<number>(65000);
   const [testWalletNote, setTestWalletNote] = useState<string>('BANH KEM VIMO');
   const [copiedWalletPhone, setCopiedWalletPhone] = useState(false);
+
+  // ── AUTO-BANK WEBHOOK GATEWAY CONFIG STATE ──
+  const [autoBankConfig, setAutoBankConfig] = useState<AutoBankWebhookConfig>(() => getAutoBankConfig());
+  const [autoBankSaved, setAutoBankSaved] = useState(false);
+  const [copiedWebhookUrl, setCopiedWebhookUrl] = useState(false);
+  const [testWebhookStatus, setTestWebhookStatus] = useState<string | null>(null);
+  const [testWebhookAmount, setTestWebhookAmount] = useState<number>(50000);
+  const [testWebhookCode, setTestWebhookCode] = useState<string>('DH' + Math.floor(100000 + Math.random() * 900000));
 
   // ── INVENTORY STATE ──
   const [ingredients, setIngredients] = useState<Ingredient[]>([
@@ -1282,6 +1297,14 @@ export default function AdminDashboard() {
           console.error(e);
         }
       }
+      const savedAutoBank = localStorage.getItem('bakery_autobank_config');
+      if (savedAutoBank) {
+        try {
+          setAutoBankConfig(JSON.parse(savedAutoBank));
+        } catch (e) {
+          console.error(e);
+        }
+      }
       const savedRecipes = localStorage.getItem('bakery_recipes');
       if (savedRecipes) {
         try {
@@ -1302,6 +1325,10 @@ export default function AdminDashboard() {
 
     fetchEwalletConfigFromDb().then((cfg) => {
       if (cfg) setEwalletConfig(cfg);
+    }).catch(console.error);
+
+    fetchAutoBankConfigFromDb().then((cfg) => {
+      if (cfg) setAutoBankConfig(cfg);
     }).catch(console.error);
 
     // Tự động kéo dữ liệu Cloud: Công thức BOM, Chi phí OPEX, Sổ quỹ, Bánh hỏng, Kiểm kê, Chốt sổ
@@ -1487,6 +1514,57 @@ export default function AdminDashboard() {
     }
     setEwalletSaved(true);
     setTimeout(() => setEwalletSaved(false), 3500);
+  };
+
+  const handleSaveAutoBank = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    saveAutoBankConfigLocally(autoBankConfig);
+    try {
+      await saveAutoBankConfigToDb(autoBankConfig);
+    } catch (err) {
+      console.error('Lỗi đồng bộ cấu hình AutoBank lên máy chủ:', err);
+    }
+    setAutoBankSaved(true);
+    setTimeout(() => setAutoBankSaved(false), 3500);
+  };
+
+  const handleTestWebhook = async () => {
+    setTestWebhookStatus('testing');
+    try {
+      const payload = {
+        gateway: autoBankConfig.provider === 'auto' ? 'SePay' : autoBankConfig.provider,
+        amount: testWebhookAmount,
+        content: `${testWebhookCode} thanh toan thu nghiem qua ngan hang`,
+        order_number: testWebhookCode,
+        transaction_id: 'TEST-' + Date.now(),
+        transferType: 'in',
+      };
+
+      const res = await fetch('/api/payment/webhook', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(autoBankConfig.secretKey ? { 'x-api-key': autoBankConfig.secretKey } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTestWebhookStatus('success');
+        if (autoBankConfig.soundAlert) {
+          soundManager.playPaymentSuccessChime();
+        }
+        if (autoBankConfig.speechAlert) {
+          soundManager.speakPaymentSuccess(testWebhookAmount, testWebhookCode);
+        }
+      } else {
+        setTestWebhookStatus(`error: ${data.error || 'Thất bại'}`);
+      }
+    } catch (err: any) {
+      setTestWebhookStatus(`error: ${err.message || 'Lỗi kết nối'}`);
+    }
+    setTimeout(() => setTestWebhookStatus(null), 6000);
   };
 
   const handleUploadWalletQr = (walletKey: 'momo' | 'zalopay' | 'viettelmoney', file: File) => {
@@ -5607,6 +5685,201 @@ export default function AdminDashboard() {
                     📱 Dùng App ngân hàng quét trực tiếp mã QR trên để trải nghiệm thực tế!
                   </p>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* CẤU HÌNH TỰ ĐỘNG BÁO TIỀN VỀ (AUTO-BANK WEBHOOK GATEWAY) */}
+          <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
+                  <Zap className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-xl font-black text-zinc-900">
+                      Cổng Báo Tiền Về Tự Động (Auto-Bank Webhook)
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase tracking-wider">
+                      Đa Cổng Trọn Gói
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-500">
+                    Tự động nhận diện biến động số dư ngân hàng từ SePay, PayOS, Casso hoặc Webhook riêng. Khi khách quét mã chuyển tiền, hệ thống tự phát chuông &apos;Ting Ting&apos; và xác nhận hoàn thành đơn hàng.
+                  </p>
+                </div>
+              </div>
+
+              {autoBankSaved && (
+                <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  Đã lưu cấu hình Auto-Bank!
+                </div>
+              )}
+            </div>
+
+            {/* URL Webhook & Hướng dẫn kết nối */}
+            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                  <Link2 className="w-4 h-4 text-amber-600" /> Đường Dẫn Webhook Nhận Biến Động Số Dư:
+                </span>
+                <span className="text-[10px] text-zinc-400 font-mono">Phương thức: POST</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={typeof window !== 'undefined' ? `${window.location.origin}/api/payment/webhook` : '/api/payment/webhook'}
+                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-zinc-200 font-mono text-xs font-bold text-zinc-800 select-all"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = `${window.location.origin}/api/payment/webhook`;
+                    navigator.clipboard.writeText(url);
+                    setCopiedWebhookUrl(true);
+                    setTimeout(() => setCopiedWebhookUrl(false), 2500);
+                  }}
+                  className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                >
+                  {copiedWebhookUrl ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedWebhookUrl ? 'Đã Sao Chép!' : 'Sao Chép Link'}</span>
+                </button>
+              </div>
+              <p className="text-[11px] text-zinc-500">
+                📌 <strong>Cách dùng:</strong> Sao chép link trên và dán vào mục <em>Webhook URL</em> trong tài khoản <strong>SePay.vn</strong>, <strong>PayOS.vn</strong>, hoặc <strong>Casso.vn</strong> của bạn.
+              </p>
+            </div>
+
+            {/* Grid thông số cấu hình */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                  <Settings2 className="w-4 h-4 text-amber-600" /> Nhà Cung Cấp Dịch Vụ Cổng:
+                </label>
+                <select
+                  value={autoBankConfig.provider}
+                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, provider: e.target.value as any })}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 border border-zinc-300 font-bold text-zinc-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm cursor-pointer"
+                >
+                  <option value="auto">✨ Tự Động Nhận Diện (Khuyên dùng - Tương thích mọi bên)</option>
+                  <option value="sepay">SePay.vn (Bắn qua webhook SePay)</option>
+                  <option value="payos">PayOS.vn (Cổng PayOS)</option>
+                  <option value="casso">Casso.vn (Cổng Casso)</option>
+                  <option value="custom">Generic / Ngân Hàng Trực Tiếp / App Tự Động</option>
+                </select>
+                <p className="text-[10px] text-zinc-400">
+                  Bộ phân giải thông minh sẽ tự chuẩn hóa định dạng dữ liệu của từng nhà cung cấp.
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Mã Bí Mật Xác Thực (Webhook Secret / API Token):
+                </label>
+                <input
+                  type="text"
+                  value={autoBankConfig.secretKey || ''}
+                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, secretKey: e.target.value.trim() })}
+                  placeholder="Ví dụ: my_secret_token_123 (Để trống nếu mở linh hoạt)"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 border border-zinc-300 font-mono text-zinc-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-xs"
+                />
+                <p className="text-[10px] text-zinc-400">
+                  Khóa bảo mật do SePay/PayOS cấp. Nếu cài đặt, server sẽ kiểm tra header <code>x-api-key</code> hoặc query <code>?token=...</code>.
+                </p>
+              </div>
+            </div>
+
+            {/* Các tùy chọn phản hồi khi có tiền về */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={autoBankConfig.autoConfirmOrder}
+                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, autoConfirmOrder: e.target.checked })}
+                  className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                />
+                <div>
+                  <div className="text-xs font-bold text-zinc-800">Tự Động Đóng Đơn</div>
+                  <div className="text-[10px] text-zinc-500">Tự hoàn thành đơn tại POS khi nhận đủ tiền</div>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={autoBankConfig.soundAlert}
+                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, soundAlert: e.target.checked })}
+                  className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                />
+                <div>
+                  <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
+                    <Volume2 className="w-3.5 h-3.5 text-amber-600" /> Chuông Ting Ting
+                  </div>
+                  <div className="text-[10px] text-zinc-500">Phát âm thanh ngân vang tươi sáng báo nhận tiền</div>
+                </div>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={autoBankConfig.speechAlert}
+                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, speechAlert: e.target.checked })}
+                  className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                />
+                <div>
+                  <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
+                    <Mic className="w-3.5 h-3.5 text-amber-600" /> Giọng Nói Tiếng Việt
+                  </div>
+                  <div className="text-[10px] text-zinc-500">Đọc số tiền và mã đơn: &quot;Đã nhận 150.000đ...&quot;</div>
+                </div>
+              </label>
+            </div>
+
+            {/* Nút lưu cấu hình & Khu vực Test giả lập */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-zinc-100">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSaveAutoBank}
+                  className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/20"
+                >
+                  <Save className="w-4 h-4" />
+                  <span>Lưu Cấu Hình Auto-Bank</span>
+                </button>
+              </div>
+
+              {/* Hộp thử nghiệm nhanh */}
+              <div className="flex items-center gap-2 bg-zinc-50 p-2 rounded-2xl border border-zinc-200">
+                <span className="text-[11px] font-bold text-zinc-600 whitespace-nowrap pl-1">Thử Nghiệm:</span>
+                <input
+                  type="text"
+                  value={formatCurrencyInput(testWebhookAmount)}
+                  onChange={(e) => setTestWebhookAmount(parseCurrencyInput(e.target.value))}
+                  placeholder="Số tiền"
+                  className="w-24 px-2 py-1 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-amber-600"
+                />
+                <button
+                  type="button"
+                  disabled={testWebhookStatus === 'testing'}
+                  onClick={handleTestWebhook}
+                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{testWebhookStatus === 'testing' ? 'Đang gửi...' : 'Bắn Thử Webhook'}</span>
+                </button>
+                {testWebhookStatus === 'success' && (
+                  <span className="text-xs font-bold text-emerald-600 animate-in fade-in flex items-center gap-1 pr-1">
+                    <Check className="w-3.5 h-3.5" /> Thành công!
+                  </span>
+                )}
+                {testWebhookStatus && testWebhookStatus.startsWith('error') && (
+                  <span className="text-[10px] font-bold text-red-600 animate-in fade-in pr-1">
+                    {testWebhookStatus}
+                  </span>
+                )}
               </div>
             </div>
           </div>

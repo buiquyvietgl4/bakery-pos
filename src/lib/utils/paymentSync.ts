@@ -322,3 +322,137 @@ export async function saveEwalletConfigToDb(
     return { success: false, error: err.message || 'Lỗi không xác định' };
   }
 }
+
+// ── CẤU HÌNH WEBHOOK TỰ ĐỘNG BÁO TIỀN VỀ (SEPAY / PAYOS / CASSO) ──
+export interface AutoBankWebhookConfig {
+  enabled: boolean;
+  provider: 'auto' | 'sepay' | 'payos' | 'casso' | 'custom';
+  apiKey?: string;
+  secretKey?: string;
+  autoConfirmOrder: boolean;
+  soundAlert: boolean;
+  speechAlert: boolean;
+  accountNumber?: string;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export const DEFAULT_AUTO_BANK_CONFIG: AutoBankWebhookConfig = {
+  enabled: true,
+  provider: 'auto',
+  apiKey: '',
+  secretKey: '',
+  autoConfirmOrder: true,
+  soundAlert: true,
+  speechAlert: true,
+  accountNumber: '',
+};
+
+export const STORAGE_KEY_AUTOBANK = 'bakery_autobank_config';
+export const AUTOBANK_CONFIG_UPDATED_EVENT = 'bakery_autobank_config_updated';
+
+let inMemoryAutoBank: AutoBankWebhookConfig | null = null;
+
+export function getAutoBankConfig(): AutoBankWebhookConfig {
+  if (inMemoryAutoBank) return inMemoryAutoBank;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_AUTOBANK);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const res: AutoBankWebhookConfig = { ...DEFAULT_AUTO_BANK_CONFIG, ...parsed };
+        inMemoryAutoBank = res;
+        return res;
+      }
+    } catch {}
+  }
+  return DEFAULT_AUTO_BANK_CONFIG;
+}
+
+export function saveAutoBankConfigLocally(config: Partial<AutoBankWebhookConfig>): AutoBankWebhookConfig {
+  const current = getAutoBankConfig();
+  const updated: AutoBankWebhookConfig = { ...current, ...config };
+  inMemoryAutoBank = updated;
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY_AUTOBANK, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent(AUTOBANK_CONFIG_UPDATED_EVENT, { detail: updated }));
+    } catch {}
+  }
+  return updated;
+}
+
+export const DB_ROW_AUTOBANK_ID = '00000000-0000-0000-0000-000000000006';
+export const DB_ROW_AUTOBANK_NAME = 'SYS_CONFIG_AUTOBANK';
+
+export async function fetchAutoBankConfigFromDb(): Promise<AutoBankWebhookConfig> {
+  if (isLocalMode()) return getAutoBankConfig();
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return getAutoBankConfig();
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_AUTOBANK_ID},name.eq.${DB_ROW_AUTOBANK_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data || !data.notes) {
+      return getAutoBankConfig();
+    }
+
+    const parsed = JSON.parse(data.notes);
+    const merged: AutoBankWebhookConfig = { ...DEFAULT_AUTO_BANK_CONFIG, ...parsed };
+    saveAutoBankConfigLocally(merged);
+    return merged;
+  } catch (err) {
+    console.warn('Lỗi đọc AutoBank config từ DB, sử dụng bộ nhớ cục bộ:', err);
+    return getAutoBankConfig();
+  }
+}
+
+export async function saveAutoBankConfigToDb(
+  config: Partial<AutoBankWebhookConfig>
+): Promise<{ success: boolean; error?: string }> {
+  const current = getAutoBankConfig();
+  const fullConfig: AutoBankWebhookConfig = {
+    ...current,
+    ...config,
+    updated_at: new Date().toISOString(),
+  };
+
+  saveAutoBankConfigLocally(fullConfig);
+
+  if (isLocalMode() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    return { success: true };
+  }
+
+  try {
+    const { data: updatedRows, error: updateErr } = await supabase
+      .from('recipes')
+      .update({
+        notes: JSON.stringify(fullConfig),
+        is_active: false,
+      })
+      .eq('id', DB_ROW_AUTOBANK_ID)
+      .select('id');
+
+    if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_AUTOBANK_ID},name.eq.${DB_ROW_AUTOBANK_NAME}`);
+      await supabase.from('recipes').insert({
+        id: DB_ROW_AUTOBANK_ID,
+        name: DB_ROW_AUTOBANK_NAME,
+        notes: JSON.stringify(fullConfig),
+        is_active: false,
+      });
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Lỗi lưu AutoBank config lên Supabase:', err);
+    return { success: false, error: err.message || 'Lỗi không xác định' };
+  }
+}
+
