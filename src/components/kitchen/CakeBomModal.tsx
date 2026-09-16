@@ -16,11 +16,19 @@ export interface CakeBomModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: any | null;
+  initialTierIndex?: number | 'all';
+  initialTab?: 'base' | 'cream' | 'accessories';
 }
 
-export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, order }) => {
-  const [activeTab, setActiveTab] = useState<'base' | 'cream' | 'accessories'>('base');
-  const [selectedTierTab, setSelectedTierTab] = useState<number | 'all'>('all');
+export const CakeBomModal: React.FC<CakeBomModalProps> = ({ 
+  isOpen, 
+  onClose, 
+  order,
+  initialTierIndex = 'all',
+  initialTab = 'base'
+}) => {
+  const [activeTab, setActiveTab] = useState<'base' | 'cream' | 'accessories'>(initialTab);
+  const [selectedTierTab, setSelectedTierTab] = useState<number | 'all'>(initialTierIndex);
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const [batchMultiplier, setBatchMultiplier] = useState<number>(1);
 
@@ -31,10 +39,10 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
       const qty = Number(mainItem?.quantity) || 1;
       setBatchMultiplier(Math.max(1, qty));
       setCheckedItems({});
-      setActiveTab('base');
-      setSelectedTierTab('all');
+      setActiveTab(initialTab || 'base');
+      setSelectedTierTab(initialTierIndex !== undefined ? initialTierIndex : 'all');
     }
-  }, [order?.id, order?.order_number]);
+  }, [order?.id, order?.order_number, initialTierIndex, initialTab]);
 
   const cakeCostingConfig = useMemo(() => getCakeCostingConfig(), [isOpen]);
   const fullBomConfig = useMemo(() => getFullCakeBomConfig(), [isOpen]);

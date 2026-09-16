@@ -44,6 +44,7 @@ interface BirthdayCakeOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
   product?: any;
+  availableProducts?: any[];
   onConfirmOrder: (orderPayload: any) => void;
 }
 
@@ -59,6 +60,7 @@ export function BirthdayCakeOrderModal({
   isOpen,
   onClose,
   product,
+  availableProducts,
   onConfirmOrder,
 }: BirthdayCakeOrderModalProps) {
   const [config, setConfig] = useState<FullCakeBomConfig>(() => getFullCakeBomConfig());
@@ -329,10 +331,27 @@ export function BirthdayCakeOrderModal({
     }
   }, [totalCalculation.suggestedPrice]);
 
-  if (!isOpen) return null;
+  // Tìm sản phẩm tương ứng trong kho tiệm để lấy tồn kho thực tế
+  const matchedProduct = useMemo(() => {
+    if (product) return product;
+    if (mode === 'preset' && selectedPresetId) {
+      const preset = config.birthdayBomPresets.find((p) => p.id === selectedPresetId);
+      if (preset && availableProducts && availableProducts.length > 0) {
+        return (
+          availableProducts.find((p: any) => p.id === preset.id) ||
+          availableProducts.find((p: any) => p.name?.toLowerCase() === preset.name?.toLowerCase()) ||
+          availableProducts.find((p: any) => p.name?.toLowerCase().includes(preset.name?.toLowerCase()) || preset.name?.toLowerCase().includes(p.name?.toLowerCase())) ||
+          null
+        );
+      }
+    }
+    return null;
+  }, [product, mode, selectedPresetId, config.birthdayBomPresets, availableProducts]);
 
-  const cakeStock = Number(product?.stock_qty ?? product?.stock ?? 0);
+  const cakeStock = Number(matchedProduct?.stock_qty ?? matchedProduct?.stock ?? product?.stock_qty ?? product?.stock ?? 0);
   const hasStock = cakeStock >= orderQuantity;
+
+  if (!isOpen) return null;
 
   const handleConfirm = () => {
     if (!customerName.trim()) {
@@ -452,12 +471,13 @@ export function BirthdayCakeOrderModal({
 
     const orderPayload = {
       product: {
-        id: product?.id || 'birthday-cake-' + Date.now(),
+        id: matchedProduct?.id || product?.id || 'birthday-cake-' + Date.now(),
         name: isMultiTier
-          ? `${product?.name || 'Bánh Sinh Nhật'} (${tierCount} Tầng)`
-          : (product?.name || 'Bánh Sinh Nhật Đặt Theo Yêu Cầu'),
+          ? `${matchedProduct?.name || product?.name || 'Bánh Sinh Nhật'} (${tierCount} Tầng)`
+          : (matchedProduct?.name || product?.name || 'Bánh Sinh Nhật Đặt Theo Yêu Cầu'),
         selling_price: finalPriceInput,
         cake_type_label: 'birthday',
+        stock_qty: cakeStock,
       },
       cakeOrderSpec: orderSpec,
       quantity: orderQuantity,

@@ -1258,8 +1258,10 @@ export default function POSPage() {
           {
             id: generateUUID(),
             product_id: product.id,
-            product_name_snapshot: cakeDisplayName,
-            quantity: orderQuantity,
+            product_name_snapshot: isPartialStock
+              ? `${cakeDisplayName} (Sẵn ${stockAvailable} cái • Chờ bếp làm ${needToMake} cái)`
+              : cakeDisplayName,
+            quantity: isPartialStock ? stockAvailable : orderQuantity,
             unit_price: unitPrice,
             unit_cost: totalCost,
             line_total: finalPrice,
@@ -1507,8 +1509,76 @@ export default function POSPage() {
         (item as any).cake_order_spec ||
         item.product.id?.startsWith('custom-cake-')
       );
+
+      // ── CƠ CHẾ FLOWCHART TÁCH ĐƠN KHI TỒN 1 PHẦN (VÍ DỤ TỒN 10 ĐẶT 12) ──
+      let hasPartialStock = false;
+      let totalStockAvailable = 0;
+      let totalNeedToBake = 0;
+      const partialBakeItems: any[] = [];
+      const partialReadyItems: any[] = [];
+
+      cart.forEach((item) => {
+        const availStock = Number(item.product.stock_qty ?? item.product.stock ?? 0);
+        const unitCost = Number(item.product.import_price ?? item.product.base_cost_price ?? Math.round(item.product.selling_price * 0.33)) || 0;
+
+        if (availStock > 0 && item.quantity > availStock) {
+          hasPartialStock = true;
+          const missingQty = item.quantity - availStock;
+          totalStockAvailable += availStock;
+          totalNeedToBake += missingQty;
+
+          // Món có sẵn đưa vào đơn chính (Step 3: Chờ Giao / Sẵn sàng)
+          partialReadyItems.push({
+            product_id: item.product.id,
+            product_name_snapshot: `${item.product.name} (Sẵn ${availStock} cái • Chờ bếp làm ${missingQty} cái)`,
+            quantity: availStock,
+            unit_price: item.product.selling_price,
+            unit_cost: unitCost,
+            line_total: item.product.selling_price * item.quantity,
+            line_cost: unitCost * item.quantity,
+            notes: item.notes || '',
+            product_type: item.product.product_type || 'produced',
+            supplier_name: item.product.supplier_name,
+          });
+
+          // Món thiếu đưa vào đơn làm bổ sung (Step 1: Bếp Mới Nhận / Cần Làm)
+          partialBakeItems.push({
+            id: generateUUID(),
+            product_id: item.product.id,
+            product_name_snapshot: `${item.product.name} [Bếp làm ${missingQty} cái bổ sung]`,
+            quantity: missingQty,
+            unit_price: item.product.selling_price,
+            unit_cost: unitCost,
+            line_total: 0,
+            line_cost: unitCost * missingQty,
+            notes: `Làm bổ sung ${missingQty} cái cho đơn #${orderNumber}`,
+            product_type: item.product.product_type || 'produced',
+            supplier_name: item.product.supplier_name,
+          });
+        } else {
+          totalStockAvailable += Math.min(availStock, item.quantity);
+          if (availStock <= 0) totalNeedToBake += item.quantity;
+
+          partialReadyItems.push({
+            product_id: item.product.id,
+            product_name_snapshot: item.product.name,
+            quantity: item.quantity,
+            unit_price: item.product.selling_price,
+            unit_cost: unitCost,
+            line_total: item.product.selling_price * item.quantity,
+            line_cost: unitCost * item.quantity,
+            notes: item.notes || '',
+            product_type: item.product.product_type || 'produced',
+            supplier_name: item.product.supplier_name,
+          });
+        }
+      });
+
       let initialStatus: 'completed' | 'ready' | 'pending';
-      if (hasPreorderOrCustomItem || !allItemsInStock) {
+      if (hasPartialStock) {
+        // Có tồn 1 phần: Nằm ở Bước 3 (Chờ Giao / Sẵn sàng) nhưng KHÓA nút giao lại chờ bếp nướng xong!
+        initialStatus = 'ready';
+      } else if (hasPreorderOrCustomItem || !allItemsInStock) {
         initialStatus = 'pending';
       } else if (fulfillmentType === 'takeaway') {
         initialStatus = 'completed';
@@ -1516,8 +1586,7 @@ export default function POSPage() {
         initialStatus = 'ready';
       }
 
-      // Tính toán giá vốn hàng bán COGS chính xác theo từng sản phẩm (bánh tự làm hoặc hàng nhập bán)
-      const itemsWithCost = cart.map((item) => {
+      const itemsWithCost = hasPartialStock ? partialReadyItems : cart.map((item) => {
         const unitCost = Number(item.product.import_price ?? item.product.base_cost_price ?? Math.round(item.product.selling_price * 0.33)) || 0;
         const lineCost = Math.round(unitCost * item.quantity);
         return {
@@ -1536,7 +1605,7 @@ export default function POSPage() {
 
       const orderTotalCogs = itemsWithCost.reduce((sum, it) => sum + (it.line_cost || 0), 0);
 
-      const orderData = {
+      const orderData: any = {
         local_id: localId,
         order_number: orderNumber,
         order_type: orderType,
@@ -1554,10 +1623,17 @@ export default function POSPage() {
         customer_phone: isPre ? posCustomerPhone : undefined,
         cake_message: isPre ? posCakeMessage : undefined,
         preorder_pickup_at: isPre ? new Date(`${posPickupDate}T${posPickupTime}:00`).toISOString() : undefined,
-        notes: fullNotes,
+        notes: hasPartialStock
+          ? `[⏳ CHỜ BẾP LÀM ${totalNeedToBake} CÁI (ĐÃ CÓ SẴN ${totalStockAvailable} CÁI)] | ${fullNotes}`
+          : fullNotes,
         payment_method: paymentMethod,
         paymentMethod: paymentMethod,
         total_cogs: orderTotalCogs,
+        orderQuantity: cart.reduce((sum, it) => sum + it.quantity, 0),
+        ready_stock_qty: hasPartialStock ? totalStockAvailable : undefined,
+        need_bake_qty: hasPartialStock ? totalNeedToBake : undefined,
+        bake_status: hasPartialStock ? 'pending' : (allItemsInStock ? 'done' : 'pending'),
+        linked_bake_order_number: hasPartialStock ? `${orderNumber}-LAM` : undefined,
         sync_status: 'synced' as const,
         created_at: now.toISOString(),
         items: [
@@ -1583,9 +1659,43 @@ export default function POSPage() {
         ],
       };
 
+      // Đơn làm bổ sung nếu thiếu 1 phần hàng
+      let bakeOrderData: any = null;
+      if (hasPartialStock && partialBakeItems.length > 0) {
+        const bakeOrderNum = `${orderNumber}-LAM`;
+        bakeOrderData = {
+          local_id: generateUUID(),
+          order_number: bakeOrderNum,
+          orderNumber: bakeOrderNum,
+          parent_order_number: orderNumber,
+          order_type: orderType,
+          delivery_method: fulfillmentType === 'shipping' ? ('shipping' as const) : fulfillmentType === 'pickup' ? ('pickup' as const) : undefined,
+          status: 'pending',
+          subtotal: 0,
+          total_amount: 0,
+          deposit_amount: 0,
+          remaining_amount: 0,
+          customer_name: isPre ? (posCustomerName || 'Khách đặt') : undefined,
+          customer_phone: isPre ? posCustomerPhone : undefined,
+          cake_message: isPre ? posCakeMessage : undefined,
+          preorder_pickup_at: isPre ? new Date(`${posPickupDate}T${posPickupTime}:00`).toISOString() : undefined,
+          notes: `[👨‍🍳 BỔ SUNG CHO ĐƠN #${orderNumber}] Tiệm có sẵn ${totalStockAvailable} cái, bếp cần làm ${totalNeedToBake} cái | ${fullNotes}`,
+          payment_method: paymentMethod,
+          total_cogs: partialBakeItems.reduce((sum: number, it: any) => sum + (it.line_cost || 0), 0),
+          sync_status: 'synced' as const,
+          created_at: now.toISOString(),
+          items: partialBakeItems,
+          need_bake_qty: totalNeedToBake,
+          orderQuantity: totalNeedToBake,
+        };
+      }
+
       // 1. Lưu ngay lập tức vào Dexie IndexedDB & localStorage
       try {
         await db.orders.add(orderData as any);
+        if (bakeOrderData) {
+          await db.orders.add(bakeOrderData as any);
+        }
       } catch (dbErr) {
         console.warn('Lỗi ghi Dexie:', dbErr);
       }
@@ -1593,6 +1703,9 @@ export default function POSPage() {
       if (typeof window !== 'undefined') {
         try {
           const recentOrders = JSON.parse(localStorage.getItem('bakery_orders') || '[]');
+          if (bakeOrderData) {
+            recentOrders.unshift(bakeOrderData);
+          }
           recentOrders.unshift(orderData);
           localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 100)));
           localStorage.setItem('bakery_kds_seeded', 'true');
@@ -1601,6 +1714,10 @@ export default function POSPage() {
           
           // Bắn thông báo Telegram tức thì
           sendTelegramOrderAlert(orderData).catch(() => {});
+          if (bakeOrderData) {
+            sendTelegramOrderAlert(bakeOrderData).catch(() => {});
+            syncOrderToSupabase(bakeOrderData, 'pending').catch(() => {});
+          }
 
           // Bắn thông báo trực tiếp PWA Web Push tới toàn bộ máy trong tiệm
           triggerServerPush({
@@ -6553,6 +6670,7 @@ export default function POSPage() {
         isOpen={isBirthdayOrderModalOpen}
         onClose={() => setIsBirthdayOrderModalOpen(false)}
         product={birthdayOrderProduct}
+        availableProducts={products}
         onConfirmOrder={handleConfirmBirthdayCakeOrder}
       />
 

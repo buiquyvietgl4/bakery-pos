@@ -18,7 +18,7 @@ export interface OrderDetailModalProps {
   onClose: () => void;
   order: any | null;
   onPrintSticker?: (order: any) => void;
-  onViewBom?: (order: any) => void;
+  onViewBom?: (order: any, tierIndex?: number | 'all', tab?: 'base' | 'cream' | 'accessories') => void;
   onAction?: (order: any) => void;
   actionText?: string;
   actionIcon?: React.ReactNode;
@@ -295,16 +295,52 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {spec.tiers.map((t: any, idx: number) => (
-                      <div key={idx} className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-1 text-xs">
+                      <div key={idx} className="p-3 rounded-xl bg-zinc-900/90 border border-zinc-800 space-y-1.5 text-xs">
                         <div className="font-black text-amber-300 flex items-center justify-between border-b border-zinc-800 pb-1">
-                          <span>{t.tierName || `Tầng ${idx + 1}`}</span>
+                          <span className="flex items-center gap-1">
+                            <span className="w-4 h-4 rounded-full bg-pink-600 text-white text-[10px] font-black flex items-center justify-center">
+                              {idx + 1}
+                            </span>
+                            <span>{t.tierName || `Tầng ${idx + 1}`}</span>
+                          </span>
                           <span className="text-zinc-300 font-bold bg-zinc-800 px-2 py-0.5 rounded-md text-[11px]">{t.sizeName}</span>
                         </div>
-                        <div className="text-[11px] text-zinc-300 space-y-0.5 pt-0.5">
-                          <div>🌾 Cốt: <span className="font-bold text-zinc-100">{t.cakeBase?.name || 'Vani'}</span></div>
-                          <div>🍦 Kem: <span className="font-bold text-zinc-100">{t.creamCoating?.name || 'Kem tươi'}</span></div>
+                        <div className="text-[11px] text-zinc-300 space-y-1 pt-0.5">
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="text-zinc-400 shrink-0">🌾 Cốt:</span>
+                              <span className="font-bold text-zinc-100 truncate">{t.cakeBase?.name || 'Vani'}</span>
+                            </div>
+                            {onViewBom && (
+                              <button
+                                type="button"
+                                onClick={() => onViewBom(order, idx, 'base')}
+                                className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                              >
+                                <Utensils className="w-3 h-3 text-pink-400" /> Xem BOM
+                              </button>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1 min-w-0">
+                              <span className="text-zinc-400 shrink-0">🍦 Kem:</span>
+                              <span className="font-bold text-zinc-100 truncate">{t.creamCoating?.name || 'Kem tươi'}</span>
+                            </div>
+                            {onViewBom && (
+                              <button
+                                type="button"
+                                onClick={() => onViewBom(order, idx, 'cream')}
+                                className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                              >
+                                <Utensils className="w-3 h-3 text-pink-400" /> Xem BOM
+                              </button>
+                            )}
+                          </div>
                           {t.filling?.name && (
-                            <div>🍓 Nhân: <span className="font-bold text-pink-300">{t.filling.name}</span></div>
+                            <div className="flex items-center gap-1">
+                              <span className="text-zinc-400 shrink-0">🍓 Nhân:</span>
+                              <span className="font-bold text-pink-300 truncate">{t.filling.name}</span>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -320,15 +356,37 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
               ) : isBirthdayCake && (flavor || cream || filling || packaging) ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
                   {flavor && (
-                    <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                      <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🌾 Cốt bánh:</span>
-                      <span className="text-zinc-100 font-extrabold">{flavor}</span>
+                    <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex items-center justify-between gap-1">
+                      <div>
+                        <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🌾 Cốt bánh:</span>
+                        <span className="text-zinc-100 font-extrabold">{flavor}</span>
+                      </div>
+                      {onViewBom && (
+                        <button
+                          type="button"
+                          onClick={() => onViewBom(order, 0, 'base')}
+                          className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <Utensils className="w-3 h-3 text-pink-400" /> Xem BOM
+                        </button>
+                      )}
                     </div>
                   )}
                   {cream && (
-                    <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800">
-                      <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🍦 Loại kem:</span>
-                      <span className="text-zinc-100 font-extrabold">{cream}</span>
+                    <div className="p-2.5 rounded-xl bg-zinc-900/90 border border-zinc-800 flex items-center justify-between gap-1">
+                      <div>
+                        <span className="text-[10px] text-zinc-400 font-bold block mb-0.5">🍦 Loại kem:</span>
+                        <span className="text-zinc-100 font-extrabold">{cream}</span>
+                      </div>
+                      {onViewBom && (
+                        <button
+                          type="button"
+                          onClick={() => onViewBom(order, 0, 'cream')}
+                          className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        >
+                          <Utensils className="w-3 h-3 text-pink-400" /> Xem BOM
+                        </button>
+                      )}
                     </div>
                   )}
                   {filling && (

@@ -189,7 +189,18 @@ export default function KitchenPage() {
 
   // ── MODAL CÔNG THỨC BOM CỐT BÁNH CHO THỢ BẾP ──
   const [bomModalOrder, setBomModalOrder] = useState<KDSOrder | null>(null);
-  const handleOpenCakeBom = (order: KDSOrder) => setBomModalOrder(order);
+  const [bomModalTierIndex, setBomModalTierIndex] = useState<number | 'all'>('all');
+  const [bomModalTab, setBomModalTab] = useState<'base' | 'cream' | 'accessories'>('base');
+
+  const handleOpenCakeBom = (
+    order: KDSOrder,
+    tierIndex: number | 'all' = 'all',
+    tab: 'base' | 'cream' | 'accessories' = 'base'
+  ) => {
+    setBomModalTierIndex(tierIndex);
+    setBomModalTab(tab);
+    setBomModalOrder(order);
+  };
 
   // ── MODAL THANH TOÁN & HOÀN THÀNH GIAO HÀNG (BƯỚC 3) ──
   const [deliveryPaymentModalOrder, setDeliveryPaymentModalOrder] = useState<KDSOrder | null>(null);
@@ -776,6 +787,18 @@ export default function KitchenPage() {
                 .map((o: any) => {
                   const fromNotes = parsePreorderFromNotes(o.notes);
                   const isShip = (o.delivery_method || o.deliveryMethod) === 'shipping' || fromNotes.delivery_method === 'shipping';
+
+                  // Tự động khôi phục số lượng tồn và thiếu từ ghi chú nếu chưa có trong object
+                  const matchBake = o.notes?.match(/CHỜ BẾP LÀM (\d+) CÁI(?:\s*\(ĐÃ CÓ SẴN (\d+)(?:\/(\d+))? CÁI\))?/i);
+                  const needBakeQty = o.need_bake_qty !== undefined ? Number(o.need_bake_qty) : (matchBake ? Number(matchBake[1]) : undefined);
+                  const readyStockQty = o.ready_stock_qty !== undefined ? Number(o.ready_stock_qty) : (matchBake && matchBake[2] ? Number(matchBake[2]) : undefined);
+                  const ordQty = o.orderQuantity !== undefined ? Number(o.orderQuantity) : (matchBake && matchBake[3] ? Number(matchBake[3]) : Number(o.items?.[0]?.quantity || 1));
+                  const bakeStatus = o.bake_status || (needBakeQty && needBakeQty > 0 ? 'pending' : undefined);
+
+                  const matchParent = o.notes?.match(/BỔ SUNG CHO ĐƠN #(BK-[A-Z0-9-]+)/i);
+                  const parentOrderNum = o.parent_order_number || (matchParent ? matchParent[1] : (o.order_number?.endsWith('-LAM') ? o.order_number.replace(/-LAM$/, '') : undefined));
+                  const linkedBakeOrder = o.linked_bake_order_number || (needBakeQty && needBakeQty > 0 ? `${o.order_number}-LAM` : undefined);
+
                   return {
                     id: String(o.id || o.local_id || o.order_number || Math.random()),
                     order_number: String(o.order_number || o.orderNumber || 'BK-XXX'),
@@ -800,12 +823,20 @@ export default function KitchenPage() {
                     addons: Array.isArray(o.addons) && o.addons.length > 0 ? o.addons : (fromNotes.addons || []),
                     selected_addons: o.selected_addons || [],
                     cost_breakdown: o.cost_breakdown,
+                    orderQuantity: ordQty,
+                    ready_stock_qty: readyStockQty,
+                    need_bake_qty: needBakeQty,
+                    bake_status: bakeStatus,
+                    linked_bake_order_number: linkedBakeOrder,
+                    parent_order_number: parentOrderNum,
+                    cake_order_spec: o.cake_order_spec || o.items?.[0]?.cake_order_spec,
                     items: Array.isArray(o.items) && o.items.length > 0
                       ? o.items.filter((it: any) => it && typeof it === 'object').map((it: any, idx: number) => ({
                           id: String(it.id || `it-${idx}`),
                           product_name_snapshot: it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm',
                           quantity: Number(it.quantity) || 1,
                           notes: it.notes || '',
+                          cake_order_spec: it.cake_order_spec,
                         }))
                       : o.cakeName
                       ? [
@@ -944,6 +975,13 @@ export default function KitchenPage() {
                 addons: Array.isArray(so.addons) && so.addons.length > 0 ? so.addons : (Array.isArray(existing?.addons) && existing.addons.length > 0 ? existing.addons : (sbNotes.addons || [])),
                 selected_addons: so.selected_addons || existing?.selected_addons || [],
                 cost_breakdown: so.cost_breakdown || existing?.cost_breakdown,
+                orderQuantity: existing?.orderQuantity ?? so.orderQuantity,
+                ready_stock_qty: existing?.ready_stock_qty ?? so.ready_stock_qty,
+                need_bake_qty: existing?.need_bake_qty ?? so.need_bake_qty,
+                bake_status: existing?.bake_status ?? so.bake_status,
+                linked_bake_order_number: existing?.linked_bake_order_number ?? so.linked_bake_order_number,
+                parent_order_number: existing?.parent_order_number ?? so.parent_order_number,
+                cake_order_spec: existing?.cake_order_spec ?? so.cake_order_spec,
                 items: Array.isArray(so.order_items) && so.order_items.length > 0
                   ? so.order_items
                       .filter((it: any) => it && typeof it === 'object')
@@ -1801,6 +1839,21 @@ export default function KitchenPage() {
       ])
     );
 
+    let tiers = spec?.tiers || [];
+    if ((!tiers || tiers.length === 0) && order.notes && order.notes.includes('Tầng:')) {
+      const matches = [...order.notes.matchAll(/\[([^:\]]+):\s*([^•\]]+)•\s*Cốt:\s*([^•\]]+)•\s*Kem:\s*([^•\]]+)(?:•\s*Nhân:\s*([^\]]+))?\]/g)];
+      if (matches.length > 0) {
+        tiers = matches.map((m, idx) => ({
+          tierIndex: idx + 1,
+          tierName: m[1].trim(),
+          sizeName: m[2].trim(),
+          cakeBase: { name: m[3].trim() },
+          creamCoating: { name: m[4].trim() },
+          filling: m[5] ? { name: m[5].trim() } : undefined,
+        }));
+      }
+    }
+
     return {
       fullName: rawFullName,
       name: name || rawFullName,
@@ -1809,7 +1862,7 @@ export default function KitchenPage() {
       cream,
       filling,
       packaging,
-      tiers: spec?.tiers || [],
+      tiers: tiers,
       addons: allAddons,
       allAddons,
       extraItems,
@@ -2460,41 +2513,150 @@ export default function KitchenPage() {
                               </div>
                             )}
 
-                            {/* Cốt & Kem & Nhân & Hộp (Chỉ hiển thị cho Bánh Sinh Nhật / Bánh Kem) */}
-                            {cakeInfo.isBirthdayCake && (Boolean(cakeInfo.tiers && cakeInfo.tiers.length > 1) || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
-                              <div className="pt-1.5 border-t border-pink-900/30 text-[11px] space-y-0.5">
+                            {/* Cốt & Kem & Nhân & Hộp (Hiển thị chi tiết từng tầng hoặc đơn tầng kèm nút Xem BOM ngay bên cạnh) */}
+                            {cakeInfo.isBirthdayCake && (
+                              <div className="pt-2 border-t border-pink-900/40 text-xs space-y-2">
                                 {cakeInfo.tiers && cakeInfo.tiers.length > 1 ? (
-                                  <div className="space-y-0.5">
-                                    <div className="font-bold text-pink-300 text-[10px] uppercase">🎂 Bánh {cakeInfo.tiers.length} Tầng:</div>
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between pb-1 border-b border-pink-900/50">
+                                      <span className="font-black text-pink-300 text-xs uppercase flex items-center gap-1.5">
+                                        <Cake className="w-4 h-4 text-pink-400" />
+                                        <span>🎂 Bánh {cakeInfo.tiers.length} Tầng:</span>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenCakeBom(order, 'all', 'base');
+                                        }}
+                                        className="px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-600 text-pink-300 hover:text-white font-black text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                                        title="Xem toàn bộ BOM tổng hợp các tầng"
+                                      >
+                                        <Utensils className="w-3 h-3 text-pink-400" />
+                                        <span>BOM Tổng Hợp</span>
+                                      </button>
+                                    </div>
+
                                     {cakeInfo.tiers.map((t: any, idx: number) => (
-                                      <div key={idx} className="flex items-center gap-1 text-[10px] text-zinc-300 truncate">
-                                        <span className="font-bold text-amber-300 shrink-0">{t.tierName || `T${idx + 1}`}:</span>
-                                        <span className="text-zinc-100 truncate">
-                                          {t.sizeName} • {t.cakeBase?.name || 'Vani'} • {t.creamCoating?.name || 'Kem tươi'}{t.filling?.name ? ` • ${t.filling.name}` : ''}
-                                        </span>
+                                      <div key={idx} className="p-2.5 rounded-xl bg-zinc-950/90 border border-pink-900/50 space-y-1.5 shadow-xs">
+                                        <div className="flex items-center justify-between pb-1 border-b border-zinc-800">
+                                          <span className="font-extrabold text-amber-300 text-xs flex items-center gap-1">
+                                            <span className="w-4 h-4 rounded-full bg-pink-600 text-white text-[10px] font-black flex items-center justify-center">
+                                              {idx + 1}
+                                            </span>
+                                            <span>{t.tierName || `Tầng ${idx + 1}`}</span>
+                                          </span>
+                                          <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-pink-200 font-black text-[11px] border border-zinc-700">
+                                            {t.sizeName || (t.diameterCm ? `Size ${t.diameterCm}cm` : '')}
+                                          </span>
+                                        </div>
+
+                                        <div className="space-y-1 text-xs pt-0.5">
+                                          {/* Cốt bánh + Nút Xem BOM */}
+                                          <div className="flex items-center justify-between gap-1">
+                                            <div className="flex items-center gap-1 min-w-0">
+                                              <span className="text-zinc-400 text-[11px] shrink-0">🌾 Cốt:</span>
+                                              <span className="font-bold text-white truncate">{t.cakeBase?.name || 'Vani'}</span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenCakeBom(order, idx, 'base');
+                                              }}
+                                              className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                              title={`Xem công thức BOM cốt bánh tầng ${idx + 1}`}
+                                            >
+                                              <Utensils className="w-3 h-3 text-pink-400" />
+                                              <span>Xem BOM</span>
+                                            </button>
+                                          </div>
+
+                                          {/* Kem phủ + Nút Xem BOM */}
+                                          <div className="flex items-center justify-between gap-1">
+                                            <div className="flex items-center gap-1 min-w-0">
+                                              <span className="text-zinc-400 text-[11px] shrink-0">🍦 Kem:</span>
+                                              <span className="font-bold text-white truncate">{t.creamCoating?.name || 'Kem tươi'}</span>
+                                            </div>
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleOpenCakeBom(order, idx, 'cream');
+                                              }}
+                                              className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                              title={`Xem công thức BOM kem phủ tầng ${idx + 1}`}
+                                            >
+                                              <Utensils className="w-3 h-3 text-pink-400" />
+                                              <span>Xem BOM</span>
+                                            </button>
+                                          </div>
+
+                                          {/* Nhân bánh */}
+                                          {t.filling?.name && (
+                                            <div className="flex items-center gap-1 text-[11px] pt-0.5">
+                                              <span className="text-zinc-400 shrink-0">🍓 Nhân:</span>
+                                              <span className="font-bold text-pink-300 truncate">{t.filling.name}</span>
+                                            </div>
+                                          )}
+                                        </div>
                                       </div>
                                     ))}
                                   </div>
                                 ) : (
-                                  <>
-                                    {(cakeInfo.flavor || cakeInfo.cream) && (
-                                      <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                        <span className="text-pink-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                                        <span className="text-zinc-100 font-semibold truncate">
-                                          {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
-                                        </span>
+                                  <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-pink-900/50 space-y-1.5 shadow-xs">
+                                    {/* Cốt bánh */}
+                                    <div className="flex items-center justify-between gap-1">
+                                      <div className="flex items-center gap-1 min-w-0">
+                                        <span className="text-zinc-400 text-[11px] shrink-0">🌾 Cốt:</span>
+                                        <span className="font-bold text-white truncate">{cakeInfo.flavor || 'Cốt Vani'}</span>
                                       </div>
-                                    )}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenCakeBom(order, 0, 'base');
+                                        }}
+                                        className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                        title="Xem công thức định mức BOM cốt bánh"
+                                      >
+                                        <Utensils className="w-3 h-3 text-pink-400" />
+                                        <span>Xem BOM</span>
+                                      </button>
+                                    </div>
+
+                                    {/* Kem phủ */}
+                                    <div className="flex items-center justify-between gap-1">
+                                      <div className="flex items-center gap-1 min-w-0">
+                                        <span className="text-zinc-400 text-[11px] shrink-0">🍦 Kem:</span>
+                                        <span className="font-bold text-white truncate">{cakeInfo.cream || 'Kem tươi'}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenCakeBom(order, 0, 'cream');
+                                        }}
+                                        className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                        title="Xem công thức định mức BOM kem phủ"
+                                      >
+                                        <Utensils className="w-3 h-3 text-pink-400" />
+                                        <span>Xem BOM</span>
+                                      </button>
+                                    </div>
+
+                                    {/* Nhân bánh */}
                                     {cakeInfo.filling && (
-                                      <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                        <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
-                                        <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                                      <div className="flex items-center gap-1 text-[11px] pt-0.5">
+                                        <span className="text-zinc-400 shrink-0">🍓 Nhân:</span>
+                                        <span className="font-bold text-pink-300 truncate">{cakeInfo.filling}</span>
                                       </div>
                                     )}
-                                  </>
+                                  </div>
                                 )}
+
                                 {cakeInfo.packaging && (
-                                  <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                  <div className="flex items-center gap-1 text-zinc-300 pt-1 border-t border-pink-900/30 text-xs truncate">
                                     <span className="text-blue-400 font-bold shrink-0">📦 Hộp:</span>
                                     <span className="text-blue-200 font-semibold truncate">{cakeInfo.packaging}</span>
                                   </div>
@@ -2700,41 +2862,150 @@ export default function KitchenPage() {
                                 </div>
                               )}
 
-                              {/* Cốt & Kem & Nhân & Hộp (Chỉ hiển thị cho Bánh Sinh Nhật / Bánh Kem) */}
-                              {cakeInfo.isBirthdayCake && (Boolean(cakeInfo.tiers && cakeInfo.tiers.length > 1) || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
-                                <div className="pt-1.5 border-t border-blue-900/30 text-[11px] space-y-0.5">
+                              {/* Cốt & Kem & Nhân & Hộp (Hiển thị chi tiết từng tầng hoặc đơn tầng kèm nút Xem BOM ngay bên cạnh) */}
+                              {cakeInfo.isBirthdayCake && (
+                                <div className="pt-2 border-t border-blue-900/40 text-xs space-y-2">
                                   {cakeInfo.tiers && cakeInfo.tiers.length > 1 ? (
-                                    <div className="space-y-0.5">
-                                      <div className="font-bold text-blue-300 text-[10px] uppercase">🎂 Bánh {cakeInfo.tiers.length} Tầng:</div>
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between pb-1 border-b border-blue-900/50">
+                                        <span className="font-black text-blue-300 text-xs uppercase flex items-center gap-1.5">
+                                          <Cake className="w-4 h-4 text-blue-400" />
+                                          <span>🎂 Bánh {cakeInfo.tiers.length} Tầng:</span>
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenCakeBom(order, 'all', 'base');
+                                          }}
+                                          className="px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-600 text-pink-300 hover:text-white font-black text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                                          title="Xem toàn bộ BOM tổng hợp các tầng"
+                                        >
+                                          <Utensils className="w-3 h-3 text-pink-400" />
+                                          <span>BOM Tổng Hợp</span>
+                                        </button>
+                                      </div>
+
                                       {cakeInfo.tiers.map((t: any, idx: number) => (
-                                        <div key={idx} className="flex items-center gap-1 text-[10px] text-zinc-300 truncate">
-                                          <span className="font-bold text-amber-300 shrink-0">{t.tierName || `T${idx + 1}`}:</span>
-                                          <span className="text-zinc-100 truncate">
-                                            {t.sizeName} • {t.cakeBase?.name || 'Vani'} • {t.creamCoating?.name || 'Kem tươi'}{t.filling?.name ? ` • ${t.filling.name}` : ''}
-                                          </span>
+                                        <div key={idx} className="p-2.5 rounded-xl bg-zinc-950/90 border border-blue-900/50 space-y-1.5 shadow-xs">
+                                          <div className="flex items-center justify-between pb-1 border-b border-zinc-800">
+                                            <span className="font-extrabold text-amber-300 text-xs flex items-center gap-1">
+                                              <span className="w-4 h-4 rounded-full bg-blue-600 text-white text-[10px] font-black flex items-center justify-center">
+                                                {idx + 1}
+                                              </span>
+                                              <span>{t.tierName || `Tầng ${idx + 1}`}</span>
+                                            </span>
+                                            <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-blue-200 font-black text-[11px] border border-zinc-700">
+                                              {t.sizeName || (t.diameterCm ? `Size ${t.diameterCm}cm` : '')}
+                                            </span>
+                                          </div>
+
+                                          <div className="space-y-1 text-xs pt-0.5">
+                                            {/* Cốt bánh + Nút Xem BOM */}
+                                            <div className="flex items-center justify-between gap-1">
+                                              <div className="flex items-center gap-1 min-w-0">
+                                                <span className="text-zinc-400 text-[11px] shrink-0">🌾 Cốt:</span>
+                                                <span className="font-bold text-white truncate">{t.cakeBase?.name || 'Vani'}</span>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleOpenCakeBom(order, idx, 'base');
+                                                }}
+                                                className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                                title={`Xem công thức BOM cốt bánh tầng ${idx + 1}`}
+                                              >
+                                                <Utensils className="w-3 h-3 text-pink-400" />
+                                                <span>Xem BOM</span>
+                                              </button>
+                                            </div>
+
+                                            {/* Kem phủ + Nút Xem BOM */}
+                                            <div className="flex items-center justify-between gap-1">
+                                              <div className="flex items-center gap-1 min-w-0">
+                                                <span className="text-zinc-400 text-[11px] shrink-0">🍦 Kem:</span>
+                                                <span className="font-bold text-white truncate">{t.creamCoating?.name || 'Kem tươi'}</span>
+                                              </div>
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleOpenCakeBom(order, idx, 'cream');
+                                                }}
+                                                className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                                title={`Xem công thức BOM kem phủ tầng ${idx + 1}`}
+                                              >
+                                                <Utensils className="w-3 h-3 text-pink-400" />
+                                                <span>Xem BOM</span>
+                                              </button>
+                                            </div>
+
+                                            {/* Nhân bánh */}
+                                            {t.filling?.name && (
+                                              <div className="flex items-center gap-1 text-[11px] pt-0.5">
+                                                <span className="text-zinc-400 shrink-0">🍓 Nhân:</span>
+                                                <span className="font-bold text-pink-300 truncate">{t.filling.name}</span>
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
                                       ))}
                                     </div>
                                   ) : (
-                                    <>
-                                      {(cakeInfo.flavor || cakeInfo.cream) && (
-                                        <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                          <span className="text-blue-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                                          <span className="text-zinc-100 font-semibold truncate">
-                                            {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
-                                          </span>
+                                    <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-blue-900/50 space-y-1.5 shadow-xs">
+                                      {/* Cốt bánh */}
+                                      <div className="flex items-center justify-between gap-1">
+                                        <div className="flex items-center gap-1 min-w-0">
+                                          <span className="text-zinc-400 text-[11px] shrink-0">🌾 Cốt:</span>
+                                          <span className="font-bold text-white truncate">{cakeInfo.flavor || 'Cốt Vani'}</span>
                                         </div>
-                                      )}
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenCakeBom(order, 0, 'base');
+                                          }}
+                                          className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                          title="Xem công thức định mức BOM cốt bánh"
+                                        >
+                                          <Utensils className="w-3 h-3 text-pink-400" />
+                                          <span>Xem BOM</span>
+                                        </button>
+                                      </div>
+
+                                      {/* Kem phủ */}
+                                      <div className="flex items-center justify-between gap-1">
+                                        <div className="flex items-center gap-1 min-w-0">
+                                          <span className="text-zinc-400 text-[11px] shrink-0">🍦 Kem:</span>
+                                          <span className="font-bold text-white truncate">{cakeInfo.cream || 'Kem tươi'}</span>
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleOpenCakeBom(order, 0, 'cream');
+                                          }}
+                                          className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                          title="Xem công thức định mức BOM kem phủ"
+                                        >
+                                          <Utensils className="w-3 h-3 text-pink-400" />
+                                          <span>Xem BOM</span>
+                                        </button>
+                                      </div>
+
+                                      {/* Nhân bánh */}
                                       {cakeInfo.filling && (
-                                        <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                          <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
-                                          <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                                        <div className="flex items-center gap-1 text-[11px] pt-0.5">
+                                          <span className="text-zinc-400 shrink-0">🍓 Nhân:</span>
+                                          <span className="font-bold text-pink-300 truncate">{cakeInfo.filling}</span>
                                         </div>
                                       )}
-                                    </>
+                                    </div>
                                   )}
+
                                   {cakeInfo.packaging && (
-                                    <div className="flex items-center gap-1 text-zinc-300 truncate">
+                                    <div className="flex items-center gap-1 text-zinc-300 pt-1 border-t border-blue-900/30 text-xs truncate">
                                       <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
                                       <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging}</span>
                                     </div>
@@ -2960,12 +3231,22 @@ export default function KitchenPage() {
                           <h3 className="font-black text-sm sm:text-base text-zinc-100 uppercase leading-snug">
                             {cakeInfo.name}
                           </h3>
-                          {cakeInfo.quantity > 1 && (
+                          {Boolean(order.need_bake_qty && order.need_bake_qty > 0) ? (
+                            <span className="shrink-0 px-2 py-0.5 rounded-lg bg-amber-600 text-white font-black text-xs">
+                              Có sẵn: {order.ready_stock_qty ?? ((order.orderQuantity || 0) - (order.need_bake_qty || 0))}/{order.orderQuantity || (order.ready_stock_qty || 0) + (order.need_bake_qty || 0)} cái
+                            </span>
+                          ) : cakeInfo.quantity > 1 && (
                             <span className="shrink-0 px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-black text-xs">
                               {cakeInfo.quantity}x
                             </span>
                           )}
                         </div>
+                        {Boolean(order.need_bake_qty && order.need_bake_qty > 0) && (
+                          <div className="p-1.5 px-2.5 rounded-lg bg-amber-950/80 border border-amber-600/60 text-amber-200 text-[11px] font-extrabold flex items-center justify-between">
+                            <span>📦 Có sẵn chờ ship: <b>{order.ready_stock_qty ?? ((order.orderQuantity || 0) - (order.need_bake_qty || 0))} cái</b></span>
+                            <span className="text-amber-400">⏳ Bếp cần làm: <b>{order.need_bake_qty} cái</b></span>
+                          </div>
+                        )}
                         {cakeInfo.size && (
                           <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 font-extrabold text-xs">
                             <span>📐 Kích thước:</span>
@@ -3026,41 +3307,150 @@ export default function KitchenPage() {
                         </div>
                       )}
 
-                      {/* Cốt & Kem & Nhân & Hộp (Chỉ hiển thị cho Bánh Sinh Nhật / Bánh Kem) */}
-                      {cakeInfo.isBirthdayCake && (Boolean(cakeInfo.tiers && cakeInfo.tiers.length > 1) || cakeInfo.flavor || cakeInfo.cream || cakeInfo.filling || cakeInfo.packaging) && (
-                        <div className="pt-1.5 border-t border-emerald-900/30 text-[11px] space-y-0.5">
+                      {/* Cốt & Kem & Nhân & Hộp (Hiển thị chi tiết từng tầng hoặc đơn tầng kèm nút Xem BOM ngay bên cạnh) */}
+                      {cakeInfo.isBirthdayCake && (
+                        <div className="pt-2 border-t border-emerald-900/40 text-xs space-y-2">
                           {cakeInfo.tiers && cakeInfo.tiers.length > 1 ? (
-                            <div className="space-y-0.5">
-                              <div className="font-bold text-emerald-300 text-[10px] uppercase">🎂 Bánh {cakeInfo.tiers.length} Tầng:</div>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between pb-1 border-b border-emerald-900/50">
+                                <span className="font-black text-emerald-300 text-xs uppercase flex items-center gap-1.5">
+                                  <Cake className="w-4 h-4 text-emerald-400" />
+                                  <span>🎂 Bánh {cakeInfo.tiers.length} Tầng:</span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenCakeBom(order, 'all', 'base');
+                                  }}
+                                  className="px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-600 text-pink-300 hover:text-white font-black text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                                  title="Xem toàn bộ BOM tổng hợp các tầng"
+                                >
+                                  <Utensils className="w-3 h-3 text-pink-400" />
+                                  <span>BOM Tổng Hợp</span>
+                                </button>
+                              </div>
+
                               {cakeInfo.tiers.map((t: any, idx: number) => (
-                                <div key={idx} className="flex items-center gap-1 text-[10px] text-zinc-300 truncate">
-                                  <span className="font-bold text-amber-300 shrink-0">{t.tierName || `T${idx + 1}`}:</span>
-                                  <span className="text-zinc-100 truncate">
-                                    {t.sizeName} • {t.cakeBase?.name || 'Vani'} • {t.creamCoating?.name || 'Kem tươi'}{t.filling?.name ? ` • ${t.filling.name}` : ''}
-                                  </span>
+                                <div key={idx} className="p-2.5 rounded-xl bg-zinc-950/90 border border-emerald-900/50 space-y-1.5 shadow-xs">
+                                  <div className="flex items-center justify-between pb-1 border-b border-zinc-800">
+                                    <span className="font-extrabold text-amber-300 text-xs flex items-center gap-1">
+                                      <span className="w-4 h-4 rounded-full bg-emerald-600 text-white text-[10px] font-black flex items-center justify-center">
+                                        {idx + 1}
+                                      </span>
+                                      <span>{t.tierName || `Tầng ${idx + 1}`}</span>
+                                    </span>
+                                    <span className="px-2 py-0.5 rounded-md bg-zinc-800 text-emerald-200 font-black text-[11px] border border-zinc-700">
+                                      {t.sizeName || (t.diameterCm ? `Size ${t.diameterCm}cm` : '')}
+                                    </span>
+                                  </div>
+
+                                  <div className="space-y-1 text-xs pt-0.5">
+                                    {/* Cốt bánh + Nút Xem BOM */}
+                                    <div className="flex items-center justify-between gap-1">
+                                      <div className="flex items-center gap-1 min-w-0">
+                                        <span className="text-zinc-400 text-[11px] shrink-0">🌾 Cốt:</span>
+                                        <span className="font-bold text-white truncate">{t.cakeBase?.name || 'Vani'}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenCakeBom(order, idx, 'base');
+                                        }}
+                                        className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                        title={`Xem công thức BOM cốt bánh tầng ${idx + 1}`}
+                                      >
+                                        <Utensils className="w-3 h-3 text-pink-400" />
+                                        <span>Xem BOM</span>
+                                      </button>
+                                    </div>
+
+                                    {/* Kem phủ + Nút Xem BOM */}
+                                    <div className="flex items-center justify-between gap-1">
+                                      <div className="flex items-center gap-1 min-w-0">
+                                        <span className="text-zinc-400 text-[11px] shrink-0">🍦 Kem:</span>
+                                        <span className="font-bold text-white truncate">{t.creamCoating?.name || 'Kem tươi'}</span>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleOpenCakeBom(order, idx, 'cream');
+                                        }}
+                                        className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                        title={`Xem công thức BOM kem phủ tầng ${idx + 1}`}
+                                      >
+                                        <Utensils className="w-3 h-3 text-pink-400" />
+                                        <span>Xem BOM</span>
+                                      </button>
+                                    </div>
+
+                                    {/* Nhân bánh */}
+                                    {t.filling?.name && (
+                                      <div className="flex items-center gap-1 text-[11px] pt-0.5">
+                                        <span className="text-zinc-400 shrink-0">🍓 Nhân:</span>
+                                        <span className="font-bold text-pink-300 truncate">{t.filling.name}</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               ))}
                             </div>
                           ) : (
-                            <>
-                              {(cakeInfo.flavor || cakeInfo.cream) && (
-                                <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                  <span className="text-emerald-400 font-bold shrink-0">🎂 Cốt & Kem:</span>
-                                  <span className="text-zinc-100 font-semibold truncate">
-                                    {[cakeInfo.flavor, cakeInfo.cream].filter(Boolean).join(' • ')}
-                                  </span>
+                            <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-emerald-900/50 space-y-1.5 shadow-xs">
+                              {/* Cốt bánh */}
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <span className="text-zinc-400 text-[11px] shrink-0">🌾 Cốt:</span>
+                                  <span className="font-bold text-white truncate">{cakeInfo.flavor || 'Cốt Vani'}</span>
                                 </div>
-                              )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenCakeBom(order, 0, 'base');
+                                  }}
+                                  className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                  title="Xem công thức định mức BOM cốt bánh"
+                                >
+                                  <Utensils className="w-3 h-3 text-pink-400" />
+                                  <span>Xem BOM</span>
+                                </button>
+                              </div>
+
+                              {/* Kem phủ */}
+                              <div className="flex items-center justify-between gap-1">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <span className="text-zinc-400 text-[11px] shrink-0">🍦 Kem:</span>
+                                  <span className="font-bold text-white truncate">{cakeInfo.cream || 'Kem tươi'}</span>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenCakeBom(order, 0, 'cream');
+                                  }}
+                                  className="shrink-0 px-2 py-0.5 rounded-lg bg-pink-950 hover:bg-pink-900 border border-pink-700 text-pink-300 hover:text-white font-bold text-[10px] flex items-center gap-1 transition cursor-pointer active:scale-95 shadow-2xs"
+                                  title="Xem công thức định mức BOM kem phủ"
+                                >
+                                  <Utensils className="w-3 h-3 text-pink-400" />
+                                  <span>Xem BOM</span>
+                                </button>
+                              </div>
+
+                              {/* Nhân bánh */}
                               {cakeInfo.filling && (
-                                <div className="flex items-center gap-1 text-zinc-300 truncate">
-                                  <span className="text-amber-400 font-bold shrink-0">🍓 Nhân:</span>
-                                  <span className="text-amber-200 font-bold truncate">{cakeInfo.filling}</span>
+                                <div className="flex items-center gap-1 text-[11px] pt-0.5">
+                                  <span className="text-zinc-400 shrink-0">🍓 Nhân:</span>
+                                  <span className="font-bold text-pink-300 truncate">{cakeInfo.filling}</span>
                                 </div>
                               )}
-                            </>
+                            </div>
                           )}
+
                           {cakeInfo.packaging && (
-                            <div className="flex items-center gap-1 text-zinc-300 truncate">
+                            <div className="flex items-center gap-1 text-zinc-300 pt-1 border-t border-emerald-900/30 text-xs truncate">
                               <span className="text-pink-400 font-bold shrink-0">📦 Hộp:</span>
                               <span className="text-pink-200 font-semibold truncate">{cakeInfo.packaging}</span>
                             </div>
@@ -3987,8 +4377,8 @@ export default function KitchenPage() {
         onPrintSticker={(order) => {
           handleOpenCakeSticker(order);
         }}
-        onViewBom={(order) => {
-          handleOpenCakeBom(order);
+        onViewBom={(order, tierIndex, tab) => {
+          handleOpenCakeBom(order, tierIndex, tab);
         }}
         onOpenLightbox={(url) => setReferenceImageLightbox(url)}
       />
@@ -4010,6 +4400,8 @@ export default function KitchenPage() {
         isOpen={!!bomModalOrder}
         onClose={() => setBomModalOrder(null)}
         order={bomModalOrder}
+        initialTierIndex={bomModalTierIndex}
+        initialTab={bomModalTab}
       />
 
       {/* ── MODAL IN TEM DÁN HỘP BÁNH (THERMAL BARCODE STICKER 50x30 / 50x40 - LUÔN HIỆN TRÊN CÙNG) ── */}
