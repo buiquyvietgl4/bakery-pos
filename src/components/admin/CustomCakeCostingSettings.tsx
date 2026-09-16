@@ -1495,7 +1495,62 @@ export function CustomCakeCostingSettings() {
               </button>
             </div>
 
-            <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+            <div className="overflow-y-auto flex-1 space-y-3 pr-1">
+              {/* THÔNG SỐ NƯỚNG & GHI CHÚ KỸ THUẬT */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl">
+                <div>
+                  <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                    🔥 Nhiệt Độ Nướng (°C):
+                  </label>
+                  <input
+                    type="text"
+                    value={editingBaseBom.size.bakingTemperature ?? ''}
+                    onChange={(e) => {
+                      setEditingBaseBom({
+                        ...editingBaseBom,
+                        size: { ...editingBaseBom.size, bakingTemperature: e.target.value },
+                      });
+                    }}
+                    placeholder="VD: 155 - 160°C"
+                    className="w-full text-xs font-bold px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                    ⏱️ Thời Gian Nướng (phút):
+                  </label>
+                  <input
+                    type="text"
+                    value={editingBaseBom.size.bakingTimeMinutes ?? ''}
+                    onChange={(e) => {
+                      setEditingBaseBom({
+                        ...editingBaseBom,
+                        size: { ...editingBaseBom.size, bakingTimeMinutes: e.target.value },
+                      });
+                    }}
+                    placeholder="VD: 45 - 50 phút"
+                    className="w-full text-xs font-bold px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-amber-900 mb-1">
+                    💡 Ghi Chú Kỹ Thuật Thợ:
+                  </label>
+                  <input
+                    type="text"
+                    value={editingBaseBom.size.notes ?? ''}
+                    onChange={(e) => {
+                      setEditingBaseBom({
+                        ...editingBaseBom,
+                        size: { ...editingBaseBom.size, notes: e.target.value },
+                      });
+                    }}
+                    placeholder="VD: Cắm tăm khô trước khi lấy ra"
+                    className="w-full text-xs px-2.5 py-1.5 bg-white border border-amber-300 rounded-xl focus:border-pink-500 focus:outline-none"
+                  />
+                </div>
+              </div>
+
               <table className="w-full text-xs text-left">
                 <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
                   <tr>

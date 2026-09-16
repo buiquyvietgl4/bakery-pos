@@ -1209,13 +1209,23 @@ export default function POSPage() {
         ? `${product.name || 'Bánh Sinh Nhật'} (${cakeOrderSpec.tiers.length} Tầng)`
         : (product.name || 'Bánh Sinh Nhật');
 
+      const cakeStock = Number(orderPayload.cakeStock ?? product?.stock_qty ?? product?.stock ?? 0);
+      const isPartialStock = cakeStock > 0 && orderQuantity > cakeStock;
+      const stockAvailable = Math.min(cakeStock, orderQuantity);
+      const needToMake = Math.max(0, orderQuantity - cakeStock);
+
+      // ── ĐƠN 1: ĐƠN CHÍNH (TỔNG SỐ LƯỢNG KHÁCH ĐẶT) ──
+      // Nếu đủ tồn hoặc tồn 1 phần: Nằm ở Bước 3 (Chờ Giao / Sẵn sàng)
+      // Nếu thiếu 1 phần (needToMake > 0): Có cờ bake_status = 'pending' khóa nút giao hàng lại chờ bếp làm xong!
+      const mainInitialStatus = (cakeStock > 0) ? 'ready' : 'pending';
+
       const unifiedOrder: any = {
         id: localId,
         local_id: localId,
         order_number: orderNumber,
         orderNumber: orderNumber,
         order_type: 'birthday_cake',
-        status: initialKdsStatus, // 'ready' nếu còn bánh sẵn (Bước 3), 'pending' nếu cần thợ bánh làm (Bước 1)
+        status: mainInitialStatus,
         customer_name: customerName,
         customerName: customerName,
         customer_phone: customerPhone,
@@ -1227,7 +1237,9 @@ export default function POSPage() {
         pickupDateTime: pickupDateTime,
         delivery_method: orderDeliveryType === 'ship' ? 'shipping' : 'pickup',
         shipping_address: deliveryAddress,
-        notes: notes,
+        notes: isPartialStock
+          ? `[🎂 BÁNH_SINH_NHẬT] Khách: ${customerName} (${customerPhone || 'Không SĐT'}) | Hẹn: ${pickupDateTime || 'Trong ngày'}${orderDeliveryType === 'ship' ? ` | Giao hàng: ${deliveryAddress}` : ' | Lấy tại tiệm'} | [⏳ CHỜ BẾP LÀM ${needToMake} CÁI (ĐÃ CÓ SẴN ${stockAvailable}/${orderQuantity} CÁI)] | ${cakeSummary}`
+          : notes,
         subtotal: finalPrice,
         discount_amount: 0,
         total_amount: finalPrice,
@@ -1236,12 +1248,17 @@ export default function POSPage() {
         payment_method: 'cash',
         total_cogs: totalCost * orderQuantity,
         cake_order_spec: cakeOrderSpec,
+        orderQuantity: orderQuantity,
+        ready_stock_qty: isPartialStock ? stockAvailable : (cakeStock >= orderQuantity ? orderQuantity : 0),
+        need_bake_qty: isPartialStock ? needToMake : (cakeStock <= 0 ? orderQuantity : 0),
+        bake_status: isPartialStock ? 'pending' : (cakeStock >= orderQuantity ? 'done' : 'pending'),
+        linked_bake_order_number: isPartialStock ? `${orderNumber}-LAM` : undefined,
         created_at: now.toISOString(),
         items: [
           {
             id: generateUUID(),
             product_id: product.id,
-            product_name_snapshot: product.name,
+            product_name_snapshot: cakeDisplayName,
             quantity: orderQuantity,
             unit_price: unitPrice,
             unit_cost: totalCost,
@@ -1259,15 +1276,75 @@ export default function POSPage() {
         ]
       };
 
+      // ── ĐƠN 2 (NẾU THIẾU TỒN 1 PHẦN): ĐƠN BẾP LÀM BỔ SUNG SỐ LƯỢNG THIẾU ──
+      let bakeOrder: any = null;
+      if (isPartialStock) {
+        const bakeId = generateUUID();
+        const bakeOrderNumber = `${orderNumber}-LAM`;
+        bakeOrder = {
+          id: bakeId,
+          local_id: bakeId,
+          order_number: bakeOrderNumber,
+          orderNumber: bakeOrderNumber,
+          parent_order_number: orderNumber,
+          order_type: 'birthday_cake',
+          status: 'pending', // Vào Bếp Bước 1: Mới Nhận / Cần Làm
+          customer_name: customerName,
+          customerName: customerName,
+          customer_phone: customerPhone,
+          customerPhone: customerPhone,
+          cake_name: `${cakeDisplayName} [Bếp làm ${needToMake} cái bổ sung]`,
+          cake_size: cakeOrderSpec?.sizeName || 'Tiêu chuẩn',
+          cake_message: cakeOrderSpec?.cakeMessage || '',
+          preorder_pickup_at: pickupDateTime ? new Date(pickupDateTime).toISOString() : now.toISOString(),
+          pickupDateTime: pickupDateTime,
+          delivery_method: orderDeliveryType === 'ship' ? 'shipping' : 'pickup',
+          shipping_address: deliveryAddress,
+          notes: `[👨‍🍳 BỔ SUNG CHO ĐƠN #${orderNumber}] Khách: ${customerName} (${customerPhone || 'Không SĐT'}) | Hẹn: ${pickupDateTime || 'Trong ngày'} | Tiệm có sẵn ${stockAvailable} cái, bếp cần làm ${needToMake} cái | ${cakeSummary}`,
+          subtotal: 0,
+          discount_amount: 0,
+          total_amount: 0,
+          deposit_amount: 0,
+          remaining_amount: 0,
+          payment_method: 'cash',
+          total_cogs: totalCost * needToMake,
+          cake_order_spec: cakeOrderSpec,
+          orderQuantity: needToMake,
+          need_bake_qty: needToMake,
+          created_at: now.toISOString(),
+          items: [
+            {
+              id: generateUUID(),
+              product_id: product.id,
+              product_name_snapshot: `${cakeDisplayName} [Làm ${needToMake} cái bổ sung]`,
+              quantity: needToMake,
+              unit_price: unitPrice,
+              unit_cost: totalCost,
+              line_total: 0,
+              line_cost: totalCost * needToMake,
+              cake_order_spec: cakeOrderSpec,
+              notes: cakeSummary,
+            }
+          ],
+          payments: []
+        };
+      }
+
       // Lưu Dexie & localStorage
       try {
         await db.orders.add(unifiedOrder as any);
+        if (bakeOrder) {
+          await db.orders.add(bakeOrder as any);
+        }
       } catch (dbErr) {
         console.warn('Lỗi ghi Dexie birthday order:', dbErr);
       }
 
       if (typeof window !== 'undefined') {
         const recentOrders = JSON.parse(localStorage.getItem('bakery_orders') || '[]');
+        if (bakeOrder) {
+          recentOrders.unshift(bakeOrder);
+        }
         recentOrders.unshift(unifiedOrder);
         localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 100)));
         localStorage.setItem('bakery_kds_seeded', 'true');
@@ -1276,11 +1353,31 @@ export default function POSPage() {
         window.dispatchEvent(new Event('bakery_orders_updated'));
         soundManager.playNewOrderChime();
 
-        // Push alert thợ bếp
+        // 1. Bắn tin nhắn banner giả lập điện thoại
+        phoneNotificationService.triggerOrderNotification({
+          id: String(Date.now()),
+          type: 'new_order',
+          appTitle: 'TIỆM BÁNH HẠNH PHÚC',
+          title: `🎂 Đơn Bánh Sinh Nhật Mới #${orderNumber}`,
+          sender: `${customerName} (${customerPhone || 'Không SĐT'})`,
+          message: `${cakeDisplayName} • SL: ${orderQuantity} cái • Hẹn: ${pickupDateTime || 'Trong ngày'}${orderDeliveryType === 'ship' ? ' • Giao tận nơi' : ' • Lấy tại tiệm'}${isPartialStock ? ` • (Sẵn ${stockAvailable}, Bếp làm ${needToMake})` : ''}`,
+          extraDetails: cakeOrderSpec?.cakeMessage ? `Ghi chữ: "${cakeOrderSpec.cakeMessage}"` : undefined,
+          orderNumber: orderNumber,
+          pickupTime: pickupDateTime,
+          actionLabel: 'Xem Bếp KDS',
+          onAction: () => { window.location.href = '/kitchen'; },
+        });
+
+        // 2. Gửi Telegram alert
+        sendTelegramOrderAlert(unifiedOrder).catch(() => {});
+
+        // 3. Push alert thợ bếp
         triggerServerPush({
           type: 'urgent_alert',
           isUrgent: true,
-          title: `🎂 ĐƠN BÁNH SINH NHẬT MỚI #${unifiedOrder.order_number}`,
+          title: isPartialStock
+            ? `👨‍🍳 BỔ SUNG ${needToMake} BÁNH CHO ĐƠN #${orderNumber}`
+            : `🎂 ĐƠN BÁNH SINH NHẬT MỚI #${unifiedOrder.order_number}`,
           body: `${unifiedOrder.customer_name} • ${unifiedOrder.cake_name}`,
           url: '/kitchen',
           orderNumber: unifiedOrder.order_number,
@@ -1288,8 +1385,16 @@ export default function POSPage() {
 
         setOrderToast({
           id: String(Date.now()),
-          title: initialKdsStatus === 'ready' ? '🎂 Đơn Bánh Sinh Nhật Có Sẵn (Chờ Ship/Giao)' : '🎂 Bếp Đang Làm Bánh Sinh Nhật!',
-          subtitle: initialKdsStatus === 'ready' ? 'Đã chuyển sang bước 3 (Chờ giao/ship)' : 'Đã chuyển đơn vào bếp thợ làm bánh',
+          title: isPartialStock 
+            ? `🎂 Đã Tách Đơn: ${stockAvailable} Cái Chờ Ship & ${needToMake} Cái Chuyển Bếp Làm!`
+            : mainInitialStatus === 'ready' 
+            ? '🎂 Đơn Bánh Sinh Nhật Có Sẵn (Chờ Ship/Giao)' 
+            : '🎂 Bếp Đang Làm Bánh Sinh Nhật!',
+          subtitle: isPartialStock
+            ? `Đơn ${orderNumber} chờ ship sẽ tự mở khóa khi bếp làm xong ${needToMake} cái`
+            : mainInitialStatus === 'ready' 
+            ? 'Đã chuyển sang bước 3 (Chờ giao/ship)' 
+            : 'Đã chuyển đơn vào bếp thợ làm bánh',
           orderNumber: unifiedOrder.order_number,
           customerInfo: `${unifiedOrder.customer_name} (${unifiedOrder.customer_phone})`,
           pickupTime: pickupDateTime,
@@ -1301,12 +1406,18 @@ export default function POSPage() {
       // Sync Supabase & Broadcast
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         try {
-          await syncOrderToSupabase(unifiedOrder, initialKdsStatus);
+          await syncOrderToSupabase(unifiedOrder, mainInitialStatus);
+          if (bakeOrder) {
+            await syncOrderToSupabase(bakeOrder, 'pending');
+          }
         } catch (sErr) {
           console.warn('Lỗi syncOrderToSupabase birthday order:', sErr);
         }
         try {
           await broadcastNewOrder(unifiedOrder);
+          if (bakeOrder) {
+            await broadcastNewOrder(bakeOrder);
+          }
         } catch (bErr) {
           console.warn('Lỗi broadcastNewOrder birthday order:', bErr);
         }

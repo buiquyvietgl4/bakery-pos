@@ -18,6 +18,9 @@ export interface CakeBaseSizeConfig {
   sizeName: string; // "Size 14cm", "Size 16cm", "Size 18cm"...
   diameterCm: number;
   servings?: string; // "2 - 4 người"
+  bakingTemperature?: number | string; // Nhiệt độ nướng (°C) ví dụ 155-160°C
+  bakingTimeMinutes?: number | string; // Thời gian nướng (phút) ví dụ 45-50 phút
+  notes?: string; // Ghi chú kỹ thuật làm bánh cho thợ bếp
   bomIngredients: CakeBomItem[]; // Công thức định mức BOM nguyên vật liệu của size này
   baseCost: number; // Tổng chi phí vốn cốt bánh = SUM(quantity * unitCost)
 }
@@ -26,6 +29,9 @@ export interface CakeBaseModel {
   id: string;
   name: string; // "Cốt Vani truyền thống", "Cốt Socola đậm vị", "Cốt Matcha Nhật"...
   description?: string;
+  bakingTemperature?: number | string; // Nhiệt độ nướng mặc định (°C)
+  bakingTimeMinutes?: number | string; // Thời gian nướng mặc định (phút)
+  notes?: string; // Ghi chú kỹ thuật nướng
   sizes: CakeBaseSizeConfig[]; // Danh sách size cốt bánh kèm BOM riêng
   isDefault?: boolean;
 }
@@ -101,7 +107,9 @@ export interface BirthdayCakeBomPreset {
   decorAddonIds?: string[]; // Danh sách phụ kiện decor mặc định
   targetFoodCostPct?: number; // Tỷ lệ biên lợi nhuận mong muốn (mặc định 36.5%)
   suggestedSellingPrice?: number; // Giá bán gợi ý tự động
-  notes?: string;
+  bakingTemperature?: number | string; // Nhiệt độ nướng (°C)
+  bakingTimeMinutes?: number | string; // Thời gian nướng (phút)
+  notes?: string; // Ghi chú kỹ thuật làm bánh cho thợ bếp
 }
 
 // Cấu hình tổng hợp lưu trong CSDL / localStorage
@@ -128,6 +136,9 @@ export interface CakeTierSpec {
     id: string;
     name: string;
     cost: number;
+    bakingTemperature?: number | string;
+    bakingTimeMinutes?: number | string;
+    notes?: string;
     bomIngredients?: CakeBomItem[];
   };
   creamCoating: {
@@ -156,6 +167,9 @@ export interface CakeOrderSpec {
     id: string;
     name: string;
     cost: number;
+    bakingTemperature?: number | string;
+    bakingTimeMinutes?: number | string;
+    notes?: string;
     bomIngredients?: CakeBomItem[];
   };
   creamCoating: {

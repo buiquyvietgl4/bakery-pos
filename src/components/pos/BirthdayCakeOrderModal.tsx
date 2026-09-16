@@ -99,9 +99,12 @@ export function BirthdayCakeOrderModal({
   const [shippingFee, setShippingFee] = useState<number>(0);
   const [cakeMessage, setCakeMessage] = useState('');
   const [decorNotes, setDecorNotes] = useState('');
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   // Khởi tạo và đồng bộ khi mở modal
   useEffect(() => {
+    if (!isOpen) return;
+    setValidationError(null);
     const currentConfig = getFullCakeBomConfig();
     setConfig(currentConfig);
     setCustomMarkupPct(currentConfig.targetFoodCostPct || 36.5);
@@ -212,12 +215,17 @@ export function BirthdayCakeOrderModal({
           cakeBaseId: base?.id || '',
           cakeBaseName: base?.name || '',
           cakeBaseCost: baseCost,
+          bakingTemperature: preset?.bakingTemperature || baseSize?.bakingTemperature || base?.bakingTemperature || 160,
+          bakingTimeMinutes: preset?.bakingTimeMinutes || baseSize?.bakingTimeMinutes || base?.bakingTimeMinutes || 45,
+          baseNotes: preset?.notes || baseSize?.notes || base?.notes || '',
+          baseBomIngredients: baseSize?.bomIngredients || [],
           sizeId: baseSize?.id || '',
           sizeName: baseSize?.sizeName || '',
           diameterCm: baseSize?.diameterCm || 18,
           creamId: cream?.id || '',
           creamName: cream?.name || '',
           creamCost: creamCost,
+          creamBomIngredients: creamSize?.bomIngredients || [],
           fillingId: filling?.id || '',
           fillingName: filling?.name || '',
           fillingCost: fillingCost,
@@ -257,12 +265,17 @@ export function BirthdayCakeOrderModal({
         cakeBaseId: base?.id || '',
         cakeBaseName: base?.name || '',
         cakeBaseCost: baseCost,
+        bakingTemperature: baseSize?.bakingTemperature || base?.bakingTemperature || 160,
+        bakingTimeMinutes: baseSize?.bakingTimeMinutes || base?.bakingTimeMinutes || 45,
+        baseNotes: baseSize?.notes || base?.notes || '',
+        baseBomIngredients: baseSize?.bomIngredients || [],
         sizeId: baseSize?.id || '',
         sizeName: baseSize?.sizeName || '',
         diameterCm: baseSize?.diameterCm || (idx === 0 ? 20 : idx === 1 ? 16 : 14),
         creamId: cream?.id || '',
         creamName: cream?.name || '',
         creamCost: creamCost,
+        creamBomIngredients: creamSize?.bomIngredients || [],
         fillingId: filling?.id || '',
         fillingName: filling?.name || '',
         fillingCost: fillingCost,
@@ -322,10 +335,23 @@ export function BirthdayCakeOrderModal({
   const hasStock = cakeStock >= orderQuantity;
 
   const handleConfirm = () => {
-    if (finalPriceInput <= 0) {
-      alert('Vui lòng nhập giá bán hợp lệ!');
+    if (!customerName.trim()) {
+      setValidationError('Vui lòng nhập Tên khách hàng đặt bánh!');
       return;
     }
+    if (!customerPhone.trim()) {
+      setValidationError('Vui lòng nhập Số điện thoại khách hàng!');
+      return;
+    }
+    if (orderDeliveryType === 'ship' && !deliveryAddress.trim()) {
+      setValidationError('Vui lòng nhập Địa chỉ giao hàng khi chọn Giao tận nơi (Ship bánh)!');
+      return;
+    }
+    if (finalPriceInput <= 0) {
+      setValidationError('Vui lòng nhập giá bán hợp lệ!');
+      return;
+    }
+    setValidationError(null);
 
     const primaryTier = tierCostBreakdown[0];
     const isMultiTier = mode === 'custom' && tierCount > 1;
@@ -344,11 +370,16 @@ export function BirthdayCakeOrderModal({
           id: t.cakeBaseId,
           name: t.cakeBaseName,
           cost: t.cakeBaseCost,
+          bakingTemperature: t.bakingTemperature,
+          bakingTimeMinutes: t.bakingTimeMinutes,
+          notes: t.baseNotes,
+          bomIngredients: t.baseBomIngredients,
         },
         creamCoating: {
           id: t.creamId,
           name: t.creamName,
           cost: t.creamCost,
+          bomIngredients: t.creamBomIngredients,
         },
         filling: t.fillingId
           ? {
@@ -367,6 +398,10 @@ export function BirthdayCakeOrderModal({
         id: primaryTier.cakeBaseId,
         name: primaryTier.cakeBaseName,
         cost: primaryTier.cakeBaseCost,
+        bakingTemperature: primaryTier.bakingTemperature,
+        bakingTimeMinutes: primaryTier.bakingTimeMinutes,
+        notes: primaryTier.baseNotes,
+        bomIngredients: primaryTier.baseBomIngredients,
       },
       creamCoating: {
         id: primaryTier.creamId,
@@ -436,6 +471,7 @@ export function BirthdayCakeOrderModal({
       shippingFee: orderDeliveryType === 'ship' ? shippingFee : 0,
       initialKdsStatus: initialStatus,
       hasStock: hasStock,
+      cakeStock: cakeStock,
     };
 
     onConfirmOrder(orderPayload);
@@ -444,11 +480,11 @@ export function BirthdayCakeOrderModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      {/* Container dài chuẩn di động - Chiều rộng max-w-2xl, cuộn mượt mà */}
-      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-pink-200 p-4 sm:p-6 space-y-4 max-h-[92dvh] flex flex-col animate-in zoom-in-95 duration-150">
+      {/* Cửa sổ dài chuẩn di động - Toàn bộ cuộn dọc liền mạch từ trên xuống dưới */}
+      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-pink-200 p-4 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in-95 duration-150">
         
         {/* HEADER MODAL */}
-        <div className="flex items-center justify-between pb-3 border-b border-pink-100 shrink-0">
+        <div className="flex items-center justify-between pb-3 border-b border-pink-100">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shadow-md shadow-pink-500/30 shrink-0">
               <Cake className="w-5 h-5" />
@@ -477,9 +513,17 @@ export function BirthdayCakeOrderModal({
           </button>
         </div>
 
+        {/* THÔNG BÁO LỖI NẾU THIẾU THÔNG TIN BẮT BUỘC */}
+        {validationError && (
+          <div className="p-3.5 rounded-2xl bg-rose-50 border-2 border-rose-400 text-rose-800 font-bold text-xs sm:text-sm flex items-center gap-2.5 shadow-sm animate-shake">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span>{validationError}</span>
+          </div>
+        )}
+
         {/* THÔNG BÁO TỒN KHO THEO FLOWCHART */}
         <div
-          className={`p-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs font-bold shrink-0 ${
+          className={`p-3 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 text-xs font-bold ${
             hasStock
               ? 'bg-emerald-50 border border-emerald-200 text-emerald-800'
               : 'bg-amber-50 border border-amber-200 text-amber-800'
@@ -504,7 +548,7 @@ export function BirthdayCakeOrderModal({
         </div>
 
         {/* CHỌN 2 MỤC: 1. BÁNH CÓ SẴN & 2. BÁNH TÙY CHỌN */}
-        <div className="flex items-center gap-2 bg-pink-50/80 p-1.5 rounded-2xl border border-pink-200 shrink-0">
+        <div className="flex items-center gap-2 bg-pink-50/80 p-1.5 rounded-2xl border border-pink-200">
           <button
             type="button"
             onClick={() => setMode('preset')}
@@ -530,9 +574,6 @@ export function BirthdayCakeOrderModal({
             <span>2. Bánh tùy chọn</span>
           </button>
         </div>
-
-        {/* VÙNG CUỘN DỌC NỘI DUNG CHÍNH THOÁNG ĐÃNG */}
-        <div className="overflow-y-auto flex-1 space-y-4 pr-1 overscroll-contain">
           
           {/* ══════════════ MỤC 1: BÁNH CÓ SẴN (PRESET BOM) ══════════════ */}
           {mode === 'preset' && (
@@ -848,7 +889,9 @@ export function BirthdayCakeOrderModal({
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
-                <label className="font-bold text-zinc-700 block mb-1">Tên khách hàng:</label>
+                <label className="font-bold text-zinc-700 block mb-1">
+                  Tên khách hàng: <span className="text-rose-600 font-black">*</span>
+                </label>
                 <input
                   type="text"
                   value={customerName}
@@ -859,7 +902,9 @@ export function BirthdayCakeOrderModal({
               </div>
 
               <div>
-                <label className="font-bold text-zinc-700 block mb-1">Số điện thoại:</label>
+                <label className="font-bold text-zinc-700 block mb-1">
+                  Số điện thoại: <span className="text-rose-600 font-black">*</span>
+                </label>
                 <input
                   type="tel"
                   value={customerPhone}
@@ -944,10 +989,9 @@ export function BirthdayCakeOrderModal({
               </div>
             </div>
           </div>
-        </div>
 
-        {/* ══════════════ FOOTER CỐ ĐỊNH Ở ĐÁY (STICKY FOOTER) ══════════════ */}
-        <div className="pt-3 border-t border-zinc-200 shrink-0 space-y-3 bg-white">
+        {/* ══════════════ PHẦN CHỐT GIÁ VÀ ĐẶT ĐƠN ══════════════ */}
+        <div className="pt-3 border-t-2 border-zinc-200 space-y-3 bg-white">
           {/* Tóm tắt chi phí BOM */}
           <div className="flex items-center justify-between text-xs bg-pink-50/60 p-2.5 rounded-xl border border-pink-200">
             <div>

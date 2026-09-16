@@ -43,6 +43,12 @@ export interface LocalOrder {
   total_cogs: number;
   shift_id?: string;
   sync_status: 'pending' | 'synced' | 'conflict';
+  bake_status?: string;
+  need_bake_qty?: number;
+  ready_stock_qty?: number;
+  parent_order_number?: string;
+  linked_bake_order_number?: string;
+  cake_order_spec?: any;
   created_at: string;
 }
 

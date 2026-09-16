@@ -224,6 +224,11 @@ CREATE TABLE IF NOT EXISTS orders (
     delivery_method TEXT DEFAULT 'pickup',
     shipping_address TEXT,
     preorder_pickup_at TEXT,
+    bake_status TEXT,
+    need_bake_qty NUMERIC DEFAULT 0,
+    ready_stock_qty NUMERIC DEFAULT 0,
+    parent_order_number TEXT,
+    cake_order_spec TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -486,8 +491,13 @@ ${generateSchemaSql()}
       const cakeName = o.cake_name ?? o.cakeName ?? null;
       const cakeMsg = o.cake_message ?? o.cakeMessage ?? null;
       const preorderPickup = o.preorder_pickup_at ?? o.preorderPickupAt ?? null;
+      const bakeStatus = o.bake_status ?? 'done';
+      const needBake = o.need_bake_qty ?? 0;
+      const readyStock = o.ready_stock_qty ?? 0;
+      const parentOrder = o.parent_order_number ?? null;
+      const specStr = o.cake_order_spec ? JSON.stringify(o.cake_order_spec) : null;
 
-      sql += `INSERT INTO orders (id, order_number, order_type, status, total_amount, discount_amount, final_amount, total_cogs, deposit_amount, remaining_amount, shipping_fee, payment_status, payment_method, notes, customer_name, customer_phone, cake_name, cake_message, delivery_method, shipping_address, preorder_pickup_at, created_at) VALUES (${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.order_type || o.orderType || 'takeaway')}, ${sqlEscape(o.status)}, ${sqlEscape(o.total_amount || o.totalPrice || 0)}, ${sqlEscape(discount)}, ${sqlEscape(finalAmt)}, ${sqlEscape(totalCogs)}, ${sqlEscape(depositAmt)}, ${sqlEscape(remainAmt)}, ${sqlEscape(shipFee)}, ${sqlEscape(payStatus)}, ${sqlEscape(payMethod)}, ${sqlEscape(o.notes)}, ${sqlEscape(o.customer_name || o.customerName)}, ${sqlEscape(o.customer_phone || o.customerPhone)}, ${sqlEscape(cakeName)}, ${sqlEscape(cakeMsg)}, ${sqlEscape(o.delivery_method || o.deliveryMethod || 'pickup')}, ${sqlEscape(o.shipping_address || o.shippingAddress)}, ${sqlEscape(preorderPickup)}, ${sqlEscape(o.created_at || o.createdAt || new Date().toISOString())});
+      sql += `INSERT INTO orders (id, order_number, order_type, status, total_amount, discount_amount, final_amount, total_cogs, deposit_amount, remaining_amount, shipping_fee, payment_status, payment_method, notes, customer_name, customer_phone, cake_name, cake_message, delivery_method, shipping_address, preorder_pickup_at, bake_status, need_bake_qty, ready_stock_qty, parent_order_number, cake_order_spec, created_at) VALUES (${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.order_type || o.orderType || 'takeaway')}, ${sqlEscape(o.status)}, ${sqlEscape(o.total_amount || o.totalPrice || 0)}, ${sqlEscape(discount)}, ${sqlEscape(finalAmt)}, ${sqlEscape(totalCogs)}, ${sqlEscape(depositAmt)}, ${sqlEscape(remainAmt)}, ${sqlEscape(shipFee)}, ${sqlEscape(payStatus)}, ${sqlEscape(payMethod)}, ${sqlEscape(o.notes)}, ${sqlEscape(o.customer_name || o.customerName)}, ${sqlEscape(o.customer_phone || o.customerPhone)}, ${sqlEscape(cakeName)}, ${sqlEscape(cakeMsg)}, ${sqlEscape(o.delivery_method || o.deliveryMethod || 'pickup')}, ${sqlEscape(o.shipping_address || o.shippingAddress)}, ${sqlEscape(preorderPickup)}, ${sqlEscape(bakeStatus)}, ${sqlEscape(needBake)}, ${sqlEscape(readyStock)}, ${sqlEscape(parentOrder)}, ${sqlEscape(specStr)}, ${sqlEscape(o.created_at || o.createdAt || new Date().toISOString())});
 `;
       if (Array.isArray(o.items)) {
         for (const item of o.items) {

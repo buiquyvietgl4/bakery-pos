@@ -109,7 +109,15 @@ export const OrderDetailModal: React.FC<OrderDetailModalProps> = ({
   }
 
   const cakeMsg = order.cake_message || fromN.cake_message;
-  const specialReq = fromN.special_request || cleanDisplayNotes(order.notes);
+  // Trích xuất yêu cầu làm bánh & trang trí riêng biệt (chỉ hiển thị ghi chú decor / dặn dò thực sự của khách)
+  let specialReq = '';
+  if (spec?.decorNotes) {
+    specialReq = spec.decorNotes;
+  } else if (fromN.special_request) {
+    specialReq = fromN.special_request;
+  } else if (order.notes && !order.notes.includes('[🎂 BÁNH_SINH_NHẬT]') && !order.notes.includes('[👨‍🍳 BỔ SUNG CHO ĐƠN')) {
+    specialReq = cleanDisplayNotes(order.notes);
+  }
   const refImg = order.reference_image_url || fromN.reference_image_url;
 
   // Danh sách các phụ kiện đặt thêm (Decor)

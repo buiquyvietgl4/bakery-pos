@@ -92,6 +92,12 @@ interface KDSOrder {
   remake_reason?: string;
   remake_notes?: string;
   cake_order_spec?: any;
+  orderQuantity?: number;
+  ready_stock_qty?: number;
+  need_bake_qty?: number;
+  bake_status?: 'pending' | 'preparing' | 'done';
+  linked_bake_order_number?: string;
+  parent_order_number?: string;
   items: OrderItem[];
 }
 
@@ -1374,6 +1380,12 @@ export default function KitchenPage() {
     const targetOrder = orders.find((o) => o.id === orderId || o.order_number === orderId);
     const orderNum = targetOrder?.order_number || orderId;
 
+    // Kiểm tra nếu đơn chưa nướng xong số lượng bổ sung thì không cho hoàn thành
+    if (nextStatus === 'completed' && targetOrder?.need_bake_qty && targetOrder.need_bake_qty > 0 && targetOrder.bake_status !== 'done') {
+      alert(`Đơn #${orderNum} đang chờ bếp nướng làm thêm ${targetOrder.need_bake_qty} cái bánh bổ sung. Vui lòng đợi thợ bếp nướng xong trước khi hoàn tất giao bánh!`);
+      return;
+    }
+
     // 0. ĐẶT KHÓA CHỐNG LÙI TRẠNG THÁI NGAY LẬP TỨC:
     // Ngăn chặn hoàn toàn việc polling/Supabase trả về dữ liệu cũ kéo ngược trạng thái
     if (nextStatus === 'completed') {
@@ -1476,6 +1488,60 @@ export default function KitchenPage() {
       } catch (deductErr) {
         console.warn('Lỗi khi tự động trừ kho nguyên liệu:', deductErr);
       }
+    }
+
+    // 4c. TỰ ĐỘNG MỞ KHÓA GIAO HÀNG CHO ĐƠN GỐC KHI BẾP LÀM XONG BÁNH BỔ SUNG (Bước 2 -> Bước 3)
+    const parentOrderNum = targetOrder?.parent_order_number || (orderNum.endsWith('-LAM') ? orderNum.replace(/-LAM$/, '') : null);
+    if (parentOrderNum && (nextStatus === 'ready' || nextStatus === 'completed')) {
+      // Cập nhật state React
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (o.order_number === parentOrderNum || o.id === parentOrderNum) {
+            return { ...o, bake_status: 'done' as const };
+          }
+          return o;
+        })
+      );
+
+      // Cập nhật localStorage & Dexie & Supabase cho parent order
+      if (typeof window !== 'undefined') {
+        try {
+          const raw = localStorage.getItem('bakery_orders');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              let updatedParent: any = null;
+              const updated = parsed.map((o: any) => {
+                if (o.order_number === parentOrderNum || o.orderNumber === parentOrderNum || o.id === parentOrderNum) {
+                  updatedParent = { ...o, bake_status: 'done' };
+                  return updatedParent;
+                }
+                return o;
+              });
+              localStorage.setItem('bakery_orders', JSON.stringify(updated));
+              window.dispatchEvent(new Event('bakery_orders_updated'));
+
+              if (updatedParent) {
+                syncOrderToSupabase(updatedParent, updatedParent.status || 'ready');
+                broadcastOrderStatusUpdate(parentOrderNum, updatedParent.status || 'ready', updatedParent);
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('Lỗi cập nhật parent order bake_status:', e);
+        }
+
+        try {
+          (db.orders.where('order_number').equals(parentOrderNum) as any).modify({ bake_status: 'done', updated_at: new Date().toISOString() });
+        } catch {}
+      }
+
+      setKdsToast({
+        id: String(Date.now()),
+        title: '🎂 Đã Nướng Xong Bánh Bổ Sung!',
+        subtitle: `Đơn hàng #${parentOrderNum} đã đủ số lượng bánh và sẵn sàng mở khóa giao cho khách!`,
+        orderNumber: parentOrderNum,
+      });
     }
 
     // Tự động chuyển tab trên điện thoại nếu đơn vừa chuyển sang bước tiếp theo
@@ -1760,6 +1826,12 @@ export default function KitchenPage() {
   const handleConfirmPaymentAndComplete = async (order: KDSOrder, paymentMethod: 'cash' | 'bank_transfer') => {
     const orderId = order.id;
     const orderNum = order.order_number;
+
+    // Kiểm tra nếu đơn chưa nướng xong số lượng bổ sung thì không cho giao
+    if (order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done') {
+      alert(`Đơn #${orderNum} đang chờ bếp nướng làm thêm ${order.need_bake_qty} cái bánh bổ sung. Vui lòng đợi thợ bếp nướng xong trước khi giao bánh!`);
+      return;
+    }
 
     // 0. Khóa đơn đã hoàn thành trong 60 giây, ngăn polling làm hiện lại
     recentlyCompletedOrdersRef.current.set(orderNum, Date.now());
@@ -3090,23 +3162,53 @@ export default function KitchenPage() {
                         </button>
                       </div>
 
-                      {/* Nút hành động giao hàng: 100% vs Cần thu tiền */}
-                      {isPaid100 ? (
-                        <button
-                          type="button"
-                          onClick={() => setConfirmDoneState({ isOpen: true, order, targetStep: 'completed' })}
-                          className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-95"
-                        >
-                          <CheckCircle2 className="w-4 h-4" /> Hoàn Thành Giao Bánh
-                        </button>
+                      {/* Nút hành động giao hàng: 100% vs Cần thu tiền (Khóa nếu đang chờ bếp làm bổ sung) */}
+                      {Boolean(order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done') ? (
+                        <div className="space-y-1.5">
+                          <div className="p-2.5 rounded-xl bg-amber-950/80 border border-amber-500/50 text-amber-300 text-xs font-semibold flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
+                            <div className="leading-tight">
+                              <span className="font-bold text-amber-200">Đang chờ bếp làm thêm {order.need_bake_qty} cái</span>
+                              <div className="text-[10px] text-amber-300/80 mt-0.5">
+                                Đã có sẵn: {order.ready_stock_qty ?? ((order.orderQuantity || 0) - (order.need_bake_qty || 0))} cái • Cần làm: {order.need_bake_qty} cái
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled
+                            className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-500 font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed opacity-60"
+                            title={`Chờ bếp hoàn thành nướng ${order.need_bake_qty} cái bánh bổ sung ở Bước 1 & 2 trước khi giao`}
+                          >
+                            <Clock className="w-4 h-4" /> Đang Chờ Bếp Làm Bổ Sung ({order.need_bake_qty} cái)
+                          </button>
+                        </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => setDeliveryPaymentModalOrder(order)}
-                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-rose-600/30 cursor-pointer active:scale-95 animate-pulse"
-                        >
-                          <Banknote className="w-4 h-4" /> Giao Hàng & Thu Tiền ({remAmt.toLocaleString('vi-VN')}₫)
-                        </button>
+                        <>
+                          {Boolean(order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status === 'done') && (
+                            <div className="p-1.5 px-2.5 rounded-lg bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 text-[11px] font-bold flex items-center gap-1.5 mb-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span>✓ Đã làm xong đủ {order.orderQuantity || (order.ready_stock_qty || 0) + (order.need_bake_qty || 0)} cái (Sẵn {order.ready_stock_qty || 0} + Bếp làm {order.need_bake_qty})</span>
+                            </div>
+                          )}
+                          {isPaid100 ? (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDoneState({ isOpen: true, order, targetStep: 'completed' })}
+                              className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-95"
+                            >
+                              <CheckCircle2 className="w-4 h-4" /> Hoàn Thành Giao Bánh
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => setDeliveryPaymentModalOrder(order)}
+                              className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-rose-600 hover:from-amber-400 hover:to-rose-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-rose-600/30 cursor-pointer active:scale-95 animate-pulse"
+                            >
+                              <Banknote className="w-4 h-4" /> Giao Hàng & Thu Tiền ({remAmt.toLocaleString('vi-VN')}₫)
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

@@ -1,13 +1,16 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { X, CheckCircle2, Circle, Scale, RefreshCw, Printer, Info, ChefHat, Sparkles, Package, Gift } from 'lucide-react';
+import { 
+  X, CheckCircle2, Circle, Scale, RefreshCw, Printer, Info, ChefHat, 
+  Sparkles, Package, Gift, Flame, Clock, Layers, ChevronRight, Check
+} from 'lucide-react';
 import { getCakeCostingConfig } from '@/lib/utils/customCakeCosting';
-import { CakeSizeOption, CakeSizeBomItem } from '@/lib/constants/cakeCostingData';
+import { CakeSizeOption } from '@/lib/constants/cakeCostingData';
 import { parsePreorderFromNotes } from '@/lib/supabase/realtimeSync';
 import { printHtml } from '@/lib/utils/printHelper';
 import { getFullCakeBomConfig } from '@/lib/utils/cakeBomManager';
-import { CakeOrderSpec, CakeBomItem } from '@/lib/types/bakery-bom';
+import { CakeOrderSpec, CakeBomItem, CakeTierSpec } from '@/lib/types/bakery-bom';
 
 export interface CakeBomModalProps {
   isOpen: boolean;
@@ -17,6 +20,7 @@ export interface CakeBomModalProps {
 
 export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, order }) => {
   const [activeTab, setActiveTab] = useState<'base' | 'cream' | 'accessories'>('base');
+  const [selectedTierTab, setSelectedTierTab] = useState<number | 'all'>('all');
   const [checkedItems, setCheckedItems] = useState<Record<string, boolean>>({});
   const [batchMultiplier, setBatchMultiplier] = useState<number>(1);
 
@@ -28,6 +32,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
       setBatchMultiplier(Math.max(1, qty));
       setCheckedItems({});
       setActiveTab('base');
+      setSelectedTierTab('all');
     }
   }, [order?.id, order?.order_number]);
 
@@ -47,11 +52,14 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
   const packaging = spec?.packaging?.name || order.packaging || fromN.packaging;
   const orderNum = order.order_number || order.orderNumber || order.id || 'ĐƠN MỚI';
 
-  // 1. LẤY NGUYÊN LIỆU CỐT BÁNH
-  let baseBomIngredients: CakeBomItem[] = [];
-  if (spec?.tiers && spec.tiers.length > 1) {
+  const isMultiTier = Boolean(spec?.tiers && spec.tiers.length > 1);
+  const tiers: CakeTierSpec[] = spec?.tiers || [];
+
+  // 1. LẤY NGUYÊN LIỆU CỐT BÁNH TỔNG HỢP TOÀN BỘ
+  let combinedBaseBom: CakeBomItem[] = [];
+  if (isMultiTier) {
     const ingMap = new Map<string, CakeBomItem>();
-    spec.tiers.forEach((t) => {
+    tiers.forEach((t) => {
       const ings = t.cakeBase?.bomIngredients || [];
       ings.forEach((ing) => {
         const key = ing.id || ing.name;
@@ -64,9 +72,9 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
         }
       });
     });
-    baseBomIngredients = Array.from(ingMap.values());
+    combinedBaseBom = Array.from(ingMap.values());
   } else if (spec?.cakeBase?.bomIngredients && spec.cakeBase.bomIngredients.length > 0) {
-    baseBomIngredients = spec.cakeBase.bomIngredients;
+    combinedBaseBom = spec.cakeBase.bomIngredients;
   } else {
     // Fallback qua legacy config
     let matchedSize: CakeSizeOption | null = null;
@@ -84,7 +92,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
     if (!matchedSize) {
       matchedSize = allSizes.find((s) => s.isDefault) || allSizes[2] || allSizes[0] || null;
     }
-    baseBomIngredients = (matchedSize?.bomIngredients || []).map((it) => ({
+    combinedBaseBom = (matchedSize?.bomIngredients || []).map((it) => ({
       id: it.id,
       name: it.name,
       quantity: it.quantity,
@@ -94,11 +102,11 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
     }));
   }
 
-  // 2. LẤY NGUYÊN LIỆU KEM PHỦ
-  let creamBomIngredients: CakeBomItem[] = [];
-  if (spec?.tiers && spec.tiers.length > 1) {
+  // 2. LẤY NGUYÊN LIỆU KEM PHỦ TỔNG HỢP TOÀN BỘ
+  let combinedCreamBom: CakeBomItem[] = [];
+  if (isMultiTier) {
     const ingMap = new Map<string, CakeBomItem>();
-    spec.tiers.forEach((t) => {
+    tiers.forEach((t) => {
       const ings = t.creamCoating?.bomIngredients || [];
       ings.forEach((ing) => {
         const key = ing.id || ing.name;
@@ -111,19 +119,48 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
         }
       });
     });
-    creamBomIngredients = Array.from(ingMap.values());
+    combinedCreamBom = Array.from(ingMap.values());
   } else if (spec?.creamCoating?.bomIngredients && spec.creamCoating.bomIngredients.length > 0) {
-    creamBomIngredients = spec.creamCoating.bomIngredients;
+    combinedCreamBom = spec.creamCoating.bomIngredients;
   } else if (fullBomConfig.creamCoatings?.[0]?.sizes?.[0]?.bomIngredients) {
-    creamBomIngredients = fullBomConfig.creamCoatings[0].sizes[0].bomIngredients;
+    combinedCreamBom = fullBomConfig.creamCoatings[0].sizes[0].bomIngredients;
   }
+
+  // Danh sách nguyên liệu hiển thị theo tab tầng đang chọn
+  const activeTier: CakeTierSpec | undefined = 
+    isMultiTier && typeof selectedTierTab === 'number' ? tiers[selectedTierTab] : undefined;
+
+  const currentBaseIngredients: CakeBomItem[] = activeTier
+    ? (activeTier.cakeBase?.bomIngredients || [])
+    : combinedBaseBom;
+
+  const currentCreamIngredients: CakeBomItem[] = activeTier
+    ? (activeTier.creamCoating?.bomIngredients || [])
+    : combinedCreamBom;
+
+  const currentIngredients = activeTab === 'base' 
+    ? currentBaseIngredients 
+    : activeTab === 'cream' 
+    ? currentCreamIngredients 
+    : [];
 
   const freeAccessories = spec?.freeAccessories || [];
   const decorAddons = spec?.decorAddons || [];
   const cakeMessage = spec?.cakeMessage || order.cake_message || fromN.cake_message;
   const decorNotes = spec?.decorNotes || fromN.special_request || '';
 
-  const currentIngredients = activeTab === 'base' ? baseBomIngredients : activeTab === 'cream' ? creamBomIngredients : [];
+  // Thông số nướng hiện tại
+  const currentBakingTemp = activeTier
+    ? (activeTier.cakeBase?.bakingTemperature || '155 - 160°C')
+    : (spec?.cakeBase?.bakingTemperature || '155 - 160°C');
+
+  const currentBakingTime = activeTier
+    ? (activeTier.cakeBase?.bakingTimeMinutes || '45 - 50 phút')
+    : (spec?.cakeBase?.bakingTimeMinutes || '45 - 50 phút');
+
+  const currentBakingNotes = activeTier
+    ? (activeTier.cakeBase?.notes || '')
+    : (spec?.cakeBase?.notes || '');
 
   const toggleCheck = (idOrName: string) => {
     setCheckedItems((prev) => ({
@@ -139,6 +176,9 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
   // In công thức BOM ra máy in nhiệt hoặc A4 cho thợ bếp
   const handlePrintBom = () => {
     const renderTableRows = (items: CakeBomItem[]) => {
+      if (!items || items.length === 0) {
+        return '<tr><td colspan="2" style="padding: 4px; text-align: center; color: #888; font-style: italic;">Chưa có định mức BOM</td></tr>';
+      }
       return items
         .map((it, idx) => {
           const scaledQty = Math.round(Number(it.quantity || 0) * batchMultiplier * 10) / 10;
@@ -152,8 +192,39 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
         .join('');
     };
 
-    const baseRows = renderTableRows(baseBomIngredients);
-    const creamRows = renderTableRows(creamBomIngredients);
+    let tiersPrintHtml = '';
+    if (isMultiTier) {
+      tiersPrintHtml = tiers.map((t, idx) => `
+        <div style="margin-top: 10px; border: 1.5px solid #000; border-radius: 6px; padding: 6px; page-break-inside: avoid;">
+          <div style="font-weight: 900; font-size: 11pt; background: #000; color: #fff; padding: 3px 6px; text-transform: uppercase;">
+            ${t.tierName}: ${t.sizeName} (Ø ${t.diameterCm}cm)
+          </div>
+          <div style="font-size: 9.5pt; margin: 4px 0; line-height: 1.3;">
+            <div><b>Cốt bánh:</b> ${t.cakeBase?.name || 'Vani'} | <b>Kem:</b> ${t.creamCoating?.name || 'Kem tươi'}</div>
+            ${t.filling?.name ? `<div><b>Nhân bánh:</b> 🍓 ${t.filling.name}</div>` : ''}
+            <div style="color: #c2410c; font-weight: bold; margin-top: 2px;">
+              🔥 Nướng: ${t.cakeBase?.bakingTemperature || '155 - 160°C'} trong ${t.cakeBase?.bakingTimeMinutes || '45 - 50 phút'}
+              ${t.cakeBase?.notes ? ` • <i>${t.cakeBase.notes}</i>` : ''}
+            </div>
+          </div>
+          
+          <div style="margin-top: 4px; font-weight: bold; font-size: 9pt; text-transform: uppercase; color: #831843;">🎂 BOM Cốt Bánh ${t.tierName}:</div>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tbody>${renderTableRows(t.cakeBase?.bomIngredients || [])}</tbody>
+          </table>
+
+          ${t.creamCoating?.bomIngredients && t.creamCoating.bomIngredients.length > 0 ? `
+            <div style="margin-top: 6px; font-weight: bold; font-size: 9pt; text-transform: uppercase; color: #065f46;">🍦 BOM Kem Phủ ${t.tierName}:</div>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tbody>${renderTableRows(t.creamCoating.bomIngredients)}</tbody>
+            </table>
+          ` : ''}
+        </div>
+      `).join('');
+    }
+
+    const baseRows = renderTableRows(combinedBaseBom);
+    const creamRows = renderTableRows(combinedCreamBom);
 
     const printContent = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 10px; max-width: 80mm; margin: 0 auto; color: #000;">
@@ -162,19 +233,37 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
           <div style="font-size: 10pt; font-weight: bold; margin-top: 4px;">Đơn: #${orderNum}</div>
         </div>
         <div style="font-size: 10pt; margin-bottom: 8px; line-height: 1.4;">
-          <div><b>Bánh:</b> ${cakeName}</div>
+          <div><b>Bánh:</b> ${cakeName} ${isMultiTier ? `(${tiers.length} Tầng)` : ''}</div>
           <div><b>Kích thước:</b> ${rawSize || 'Tiêu chuẩn'}</div>
-          <div><b>Cốt:</b> ${flavor}</div>
-          <div><b>Kem:</b> ${cream}</div>
-          ${filling ? `<div><b>Nhân:</b> 🍓 ${filling}</div>` : ''}
+          ${!isMultiTier ? `
+            <div><b>Cốt:</b> ${flavor}</div>
+            <div><b>Kem:</b> ${cream}</div>
+            ${filling ? `<div><b>Nhân:</b> 🍓 ${filling}</div>` : ''}
+            <div style="color: #c2410c; font-weight: bold; margin-top: 2px;">
+              🔥 Nướng: ${currentBakingTemp} trong ${currentBakingTime}
+              ${currentBakingNotes ? ` • <i>${currentBakingNotes}</i>` : ''}
+            </div>
+          ` : ''}
           ${packaging ? `<div><b>Hộp:</b> 📦 ${packaging}</div>` : ''}
           ${cakeMessage ? `<div><b>Ghi chữ:</b> "<i>${cakeMessage}</i>"</div>` : ''}
+          ${decorNotes ? `<div><b>Dặn thợ decor:</b> <i>${decorNotes}</i></div>` : ''}
           <div><b>Số lượng mẻ làm:</b> <span style="font-size: 12pt; font-weight: 900; color: #b91c1c;">${batchMultiplier} cái</span></div>
         </div>
 
-        <!-- 1. BẢNG CỐT BÁNH -->
-        <div style="margin-top: 8px; border-top: 1px solid #000; padding-top: 6px;">
-          <div style="font-weight: 900; font-size: 10pt; text-transform: uppercase; color: #831843;">🎂 1. ĐỊNH LƯỢNG CỐT BÁNH</div>
+        ${isMultiTier ? `
+          <div style="margin-top: 8px; border-top: 1.5px solid #000; padding-top: 6px;">
+            <div style="font-weight: 900; font-size: 10pt; text-transform: uppercase; text-align: center; background: #f4f4f5; padding: 4px; border-radius: 4px;">
+              CHI TIẾT BOM TỪNG TẦNG BÁNH
+            </div>
+            ${tiersPrintHtml}
+          </div>
+        ` : ''}
+
+        <!-- BẢNG TỔNG HỢP NGUYÊN LIỆU TOÀN BỘ BÁNH -->
+        <div style="margin-top: 10px; border-top: 2px solid #000; padding-top: 6px;">
+          <div style="font-weight: 900; font-size: 10pt; text-transform: uppercase; color: #831843;">
+            🎂 ${isMultiTier ? 'TỔNG HỢP NGUYÊN LIỆU CỐT (TẤT CẢ TẦNG)' : '1. ĐỊNH LƯỢNG CỐT BÁNH'}
+          </div>
           <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
             <thead>
               <tr style="background: #eee; font-size: 8.5pt;">
@@ -188,10 +277,12 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
           </table>
         </div>
 
-        <!-- 2. BẢNG KEM PHỦ -->
-        ${creamBomIngredients.length > 0 ? `
+        <!-- BẢNG KEM PHỦ -->
+        ${combinedCreamBom.length > 0 ? `
           <div style="margin-top: 10px; border-top: 1px solid #000; padding-top: 6px;">
-            <div style="font-weight: 900; font-size: 10pt; text-transform: uppercase; color: #065f46;">🍦 2. ĐỊNH LƯỢNG KEM PHỦ</div>
+            <div style="font-weight: 900; font-size: 10pt; text-transform: uppercase; color: #065f46;">
+              🍦 ${isMultiTier ? 'TỔNG HỢP KEM PHỦ (TẤT CẢ TẦNG)' : '2. ĐỊNH LƯỢNG KEM PHỦ'}
+            </div>
             <table style="width: 100%; border-collapse: collapse; margin-top: 4px;">
               <thead>
                 <tr style="background: #eee; font-size: 8.5pt;">
@@ -209,7 +300,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
         <!-- 3. PHỤ KIỆN & QUÀ TẶNG KÈM -->
         ${(freeAccessories.length > 0 || decorAddons.length > 0) ? `
           <div style="margin-top: 10px; border-top: 1px solid #000; padding-top: 6px; font-size: 9pt;">
-            <div style="font-weight: 900; text-transform: uppercase;">🎁 3. VẬT TƯ & PHỤ KIỆN TẶNG KÈM:</div>
+            <div style="font-weight: 900; text-transform: uppercase;">🎁 VẬT TƯ & PHỤ KIỆN ĐI KÈM:</div>
             <ul style="margin: 4px 0 0 16px; padding: 0;">
               ${freeAccessories.map((a) => `<li>${a.name} (${a.quantity || 1})</li>`).join('')}
               ${decorAddons.map((d) => `<li>${d.name}</li>`).join('')}
@@ -218,7 +309,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
         ` : ''}
 
         <div style="margin-top: 12px; font-size: 8pt; text-align: center; color: #666; border-top: 1px dashed #999; padding-top: 6px;">
-          Nướng 155-160°C trong 45-50 phút • Kiểm tra tăm khô trước khi lấy ra
+          Nướng chuẩn nhiệt độ • Cắm tăm khô trước khi lấy ra khỏi lò
         </div>
       </div>
     `;
@@ -230,12 +321,13 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
   };
 
   const totalIngredientsCount = currentIngredients.length;
-  const checkedCount = currentIngredients.filter((it, idx) => checkedItems[`${activeTab}-${it.id || it.name}-${idx}`]).length;
+  const currentChecklistPrefix = `${selectedTierTab}-${activeTab}`;
+  const checkedCount = currentIngredients.filter((it, idx) => checkedItems[`${currentChecklistPrefix}-${it.id || it.name}-${idx}`]).length;
   const isAllChecked = totalIngredientsCount > 0 && checkedCount === totalIngredientsCount;
 
   return (
     <div className="fixed inset-0 z-[10000020] bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-      <div className="bg-zinc-900 border border-pink-500/40 rounded-3xl max-w-xl w-full p-4 sm:p-6 shadow-2xl space-y-4 text-white animate-in zoom-in-95 duration-150 my-auto">
+      <div className="bg-zinc-900 border border-pink-500/40 rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl space-y-4 text-white animate-in zoom-in-95 duration-150 my-auto">
         
         {/* Header Modal */}
         <div className="flex items-start justify-between gap-3 border-b border-zinc-800 pb-3">
@@ -251,9 +343,14 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
                 <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-amber-300 border border-zinc-700">
                   #{orderNum}
                 </span>
+                {isMultiTier && (
+                  <span className="text-[11px] font-black px-2 py-0.5 rounded-md bg-purple-950/80 text-purple-300 border border-purple-700/80">
+                    Bánh {tiers.length} Tầng
+                  </span>
+                )}
               </div>
               <p className="text-xs text-zinc-400 mt-0.5">
-                Định mức nguyên vật liệu chuẩn theo cơ chế flowchart tiệm bánh
+                Xem công thức định mức BOM nguyên vật liệu chi tiết cho từng tầng và toàn bộ bánh
               </p>
             </div>
           </div>
@@ -266,47 +363,133 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
           </button>
         </div>
 
-        {/* Thông tin bánh & Bộ nhân hệ số mẻ */}
+        {/* BỘ CHỌN TẦNG BÁNH (CHO BÁNH NHIỀU TẦNG) */}
+        {isMultiTier && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-bold text-zinc-400 px-1">
+              <span className="flex items-center gap-1 text-pink-300">
+                <Layers className="w-3.5 h-3.5 text-pink-400" />
+                Chọn xem định mức từng tầng:
+              </span>
+              <span className="text-[11px] text-zinc-500">Bấm chọn từng tầng để xem công thức riêng</span>
+            </div>
+            <div className="flex gap-1.5 overflow-x-auto pb-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTierTab('all');
+                  setCheckedItems({});
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                  selectedTierTab === 'all'
+                    ? 'bg-pink-600 text-white shadow-md shadow-pink-600/30'
+                    : 'bg-zinc-800/90 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>🎂 Tổng Hợp Toàn Bộ</span>
+              </button>
+
+              {tiers.map((t, idx) => (
+                <button
+                  key={idx}
+                  type="button"
+                  onClick={() => {
+                    setSelectedTierTab(idx);
+                    setCheckedItems({});
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                    selectedTierTab === idx
+                      ? 'bg-pink-600 text-white shadow-md shadow-pink-600/30'
+                      : 'bg-zinc-800/90 text-zinc-300 hover:bg-zinc-700 hover:text-white border border-zinc-700'
+                  }`}
+                >
+                  <span className="w-4 h-4 rounded-full bg-zinc-700 flex items-center justify-center text-[10px]">
+                    {idx + 1}
+                  </span>
+                  <span>{t.tierName}</span>
+                  <span className="text-[10px] font-normal opacity-80">({t.sizeName})</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* THÔNG TIN CHI TIẾT TẦNG ĐANG CHỌN HOẶC TỔNG THỂ */}
         <div className="bg-zinc-950 p-3.5 rounded-2xl border border-zinc-800 space-y-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
-              <h3 className="font-black text-base text-zinc-100 uppercase leading-snug">
-                {cakeName}
-              </h3>
-              {spec?.tiers && spec.tiers.length > 1 ? (
-                <div className="mt-2 space-y-1.5">
-                  <div className="text-[11px] font-black text-pink-400 uppercase tracking-wider">
-                    🎂 Cấu Trúc Bánh {spec.tiers.length} Tầng:
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5">
-                    {spec.tiers.map((t, idx) => (
-                      <div key={idx} className="bg-zinc-900/90 p-2 rounded-xl border border-zinc-800 text-xs">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-base text-zinc-100 uppercase leading-snug">
+                  {activeTier ? `${activeTier.tierName}: ${cakeName}` : cakeName}
+                </h3>
+                {activeTier && (
+                  <span className="px-2 py-0.5 rounded-lg bg-pink-950/80 text-pink-300 border border-pink-700/80 text-xs font-black">
+                    {activeTier.sizeName} (Ø {activeTier.diameterCm}cm)
+                  </span>
+                )}
+              </div>
+
+              {/* Thông tin bánh hoặc các tầng */}
+              {!activeTier ? (
+                isMultiTier ? (
+                  <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {tiers.map((t, idx) => (
+                      <div 
+                        key={idx} 
+                        onClick={() => setSelectedTierTab(idx)}
+                        className="bg-zinc-900/90 p-2.5 rounded-xl border border-zinc-800 text-xs hover:border-pink-500/50 cursor-pointer transition"
+                      >
                         <div className="font-black text-amber-300 flex items-center justify-between pb-1 border-b border-zinc-800">
-                          <span>{t.tierName}</span>
-                          <span className="text-zinc-300 text-[11px] font-bold bg-zinc-800 px-1.5 py-0.5 rounded">{t.sizeName}</span>
+                          <span>{t.tierName}: {t.sizeName}</span>
+                          <span className="text-pink-400 text-[10px] flex items-center gap-0.5">
+                            Xem riêng <ChevronRight className="w-3 h-3" />
+                          </span>
                         </div>
                         <div className="text-[11px] text-zinc-300 mt-1 space-y-0.5">
-                          <div>🌾 Cốt: <span className="font-semibold text-zinc-100">{t.cakeBase?.name || 'Vani'}</span></div>
-                          <div>🍦 Kem: <span className="font-semibold text-zinc-100">{t.creamCoating?.name || 'Kem tươi'}</span></div>
+                          <div>🌾 Cốt: <span className="font-bold text-zinc-100">{t.cakeBase?.name || 'Vani'}</span></div>
+                          <div>🍦 Kem: <span className="font-bold text-zinc-100">{t.creamCoating?.name || 'Kem tươi'}</span></div>
                           {t.filling?.name && (
-                            <div>🍓 Nhân: <span className="font-semibold text-pink-300">{t.filling.name}</span></div>
+                            <div>🍓 Nhân: <span className="font-bold text-pink-300">{t.filling.name}</span></div>
                           )}
+                          <div className="text-orange-300/90 text-[10px] pt-0.5">
+                            🔥 Nướng: {t.cakeBase?.bakingTemperature || '155-160°C'} • {t.cakeBase?.bakingTimeMinutes || '45-50p'}
+                          </div>
                         </div>
                       </div>
                     ))}
                   </div>
-                </div>
+                ) : (
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
+                    <span className="px-2.5 py-0.5 rounded-lg bg-pink-950/80 text-pink-300 border border-pink-700/80 font-black">
+                      📏 {rawSize || 'Size tiêu chuẩn'}
+                    </span>
+                    <span className="text-zinc-300 font-semibold">
+                      🌾 {flavor}
+                    </span>
+                    <span className="text-zinc-300 font-semibold">
+                      🍦 {cream}
+                    </span>
+                    {filling && (
+                      <span className="text-pink-300 font-semibold">
+                        🍓 {filling}
+                      </span>
+                    )}
+                  </div>
+                )
               ) : (
-                <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
-                  <span className="px-2.5 py-0.5 rounded-lg bg-pink-950/80 text-pink-300 border border-pink-700/80 font-black">
-                    📏 {rawSize || 'Size tiêu chuẩn'}
+                <div className="flex items-center gap-2 mt-1.5 flex-wrap text-xs">
+                  <span className="text-zinc-300 font-semibold">
+                    🌾 Cốt: <b className="text-white">{activeTier.cakeBase?.name || 'Vani'}</b>
                   </span>
-                  <span className="text-zinc-400 font-semibold">
-                    🌾 {flavor}
+                  <span className="text-zinc-300 font-semibold">
+                    🍦 Kem: <b className="text-white">{activeTier.creamCoating?.name || 'Kem tươi'}</b>
                   </span>
-                  <span className="text-zinc-400 font-semibold">
-                    🍦 {cream}
-                  </span>
+                  {activeTier.filling?.name && (
+                    <span className="text-pink-300 font-semibold">
+                      🍓 Nhân: <b className="text-pink-200">{activeTier.filling.name}</b>
+                    </span>
+                  )}
                 </div>
               )}
             </div>
@@ -337,6 +520,33 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
             </div>
           </div>
 
+          {/* HỘP THÔNG SỐ NƯỚNG KỸ THUẬT CHO THỢ BẾP */}
+          <div className="p-2.5 rounded-xl bg-orange-950/30 border border-orange-600/40 text-xs space-y-1.5">
+            <div className="flex items-center justify-between text-orange-300 font-black text-[11px] uppercase tracking-wider">
+              <span className="flex items-center gap-1.5">
+                <Flame className="w-4 h-4 text-orange-400" />
+                Thông Số Nướng Bếp {activeTier ? `(${activeTier.tierName})` : ''}:
+              </span>
+              <span className="text-[10px] text-zinc-400 font-normal">Cài đặt lò chuẩn</span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-0.5">
+              <div className="bg-zinc-900/80 p-2 rounded-lg border border-zinc-800">
+                <span className="text-[10px] text-zinc-400 block">Nhiệt độ nướng:</span>
+                <span className="font-black text-orange-300 text-xs sm:text-sm">{currentBakingTemp}</span>
+              </div>
+              <div className="bg-zinc-900/80 p-2 rounded-lg border border-zinc-800">
+                <span className="text-[10px] text-zinc-400 block">Thời gian nướng:</span>
+                <span className="font-black text-amber-300 text-xs sm:text-sm">{currentBakingTime}</span>
+              </div>
+              <div className="bg-zinc-900/80 p-2 rounded-lg border border-zinc-800 col-span-2 sm:col-span-1">
+                <span className="text-[10px] text-zinc-400 block">Kiểm tra lò:</span>
+                <span className="font-bold text-zinc-200 text-[11px] truncate block">
+                  {currentBakingNotes || 'Cắm tăm khô trước khi lấy ra'}
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Ghi chú chữ & Dặn dò nếu có */}
           {(cakeMessage || decorNotes) && (
             <div className="p-2.5 rounded-xl bg-pink-950/30 border border-pink-900/50 text-xs space-y-1">
@@ -346,8 +556,8 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
                 </div>
               )}
               {decorNotes && (
-                <div className="text-zinc-400 italic text-[11px]">
-                  💡 Dặn thợ: {decorNotes}
+                <div className="text-zinc-300 italic text-[11px]">
+                  💡 Dặn thợ decor: {decorNotes}
                 </div>
               )}
             </div>
@@ -359,29 +569,29 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
           <button
             type="button"
             onClick={() => setActiveTab('base')}
-            className={`flex-1 py-1.5 rounded-lg transition cursor-pointer flex items-center justify-center gap-1 ${
+            className={`flex-1 py-2 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'base' ? 'bg-pink-600 text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            <span>🎂 Cốt Bánh ({baseBomIngredients.length})</span>
+            <span>🎂 Cốt Bánh ({currentBaseIngredients.length})</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('cream')}
-            className={`flex-1 py-1.5 rounded-lg transition cursor-pointer flex items-center justify-center gap-1 ${
+            className={`flex-1 py-2 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'cream' ? 'bg-pink-600 text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            <span>🍦 Kem Phủ ({creamBomIngredients.length})</span>
+            <span>🍦 Kem Phủ ({currentCreamIngredients.length})</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('accessories')}
-            className={`flex-1 py-1.5 rounded-lg transition cursor-pointer flex items-center justify-center gap-1 ${
+            className={`flex-1 py-2 rounded-lg transition cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'accessories' ? 'bg-pink-600 text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'
             }`}
           >
-            <span>🎁 Bao Bì & Quà Tặng</span>
+            <span>🎁 Bao Bì & Quà</span>
           </button>
         </div>
 
@@ -392,7 +602,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black uppercase text-zinc-300 flex items-center gap-1.5">
                   <Scale className="w-3.5 h-3.5 text-pink-400" />
-                  Định Mức Cân Nguyên Liệu ({totalIngredientsCount})
+                  Định Mức Cân Nguyên Liệu {activeTier ? `[${activeTier.tierName}]` : '[Tổng Hợp]'} ({totalIngredientsCount})
                 </span>
                 {checkedCount > 0 && (
                   <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
@@ -421,7 +631,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
               <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950">
                 <div className="max-h-[35vh] overflow-y-auto divide-y divide-zinc-800/80">
                   {currentIngredients.map((item, idx) => {
-                    const itemId = `${activeTab}-${item.id || item.name}-${idx}`;
+                    const itemId = `${currentChecklistPrefix}-${item.id || item.name}-${idx}`;
                     const isChecked = !!checkedItems[itemId];
                     const scaledQty = Math.round(Number(item.quantity || 0) * batchMultiplier * 10) / 10;
 
@@ -530,7 +740,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({ isOpen, onClose, ord
         <div className="p-3 bg-amber-950/20 rounded-2xl border border-amber-800/40 text-[11px] text-amber-200/90 flex items-start gap-2">
           <Info className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
           <div className="leading-relaxed">
-            <b>Lưu ý kỹ thuật:</b> Nướng cốt bánh ở nhiệt độ <b>155°C - 160°C</b> trong khoảng <b>45 - 50 phút</b>. Đánh kem ở tốc độ vừa để kem mịn, tránh tách nước.
+            <b>Lưu ý kỹ thuật:</b> Nướng cốt bánh ở nhiệt độ <b>{currentBakingTemp}</b> trong khoảng <b>{currentBakingTime}</b>. {currentBakingNotes ? `${currentBakingNotes}. ` : ''}Đánh kem ở tốc độ vừa để kem mịn, tránh tách nước.
           </div>
         </div>
 
