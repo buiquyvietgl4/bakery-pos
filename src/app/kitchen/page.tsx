@@ -1018,6 +1018,42 @@ export default function KitchenPage() {
 
             localOrders = Array.from(mergedMap.values());
 
+            // 🔄 TỰ ĐỘNG GỘP ĐƠN BỔ SUNG NẾU BÁNH ĐÃ SẴN SÀNG HOẶC ĐÃ NƯỚNG XONG
+            const supplementOrders = localOrders.filter(
+              (o) => o && (o.order_number?.endsWith('-LAM') || o.parent_order_number || o.notes?.includes('BỔ SUNG CHO ĐƠN'))
+            );
+            if (supplementOrders.length > 0) {
+              supplementOrders.forEach((sup) => {
+                const matchP = sup.notes?.match(/BỔ SUNG CHO ĐƠN #(BK-[A-Z0-9-]+)/i);
+                const parentNum = sup.parent_order_number || (sup.order_number?.endsWith('-LAM') ? sup.order_number.replace(/-LAM$/, '') : (matchP ? matchP[1] : null));
+                if (!parentNum) return;
+
+                const parent = localOrders.find((p) => p.order_number === parentNum || p.id === parentNum);
+                if (parent) {
+                  if (sup.status === 'ready' || sup.status === 'completed' || parent.bake_status === 'done' || parent.status === 'completed') {
+                    const supQty = Number(sup.need_bake_qty || sup.orderQuantity || sup.items?.[0]?.quantity || 1);
+                    const fullQty = parent.orderQuantity || ((parent.ready_stock_qty || 0) + supQty);
+                    parent.need_bake_qty = 0;
+                    parent.bake_status = 'done';
+                    parent.ready_stock_qty = fullQty;
+                    if (parent.items && parent.items.length > 0 && fullQty > parent.items[0].quantity) {
+                      parent.items[0].quantity = fullQty;
+                      parent.items[0].product_name_snapshot = (parent.items[0].product_name_snapshot || '')
+                        .replace(/\s*\(Sẵn\s*\d+\s*cái\s*•\s*Chờ bếp làm\s*\d+\s*cái\)/gi, '')
+                        .replace(/\s*\(Sẵn\s*\d+\s*cái\)/gi, '')
+                        .trim();
+                    }
+                    if (parent.notes && parent.notes.includes('CHỜ BẾP LÀM')) {
+                      parent.notes = parent.notes
+                        .replace(/\[⏳\s*CHỜ BẾP LÀM \d+ CÁI(?:\s*\(ĐÃ CÓ SẴN \d+(?:\/\d+)? CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI]`)
+                        .replace(/CHỜ BẾP LÀM \d+ CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI`);
+                    }
+                    sup.status = 'completed';
+                  }
+                }
+              });
+            }
+
             // Lưu ngược lại localStorage để các lần mở sau luôn có dữ liệu mới nhất
             if (typeof window !== 'undefined') {
               try {
@@ -1471,6 +1507,20 @@ export default function KitchenPage() {
       updatedParentNotes = `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${parentTargetTotalQty} CÁI] ${rawParentNotes}`.trim();
     }
 
+    // Nếu đơn chính (không phải đơn bổ sung) đang làm ở bước 2 và chuyển sang ready/completed:
+    const isParentCompletingBake = (nextStatus === 'ready' || nextStatus === 'completed') && Boolean(targetOrder?.need_bake_qty && targetOrder.need_bake_qty > 0);
+    const fullTargetQty = targetOrder?.orderQuantity || ((targetOrder?.ready_stock_qty || 0) + (targetOrder?.need_bake_qty || 0)) || 1;
+    let selfUpdatedNotes = targetOrder?.notes || '';
+    if (isParentCompletingBake) {
+      if (selfUpdatedNotes.includes('CHỜ BẾP LÀM')) {
+        selfUpdatedNotes = selfUpdatedNotes
+          .replace(/\[⏳\s*CHỜ BẾP LÀM \d+ CÁI(?:\s*\(ĐÃ CÓ SẴN \d+(?:\/\d+)? CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullTargetQty} CÁI]`)
+          .replace(/CHỜ BẾP LÀM \d+ CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${fullTargetQty} CÁI`);
+      } else {
+        selfUpdatedNotes = `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullTargetQty} CÁI] ${selfUpdatedNotes}`.trim();
+      }
+    }
+
     // 0. ĐẶT KHÓA CHỐNG LÙI TRẠNG THÁI NGAY LẬP TỨC:
     // Ngăn chặn hoàn toàn việc polling/Supabase trả về dữ liệu cũ kéo ngược trạng thái
     if (nextStatus === 'completed') {
@@ -1503,7 +1553,21 @@ export default function KitchenPage() {
     } else {
       setOrders((prev) =>
         prev
-          .map((o) => (o.id === orderId || o.order_number === orderId || o.order_number === orderNum ? { ...o, status: nextStatus } : o))
+          .map((o) => {
+            if (o.id === orderId || o.order_number === orderId || o.order_number === orderNum) {
+              return {
+                ...o,
+                status: nextStatus,
+                ...(isParentCompletingBake ? {
+                  need_bake_qty: 0,
+                  bake_status: 'done' as const,
+                  ready_stock_qty: fullTargetQty,
+                  notes: selfUpdatedNotes,
+                } : {}),
+              };
+            }
+            return o;
+          })
           .filter((o) => o.status !== 'completed')
       );
     }
@@ -1526,6 +1590,19 @@ export default function KitchenPage() {
               ) {
                 const fromN = parsePreorderFromNotes(o.notes || targetOrder?.notes);
                 const isS = o.delivery_method === 'shipping' || targetOrder?.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
+                const isSelfCompletingBake = (nextStatus === 'ready' || nextStatus === 'completed') && Boolean((o.need_bake_qty && o.need_bake_qty > 0) || (targetOrder?.need_bake_qty && targetOrder.need_bake_qty > 0));
+                const fullQty = o.orderQuantity || targetOrder?.orderQuantity || ((o.ready_stock_qty || targetOrder?.ready_stock_qty || 0) + (o.need_bake_qty || targetOrder?.need_bake_qty || 0)) || 1;
+                let curNotes = o.notes || targetOrder?.notes || '';
+                if (isSelfCompletingBake) {
+                  if (curNotes.includes('CHỜ BẾP LÀM')) {
+                    curNotes = curNotes
+                      .replace(/\[⏳\s*CHỜ BẾP LÀM \d+ CÁI(?:\s*\(ĐÃ CÓ SẴN \d+(?:\/\d+)? CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI]`)
+                      .replace(/CHỜ BẾP LÀM \d+ CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI`);
+                  } else {
+                    curNotes = `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI] ${curNotes}`.trim();
+                  }
+                }
+
                 return { 
                   ...o, 
                   status: nextStatus, 
@@ -1536,6 +1613,12 @@ export default function KitchenPage() {
                   reference_image_url: o.reference_image_url || targetOrder?.reference_image_url || '',
                   preorder_pickup_at: o.preorder_pickup_at || targetOrder?.preorder_pickup_at || fromN.preorder_pickup_at || '',
                   pickupDateTime: o.pickupDateTime || targetOrder?.pickupDateTime || o.preorder_pickup_at || fromN.preorder_pickup_at || '',
+                  ...(isSelfCompletingBake ? {
+                    need_bake_qty: 0,
+                    bake_status: 'done',
+                    ready_stock_qty: fullQty,
+                    notes: curNotes,
+                  } : {}),
                 };
               }
               if (isSupplementFinishing && (o.order_number === parentOrderNum || o.orderNumber === parentOrderNum || o.id === parentOrderNum)) {
@@ -1628,6 +1711,29 @@ export default function KitchenPage() {
           need_bake_qty: 0,
           bake_status: 'done',
           notes: updatedParentNotes,
+          updated_at: new Date().toISOString(),
+        });
+      } catch {}
+    }
+
+    if (isParentCompletingBake) {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          supabase.from('orders').update({
+            notes: selfUpdatedNotes,
+            updated_at: new Date().toISOString(),
+          }).eq('order_number', orderNum).then();
+        } catch (sbErr) {
+          console.warn('Lỗi Supabase khi hoàn tất nướng:', sbErr);
+        }
+      }
+      try {
+        (db.orders.where('order_number').equals(orderNum) as any).modify({
+          orderQuantity: fullTargetQty,
+          ready_stock_qty: fullTargetQty,
+          need_bake_qty: 0,
+          bake_status: 'done',
+          notes: selfUpdatedNotes,
           updated_at: new Date().toISOString(),
         });
       } catch {}
@@ -1956,6 +2062,113 @@ export default function KitchenPage() {
       specialRequest,
       referenceImageUrl: (order as any).reference_image_url || fromN.reference_image_url || '',
     };
+  };
+
+  // ⚡ Mở khóa giao hàng khẩn cấp: Xác nhận bếp đã nướng xong đủ bánh để giao ngay
+  const handleForceUnlockDelivery = async (order: KDSOrder) => {
+    const orderId = order.id;
+    const orderNum = order.order_number;
+    const fullQty = order.orderQuantity || ((order.ready_stock_qty || 0) + (order.need_bake_qty || 0)) || 1;
+
+    let updatedNotes = order.notes || '';
+    if (updatedNotes.includes('CHỜ BẾP LÀM')) {
+      updatedNotes = updatedNotes
+        .replace(/\[⏳\s*CHỜ BẾP LÀM \d+ CÁI(?:\s*\(ĐÃ CÓ SẴN \d+(?:\/\d+)? CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI]`)
+        .replace(/CHỜ BẾP LÀM \d+ CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI`);
+    } else {
+      updatedNotes = `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI] ${updatedNotes}`.trim();
+    }
+
+    const updatedOrder: KDSOrder = {
+      ...order,
+      need_bake_qty: 0,
+      bake_status: 'done',
+      ready_stock_qty: fullQty,
+      notes: updatedNotes,
+    };
+
+    // 1. Cập nhật state UI
+    setOrders((prev) =>
+      prev.map((o) => {
+        if (o.id === orderId || o.order_number === orderNum) {
+          return updatedOrder;
+        }
+        if (o.order_number === `${orderNum}-LAM` || o.parent_order_number === orderNum) {
+          return { ...o, status: 'completed', need_bake_qty: 0, bake_status: 'done' };
+        }
+        return o;
+      })
+    );
+
+    // 2. Cập nhật localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((o: any) => {
+              if (o.id === orderId || o.order_number === orderNum || o.orderNumber === orderNum) {
+                return {
+                  ...o,
+                  need_bake_qty: 0,
+                  bake_status: 'done',
+                  ready_stock_qty: fullQty,
+                  notes: updatedNotes,
+                  updated_at: new Date().toISOString(),
+                };
+              }
+              if (o.order_number === `${orderNum}-LAM` || o.parent_order_number === orderNum) {
+                return { ...o, status: 'completed', need_bake_qty: 0, bake_status: 'done', updated_at: new Date().toISOString() };
+              }
+              return o;
+            });
+            localStorage.setItem('bakery_orders', JSON.stringify(updated));
+          }
+        }
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+      } catch (err) {
+        console.warn('Lỗi lưu mở khóa đơn vào localStorage:', err);
+      }
+    }
+
+    // 3. Broadcast và đồng bộ Supabase + IndexedDB
+    await broadcastOrderStatusUpdate(orderNum, 'ready', updatedOrder);
+    syncOrderToSupabase(updatedOrder, 'ready');
+
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      try {
+        await supabase.from('orders').update({
+          notes: updatedNotes,
+          updated_at: new Date().toISOString(),
+        }).eq('order_number', orderNum);
+
+        await supabase.from('orders').update({
+          status: 'completed',
+          updated_at: new Date().toISOString(),
+        }).eq('order_number', `${orderNum}-LAM`);
+      } catch (e) {
+        console.warn('Lỗi update supabase khi mở khóa giao:', e);
+      }
+    }
+
+    try {
+      (db.orders.where('order_number').equals(orderNum) as any).modify({
+        need_bake_qty: 0,
+        bake_status: 'done',
+        ready_stock_qty: fullQty,
+        notes: updatedNotes,
+        updated_at: new Date().toISOString(),
+      });
+    } catch {}
+
+    soundManager.playNewOrderChime();
+    setKdsToast({
+      id: String(Date.now()),
+      title: '⚡ Đã Mở Khóa Giao Bánh!',
+      subtitle: `Đơn #${orderNum} đã xác nhận đủ ${fullQty} cái bánh, có thể giao ngay.`,
+      orderNumber: orderNum,
+    });
   };
 
   // Xác nhận thanh toán & hoàn thành giao hàng ở Bước 3
@@ -3695,7 +3908,7 @@ export default function KitchenPage() {
                         <div className="space-y-1.5">
                           <div className="p-2.5 rounded-xl bg-amber-950/80 border border-amber-500/50 text-amber-300 text-xs font-semibold flex items-center gap-2">
                             <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
-                            <div className="leading-tight">
+                            <div className="leading-tight flex-1">
                               <span className="font-bold text-amber-200">Đang chờ bếp làm thêm {order.need_bake_qty} cái</span>
                               <div className="text-[10px] text-amber-300/80 mt-0.5">
                                 Đã có sẵn: {order.ready_stock_qty ?? ((order.orderQuantity || 0) - (order.need_bake_qty || 0))} cái • Cần làm: {order.need_bake_qty} cái
@@ -3705,10 +3918,18 @@ export default function KitchenPage() {
                           <button
                             type="button"
                             disabled
-                            className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-500 font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed opacity-60"
+                            className="w-full py-2 rounded-xl bg-zinc-800 text-zinc-500 font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed opacity-60"
                             title={`Chờ bếp hoàn thành nướng ${order.need_bake_qty} cái bánh bổ sung ở Bước 1 & 2 trước khi giao`}
                           >
                             <Clock className="w-4 h-4" /> Đang Chờ Bếp Làm Bổ Sung ({order.need_bake_qty} cái)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleForceUnlockDelivery(order)}
+                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-emerald-900/30 cursor-pointer active:scale-95"
+                            title="Bấm để xác nhận bếp đã nướng xong đủ bánh và mở khóa giao ngay lập tức"
+                          >
+                            <CheckCircle2 className="w-4 h-4" /> ⚡ Xác Nhận Đã Nướng Xong ({order.need_bake_qty} cái) Để Giao Ngay
                           </button>
                         </div>
                       ) : (
