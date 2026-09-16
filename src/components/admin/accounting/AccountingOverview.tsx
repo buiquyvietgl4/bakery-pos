@@ -5,7 +5,7 @@ import {
   BarChart3, Package, TrendingUp, ArrowDownRight, ArrowUpRight, 
   ChevronDown, ChevronRight, FileSpreadsheet, Search, Eye, Filter,
   RefreshCw, DollarSign, Wallet, ShieldCheck, Printer, ArrowRight,
-  Calendar, Sparkles, Award
+  Calendar, Sparkles, Award, Camera, X
 } from 'lucide-react';
 
 export interface AccountingOverviewProps {
@@ -71,6 +71,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
     cogs: true,
     opex: true,
   });
+  const [viewingProof, setViewingProof] = useState<{ orderNumber: string; image: string } | null>(null);
 
   const toggleSection = (sec: string) => {
     setExpandedSections((prev) => ({ ...prev, [sec]: !prev[sec] }));
@@ -1021,6 +1022,20 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                       <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${isOrderCash(o) ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
                         {isOrderCash(o) ? 'Tiền mặt' : 'VietQR'}
                       </span>
+                      {Boolean(o.transfer_proof_image) && (
+                        <button
+                          type="button"
+                          onClick={() => setViewingProof({
+                            orderNumber: o.order_number || o.orderNumber || 'BK',
+                            image: o.transfer_proof_image,
+                          })}
+                          className="mt-1 flex items-center justify-center gap-1 mx-auto px-1.5 py-0.5 rounded-md bg-amber-50 hover:bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-200 transition cursor-pointer"
+                          title="Xem ảnh bill chuyển khoản đối soát"
+                        >
+                          <Camera className="w-3 h-3 text-amber-600" />
+                          <span>Bill CK</span>
+                        </button>
+                      )}
                     </td>
                     <td className="py-2.5 text-center">
                       <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-700">
@@ -1042,6 +1057,53 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
         </div>
       )}
 
+      {/* Lightbox Modal Xem Ảnh Bill CK Đối Soát */}
+      {viewingProof && (
+        <div
+          onClick={() => setViewingProof(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="bg-white rounded-3xl max-w-lg w-full p-5 shadow-2xl border border-zinc-200 space-y-4"
+          >
+            <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Camera className="w-5 h-5 text-amber-600" />
+                <h4 className="font-black text-sm text-zinc-900">
+                  Ảnh Bill Chuyển Khoản ({viewingProof.orderNumber})
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingProof(null)}
+                className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="rounded-2xl overflow-hidden bg-zinc-950 flex items-center justify-center max-h-[70vh]">
+              <img
+                src={viewingProof.image}
+                alt={`Bill ${viewingProof.orderNumber}`}
+                className="max-h-[70vh] w-auto object-contain rounded-xl"
+              />
+            </div>
+
+            <div className="flex justify-between items-center text-xs text-zinc-500 pt-1">
+              <span>📸 Chụp từ camera POS lưu cùng đơn để đối soát</span>
+              <button
+                type="button"
+                onClick={() => setViewingProof(null)}
+                className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl font-bold transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

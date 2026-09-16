@@ -17,7 +17,7 @@ import {
   Sparkles, Wallet, Lock, History, AlertTriangle, Cake, Calendar,
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
   Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet,
-  Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings
+  Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings, ShieldCheck
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -68,7 +68,17 @@ import {
   fetchAutoBankConfigFromDb,
   AutoBankWebhookConfig,
   AUTOBANK_CONFIG_UPDATED_EVENT,
+  getTransferVerificationConfig,
+  fetchTransferVerificationConfigFromDb,
+  TransferVerificationConfig,
+  TRANSFER_VERIFY_UPDATED_EVENT,
 } from '@/lib/utils/paymentSync';
+import {
+  broadcastTransferApprovalRequest,
+  TransferApprovalPayload,
+  TransferApprovalResolvedPayload,
+} from '@/lib/supabase/realtimeSync';
+import { TransferProofCameraModal } from '@/components/pos/TransferProofCameraModal';
 import {
   getCakeCostingConfig,
   calculateCustomCakeCost,
@@ -127,7 +137,7 @@ interface PreorderFormData {
 }
 
 export default function POSPage() {
-  const { user } = useAuth();
+  const { user, isAdmin, securityConfig } = useAuth();
   const [mobileTab, setMobileTab] = useState<'menu' | 'cart'>('menu');
   const [products, setProducts] = useState<CachedProduct[]>(() => {
     if (typeof window !== 'undefined') {
@@ -219,6 +229,15 @@ export default function POSPage() {
     time: number;
   } | null>(null);
   const incomingPaymentHandlerRef = useRef<(payload: PaymentReceivedPayload) => void>(() => {});
+
+  // ── PHÂN HỆ XÁC THỰC CHUYỂN KHOẢN (3 CHẾ ĐỘ & CHỤP BILL ĐỐI SOÁT) ──
+  const [transferVerifyConfig, setTransferVerifyConfig] = useState<TransferVerificationConfig>(() => getTransferVerificationConfig());
+  const [activeCheckoutOrderNumber, setActiveCheckoutOrderNumber] = useState<string>('');
+  const [isWaitingAdminTransferApproval, setIsWaitingAdminTransferApproval] = useState<boolean>(false);
+  const [adminApprovedTransfer, setAdminApprovedTransfer] = useState<boolean>(false);
+  const [isProofCameraOpen, setIsProofCameraOpen] = useState<boolean>(false);
+  const [capturedTransferProofImage, setCapturedTransferProofImage] = useState<string | null>(null);
+  const incomingTransferApprovalResolvedRef = useRef<(payload: TransferApprovalResolvedPayload) => void>(() => {});
 
   // ── 3 LỰA CHỌN THANH TOÁN TẠI POS (LẤY NGAY / HẸN GIỜ / SHIP BÁNH) ──
   const [fulfillmentType, setFulfillmentType] = useState<'takeaway' | 'pickup' | 'shipping'>('takeaway');
@@ -428,6 +447,7 @@ export default function POSPage() {
 
   // ── LỊCH SỬ HÓA ĐƠN & LƯU TRỮ ĐƠN ĐÃ XUẤT STATE ──
   const [isInvoiceHistoryOpen, setIsInvoiceHistoryOpen] = useState(false);
+  const [viewingProofImage, setViewingProofImage] = useState<string | null>(null);
   const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('');
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'takeaway' | 'preorder' | 'cash' | 'transfer'>('all');
   const [invoicesList, setInvoicesList] = useState<any[]>(() => {
@@ -1018,6 +1038,9 @@ export default function POSPage() {
       onPaymentReceived: (payload) => {
         incomingPaymentHandlerRef.current(payload);
       },
+      onTransferApprovalResolved: (payload) => {
+        incomingTransferApprovalResolvedRef.current(payload);
+      },
     });
 
     const handleLocalPayment = (e: any) => {
@@ -1025,10 +1048,23 @@ export default function POSPage() {
     };
     window.addEventListener('bakery_payment_received', handleLocalPayment);
 
+    const handleLocalTransferResolved = (e: any) => {
+      if (e.detail) incomingTransferApprovalResolvedRef.current(e.detail);
+    };
+    window.addEventListener('transfer_approval_resolved', handleLocalTransferResolved);
+
+    const handleTransferVerifyUpdated = (e: any) => {
+      if (e.detail) setTransferVerifyConfig(e.detail);
+      else setTransferVerifyConfig(getTransferVerificationConfig());
+    };
+    window.addEventListener(TRANSFER_VERIFY_UPDATED_EVENT, handleTransferVerifyUpdated);
+
     return () => {
       window.removeEventListener('bakery_orders_updated', handleSync);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('bakery_payment_received', handleLocalPayment);
+      window.removeEventListener('transfer_approval_resolved', handleLocalTransferResolved);
+      window.removeEventListener(TRANSFER_VERIFY_UPDATED_EVENT, handleTransferVerifyUpdated);
       unsubscribeSync();
     };
   }, []);
@@ -1541,7 +1577,12 @@ export default function POSPage() {
   };
 
   // Checkout Handler for regular & pre-order / shipping sales
-  const handleCompleteOrder = async (overridePaymentMethod?: any) => {
+  const handleCompleteOrder = async (
+    overridePaymentMethod?: any,
+    overrideProofImage?: string | null,
+    overrideOrderNumber?: string | null,
+    skipTwoStepCheck = false
+  ) => {
     if (cart.length === 0) return;
     const effectivePaymentMethod: 'cash' | 'transfer' | 'momo' =
       (typeof overridePaymentMethod === 'string' && ['cash', 'transfer', 'momo'].includes(overridePaymentMethod))
@@ -1567,12 +1608,65 @@ export default function POSPage() {
       return;
     }
 
+    // ── XỬ LÝ CƠ CHẾ XÁC THỰC CHUYỂN KHOẢN 2 BƯỚC ──
+    const effectiveProofImage = overrideProofImage ?? capturedTransferProofImage;
+    const isTwoStepMode = transferVerifyConfig.mode === 'two_step';
+    const isSkipAdmin = Boolean(transferVerifyConfig.twoStep?.skipForAdmin && isAdmin);
+
+    if (
+      effectivePaymentMethod === 'transfer' &&
+      isTwoStepMode &&
+      !isSkipAdmin &&
+      !skipTwoStepCheck &&
+      !adminApprovedTransfer &&
+      !effectiveProofImage
+    ) {
+      let orderNumToUse = overrideOrderNumber || activeCheckoutOrderNumber;
+      if (!orderNumToUse) {
+        const nowTemp = new Date();
+        const prefixTemp = fulfillmentType === 'takeaway' ? 'BK' : fulfillmentType === 'shipping' ? 'BK-SHIP' : 'BK-PRE';
+        orderNumToUse = `${prefixTemp}-${nowTemp.getFullYear()}${String(nowTemp.getMonth() + 1).padStart(2, '0')}${String(
+          nowTemp.getDate()
+        ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
+        setActiveCheckoutOrderNumber(orderNumToUse);
+      }
+
+      setIsWaitingAdminTransferApproval(true);
+      setProcessingOrder(false);
+
+      const cashierName = user?.name || securityConfig.staffName || 'Thu Ngân Quầy POS';
+      const isPreOrder = fulfillmentType !== 'takeaway';
+      const transferReqPayload: TransferApprovalPayload = {
+        order_number: orderNumToUse,
+        amount: dueNow,
+        customer_name: isPreOrder ? (posCustomerName || 'Khách đặt') : (posCustomerName || 'Khách tại quầy'),
+        transfer_code: checkoutTransferCode,
+        requested_by: cashierName,
+        requested_at: new Date().toISOString(),
+      };
+
+      await broadcastTransferApprovalRequest(transferReqPayload);
+
+      // Lưu vào danh sách chờ cục bộ để đồng bộ
+      try {
+        const rawPending = localStorage.getItem('bakery_pending_transfers');
+        const pendingList: TransferApprovalPayload[] = rawPending ? JSON.parse(rawPending) : [];
+        if (!pendingList.some((p) => p.order_number === orderNumToUse)) {
+          const updatedPending = [transferReqPayload, ...pendingList];
+          localStorage.setItem('bakery_pending_transfers', JSON.stringify(updatedPending));
+          window.dispatchEvent(new CustomEvent('bakery_pending_transfers_updated'));
+        }
+      } catch {}
+
+      return;
+    }
+
     setProcessingOrder(true);
 
     try {
       const now = new Date();
       const prefix = fulfillmentType === 'takeaway' ? 'BK' : fulfillmentType === 'shipping' ? 'BK-SHIP' : 'BK-PRE';
-      const orderNumber = `${prefix}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+      const orderNumber = overrideOrderNumber || activeCheckoutOrderNumber || `${prefix}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
         now.getDate()
       ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
       const localId = generateUUID();
@@ -1725,11 +1819,14 @@ export default function POSPage() {
         customer_phone: isPre ? posCustomerPhone : undefined,
         cake_message: isPre ? posCakeMessage : undefined,
         preorder_pickup_at: isPre ? new Date(`${posPickupDate}T${posPickupTime}:00`).toISOString() : undefined,
-        notes: hasPartialStock
+        notes: (hasPartialStock
           ? `[⏳ CHỜ BẾP LÀM ${totalNeedToBake} CÁI (ĐÃ CÓ SẴN ${totalStockAvailable} CÁI)] | ${fullNotes}`
-          : fullNotes,
+          : fullNotes) + (effectiveProofImage ? ' | [📸 ĐÃ CHỤP ẢNH BILL CK ĐỐI SOÁT]' : adminApprovedTransfer ? ' | [👑 ADMIN ĐÃ DUYỆT CK]' : ''),
         payment_method: effectivePaymentMethod,
         paymentMethod: effectivePaymentMethod,
+        transfer_proof_image: effectiveProofImage || undefined,
+        transfer_verification_mode: transferVerifyConfig.mode,
+        transfer_approved_by: adminApprovedTransfer ? (user?.name || 'Admin') : undefined,
         total_cogs: orderTotalCogs,
         orderQuantity: cart.reduce((sum, it) => sum + it.quantity, 0),
         ready_stock_qty: hasPartialStock ? totalStockAvailable : undefined,
@@ -1883,11 +1980,16 @@ export default function POSPage() {
       });
 
       // 3. Đóng popup thanh toán, hiện phiếu hóa đơn in nhiệt và chuyển về Menu
+      setIsWaitingAdminTransferApproval(false);
+      setAdminApprovedTransfer(false);
+      setCapturedTransferProofImage(null);
+      setActiveCheckoutOrderNumber('');
       setIsCheckoutOpen(false);
       setCompletedOrder({
         orderNumber,
         fulfillmentType,
         deliveryMethod: fulfillmentType === 'shipping' ? 'shipping' : 'pickup',
+        transfer_proof_image: effectiveProofImage || undefined,
         items: [
           ...cart,
           ...(fulfillmentType === 'shipping' && (posShippingFee || 0) > 0 ? [
@@ -2051,6 +2153,62 @@ export default function POSPage() {
   useEffect(() => {
     incomingPaymentHandlerRef.current = handleIncomingPayment;
   }, [handleIncomingPayment]);
+
+  const activeCheckoutOrderNumberRef = useRef(activeCheckoutOrderNumber);
+  const capturedTransferProofImageRef = useRef(capturedTransferProofImage);
+  const transferVerifyConfigRef = useRef(transferVerifyConfig);
+
+  useEffect(() => {
+    activeCheckoutOrderNumberRef.current = activeCheckoutOrderNumber;
+  }, [activeCheckoutOrderNumber]);
+
+  useEffect(() => {
+    capturedTransferProofImageRef.current = capturedTransferProofImage;
+  }, [capturedTransferProofImage]);
+
+  useEffect(() => {
+    transferVerifyConfigRef.current = transferVerifyConfig;
+  }, [transferVerifyConfig]);
+
+  useEffect(() => {
+    fetchTransferVerificationConfigFromDb().then((cfg) => {
+      if (cfg) setTransferVerifyConfig(cfg);
+    });
+  }, []);
+
+  const handleIncomingTransferApprovalResolved = useCallback(
+    (payload: TransferApprovalResolvedPayload) => {
+      if (!payload || !payload.order_number) return;
+
+      const currentOrderNum = activeCheckoutOrderNumberRef.current;
+      const isCheckout = isCheckoutOpenRef.current;
+
+      if (!isCheckout || !currentOrderNum) return;
+
+      if (payload.order_number === currentOrderNum) {
+        if (payload.action === 'approved') {
+          setAdminApprovedTransfer(true);
+          setIsWaitingAdminTransferApproval(false);
+
+          soundManager.playPaymentSuccessChime();
+          soundManager.speakPaymentSuccess(payload.amount || dueNowRef.current, payload.order_number);
+
+          setTimeout(() => {
+            handleCompleteOrder('transfer', capturedTransferProofImageRef.current, currentOrderNum, true);
+          }, 1200);
+        } else if (payload.action === 'rejected') {
+          setIsWaitingAdminTransferApproval(false);
+          setAdminApprovedTransfer(false);
+          alert(`❌ CHƯA THẤY TIỀN VỀ:\n\nQuản trị viên (Admin) kiểm tra và thông báo: ${payload.reason || 'Chưa nhận được tiền vào tài khoản'}.\n\nVui lòng kiểm tra lại với khách hàng hoặc đổi sang hình thức Tiền mặt.`);
+        }
+      }
+    },
+    [handleCompleteOrder]
+  );
+
+  useEffect(() => {
+    incomingTransferApprovalResolvedRef.current = handleIncomingTransferApprovalResolved;
+  }, [handleIncomingTransferApprovalResolved]);
 
   // ── HANDLER: TẠO ĐƠN ĐẶT BÁNH KEM (PREORDER CAKE) ──
   const handleCreatePreorder = async (e: React.FormEvent) => {
@@ -3469,8 +3627,17 @@ export default function POSPage() {
               setPaymentMethod('cash');
               const syntax = vietqrConfig.transferSyntax || 'DH';
               const randSuffix = String(Math.floor(100000 + Math.random() * 900000));
+              const nowTemp = new Date();
+              const prefixTemp = fulfillmentType === 'takeaway' ? 'BK' : fulfillmentType === 'shipping' ? 'BK-SHIP' : 'BK-PRE';
+              const newOrderNum = `${prefixTemp}-${nowTemp.getFullYear()}${String(nowTemp.getMonth() + 1).padStart(2, '0')}${String(
+                nowTemp.getDate()
+              ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
+              setActiveCheckoutOrderNumber(newOrderNum);
               setCheckoutTransferCode(`${syntax}${randSuffix}`);
               setPaymentReceivedInfo(null);
+              setIsWaitingAdminTransferApproval(false);
+              setAdminApprovedTransfer(false);
+              setCapturedTransferProofImage(null);
               setIsCheckoutOpen(true);
             }}
             className={`w-full py-3.5 rounded-2xl text-white font-black text-sm sm:text-base shadow-xl disabled:opacity-50 disabled:pointer-events-none transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${
@@ -4982,6 +5149,17 @@ export default function POSPage() {
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-700">
                             {inv.payment_method === 'cash' || inv.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / Ví'}
                           </span>
+                          {inv.transfer_proof_image && (
+                            <button
+                              type="button"
+                              onClick={() => setViewingProofImage(inv.transfer_proof_image)}
+                              className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200 hover:bg-purple-200 flex items-center gap-1 cursor-pointer transition"
+                              title="Bấm để xem ảnh bill chuyển khoản đối soát"
+                            >
+                              <Camera className="w-3 h-3 text-purple-600" />
+                              <span>Ảnh Bill CK</span>
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -5179,6 +5357,43 @@ export default function POSPage() {
                   );
                 })
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL XEM ẢNH BILL CHUYỂN KHOẢN ĐỐI SOÁT ── */}
+      {viewingProofImage && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl border border-zinc-200 max-w-lg w-full p-4 sm:p-5 shadow-2xl space-y-3 flex flex-col max-h-[92dvh]">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+              <div className="flex items-center gap-2 text-xs font-bold text-zinc-900">
+                <Camera className="w-4 h-4 text-purple-600" />
+                <span>Ảnh Chụp Bill Chuyển Khoản Đối Soát</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingProofImage(null)}
+                className="p-1 rounded-lg hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden rounded-2xl bg-black flex items-center justify-center">
+              <img
+                src={viewingProofImage}
+                alt="Bill chuyển khoản đối soát"
+                className="max-w-full max-h-[70dvh] object-contain rounded-xl"
+              />
+            </div>
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setViewingProofImage(null)}
+                className="px-4 py-2 rounded-xl bg-zinc-900 text-white font-bold text-xs hover:bg-zinc-800 transition cursor-pointer"
+              >
+                Đóng
+              </button>
             </div>
           </div>
         </div>
@@ -5896,25 +6111,116 @@ export default function POSPage() {
                   </span>
                 </div>
 
-                {/* KHUNG TRẠNG THÁI TIỀN VỀ (AUTO-BANK WEBHOOK) */}
-                {paymentReceivedInfo ? (
-                  <div className="p-3 rounded-xl bg-emerald-500/15 border-2 border-emerald-500 text-emerald-900 space-y-1 animate-in zoom-in-95">
-                    <div className="flex items-center justify-center gap-2 font-black text-sm text-emerald-700">
-                      <CheckCircle2 className="w-5 h-5 text-emerald-600 animate-bounce" />
-                      <span>✅ ĐÃ NHẬN TIỀN THÀNH CÔNG!</span>
+                {/* HIỂN THỊ TRẠNG THÁI THEO 3 CHẾ ĐỘ XÁC THỰC CHUYỂN KHOẢN */}
+                {capturedTransferProofImage && (
+                  <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-between text-xs text-purple-950 animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={capturedTransferProofImage}
+                        alt="Bill đối soát"
+                        className="w-9 h-9 rounded-lg object-cover border border-purple-300 shadow-2xs"
+                      />
+                      <div className="text-left">
+                        <div className="font-black text-purple-900">📸 Đã chụp ảnh bill chuyển khoản!</div>
+                        <div className="text-[10px] text-purple-700">Đơn hàng sẽ được xác nhận ngay và lưu ảnh đối soát</div>
+                      </div>
                     </div>
-                    <div className="text-xs font-black text-emerald-800">
-                      +{(paymentReceivedInfo.amount || 0).toLocaleString('vi-VN')}₫
-                      {paymentReceivedInfo.gateway ? ` • ${paymentReceivedInfo.gateway}` : ''}
-                    </div>
-                    <p className="text-[11px] text-emerald-700 font-medium">
-                      Hệ thống đang tự động xác nhận hoàn thành đơn hàng...
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIsProofCameraOpen(true)}
+                      className="px-2 py-1 bg-white border border-purple-300 rounded-lg text-[10px] font-bold text-purple-700 hover:bg-purple-100 cursor-pointer"
+                    >
+                      Chụp lại
+                    </button>
                   </div>
+                )}
+
+                {transferVerifyConfig.mode === 'two_step' ? (
+                  adminApprovedTransfer ? (
+                    <div className="p-3.5 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500 text-emerald-900 space-y-1 animate-in zoom-in-95">
+                      <div className="flex items-center justify-center gap-2 font-black text-sm text-emerald-700">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 animate-bounce" />
+                        <span>✅ ADMIN ĐÃ XÁC NHẬN NHẬN ĐỦ TIỀN!</span>
+                      </div>
+                      <p className="text-xs text-emerald-700 font-medium">
+                        Hệ thống đang tự động hoàn tất đơn hàng...
+                      </p>
+                    </div>
+                  ) : isWaitingAdminTransferApproval ? (
+                    <div className="p-3.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500 text-amber-900 space-y-2 animate-in zoom-in-95">
+                      <div className="flex items-center justify-center gap-2 font-black text-sm text-amber-800">
+                        <span className="w-3 h-3 rounded-full bg-amber-500 animate-ping shrink-0" />
+                        <span>⏳ ĐANG CHỜ ADMIN XÁC NHẬN TIỀN VỀ...</span>
+                      </div>
+                      <p className="text-xs text-amber-800 font-medium">
+                        Yêu cầu đã được gửi tới tài khoản Quản trị viên (Admin). Đơn sẽ tự động hoàn tất ngay khi Admin ấn xác nhận.
+                      </p>
+                      {/* Nút khẩn cấp Chụp ảnh bill đối soát */}
+                      <div className="pt-2 border-t border-amber-300/60">
+                        <button
+                          type="button"
+                          onClick={() => setIsProofCameraOpen(true)}
+                          className="w-full py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer transition"
+                        >
+                          <Camera className="w-4 h-4" />
+                          <span>📸 Xác Nhận Ngay (Chụp Ảnh Bill Khách)</span>
+                        </button>
+                        <p className="text-[10px] text-amber-700 text-center italic pt-1">
+                          Phòng khi mất mạng hoặc Admin chưa kịp duyệt. Ảnh chụp sẽ lưu cùng đơn hàng để đối soát sau.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
+                      <span className="flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-amber-600" /> Chế độ: Xác thực 2 bước (Admin duyệt)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsProofCameraOpen(true)}
+                        className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-[10px] font-black text-amber-800 hover:bg-amber-100 flex items-center gap-1 cursor-pointer transition"
+                      >
+                        <Camera className="w-3 h-3" /> Chụp bill ngay
+                      </button>
+                    </div>
+                  )
+                ) : transferVerifyConfig.mode === 'bank_webhook' ? (
+                  paymentReceivedInfo ? (
+                    <div className="p-3 rounded-xl bg-emerald-500/15 border-2 border-emerald-500 text-emerald-900 space-y-1 animate-in zoom-in-95">
+                      <div className="flex items-center justify-center gap-2 font-black text-sm text-emerald-700">
+                        <CheckCircle2 className="w-5 h-5 text-emerald-600 animate-bounce" />
+                        <span>✅ ĐÃ NHẬN TIỀN THÀNH CÔNG!</span>
+                      </div>
+                      <div className="text-xs font-black text-emerald-800">
+                        +{(paymentReceivedInfo.amount || 0).toLocaleString('vi-VN')}₫
+                        {paymentReceivedInfo.gateway ? ` • ${paymentReceivedInfo.gateway}` : ''}
+                      </div>
+                      <p className="text-[11px] text-emerald-700 font-medium">
+                        Hệ thống đang tự động xác nhận hoàn thành đơn hàng...
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 text-xs font-semibold">
+                        <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping inline-block shrink-0" />
+                        <span>⏳ Đang chờ hệ thống ngân hàng xác nhận biến động số dư...</span>
+                      </div>
+                      {/* Nút khẩn cấp Chụp ảnh bill đối soát phòng mất mạng */}
+                      <button
+                        type="button"
+                        onClick={() => setIsProofCameraOpen(true)}
+                        className="w-full py-2 px-3 rounded-xl bg-zinc-100 hover:bg-amber-50 border border-zinc-300 hover:border-amber-400 text-zinc-700 hover:text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        title="Dùng khi mất mạng hoặc ngân hàng chưa báo webhook"
+                      >
+                        <Camera className="w-3.5 h-3.5 text-amber-600" />
+                        <span>📸 Xác Nhận Ngay (Chụp Ảnh Bill Khách)</span>
+                      </button>
+                    </div>
+                  )
                 ) : (
-                  <div className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 text-xs font-semibold">
-                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping inline-block shrink-0" />
-                    <span>⏳ Đang chờ hệ thống ngân hàng xác nhận biến động số dư...</span>
+                  <div className="flex items-center justify-center gap-1.5 p-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    <span>Chuyển khoản trực tiếp (Bấm Xác nhận để hoàn tất ngay)</span>
                   </div>
                 )}
 
@@ -6081,26 +6387,59 @@ export default function POSPage() {
             <div className="flex gap-3 pt-3 border-t border-zinc-100 shrink-0">
               <button
                 type="button"
-                onClick={() => setIsCheckoutOpen(false)}
+                onClick={() => {
+                  setIsWaitingAdminTransferApproval(false);
+                  setIsCheckoutOpen(false);
+                  setActiveCheckoutOrderNumber('');
+                  setCapturedTransferProofImage(null);
+                  setAdminApprovedTransfer(false);
+                }}
                 className="flex-1 py-3 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
               >
-                Hủy
+                {isWaitingAdminTransferApproval ? 'Đóng / Hủy Chờ' : 'Hủy'}
               </button>
-              <button
-                type="button"
-                disabled={processingOrder}
-                onClick={() => handleCompleteOrder()}
-                className="flex-2 py-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-black shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                {processingOrder
-                  ? 'Đang xử lý...'
-                  : fulfillmentType === 'shipping'
-                  ? `Xác Nhận Đặt Bánh (Giá cuối: ${(grandTotal || 0).toLocaleString('vi-VN')}₫)`
-                  : `Xác Nhận Thanh Toán (${(grandTotal || 0).toLocaleString('vi-VN')}₫)`}
-              </button>
+              {isWaitingAdminTransferApproval ? (
+                <button
+                  type="button"
+                  onClick={() => setIsProofCameraOpen(true)}
+                  className="flex-2 py-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-black shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 cursor-pointer animate-pulse"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>📸 Xác Nhận Ngay (Chụp Ảnh Bill)</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={processingOrder}
+                  onClick={() => handleCompleteOrder()}
+                  className="flex-2 py-3.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-black shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  {processingOrder
+                    ? 'Đang xử lý...'
+                    : paymentMethod === 'transfer' && transferVerifyConfig.mode === 'two_step' && !(transferVerifyConfig.twoStep?.skipForAdmin && isAdmin) && !capturedTransferProofImage && !adminApprovedTransfer
+                    ? `Gửi Duyệt 2 Bước (${(grandTotal || 0).toLocaleString('vi-VN')}₫)`
+                    : fulfillmentType === 'shipping'
+                    ? `Xác Nhận Đặt Bánh (Giá cuối: ${(grandTotal || 0).toLocaleString('vi-VN')}₫)`
+                    : `Xác Nhận Thanh Toán (${(grandTotal || 0).toLocaleString('vi-VN')}₫)`}
+                </button>
+              )}
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── MODAL CHỤP ẢNH BILL CHUYỂN KHOẢN ĐỐI SOÁT KHẨN CẤP ── */}
+      {isProofCameraOpen && (
+        <TransferProofCameraModal
+          orderNumber={activeCheckoutOrderNumber || 'BK-CK'}
+          amount={dueNow}
+          onConfirm={(imgBase64) => {
+            setCapturedTransferProofImage(imgBase64);
+            setIsProofCameraOpen(false);
+            handleCompleteOrder('transfer', imgBase64, activeCheckoutOrderNumber, true);
+          }}
+          onClose={() => setIsProofCameraOpen(false)}
+        />
       )}
 
       {/* ── MODAL 5: HÓA ĐƠN IN NHIỆT / PHIẾU HẸN GIAO BÁNH ── */}

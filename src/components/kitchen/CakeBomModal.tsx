@@ -335,7 +335,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[10000020] bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-      <div className="bg-zinc-900 border border-pink-500/40 rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl space-y-4 text-white animate-in zoom-in-95 duration-150 my-auto">
+      <div className="bg-zinc-900 border border-pink-500/40 rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl space-y-4 text-white animate-in zoom-in-95 duration-150 my-auto max-h-[92vh] overflow-y-auto">
         
         {/* Header Modal */}
         <div className="flex items-start justify-between gap-3 border-b border-zinc-800 pb-3">
@@ -548,7 +548,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({
               </div>
               <div className="bg-zinc-900/80 p-2 rounded-lg border border-zinc-800 col-span-2 sm:col-span-1">
                 <span className="text-[10px] text-zinc-400 block">Kiểm tra lò:</span>
-                <span className="font-bold text-zinc-200 text-[11px] truncate block">
+                <span className="font-bold text-zinc-200 text-[11px] block break-words">
                   {currentBakingNotes || 'Cắm tăm khô trước khi lấy ra'}
                 </span>
               </div>
@@ -669,7 +669,7 @@ export const CakeBomModal: React.FC<CakeBomModalProps> = ({
                             )}
                           </button>
                           <span
-                            className={`text-xs font-bold truncate ${
+                            className={`text-xs font-bold break-words ${
                               isChecked ? 'line-through text-zinc-500' : 'text-zinc-100'
                             }`}
                           >

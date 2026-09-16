@@ -43,6 +43,7 @@ import { CancelRemakeModal } from '@/components/kitchen/CancelRemakeModal';
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { DeliveryPaymentModal } from '@/components/kitchen/DeliveryPaymentModal';
 import CakeBomModal from '@/components/kitchen/CakeBomModal';
+import NormalRecipeBomModal from '@/components/kitchen/NormalRecipeBomModal';
 import { addSpoilageLog } from '@/lib/utils/spoilageManager';
 import { parseRecipeItem, formatScaledQty, normalizeRecipe, fetchRecipesFromDb } from '@/lib/utils/recipeCalculator';
 import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
@@ -207,6 +208,17 @@ export default function KitchenPage() {
     setBomModalTierIndex(tierIndex);
     setBomModalTab(tab);
     setBomModalOrder(order);
+  };
+
+  // ── MODAL CÔNG THỨC BOM BÁNH THƯỜNG CHO THỢ BẾP ──
+  const [normalBomModalState, setNormalBomModalState] = useState<{
+    isOpen: boolean;
+    order: KDSOrder | null;
+    productName?: string;
+  }>({ isOpen: false, order: null });
+
+  const handleOpenNormalRecipeBom = (order: KDSOrder, productName?: string) => {
+    setNormalBomModalState({ isOpen: true, order, productName });
   };
 
   // ── MODAL THANH TOÁN & HOÀN THÀNH GIAO HÀNG (BƯỚC 3) ──
@@ -2940,14 +2952,17 @@ export default function KitchenPage() {
               {sortPreordersByUrgency(pendingOrders, currentTime).map((order) => {
                 const isPreorder = order.order_type === 'preorder' || order.order_number?.startsWith('BK-PRE') || !!order.preorder_pickup_at;
                 const urgency = getDeliveryUrgency(order.preorder_pickup_at, order.status, currentTime);
+                const cakeInfo = getCakeDisplayInfo(order);
                 return (
                   <div
                     key={order.id}
                     className={`rounded-2xl p-4 shadow-lg space-y-3 border transition ${
                       urgency.isUrgent
                         ? 'bg-zinc-900 border-2 border-rose-500 ring-2 ring-rose-500/50 shadow-rose-950/40'
-                        : isPreorder
+                        : cakeInfo.isBirthdayCake
                         ? 'bg-zinc-900 border-pink-500/60 shadow-pink-950/20 ring-1 ring-pink-500/30'
+                        : isPreorder
+                        ? 'bg-zinc-900 border-amber-500/50 shadow-amber-950/20 ring-1 ring-amber-500/20'
                         : 'bg-zinc-900 border-amber-500/30'
                     }`}
                   >
@@ -2963,12 +2978,16 @@ export default function KitchenPage() {
                     )}
 
                     <div className="flex items-center justify-between">
-                      <span className={`font-mono font-black text-sm ${isPreorder ? 'text-pink-400' : 'text-amber-400'}`}>
+                      <span className={`font-mono font-black text-sm ${cakeInfo.isBirthdayCake ? 'text-pink-400' : isPreorder ? 'text-amber-400' : 'text-zinc-200'}`}>
                         {order.order_number}
                       </span>
-                      {isPreorder ? (
+                      {cakeInfo.isBirthdayCake ? (
                         <span className="flex items-center gap-1 text-[10px] font-extrabold text-pink-300 bg-pink-950/80 border border-pink-700 px-2 py-0.5 rounded-md">
-                          <Cake className="w-3 h-3 text-pink-400" /> BÁNH ĐẶT TRƯỚC
+                          <Cake className="w-3 h-3 text-pink-400" /> BÁNH SINH NHẬT
+                        </span>
+                      ) : isPreorder ? (
+                        <span className="flex items-center gap-1 text-[10px] font-extrabold text-amber-300 bg-amber-950/80 border border-amber-700/80 px-2 py-0.5 rounded-md">
+                          <Clock className="w-3 h-3 text-amber-400" /> BÁNH ĐẶT TRƯỚC
                         </span>
                       ) : (
                         <span className="flex items-center gap-1 text-[11px] text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-md">
@@ -2988,11 +3007,131 @@ export default function KitchenPage() {
                       </div>
                     )}
 
-                    {/* Thân thẻ tinh gọn: Tên bánh & Kích thước, Thời gian giao, Xem chi tiết */}
+                    {/* Thân thẻ tinh gọn: Bánh thường hoặc Bánh sinh nhật */}
                     {(() => {
                       const cakeInfo = getCakeDisplayInfo(order);
                       const fromN = parsePreorderFromNotes(order.notes);
                       const isShip = order.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
+                      const shipAddr = order.shipping_address || fromN.shipping_address;
+
+                      if (!cakeInfo.isBirthdayCake) {
+                        return (
+                          <div className="space-y-2.5">
+                            {/* 1. Danh sách sản phẩm đặt hàng tinh gọn */}
+                            <div className="bg-zinc-950/80 p-3 rounded-2xl border border-zinc-800/90 space-y-2">
+                              <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-zinc-800/80">
+                                <Package className="w-3.5 h-3.5 text-amber-400" />
+                                <span>Sản phẩm đặt ({order.items?.length || 1})</span>
+                              </div>
+                              <div className="space-y-1.5 divide-y divide-zinc-800/60">
+                                {(order.items && order.items.length > 0 ? order.items : [{ product_name_snapshot: cakeInfo.name, quantity: cakeInfo.quantity }]).map((it: any, idx: number) => {
+                                  const itName = it?.product_name_snapshot || it?.product?.name || it?.name || cakeInfo.name;
+                                  const itQty = it?.quantity || 1;
+                                  return (
+                                    <div key={idx} className={idx > 0 ? 'pt-1.5' : ''}>
+                                      <div className="flex items-center justify-between gap-2">
+                                        <span className="font-bold text-sm text-zinc-100">
+                                          <span className="text-amber-400 font-black mr-1.5">{itQty}x</span>
+                                          {itName}
+                                        </span>
+                                        {(it?.product_type === 'imported' || (it as any)?.product_type === 'imported') && (
+                                          <span className="px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 text-[10px] font-bold border border-blue-700/50 shrink-0">
+                                            📦 Sẵn quầy
+                                          </span>
+                                        )}
+                                      </div>
+                                      {it?.notes && (
+                                        <div className="text-[11px] text-amber-300 italic bg-amber-950/30 px-2 py-0.5 rounded border border-amber-900/40 mt-1">
+                                          {it.notes}
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+
+                            {/* 2. Thông tin giao nhận & Khách hàng & Ghi chú */}
+                            <div className="p-2.5 rounded-xl bg-zinc-950/40 border border-zinc-800 text-xs space-y-1.5">
+                              {order.preorder_pickup_at && (
+                                <div className="flex items-center justify-between">
+                                  <div className="text-amber-300 font-bold flex items-center gap-1.5">
+                                    <Clock className="w-3.5 h-3.5 text-amber-400" />
+                                    <span>Hạn giao: {formatPickupDateTime(order.preorder_pickup_at)}</span>
+                                  </div>
+                                  {!urgency.isUrgent && urgency.formattedRemaining && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${urgency.badgeColorClass}`}>
+                                      {urgency.formattedRemaining}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between text-[11px] pt-0.5">
+                                <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                                  isShip ? 'bg-blue-900 text-blue-200 border border-blue-700' : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                                }`}>
+                                  {isShip ? '🚚 Ship tận nơi' : '🏪 Lấy tại tiệm'}
+                                </span>
+                                {order.customer_name && (
+                                  <span className="text-zinc-300 truncate max-w-[140px]">
+                                    Khách: <strong>{order.customer_name}</strong>
+                                  </span>
+                                )}
+                              </div>
+                              {isShip && shipAddr && (
+                                <div className="text-[11px] text-blue-300 truncate font-normal pt-0.5">
+                                  📍 {shipAddr}
+                                </div>
+                              )}
+                              {order.notes && cleanDisplayNotes(order.notes) && (
+                                <div className="text-zinc-300 text-[11px] italic pt-1 border-t border-zinc-800/80">
+                                  📝 {cleanDisplayNotes(order.notes)}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* 3. Nút thao tác bánh thường */}
+                            <div className="space-y-2 pt-1">
+                              <div className="grid grid-cols-3 gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setOrderDetailModalData(order)}
+                                  className="py-2 px-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                                  title="Xem chi tiết đơn hàng"
+                                >
+                                  <Eye className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span className="truncate">Chi tiết</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenNormalRecipeBom(order)}
+                                  className="py-2 px-2 rounded-xl bg-amber-950/70 hover:bg-amber-900 border border-amber-700/80 text-amber-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                                  title="Xem công thức định mức BOM nguyên liệu bánh thường"
+                                >
+                                  <Utensils className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span className="truncate">BOM Bánh</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenCakeSticker(order)}
+                                  className="py-2 px-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                                  title="In tem nhãn dán hộp bánh"
+                                >
+                                  <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                  <span className="truncate">Tem Hộp</span>
+                                </button>
+                              </div>
+
+                              <button
+                                onClick={() => handleUpdateStatus(order.id, 'pending', 'preparing')}
+                                className="w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md cursor-pointer active:scale-95 bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30"
+                              >
+                                <Flame className="w-4 h-4" /> Bắt Đầu Làm / Nướng
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      }
 
                       return (
                         <div className="space-y-2.5">
@@ -3300,14 +3439,17 @@ export default function KitchenPage() {
               {sortPreordersByUrgency(preparingOrders, currentTime).map((order) => {
                 const isPreorder = order.order_type === 'preorder' || order.order_number?.startsWith('BK-PRE') || !!order.preorder_pickup_at;
                 const urgency = getDeliveryUrgency(order.preorder_pickup_at, order.status, currentTime);
+                const cakeInfo = getCakeDisplayInfo(order);
                 return (
                   <div
                     key={order.id}
                     className={`bg-zinc-900 rounded-2xl p-4 shadow-lg space-y-3 border transition ${
                       urgency.isUrgent
                         ? 'border-2 border-rose-500 ring-2 ring-rose-500/50 shadow-rose-950/40'
+                        : cakeInfo.isBirthdayCake
+                        ? 'border-pink-500/50 shadow-pink-950/20'
                         : isPreorder
-                        ? 'border-pink-500/50'
+                        ? 'border-blue-500/50 ring-1 ring-blue-500/20'
                         : 'border-blue-500/40'
                     }`}
                   >
@@ -3323,12 +3465,16 @@ export default function KitchenPage() {
                     )}
 
                     <div className="flex items-center justify-between">
-                      <span className={`font-mono font-black text-sm ${isPreorder ? 'text-pink-400' : 'text-blue-400'}`}>
+                      <span className={`font-mono font-black text-sm ${cakeInfo.isBirthdayCake ? 'text-pink-400' : 'text-blue-400'}`}>
                         {order.order_number}
                       </span>
-                      {isPreorder ? (
+                      {cakeInfo.isBirthdayCake ? (
                         <span className="text-[10px] font-bold text-pink-300 bg-pink-950 px-2 py-0.5 rounded border border-pink-800 flex items-center gap-1">
-                          <Cake className="w-3 h-3 text-pink-400" /> Bánh đặt
+                          <Cake className="w-3 h-3 text-pink-400" /> BÁNH SINH NHẬT
+                        </span>
+                      ) : isPreorder ? (
+                        <span className="text-[10px] font-bold text-blue-300 bg-blue-950/80 px-2 py-0.5 rounded border border-blue-700/80 flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-blue-400" /> BÁNH ĐẶT TRƯỚC
                         </span>
                       ) : (
                         <span className="text-[11px] text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded">
@@ -3337,9 +3483,8 @@ export default function KitchenPage() {
                       )}
                     </div>
 
-                    {isPreorder ? (
+                    {cakeInfo.isBirthdayCake ? (
                       (() => {
-                        const cakeInfo = getCakeDisplayInfo(order);
                         const fromN = parsePreorderFromNotes(order.notes);
                         const isShip = order.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
 
@@ -3626,47 +3771,126 @@ export default function KitchenPage() {
                         );
                       })()
                     ) : (
-                      <div className="space-y-2">
-                        <div className="space-y-1.5 py-1 border-t border-b border-zinc-800/80">
-                          {(order.items || []).map((item, idx) => (
-                            <div key={idx} className="text-xs space-y-0.5">
-                              <div className="flex justify-between items-start">
-                                <span className="font-bold text-zinc-200">
-                                  <span className="text-blue-400 font-extrabold mr-1.5">{item.quantity}x</span>
-                                  {item.product_name_snapshot}
-                                  {(item.product_type === 'imported' || (item as any).product_type === 'imported') && (
-                                    <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 text-[10px] font-bold border border-blue-700/50">
-                                      📦 Hàng sẵn quầy
+                      <div className="space-y-2.5">
+                        {/* 1. Danh sách món đang làm */}
+                        <div className="bg-zinc-950/80 p-3 rounded-2xl border border-zinc-800/90 space-y-2">
+                          <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-zinc-800/80">
+                            <Utensils className="w-3.5 h-3.5 text-blue-400" />
+                            <span>Sản phẩm đang làm ({order.items?.length || 1})</span>
+                          </div>
+                          <div className="space-y-1.5 divide-y divide-zinc-800/60">
+                            {(order.items && order.items.length > 0 ? order.items : [{ product_name_snapshot: cakeInfo.name, quantity: cakeInfo.quantity }]).map((item: any, idx: number) => {
+                              const itName = item?.product_name_snapshot || item?.product?.name || item?.name || cakeInfo.name;
+                              const itQty = item?.quantity || 1;
+                              return (
+                                <div key={idx} className={idx > 0 ? 'pt-1.5' : ''}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-bold text-sm text-zinc-100">
+                                      <span className="text-blue-400 font-black mr-1.5">{itQty}x</span>
+                                      {itName}
+                                    </span>
+                                    {(item.product_type === 'imported' || (item as any)?.product_type === 'imported') && (
+                                      <span className="ml-1.5 px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 text-[10px] font-bold border border-blue-700/50">
+                                        📦 Hàng sẵn quầy
+                                      </span>
+                                    )}
+                                  </div>
+                                  {item.notes && (
+                                    <div className="text-[11px] text-amber-300 italic bg-amber-950/40 px-2 py-0.5 rounded border border-amber-900/50 mt-1">
+                                      {item.notes}
+                                    </div>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* 2. Hạn giao & Địa chỉ / Khách hàng / Ghi chú */}
+                        {(() => {
+                          const fromN = parsePreorderFromNotes(order.notes);
+                          const isShip = order.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
+                          const shipAddr = order.shipping_address || fromN.shipping_address;
+
+                          return (
+                            <div className="p-2.5 rounded-xl bg-zinc-950/40 border border-zinc-800 text-xs space-y-1.5">
+                              {order.preorder_pickup_at && (
+                                <div className="flex items-center justify-between">
+                                  <div className="text-blue-300 font-bold flex items-center gap-1.5">
+                                    <Clock className="w-3.5 h-3.5 text-blue-400" />
+                                    <span>Hạn giao: {formatPickupDateTime(order.preorder_pickup_at)}</span>
+                                  </div>
+                                  {!urgency.isUrgent && urgency.formattedRemaining && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${urgency.badgeColorClass}`}>
+                                      {urgency.formattedRemaining}
                                     </span>
                                   )}
+                                </div>
+                              )}
+                              <div className="flex items-center justify-between text-[11px] pt-0.5">
+                                <span className={`px-2 py-0.5 rounded font-bold text-[10px] ${
+                                  isShip ? 'bg-blue-900 text-blue-200 border border-blue-700' : 'bg-zinc-800 text-zinc-300 border border-zinc-700'
+                                }`}>
+                                  {isShip ? '🚚 Ship tận nơi' : '🏪 Lấy tại tiệm'}
                                 </span>
+                                {order.customer_name && (
+                                  <span className="text-zinc-300 truncate max-w-[140px]">
+                                    Khách: <strong>{order.customer_name}</strong>
+                                  </span>
+                                )}
                               </div>
-                              {item.notes && (
-                                <div className="text-[11px] text-amber-300 italic bg-amber-950/40 px-2 py-0.5 rounded border border-amber-900/50">
-                                  {item.notes}
+                              {isShip && shipAddr && (
+                                <div className="text-[11px] text-blue-300 truncate font-normal pt-0.5">
+                                  📍 {shipAddr}
+                                </div>
+                              )}
+                              {order.notes && cleanDisplayNotes(order.notes) && (
+                                <div className="text-zinc-300 text-[11px] italic pt-1 border-t border-zinc-800/80">
+                                  📝 {cleanDisplayNotes(order.notes)}
                                 </div>
                               )}
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })()}
 
+                        {/* 3. Nút thao tác bánh thường */}
                         <div className="space-y-2 pt-1">
-                          <div className="flex gap-2">
+                          <div className="grid grid-cols-4 gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setOrderDetailModalData(order)}
+                              className="py-2 px-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                              title="Xem chi tiết đơn hàng"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <span className="truncate">Chi tiết</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenNormalRecipeBom(order)}
+                              className="py-2 px-1.5 rounded-xl bg-amber-950/70 hover:bg-amber-900 border border-amber-700/80 text-amber-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
+                              title="Xem công thức định mức BOM bánh thường"
+                            >
+                              <Utensils className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <span className="truncate">BOM</span>
+                            </button>
                             <button
                               type="button"
                               onClick={() => handleOpenCakeSticker(order)}
-                              className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
+                              className="py-2 px-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-amber-300 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                               title="In tem nhãn dán hộp bánh"
                             >
-                              <Tag className="w-3.5 h-3.5 text-amber-400" /> Tem Hộp
+                              <Tag className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                              <span className="truncate">Tem</span>
                             </button>
                             <button
                               type="button"
                               onClick={() => setCancelRemakeState({ isOpen: true, order })}
-                              className="flex-1 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 hover:text-rose-100 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95"
+                              className="py-2 px-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800/80 text-rose-300 hover:text-rose-100 font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
                               title="Báo hỏng làm lại"
                             >
-                              <RotateCcw className="w-3.5 h-3.5 text-rose-400" /> Làm Lại
+                              <RotateCcw className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                              <span className="truncate">Làm Lại</span>
                             </button>
                           </div>
                           <button
@@ -3761,7 +3985,7 @@ export default function KitchenPage() {
                     </div>
 
                     {/* 1. Tên bánh & Kích thước */}
-                    {isPreorder ? (
+                    {cakeInfo.isBirthdayCake ? (
                       <div className="bg-zinc-950/80 p-3 rounded-2xl border border-zinc-800/90 space-y-1.5">
                         <div className="flex items-start justify-between gap-2">
                           <h3 className="font-black text-sm sm:text-base text-zinc-100 uppercase leading-snug">
@@ -3796,17 +4020,26 @@ export default function KitchenPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="space-y-1 py-1 border-t border-b border-zinc-800/80 text-xs">
-                        {(order.items || []).map((item, idx) => (
-                          <div key={idx} className="font-semibold text-zinc-300 flex items-center justify-between">
-                            <span>{item.quantity}x {item.product_name_snapshot}</span>
-                            {(item.product_type === 'imported' || (item as any).product_type === 'imported') && (
-                              <span className="px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 text-[10px] font-bold border border-blue-700/50">
-                                📦 Hàng sẵn quầy
+                      <div className="bg-zinc-950/80 p-3 rounded-2xl border border-zinc-800/90 space-y-2">
+                        <div className="text-[11px] font-bold text-zinc-400 uppercase tracking-wider flex items-center gap-1.5 pb-1 border-b border-zinc-800/80">
+                          <Package className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Sản phẩm ({order.items?.length || 1})</span>
+                        </div>
+                        <div className="space-y-1.5 divide-y divide-zinc-800/60">
+                          {(order.items && order.items.length > 0 ? order.items : [{ product_name_snapshot: cakeInfo.name, quantity: cakeInfo.quantity }]).map((item: any, idx: number) => (
+                            <div key={idx} className={`font-semibold text-zinc-200 flex items-center justify-between ${idx > 0 ? 'pt-1.5' : ''}`}>
+                              <span>
+                                <span className="text-emerald-400 font-extrabold mr-1.5">{item.quantity || 1}x</span>
+                                {item.product_name_snapshot || item.name || cakeInfo.name}
                               </span>
-                            )}
-                          </div>
-                        ))}
+                              {(item.product_type === 'imported' || (item as any).product_type === 'imported') && (
+                                <span className="px-1.5 py-0.5 rounded bg-blue-900/60 text-blue-300 text-[10px] font-bold border border-blue-700/50">
+                                  📦 Sẵn quầy
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -4066,11 +4299,15 @@ export default function KitchenPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleOpenCakeBom(order)}
-                          className="py-2 px-1.5 rounded-xl bg-pink-950/70 hover:bg-pink-900 border border-pink-700/80 text-pink-300 hover:text-white font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs"
-                          title="Xem công thức định mức nguyên vật liệu BOM cốt bánh"
+                          onClick={() => cakeInfo.isBirthdayCake ? handleOpenCakeBom(order) : handleOpenNormalRecipeBom(order)}
+                          className={`py-2 px-1.5 rounded-xl border font-bold text-xs flex items-center justify-center gap-1 transition cursor-pointer active:scale-95 shadow-xs ${
+                            cakeInfo.isBirthdayCake
+                              ? 'bg-pink-950/70 hover:bg-pink-900 border-pink-700/80 text-pink-300 hover:text-white'
+                              : 'bg-amber-950/70 hover:bg-amber-900 border-amber-700/80 text-amber-300 hover:text-white'
+                          }`}
+                          title={cakeInfo.isBirthdayCake ? "Xem công thức định mức BOM cốt bánh" : "Xem công thức định mức BOM bánh thường"}
                         >
-                          <Utensils className="w-3.5 h-3.5 text-pink-400 shrink-0" />
+                          <Utensils className={`w-3.5 h-3.5 ${cakeInfo.isBirthdayCake ? 'text-pink-400' : 'text-amber-400'} shrink-0`} />
                           <span className="truncate">BOM</span>
                         </button>
                         <button
@@ -4994,7 +5231,12 @@ export default function KitchenPage() {
           handleOpenCakeSticker(order);
         }}
         onViewBom={(order, tierIndex, tab) => {
-          handleOpenCakeBom(order, tierIndex, tab);
+          const cakeInfo = getCakeDisplayInfo(order);
+          if (cakeInfo.isBirthdayCake) {
+            handleOpenCakeBom(order, tierIndex, tab);
+          } else {
+            handleOpenNormalRecipeBom(order);
+          }
         }}
         onOpenLightbox={(url) => setReferenceImageLightbox(url)}
       />
@@ -5018,6 +5260,18 @@ export default function KitchenPage() {
         order={bomModalOrder}
         initialTierIndex={bomModalTierIndex}
         initialTab={bomModalTab}
+      />
+
+      {/* ── MODAL CÔNG THỨC BOM BÁNH THƯỜNG CHO THỢ BẾP ── */}
+      <NormalRecipeBomModal
+        isOpen={normalBomModalState.isOpen}
+        onClose={() => setNormalBomModalState({ isOpen: false, order: null })}
+        order={normalBomModalState.order}
+        productName={normalBomModalState.productName}
+        recipes={recipes}
+        onStartBaking={(recipe) => {
+          handleStartBaking(recipe);
+        }}
       />
 
       {/* ── MODAL IN TEM DÁN HỘP BÁNH (THERMAL BARCODE STICKER 50x30 / 50x40 - LUÔN HIỆN TRÊN CÙNG) ── */}

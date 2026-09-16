@@ -28,6 +28,7 @@ export interface BakeryProduct {
 export interface RecipeIngredientItem {
   name: string;
   qty: number; // Định lượng nguyên liệu cho 1 mẻ chuẩn
+  quantity?: number; // Alias tương thích
   unit: string; // g, ml, quả, cái, thìa
   cost?: number;
 }
@@ -42,6 +43,7 @@ export interface BakeryRecipe {
   bake_time_minutes: number; // Thời gian nướng chuẩn (phút)
   bake_temp_celsius: number; // Nhiệt độ lò nướng (°C)
   description?: string;
+  notes?: string;
   items: RecipeIngredientItem[];
 }
 

@@ -455,4 +455,210 @@ export async function saveAutoBankConfigToDb(
     return { success: false, error: err.message || 'Lỗi không xác định' };
   }
 }
+
+// ── 4. PHÂN HỆ XÁC THỰC CHUYỂN KHOẢN (3 CHẾ ĐỘ: NONE / TWO-STEP / BANK WEBHOOK) ──
+
+export type TransferVerificationMode = 'none' | 'two_step' | 'bank_webhook';
+
+export interface TwoStepSettings {
+  skipForAdmin?: boolean;       // Nếu nhân viên đứng bán là Admin thì bỏ qua bước duyệt
+  alertSound?: boolean;         // Phát chuông cảnh báo tới tài khoản Admin khi có yêu cầu
+  autoCompleteOnApprove?: boolean; // Tự động hoàn thành đơn hàng tại POS khi Admin bấm duyệt
+}
+
+export interface TransferVerificationConfig {
+  mode: TransferVerificationMode;
+  twoStep: TwoStepSettings;
+  two_step?: TwoStepSettings; // alias thuận tiện cho snake_case
+  webhook: AutoBankWebhookConfig;
+  updated_at?: string;
+  updated_by?: string;
+}
+
+export const STORAGE_KEY_TRANSFER_VERIFY = 'bakery_transfer_verification_config';
+export const TRANSFER_VERIFY_UPDATED_EVENT = 'bakery_transfer_verification_config_updated';
+
+const DEFAULT_TWO_STEP: TwoStepSettings = {
+  skipForAdmin: true,
+  alertSound: true,
+  autoCompleteOnApprove: true,
+};
+
+export const DEFAULT_TRANSFER_VERIFICATION_CONFIG: TransferVerificationConfig = {
+  mode: 'none',
+  twoStep: DEFAULT_TWO_STEP,
+  two_step: DEFAULT_TWO_STEP,
+  webhook: DEFAULT_AUTO_BANK_CONFIG,
+};
+
+let inMemoryTransferVerify: TransferVerificationConfig | null = null;
+
+export function getTransferVerificationConfig(): TransferVerificationConfig {
+  if (inMemoryTransferVerify) return inMemoryTransferVerify;
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_TRANSFER_VERIFY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        // Hợp nhất với cấu hình auto bank nếu trước đó người dùng đã lưu
+        const autoBank = getAutoBankConfig();
+        const mergedTwoStep: TwoStepSettings = {
+          ...DEFAULT_TWO_STEP,
+          ...(parsed.twoStep || parsed.two_step || {}),
+        };
+        const res: TransferVerificationConfig = {
+          ...DEFAULT_TRANSFER_VERIFICATION_CONFIG,
+          ...parsed,
+          twoStep: mergedTwoStep,
+          two_step: mergedTwoStep,
+          webhook: {
+            ...DEFAULT_AUTO_BANK_CONFIG,
+            ...autoBank,
+            ...(parsed.webhook || {}),
+          },
+        };
+        inMemoryTransferVerify = res;
+        return res;
+      }
+    } catch {}
+  }
+  return DEFAULT_TRANSFER_VERIFICATION_CONFIG;
+}
+
+export function saveTransferVerificationConfigLocally(
+  config: Partial<TransferVerificationConfig>
+): TransferVerificationConfig {
+  const current = getTransferVerificationConfig();
+  const mergedTwoStep: TwoStepSettings = {
+    ...current.twoStep,
+    ...(config.twoStep || config.two_step || {}),
+  };
+  const updated: TransferVerificationConfig = {
+    ...current,
+    ...config,
+    twoStep: mergedTwoStep,
+    two_step: mergedTwoStep,
+    webhook: {
+      ...current.webhook,
+      ...(config.webhook || {}),
+    },
+    updated_at: new Date().toISOString(),
+  };
+
+  inMemoryTransferVerify = updated;
+
+  // Đồng thời cập nhật bộ nhớ của autoBankWebhookConfig nếu có sửa đổi webhook
+  if (config.webhook) {
+    saveAutoBankConfigLocally(config.webhook);
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY_TRANSFER_VERIFY, JSON.stringify(updated));
+      window.dispatchEvent(new CustomEvent(TRANSFER_VERIFY_UPDATED_EVENT, { detail: updated }));
+    } catch {}
+  }
+  return updated;
+}
+
+export const DB_ROW_TRANSFER_VERIFY_ID = '00000000-0000-0000-0000-000000000007';
+export const DB_ROW_TRANSFER_VERIFY_NAME = 'SYS_CONFIG_TRANSFER_VERIFY';
+
+export async function fetchTransferVerificationConfigFromDb(): Promise<TransferVerificationConfig> {
+  if (isLocalMode()) return getTransferVerificationConfig();
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return getTransferVerificationConfig();
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_TRANSFER_VERIFY_ID},name.eq.${DB_ROW_TRANSFER_VERIFY_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (error || !data || !data.notes) {
+      return getTransferVerificationConfig();
+    }
+
+    const parsed = JSON.parse(data.notes);
+    const autoBank = getAutoBankConfig();
+    const merged: TransferVerificationConfig = {
+      ...DEFAULT_TRANSFER_VERIFICATION_CONFIG,
+      ...parsed,
+      twoStep: {
+        ...DEFAULT_TRANSFER_VERIFICATION_CONFIG.twoStep,
+        ...(parsed.twoStep || {}),
+      },
+      webhook: {
+        ...DEFAULT_AUTO_BANK_CONFIG,
+        ...autoBank,
+        ...(parsed.webhook || {}),
+      },
+    };
+    saveTransferVerificationConfigLocally(merged);
+    return merged;
+  } catch (err) {
+    console.warn('Lỗi nạp cấu hình Transfer Verification từ DB:', err);
+    return getTransferVerificationConfig();
+  }
+}
+
+export async function saveTransferVerificationConfigToDb(
+  config: Partial<TransferVerificationConfig>,
+  updatedBy = 'admin'
+): Promise<{ success: boolean; error?: string }> {
+  const current = getTransferVerificationConfig();
+  const fullConfig: TransferVerificationConfig = {
+    ...current,
+    ...config,
+    twoStep: {
+      ...current.twoStep,
+      ...(config.twoStep || {}),
+    },
+    webhook: {
+      ...current.webhook,
+      ...(config.webhook || {}),
+    },
+    updated_at: new Date().toISOString(),
+  };
+
+  saveTransferVerificationConfigLocally(fullConfig);
+
+  // Lưu đồng thời bảng AutoBank webhook để đảm bảo tương thích ngược
+  if (fullConfig.webhook) {
+    await saveAutoBankConfigToDb(fullConfig.webhook).catch(() => {});
+  }
+
+  if (isLocalMode() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    return { success: true };
+  }
+
+  try {
+    const { data: updatedRows, error: updateErr } = await supabase
+      .from('recipes')
+      .update({
+        notes: JSON.stringify(fullConfig),
+        is_active: false,
+      })
+      .eq('id', DB_ROW_TRANSFER_VERIFY_ID)
+      .select('id');
+
+    if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_TRANSFER_VERIFY_ID},name.eq.${DB_ROW_TRANSFER_VERIFY_NAME}`);
+      await supabase.from('recipes').insert({
+        id: DB_ROW_TRANSFER_VERIFY_ID,
+        name: DB_ROW_TRANSFER_VERIFY_NAME,
+        notes: JSON.stringify(fullConfig),
+        is_active: false,
+      });
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Lỗi lưu Transfer Verification config lên Supabase:', err);
+    return { success: false, error: err.message || 'Lỗi không xác định' };
+  }
+}
 

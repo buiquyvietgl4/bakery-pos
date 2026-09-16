@@ -1551,140 +1551,142 @@ export function CustomCakeCostingSettings() {
                 </div>
               </div>
 
-              <table className="w-full text-xs text-left">
-                <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
-                  <tr>
-                    <th className="p-2">Nguyên Liệu</th>
-                    <th className="p-2 w-24">Định Mức</th>
-                    <th className="p-2 w-20">Đơn Vị</th>
-                    <th className="p-2 w-28">Đơn Giá Vốn</th>
-                    <th className="p-2 w-28 text-right">Thành Tiền</th>
-                    <th className="p-2 w-10 text-center">Xóa</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {editingBaseBom.size.bomIngredients.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-pink-50/20">
-                      <td className="p-2">
-                        {availableIngredients.length > 0 ? (
-                          <select
-                            value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
-                            onChange={(e) => {
-                              const ing = availableIngredients.find((i) => i.id === e.target.value);
-                              if (ing) {
+              <div className="overflow-x-auto border border-zinc-200 rounded-2xl shadow-xs">
+                <table className="w-full min-w-[620px] text-xs text-left">
+                  <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
+                    <tr>
+                      <th className="p-2.5 min-w-[240px]">Nguyên Liệu</th>
+                      <th className="p-2.5 w-24">Định Mức</th>
+                      <th className="p-2.5 w-20">Đơn Vị</th>
+                      <th className="p-2.5 w-28">Đơn Giá Vốn</th>
+                      <th className="p-2.5 w-28 text-right">Thành Tiền</th>
+                      <th className="p-2.5 w-10 text-center">Xóa</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {editingBaseBom.size.bomIngredients.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-pink-50/20">
+                        <td className="p-2">
+                          {availableIngredients.length > 0 ? (
+                            <select
+                              value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
+                              onChange={(e) => {
+                                const ing = availableIngredients.find((i) => i.id === e.target.value);
+                                if (ing) {
+                                  const updated = [...editingBaseBom.size.bomIngredients];
+                                  const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
+                                  updated[idx] = {
+                                    ...item,
+                                    ingredientId: ing.id,
+                                    name: ing.name,
+                                    unit: ing.unit || item.unit || 'g',
+                                    unitCost: unitCost,
+                                    totalCost: item.quantity * unitCost,
+                                  };
+                                  setEditingBaseBom({
+                                    ...editingBaseBom,
+                                    size: { ...editingBaseBom.size, bomIngredients: updated },
+                                  });
+                                }
+                              }}
+                              className="w-full font-bold text-xs text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus:bg-white focus:border-pink-500 focus:outline-none cursor-pointer"
+                            >
+                              <option value="" disabled>-- Chọn nguyên liệu kho --</option>
+                              {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
+                                <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
+                              )}
+                              {availableIngredients.map((ing) => (
+                                <option key={ing.id} value={ing.id}>
+                                  {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => {
                                 const updated = [...editingBaseBom.size.bomIngredients];
-                                const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
-                                updated[idx] = {
-                                  ...item,
-                                  ingredientId: ing.id,
-                                  name: ing.name,
-                                  unit: ing.unit || item.unit || 'g',
-                                  unitCost: unitCost,
-                                  totalCost: item.quantity * unitCost,
-                                };
+                                updated[idx] = { ...item, name: e.target.value };
                                 setEditingBaseBom({
                                   ...editingBaseBom,
                                   size: { ...editingBaseBom.size, bomIngredients: updated },
                                 });
-                              }
-                            }}
-                            className="w-full font-bold text-xs text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus:bg-white focus:border-pink-500 focus:outline-none cursor-pointer"
-                          >
-                            <option value="" disabled>-- Chọn nguyên liệu kho --</option>
-                            {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
-                              <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
-                            )}
-                            {availableIngredients.map((ing) => (
-                              <option key={ing.id} value={ing.id}>
-                                {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
+                              }}
+                              className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
+                            />
+                          )}
+                        </td>
+                        <td className="p-2">
                           <input
-                            type="text"
-                            value={item.name}
+                            type="number"
+                            value={item.quantity}
                             onChange={(e) => {
+                              const qty = parseFloat(e.target.value) || 0;
                               const updated = [...editingBaseBom.size.bomIngredients];
-                              updated[idx] = { ...item, name: e.target.value };
+                              updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
                               setEditingBaseBom({
                                 ...editingBaseBom,
                                 size: { ...editingBaseBom.size, bomIngredients: updated },
                               });
                             }}
-                            className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
+                            className="w-full font-black text-center bg-zinc-50 border border-zinc-200 rounded-lg py-1"
                           />
-                        )}
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const qty = parseFloat(e.target.value) || 0;
-                            const updated = [...editingBaseBom.size.bomIngredients];
-                            updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
-                            setEditingBaseBom({
-                              ...editingBaseBom,
-                              size: { ...editingBaseBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="w-full font-black text-center bg-zinc-50 border border-zinc-200 rounded-lg py-1"
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="text"
-                          value={item.unit}
-                          onChange={(e) => {
-                            const updated = [...editingBaseBom.size.bomIngredients];
-                            updated[idx] = { ...item, unit: e.target.value };
-                            setEditingBaseBom({
-                              ...editingBaseBom,
-                              size: { ...editingBaseBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="w-full text-center text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg py-1"
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          value={item.unitCost}
-                          onChange={(e) => {
-                            const cost = parseFloat(e.target.value) || 0;
-                            const updated = [...editingBaseBom.size.bomIngredients];
-                            updated[idx] = { ...item, unitCost: cost, totalCost: item.quantity * cost };
-                            setEditingBaseBom({
-                              ...editingBaseBom,
-                              size: { ...editingBaseBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="w-full font-bold text-right bg-zinc-50 border border-zinc-200 rounded-lg py-1 px-1"
-                        />
-                      </td>
-                      <td className="p-2 font-black text-rose-600 text-right">
-                        {(item.quantity * item.unitCost).toLocaleString('vi-VN')}₫
-                      </td>
-                      <td className="p-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = editingBaseBom.size.bomIngredients.filter((_, i) => i !== idx);
-                            setEditingBaseBom({
-                              ...editingBaseBom,
-                              size: { ...editingBaseBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="text-zinc-400 hover:text-rose-600 p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="text"
+                            value={item.unit}
+                            onChange={(e) => {
+                              const updated = [...editingBaseBom.size.bomIngredients];
+                              updated[idx] = { ...item, unit: e.target.value };
+                              setEditingBaseBom({
+                                ...editingBaseBom,
+                                size: { ...editingBaseBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-full text-center text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg py-1"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            value={item.unitCost}
+                            onChange={(e) => {
+                              const cost = parseFloat(e.target.value) || 0;
+                              const updated = [...editingBaseBom.size.bomIngredients];
+                              updated[idx] = { ...item, unitCost: cost, totalCost: item.quantity * cost };
+                              setEditingBaseBom({
+                                ...editingBaseBom,
+                                size: { ...editingBaseBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-full font-bold text-right bg-zinc-50 border border-zinc-200 rounded-lg py-1 px-1"
+                          />
+                        </td>
+                        <td className="p-2 font-black text-rose-600 text-right">
+                          {(item.quantity * item.unitCost).toLocaleString('vi-VN')}₫
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = editingBaseBom.size.bomIngredients.filter((_, i) => i !== idx);
+                              setEditingBaseBom({
+                                ...editingBaseBom,
+                                size: { ...editingBaseBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               <div className="flex items-center justify-between pt-2">
                 <button
@@ -1808,140 +1810,142 @@ export function CustomCakeCostingSettings() {
             </div>
 
             <div className="overflow-y-auto flex-1 space-y-2 pr-1">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
-                  <tr>
-                    <th className="p-2">Nguyên Liệu</th>
-                    <th className="p-2 w-24">Định Mức</th>
-                    <th className="p-2 w-20">Đơn Vị</th>
-                    <th className="p-2 w-28">Đơn Giá Vốn</th>
-                    <th className="p-2 w-28 text-right">Thành Tiền</th>
-                    <th className="p-2 w-10 text-center">Xóa</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {editingCreamBom.size.bomIngredients.map((item, idx) => (
-                    <tr key={idx} className="hover:bg-pink-50/20">
-                      <td className="p-2">
-                        {availableIngredients.length > 0 ? (
-                          <select
-                            value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
-                            onChange={(e) => {
-                              const ing = availableIngredients.find((i) => i.id === e.target.value);
-                              if (ing) {
+              <div className="overflow-x-auto border border-zinc-200 rounded-2xl shadow-xs">
+                <table className="w-full min-w-[620px] text-xs text-left">
+                  <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
+                    <tr>
+                      <th className="p-2.5 min-w-[240px]">Nguyên Liệu</th>
+                      <th className="p-2.5 w-24">Định Mức</th>
+                      <th className="p-2.5 w-20">Đơn Vị</th>
+                      <th className="p-2.5 w-28">Đơn Giá Vốn</th>
+                      <th className="p-2.5 w-28 text-right">Thành Tiền</th>
+                      <th className="p-2.5 w-10 text-center">Xóa</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {editingCreamBom.size.bomIngredients.map((item, idx) => (
+                      <tr key={idx} className="hover:bg-pink-50/20">
+                        <td className="p-2">
+                          {availableIngredients.length > 0 ? (
+                            <select
+                              value={item.ingredientId || (availableIngredients.find(i => i.name.toLowerCase() === item.name.toLowerCase())?.id) || ''}
+                              onChange={(e) => {
+                                const ing = availableIngredients.find((i) => i.id === e.target.value);
+                                if (ing) {
+                                  const updated = [...editingCreamBom.size.bomIngredients];
+                                  const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
+                                  updated[idx] = {
+                                    ...item,
+                                    ingredientId: ing.id,
+                                    name: ing.name,
+                                    unit: ing.unit || item.unit || 'g',
+                                    unitCost: unitCost,
+                                    totalCost: item.quantity * unitCost,
+                                  };
+                                  setEditingCreamBom({
+                                    ...editingCreamBom,
+                                    size: { ...editingCreamBom.size, bomIngredients: updated },
+                                  });
+                                }
+                              }}
+                              className="w-full font-bold text-xs text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus:bg-white focus:border-pink-500 focus:outline-none cursor-pointer"
+                            >
+                              <option value="" disabled>-- Chọn nguyên liệu kho --</option>
+                              {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
+                                <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
+                              )}
+                              {availableIngredients.map((ing) => (
+                                <option key={ing.id} value={ing.id}>
+                                  {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="text"
+                              value={item.name}
+                              onChange={(e) => {
                                 const updated = [...editingCreamBom.size.bomIngredients];
-                                const unitCost = Number(ing.avg_cost) || item.unitCost || 0;
-                                updated[idx] = {
-                                  ...item,
-                                  ingredientId: ing.id,
-                                  name: ing.name,
-                                  unit: ing.unit || item.unit || 'g',
-                                  unitCost: unitCost,
-                                  totalCost: item.quantity * unitCost,
-                                };
+                                updated[idx] = { ...item, name: e.target.value };
                                 setEditingCreamBom({
                                   ...editingCreamBom,
                                   size: { ...editingCreamBom.size, bomIngredients: updated },
                                 });
-                              }
-                            }}
-                            className="w-full font-bold text-xs text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg p-1.5 focus:bg-white focus:border-pink-500 focus:outline-none cursor-pointer"
-                          >
-                            <option value="" disabled>-- Chọn nguyên liệu kho --</option>
-                            {!availableIngredients.some(i => i.id === item.ingredientId || i.name.toLowerCase() === item.name.toLowerCase()) && (
-                              <option value={item.ingredientId || ''}>⚠️ {item.name} ({item.unit})</option>
-                            )}
-                            {availableIngredients.map((ing) => (
-                              <option key={ing.id} value={ing.id}>
-                                {ing.name} ({ing.unit}) • {Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
+                              }}
+                              className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
+                            />
+                          )}
+                        </td>
+                        <td className="p-2">
                           <input
-                            type="text"
-                            value={item.name}
+                            type="number"
+                            value={item.quantity}
                             onChange={(e) => {
+                              const qty = parseFloat(e.target.value) || 0;
                               const updated = [...editingCreamBom.size.bomIngredients];
-                              updated[idx] = { ...item, name: e.target.value };
+                              updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
                               setEditingCreamBom({
                                 ...editingCreamBom,
                                 size: { ...editingCreamBom.size, bomIngredients: updated },
                               });
                             }}
-                            className="w-full font-bold text-zinc-900 bg-transparent border-b border-dashed border-zinc-200 focus:border-pink-500 focus:outline-none"
+                            className="w-full font-black text-center bg-zinc-50 border border-zinc-200 rounded-lg py-1"
                           />
-                        )}
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const qty = parseFloat(e.target.value) || 0;
-                            const updated = [...editingCreamBom.size.bomIngredients];
-                            updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
-                            setEditingCreamBom({
-                              ...editingCreamBom,
-                              size: { ...editingCreamBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="w-full font-black text-center bg-zinc-50 border border-zinc-200 rounded-lg py-1"
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="text"
-                          value={item.unit}
-                          onChange={(e) => {
-                            const updated = [...editingCreamBom.size.bomIngredients];
-                            updated[idx] = { ...item, unit: e.target.value };
-                            setEditingCreamBom({
-                              ...editingCreamBom,
-                              size: { ...editingCreamBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="w-full text-center text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg py-1"
-                        />
-                      </td>
-                      <td className="p-2">
-                        <input
-                          type="number"
-                          value={item.unitCost}
-                          onChange={(e) => {
-                            const cost = parseFloat(e.target.value) || 0;
-                            const updated = [...editingCreamBom.size.bomIngredients];
-                            updated[idx] = { ...item, unitCost: cost, totalCost: item.quantity * cost };
-                            setEditingCreamBom({
-                              ...editingCreamBom,
-                              size: { ...editingCreamBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="w-full font-bold text-right bg-zinc-50 border border-zinc-200 rounded-lg py-1 px-1"
-                        />
-                      </td>
-                      <td className="p-2 font-black text-rose-600 text-right">
-                        {(item.quantity * item.unitCost).toLocaleString('vi-VN')}₫
-                      </td>
-                      <td className="p-2 text-center">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const updated = editingCreamBom.size.bomIngredients.filter((_, i) => i !== idx);
-                            setEditingCreamBom({
-                              ...editingCreamBom,
-                              size: { ...editingCreamBom.size, bomIngredients: updated },
-                            });
-                          }}
-                          className="text-zinc-400 hover:text-rose-600 p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="text"
+                            value={item.unit}
+                            onChange={(e) => {
+                              const updated = [...editingCreamBom.size.bomIngredients];
+                              updated[idx] = { ...item, unit: e.target.value };
+                              setEditingCreamBom({
+                                ...editingCreamBom,
+                                size: { ...editingCreamBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-full text-center text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-lg py-1"
+                          />
+                        </td>
+                        <td className="p-2">
+                          <input
+                            type="number"
+                            value={item.unitCost}
+                            onChange={(e) => {
+                              const cost = parseFloat(e.target.value) || 0;
+                              const updated = [...editingCreamBom.size.bomIngredients];
+                              updated[idx] = { ...item, unitCost: cost, totalCost: item.quantity * cost };
+                              setEditingCreamBom({
+                                ...editingCreamBom,
+                                size: { ...editingCreamBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="w-full font-bold text-right bg-zinc-50 border border-zinc-200 rounded-lg py-1 px-1"
+                          />
+                        </td>
+                        <td className="p-2 font-black text-rose-600 text-right">
+                          {(item.quantity * item.unitCost).toLocaleString('vi-VN')}₫
+                        </td>
+                        <td className="p-2 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = editingCreamBom.size.bomIngredients.filter((_, i) => i !== idx);
+                              setEditingCreamBom({
+                                ...editingCreamBom,
+                                size: { ...editingCreamBom.size, bomIngredients: updated },
+                              });
+                            }}
+                            className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
 
               <div className="flex items-center justify-between pt-2">
                 <button

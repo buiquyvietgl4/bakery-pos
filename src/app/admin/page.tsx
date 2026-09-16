@@ -12,7 +12,7 @@ import {
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
   Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff,
-  Zap, Link2, Settings2, ShieldCheck, Volume2, Mic
+  Zap, Link2, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -106,7 +106,22 @@ import {
   fetchAutoBankConfigFromDb,
   saveAutoBankConfigToDb,
   AutoBankWebhookConfig,
+  getTransferVerificationConfig,
+  saveTransferVerificationConfigLocally,
+  fetchTransferVerificationConfigFromDb,
+  saveTransferVerificationConfigToDb,
+  TransferVerificationConfig,
+  TransferVerificationMode,
+  TRANSFER_VERIFY_UPDATED_EVENT,
 } from '@/lib/utils/paymentSync';
+import {
+  getStoredPendingTransfers,
+  saveStoredPendingTransfers,
+} from '@/components/admin/AdminTransferApprovalWatcher';
+import {
+  broadcastTransferApprovalResolved,
+  TransferApprovalPayload,
+} from '@/lib/supabase/realtimeSync';
 
 export const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
@@ -152,7 +167,14 @@ export default function AdminDashboard() {
     securityConfig,
     resetSecurityDefaults,
   } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'tax_accounting' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tax_accounting' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'transfer_verification' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
+
+  // ── PHÂN HỆ XÁC THỰC CHUYỂN KHOẢN (3 CHẾ ĐỘ & QUẢN TRỊ DUYỆT CK) ──
+  const [transferVerifyConfig, setTransferVerifyConfig] = useState<TransferVerificationConfig>(() => getTransferVerificationConfig());
+  const [transferVerifySaving, setTransferVerifySaving] = useState(false);
+  const [transferVerifySaved, setTransferVerifySaved] = useState(false);
+  const [adminPendingTransfers, setAdminPendingTransfers] = useState<TransferApprovalPayload[]>([]);
+  const [viewingAdminProofImage, setViewingAdminProofImage] = useState<string | null>(null);
 
   // ── SECURITY & PERMISSIONS STATE ──
   const [unlockPassword, setUnlockPassword] = useState('');
@@ -363,6 +385,7 @@ export default function AdminDashboard() {
   const [newRecipeFoodCostPct, setNewRecipeFoodCostPct] = useState<number>(35);
   const [newRecipeBakeTime, setNewRecipeBakeTime] = useState<number | string>(25);
   const [newRecipeBakeTemp, setNewRecipeBakeTemp] = useState<number | string>(190);
+  const [newRecipeNotes, setNewRecipeNotes] = useState<string>('');
   const [newRecipeItems, setNewRecipeItems] = useState<
     { ingredient_id: string; quantity: number }[]
   >([
@@ -379,6 +402,7 @@ export default function AdminDashboard() {
     setNewRecipeFoodCostPct(35);
     setNewRecipeBakeTime(25);
     setNewRecipeBakeTemp(190);
+    setNewRecipeNotes('');
     setNewRecipeItems([{ ingredient_id: ingredients[0]?.id || '1', quantity: 200 }]);
     setIsAddRecipeModalOpen(true);
   };
@@ -391,6 +415,7 @@ export default function AdminDashboard() {
     setNewRecipeFoodCostPct(rec.target_food_cost_pct || 35);
     setNewRecipeBakeTime(rec.bake_time_minutes || 25);
     setNewRecipeBakeTemp(rec.bake_temp_celsius || 190);
+    setNewRecipeNotes(rec.notes || rec.description || '');
 
     if (Array.isArray(rec.items) && rec.items.length > 0) {
       const mapped = rec.items.map((it: any) => {
@@ -1331,6 +1356,12 @@ export default function AdminDashboard() {
       if (cfg) setAutoBankConfig(cfg);
     }).catch(console.error);
 
+    // Tự động kéo cấu hình Xác thực chuyển khoản 3 chế độ từ CSDL Supabase
+    fetchTransferVerificationConfigFromDb().then((cfg) => {
+      if (cfg) setTransferVerifyConfig(cfg);
+    }).catch(console.error);
+    setAdminPendingTransfers(getStoredPendingTransfers());
+
     // Tự động kéo dữ liệu Cloud: Công thức BOM, Chi phí OPEX, Sổ quỹ, Bánh hỏng, Kiểm kê, Chốt sổ
     fetchRecipesFromDb().then((recs) => {
       if (recs && recs.length > 0) setRecipes(recs);
@@ -1391,6 +1422,17 @@ export default function AdminDashboard() {
       },
       onEwalletConfigChange: (cfg) => {
         setEwalletConfig(cfg);
+      },
+      onTransferApprovalRequest: (payload) => {
+        if (!payload?.order_number) return;
+        setAdminPendingTransfers((prev) => {
+          if (prev.some((p) => p.order_number === payload.order_number)) return prev;
+          return [payload, ...prev];
+        });
+      },
+      onTransferApprovalResolved: (payload) => {
+        if (!payload?.order_number) return;
+        setAdminPendingTransfers((prev) => prev.filter((p) => p.order_number !== payload.order_number));
       },
       onRecipeChange: (payload) => {
         if (!payload || !payload.recipe) return;
@@ -1458,9 +1500,21 @@ export default function AdminDashboard() {
       else setCashflow(getCashflow());
     };
 
+    const handleVerifyUpdate = (e: any) => {
+      if (e.detail) setTransferVerifyConfig(e.detail);
+      else setTransferVerifyConfig(getTransferVerificationConfig());
+    };
+    const handlePendingTransfersUpdate = () => {
+      setAdminPendingTransfers(getStoredPendingTransfers());
+    };
+
     window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);
     window.addEventListener(EXPENSES_UPDATED_EVENT, handleExpensesUpdate);
     window.addEventListener(CASHFLOW_UPDATED_EVENT, handleCashflowUpdate);
+    window.addEventListener(TRANSFER_VERIFY_UPDATED_EVENT, handleVerifyUpdate as EventListener);
+    window.addEventListener('bakery_pending_transfers_updated', handlePendingTransfersUpdate);
+    window.addEventListener('transfer_approval_requested', handlePendingTransfersUpdate);
+    window.addEventListener('transfer_approval_resolved', handlePendingTransfersUpdate);
 
     return () => {
       unsubscribeSync();
@@ -1469,6 +1523,10 @@ export default function AdminDashboard() {
       window.removeEventListener('bakery_recipes_updated', handleRecipesUpdate);
       window.removeEventListener(EXPENSES_UPDATED_EVENT, handleExpensesUpdate);
       window.removeEventListener(CASHFLOW_UPDATED_EVENT, handleCashflowUpdate);
+      window.removeEventListener(TRANSFER_VERIFY_UPDATED_EVENT, handleVerifyUpdate as EventListener);
+      window.removeEventListener('bakery_pending_transfers_updated', handlePendingTransfersUpdate);
+      window.removeEventListener('transfer_approval_requested', handlePendingTransfersUpdate);
+      window.removeEventListener('transfer_approval_resolved', handlePendingTransfersUpdate);
     };
   }, []);
 
@@ -1565,6 +1623,64 @@ export default function AdminDashboard() {
       setTestWebhookStatus(`error: ${err.message || 'Lỗi kết nối'}`);
     }
     setTimeout(() => setTestWebhookStatus(null), 6000);
+  };
+
+  const handleSaveTransferVerify = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setTransferVerifySaving(true);
+    saveTransferVerificationConfigLocally(transferVerifyConfig);
+    // Nếu chọn chế độ theo dõi ngân hàng, lưu luôn cấu hình webhook
+    if (transferVerifyConfig.mode === 'bank_webhook') {
+      saveAutoBankConfigLocally(autoBankConfig);
+      await saveAutoBankConfigToDb(autoBankConfig);
+    }
+    const res = await saveTransferVerificationConfigToDb(transferVerifyConfig, securityConfig.adminName || 'Admin');
+    setTransferVerifySaving(false);
+    if (res.success) {
+      setTransferVerifySaved(true);
+      setTimeout(() => setTransferVerifySaved(false), 3500);
+    } else {
+      alert(`Lỗi khi lưu cấu hình xác thực chuyển khoản: ${res.error}`);
+    }
+  };
+
+  const handleAdminApprovePending = async (req: TransferApprovalPayload) => {
+    try {
+      const adminName = securityConfig.adminName || 'Chủ Tiệm (Admin)';
+      await broadcastTransferApprovalResolved({
+        order_number: req.order_number,
+        action: 'approved',
+        amount: req.amount,
+        resolved_by: adminName,
+        resolved_at: new Date().toISOString(),
+      });
+      try {
+        soundManager.playPaymentSuccessChime();
+      } catch {}
+      const remaining = adminPendingTransfers.filter((p) => p.order_number !== req.order_number);
+      setAdminPendingTransfers(remaining);
+      saveStoredPendingTransfers(remaining);
+    } catch (err) {
+      console.error('Lỗi duyệt chuyển khoản:', err);
+    }
+  };
+
+  const handleAdminRejectPending = async (req: TransferApprovalPayload) => {
+    try {
+      const adminName = securityConfig.adminName || 'Chủ Tiệm (Admin)';
+      await broadcastTransferApprovalResolved({
+        order_number: req.order_number,
+        action: 'rejected',
+        amount: req.amount,
+        resolved_by: adminName,
+        resolved_at: new Date().toISOString(),
+      });
+      const remaining = adminPendingTransfers.filter((p) => p.order_number !== req.order_number);
+      setAdminPendingTransfers(remaining);
+      saveStoredPendingTransfers(remaining);
+    } catch (err) {
+      console.error('Lỗi từ chối chuyển khoản:', err);
+    }
   };
 
   const handleUploadWalletQr = (walletKey: 'momo' | 'zalopay' | 'viettelmoney', file: File) => {
@@ -1678,6 +1794,8 @@ export default function AdminDashboard() {
       suggested_price: suggestedPrice,
       bake_time_minutes: bakeTime,
       bake_temp_celsius: bakeTemp,
+      notes: newRecipeNotes,
+      description: newRecipeNotes,
       items: formattedItems,
     };
 
@@ -1686,6 +1804,7 @@ export default function AdminDashboard() {
         const bakeNotes = JSON.stringify({
           bake_time_minutes: bakeTime,
           bake_temp_celsius: bakeTemp,
+          notes: newRecipeNotes,
         });
 
         if (editingRecipeId) {
@@ -1752,6 +1871,7 @@ export default function AdminDashboard() {
     setNewRecipeFoodCostPct(35);
     setNewRecipeBakeTime(25);
     setNewRecipeBakeTemp(190);
+    setNewRecipeNotes('');
     setNewRecipeItems([{ ingredient_id: ingredients[0]?.id || '1', quantity: 200 }]);
     setSavingRecipe(false);
   };
@@ -2839,17 +2959,19 @@ export default function AdminDashboard() {
             { id: 'recipes', label: 'Công Thức BOM', icon: BookOpen },
             { id: 'cake_costing', label: 'Định Mức Bánh Đặt', icon: Sparkles },
             { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode },
+            { id: 'transfer_verification', label: 'Xác Thực Chuyển Khoản', icon: ShieldCheck },
             { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
             { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2 },
             { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield },
             { id: 'cloud', label: 'CSDL & Sao Lưu SQL', icon: Database },
           ].map((tab) => {
             const Icon = tab.icon;
+            const hasPendingTransfers = tab.id === 'transfer_verification' && adminPendingTransfers.length > 0;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
+                className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
                   activeTab === tab.id
                     ? 'bg-white text-zinc-900 shadow-sm'
                     : 'text-zinc-600 hover:text-zinc-900'
@@ -2857,6 +2979,11 @@ export default function AdminDashboard() {
               >
                 <Icon className="w-4 h-4" />
                 <span>{tab.label}</span>
+                {hasPendingTransfers && (
+                  <span className="ml-1 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse shadow-xs">
+                    {adminPendingTransfers.length}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -4396,8 +4523,8 @@ export default function AdminDashboard() {
 
       {/* ── MODAL: THÊM MỚI CÔNG THỨC BÁNH (BOM BUILDER) ── */}
       {isAddRecipeModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto animate-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-200 my-auto">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
                 <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
@@ -4533,7 +4660,7 @@ export default function AdminDashboard() {
               </div>
 
               {/* 3. Bảng nguyên liệu cấu thành */}
-              <div className="space-y-2">
+              <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <label className="font-bold text-zinc-800">
                     2. Định mức nguyên liệu cho cả mẻ ({newRecipeItems.length} thành phần):
@@ -4547,60 +4674,93 @@ export default function AdminDashboard() {
                   </button>
                 </div>
 
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {/* Danh sách thẻ nguyên liệu - Hiển thị tên đầy đủ không bị cắt ngắn */}
+                <div className="space-y-2.5">
                   {newRecipeItems.map((item, idx) => {
                     const selectedIng = ingredients.find((i) => i.id === item.ingredient_id);
                     const lineCost = calculateItemCost(item.ingredient_id, item.quantity);
                     return (
                       <div
                         key={idx}
-                        className="flex items-center gap-2 p-2.5 bg-zinc-50 rounded-xl border border-zinc-200"
+                        className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-2 hover:border-amber-400/60 transition"
                       >
-                        <select
-                          value={item.ingredient_id}
-                          onChange={(e) => handleUpdateRecipeItemRow(idx, 'ingredient_id', e.target.value)}
-                          className="flex-2 p-1.5 bg-white border border-zinc-200 rounded-lg font-bold text-xs"
-                        >
-                          {ingredients.map((ing) => (
-                            <option key={ing.id} value={ing.id}>
-                              {ing.name} ({ing.avg_cost.toLocaleString('vi-VN')}₫/{ing.unit})
-                            </option>
-                          ))}
-                        </select>
-
-                        <div className="flex-1 flex items-center gap-1">
-                          <input
-                            type="number"
-                            min={1}
-                            value={item.quantity || ''}
-                            onChange={(e) => handleUpdateRecipeItemRow(idx, 'quantity', Number(e.target.value))}
-                            className="w-full p-1.5 bg-white border border-zinc-200 rounded-lg font-black text-right text-xs"
-                          />
-                          <span className="text-[11px] font-bold text-zinc-500 shrink-0 w-8">
-                            {selectedIng?.unit || 'g'}
+                        {/* Hàng 1: Dropdown chọn nguyên liệu full width hiển thị trọn vẹn tên */}
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 font-black text-[10px] flex items-center justify-center shrink-0">
+                            {idx + 1}
                           </span>
+                          <select
+                            value={item.ingredient_id}
+                            onChange={(e) => handleUpdateRecipeItemRow(idx, 'ingredient_id', e.target.value)}
+                            className="w-full p-2 bg-white border border-zinc-200 rounded-xl font-bold text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 cursor-pointer"
+                          >
+                            {ingredients.map((ing) => (
+                              <option key={ing.id} value={ing.id}>
+                                {ing.name} ({Number(ing.avg_cost || 0).toLocaleString('vi-VN')}₫/{ing.unit})
+                              </option>
+                            ))}
+                          </select>
                         </div>
 
-                        <span className="w-24 text-right font-black text-zinc-800 text-xs">
-                          {lineCost.toLocaleString('vi-VN')}₫
-                        </span>
+                        {/* Hàng 2: Số lượng, đơn vị, thành tiền và nút xóa */}
+                        <div className="flex items-center justify-between gap-2 pt-1 border-t border-zinc-200/60 text-xs">
+                          <div className="flex items-center gap-1.5 flex-1">
+                            <span className="text-[11px] font-medium text-zinc-500 shrink-0">Định lượng:</span>
+                            <input
+                              type="number"
+                              min={0.1}
+                              step="any"
+                              value={item.quantity || ''}
+                              onChange={(e) => handleUpdateRecipeItemRow(idx, 'quantity', Number(e.target.value))}
+                              className="w-24 p-1.5 bg-white border border-zinc-200 rounded-lg font-black text-center text-xs focus:ring-1 focus:ring-amber-500"
+                              placeholder="100"
+                            />
+                            <span className="text-[11px] font-black text-zinc-700 shrink-0">
+                              {selectedIng?.unit || 'g'}
+                            </span>
+                          </div>
 
-                        {newRecipeItems.length > 1 && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveRecipeItemRow(idx)}
-                            className="p-1 text-zinc-400 hover:text-rose-600 rounded cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="text-right">
+                              <span className="text-[10px] text-zinc-400 block leading-tight">Thành tiền</span>
+                              <span className="font-black text-amber-700 text-xs">
+                                {lineCost.toLocaleString('vi-VN')}₫
+                              </span>
+                            </div>
+
+                            {newRecipeItems.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveRecipeItemRow(idx)}
+                                className="p-1.5 text-zinc-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 cursor-pointer transition"
+                                title="Xóa nguyên liệu này"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
               </div>
 
-              {/* 4. Tóm tắt giá vốn tự động */}
+              {/* 4. Ghi chú & Hướng dẫn kỹ thuật làm bánh */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-zinc-800 flex items-center gap-1.5">
+                  <span>📝 Ghi chú & Hướng dẫn kỹ thuật làm bánh (Hiển thị cho thợ bếp):</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={newRecipeNotes}
+                  onChange={(e) => setNewRecipeNotes(e.target.value)}
+                  placeholder="Ví dụ: Ủ bột 45 phút ở nhiệt độ phòng, nhào bột đạt màng mỏng, làm nóng lò trước 10 phút, bảo quản kín sau khi nguội..."
+                  className="w-full p-2.5 rounded-xl border border-zinc-200 bg-white font-medium text-zinc-800 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              {/* 5. Tóm tắt giá vốn tự động */}
               {(() => {
                 const totalBatchCost = calculateTotalBatchCost(newRecipeItems);
                 const costPerUnit = Math.round(totalBatchCost / (newRecipeYield || 1));
@@ -5689,200 +5849,710 @@ export default function AdminDashboard() {
             </div>
           </div>
 
-          {/* CẤU HÌNH TỰ ĐỘNG BÁO TIỀN VỀ (AUTO-BANK WEBHOOK GATEWAY) */}
+          {/* BANNER ĐIỀU HƯỚNG SANG PHÂN HỆ XÁC THỰC CHUYỂN KHOẢN */}
+          <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 rounded-3xl border border-emerald-200/80 p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center shadow-md shadow-emerald-600/20 shrink-0">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-black text-zinc-900">
+                    Phân Hệ Xác Thực Chuyển Khoản Đã Được Tách Riêng!
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase">
+                    3 Chế Độ
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600 max-w-xl mt-1">
+                  Bao gồm: (1) Không cần xác thực, (2) Xác thực 2 bước Admin duyệt kèm chuông cấp báo, (3) Theo dõi thông báo ngân hàng SePay/PayOS/Casso &amp; cơ chế camera chụp bill khẩn cấp.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('transfer_verification')}
+              className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer shadow-sm shadow-emerald-600/20"
+            >
+              <Zap className="w-4 h-4" />
+              <span>Mở Cài Đặt Xác Thực</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── TAB MỚI: XÁC THỰC CHUYỂN KHOẢN (3 CHẾ ĐỘ & QUẢN TRỊ DUYỆT TIỀN) ── */}
+      {activeTab === 'transfer_verification' && (
+        <div className="space-y-6">
+          {/* Header Card */}
           <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-                  <Zap className="w-5 h-5" />
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+                  <ShieldCheck className="w-6 h-6" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h2 className="text-xl font-black text-zinc-900">
-                      Cổng Báo Tiền Về Tự Động (Auto-Bank Webhook)
+                      Xác Thực Chuyển Khoản &amp; Quản Trị Duyệt Tiền
                     </h2>
-                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold text-[10px] uppercase tracking-wider">
-                      Đa Cổng Trọn Gói
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 font-bold text-[10px] uppercase tracking-wider">
+                      Bảo Mật Giao Dịch
                     </span>
                   </div>
                   <p className="text-xs text-zinc-500">
-                    Tự động nhận diện biến động số dư ngân hàng từ SePay, PayOS, Casso hoặc Webhook riêng. Khi khách quét mã chuyển tiền, hệ thống tự phát chuông &apos;Ting Ting&apos; và xác nhận hoàn thành đơn hàng.
+                    Cấu hình 3 cơ chế xác thực thanh toán chuyển khoản: Hoàn thành ngay, Xác thực 2 bước Admin duyệt, hoặc Tự động theo dõi qua cổng ngân hàng. Tích hợp camera chụp bill khẩn cấp đối soát tại POS.
                   </p>
                 </div>
               </div>
 
-              {autoBankSaved && (
+              {transferVerifySaved && (
                 <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-700 animate-in fade-in">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  Đã lưu cấu hình Auto-Bank!
+                  Đã lưu và đồng bộ toàn hệ thống!
                 </div>
               )}
             </div>
 
-            {/* URL Webhook & Hướng dẫn kết nối */}
-            <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
-                  <Link2 className="w-4 h-4 text-amber-600" /> Đường Dẫn Webhook Nhận Biến Động Số Dư:
+            {/* 3 Thẻ Lựa Chọn Chế Độ Xác Thực */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Chế độ 1: Không cần xác thực */}
+              <div
+                onClick={() => setTransferVerifyConfig({ ...transferVerifyConfig, mode: 'none' })}
+                className={`relative p-5 rounded-3xl border-2 transition cursor-pointer flex flex-col justify-between space-y-4 ${
+                  transferVerifyConfig.mode === 'none'
+                    ? 'border-emerald-500 bg-emerald-50/30 shadow-md ring-2 ring-emerald-500/10'
+                    : 'border-zinc-200 bg-zinc-50/60 hover:bg-zinc-100/60'
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-xl bg-zinc-200 text-zinc-700 flex items-center justify-center font-black text-xs">
+                      1
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      transferVerifyConfig.mode === 'none' ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-600'
+                    }`}>
+                      {transferVerifyConfig.mode === 'none' ? '● Đang Chọn' : 'Mặc Định'}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-zinc-900">Không Cần Xác Thực</h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Hoạt động như hiện tại. Thu ngân bấm <b>Xác Nhận Thanh Toán</b> tại POS là đơn hàng chốt thành công tức thì.
+                    </p>
+                  </div>
+                  <ul className="text-[11px] text-zinc-600 space-y-1.5 pt-2 border-t border-zinc-200/60">
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Không độ trễ, phục vụ khách siêu tốc.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Không cần mạng internet hoặc máy chủ.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Phù hợp chủ tiệm tự bán hoặc tin cậy thu ngân.</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition ${
+                      transferVerifyConfig.mode === 'none'
+                        ? 'bg-emerald-600 text-white shadow-xs'
+                        : 'bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {transferVerifyConfig.mode === 'none' ? 'Đang Kích Hoạt' : 'Chọn Chế Độ Này'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Chế độ 2: Xác thực 2 bước qua Admin */}
+              <div
+                onClick={() => setTransferVerifyConfig({ ...transferVerifyConfig, mode: 'two_step' })}
+                className={`relative p-5 rounded-3xl border-2 transition cursor-pointer flex flex-col justify-between space-y-4 ${
+                  transferVerifyConfig.mode === 'two_step'
+                    ? 'border-amber-500 bg-amber-50/30 shadow-md ring-2 ring-amber-500/10'
+                    : 'border-zinc-200 bg-zinc-50/60 hover:bg-zinc-100/60'
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-black text-xs">
+                      2
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      transferVerifyConfig.mode === 'two_step' ? 'bg-amber-100 text-amber-800' : 'bg-zinc-200 text-zinc-600'
+                    }`}>
+                      {transferVerifyConfig.mode === 'two_step' ? '● Đang Chọn' : 'Admin Duyệt'}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-zinc-900">Xác Thực 2 Bước (Admin Duyệt)</h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      POS ấn thanh toán &rarr; Đơn vào trạng thái chờ. Máy Admin lập tức đổ chuông cấp báo và nhận nút duyệt tiền.
+                    </p>
+                  </div>
+                  <ul className="text-[11px] text-zinc-600 space-y-1.5 pt-2 border-t border-zinc-200/60">
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Admin kiểm tra tiền tài khoản trước khi duyệt.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Khi Admin bấm duyệt, POS tự động chốt đơn.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Tích hợp chuông Ting Ting + đọc giọng nói.</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition ${
+                      transferVerifyConfig.mode === 'two_step'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {transferVerifyConfig.mode === 'two_step' ? 'Đang Kích Hoạt' : 'Chọn Chế Độ Này'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Chế độ 3: Theo dõi thông báo ngân hàng */}
+              <div
+                onClick={() => setTransferVerifyConfig({ ...transferVerifyConfig, mode: 'bank_webhook' })}
+                className={`relative p-5 rounded-3xl border-2 transition cursor-pointer flex flex-col justify-between space-y-4 ${
+                  transferVerifyConfig.mode === 'bank_webhook'
+                    ? 'border-blue-500 bg-blue-50/30 shadow-md ring-2 ring-blue-500/10'
+                    : 'border-zinc-200 bg-zinc-50/60 hover:bg-zinc-100/60'
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-xl bg-blue-100 text-blue-800 flex items-center justify-center font-black text-xs">
+                      3
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                      transferVerifyConfig.mode === 'bank_webhook' ? 'bg-blue-100 text-blue-800' : 'bg-zinc-200 text-zinc-600'
+                    }`}>
+                      {transferVerifyConfig.mode === 'bank_webhook' ? '● Đang Chọn' : 'Tự Động 100%'}
+                    </span>
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-zinc-900">Theo Dõi Thông Báo Ngân Hàng</h3>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Kết nối SePay, PayOS, Casso hoặc Generic Webhook tự động nhận biết số dư ngân hàng theo thời gian thực.
+                    </p>
+                  </div>
+                  <ul className="text-[11px] text-zinc-600 space-y-1.5 pt-2 border-t border-zinc-200/60">
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>Hoàn toàn tự động, giải phóng nhân lực.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>Hỗ trợ đa nhà cung cấp SePay, PayOS, Casso.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                      <span>Tự động khớp chính xác mã đơn và số tiền.</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    className={`w-full py-2 rounded-xl text-xs font-bold transition ${
+                      transferVerifyConfig.mode === 'bank_webhook'
+                        ? 'bg-blue-600 text-white shadow-xs'
+                        : 'bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {transferVerifyConfig.mode === 'bank_webhook' ? 'Đang Kích Hoạt' : 'Chọn Chế Độ Này'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Chi Tiết Cấu Hình Theo Từng Chế Độ */}
+            {transferVerifyConfig.mode === 'none' && (
+              <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 text-xs text-zinc-600 flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>
+                  <b>Chế độ Không cần xác thực đang được chọn:</b> Khi thu ngân ấn <i>Xác Nhận Thanh Toán</i> tại quầy POS, đơn hàng sẽ được lưu ngay tức thì vào doanh thu mà không cần chờ duyệt hay phụ thuộc cổng ngân hàng.
                 </span>
-                <span className="text-[10px] text-zinc-400 font-mono">Phương thức: POST</span>
               </div>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={typeof window !== 'undefined' ? `${window.location.origin}/api/payment/webhook` : '/api/payment/webhook'}
-                  className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-zinc-200 font-mono text-xs font-bold text-zinc-800 select-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const url = `${window.location.origin}/api/payment/webhook`;
-                    navigator.clipboard.writeText(url);
-                    setCopiedWebhookUrl(true);
-                    setTimeout(() => setCopiedWebhookUrl(false), 2500);
-                  }}
-                  className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
-                >
-                  {copiedWebhookUrl ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
-                  <span>{copiedWebhookUrl ? 'Đã Sao Chép!' : 'Sao Chép Link'}</span>
-                </button>
+            )}
+
+            {transferVerifyConfig.mode === 'two_step' && (
+              <div className="space-y-6">
+                {/* Tùy chọn xác thực 2 bước */}
+                <div className="p-4 rounded-2xl bg-amber-50/50 border border-amber-200 space-y-3">
+                  <h4 className="text-xs font-bold text-amber-900 uppercase tracking-wider flex items-center gap-2">
+                    <Smartphone className="w-4 h-4 text-amber-600" /> Tùy Chọn Xác Thực 2 Bước:
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-amber-200/80 cursor-pointer hover:border-amber-400 transition">
+                      <input
+                        type="checkbox"
+                        checked={transferVerifyConfig.two_step?.skipForAdmin ?? true}
+                        onChange={(e) => {
+                          const updatedSettings = {
+                            skipForAdmin: e.target.checked,
+                            alertSound: transferVerifyConfig.two_step?.alertSound ?? true,
+                            autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? true,
+                          };
+                          setTransferVerifyConfig({
+                            ...transferVerifyConfig,
+                            two_step: updatedSettings,
+                            twoStep: updatedSettings,
+                          });
+                        }}
+                        className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-zinc-800">Bỏ qua khi Admin trực tiếp bán</div>
+                        <div className="text-[10px] text-zinc-500">Nếu tài khoản Chủ tiệm (Admin) đang đăng nhập POS, không cần yêu cầu duyệt lại</div>
+                      </div>
+                    </label>
+
+                    <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-amber-200/80 cursor-pointer hover:border-amber-400 transition">
+                      <input
+                        type="checkbox"
+                        checked={transferVerifyConfig.two_step?.alertSound ?? true}
+                        onChange={(e) => {
+                          const updatedSettings = {
+                            skipForAdmin: transferVerifyConfig.two_step?.skipForAdmin ?? true,
+                            alertSound: e.target.checked,
+                            autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? true,
+                          };
+                          setTransferVerifyConfig({
+                            ...transferVerifyConfig,
+                            two_step: updatedSettings,
+                            twoStep: updatedSettings,
+                          });
+                        }}
+                        className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                      />
+                      <div>
+                        <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
+                          <Volume2 className="w-3.5 h-3.5 text-amber-600" /> Chuông Cảnh Báo Cấp Báo
+                        </div>
+                        <div className="text-[10px] text-zinc-500">Phát âm thanh chuông ngân to rõ trên máy Admin khi có đơn cần duyệt</div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                {/* BẢNG YÊU CẦU CHỜ DUYỆT TRỰC TUYẾN (LIVE QUEUE) */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-black text-zinc-900 flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-amber-600" />
+                      <span>Danh Sách Đơn Chuyển Khoản Đang Chờ Admin Duyệt ({adminPendingTransfers.length})</span>
+                    </h4>
+                    {adminPendingTransfers.length > 0 && (
+                      <span className="text-[11px] font-bold text-rose-600 bg-rose-50 px-2.5 py-1 rounded-lg border border-rose-200 animate-pulse">
+                        Cần xử lý ngay!
+                      </span>
+                    )}
+                  </div>
+
+                  {adminPendingTransfers.length === 0 ? (
+                    <div className="p-6 rounded-2xl bg-emerald-50/50 border border-emerald-200 flex items-center justify-center gap-3 text-emerald-800 text-xs font-bold">
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                      <span>Tuyệt vời! Hiện không có đơn hàng chuyển khoản nào đang chờ duyệt. Mọi giao dịch đã hoàn tất.</span>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {adminPendingTransfers.map((req) => (
+                        <div
+                          key={req.order_number}
+                          className="p-4 rounded-2xl bg-white border-2 border-amber-300 shadow-sm space-y-3"
+                        >
+                          <div className="flex items-center justify-between border-b border-zinc-100 pb-2">
+                            <span className="font-mono font-black text-sm text-zinc-900">
+                              {req.order_number}
+                            </span>
+                            <span className="text-sm font-black text-amber-600">
+                              {Number(req.amount || 0).toLocaleString('vi-VN')}₫
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2 text-[11px] text-zinc-600">
+                            <div>
+                              <span className="text-zinc-400 block text-[10px]">Thu ngân:</span>
+                              <span className="font-bold text-zinc-800">{req.cashier || 'Thu ngân quầy'}</span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-400 block text-[10px]">Thời gian yêu cầu:</span>
+                              <span className="font-bold text-zinc-800">
+                                {new Date(req.timestamp || req.requested_at || Date.now()).toLocaleTimeString('vi-VN')}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 pt-2 border-t border-zinc-100">
+                            <button
+                              type="button"
+                              onClick={() => handleAdminApprovePending(req)}
+                              className="flex-1 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm shadow-emerald-600/20"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Xác Nhận Đã Nhận Tiền</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAdminRejectPending(req)}
+                              className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-rose-50 text-zinc-600 hover:text-rose-600 border border-zinc-200 hover:border-rose-200 font-bold text-xs transition cursor-pointer"
+                            >
+                              <X className="w-4 h-4" />
+                              <span>Từ Chối</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="text-[11px] text-zinc-500">
-                📌 <strong>Cách dùng:</strong> Sao chép link trên và dán vào mục <em>Webhook URL</em> trong tài khoản <strong>SePay.vn</strong>, <strong>PayOS.vn</strong>, hoặc <strong>Casso.vn</strong> của bạn.
-              </p>
+            )}
+
+            {transferVerifyConfig.mode === 'bank_webhook' && (
+              <div className="space-y-5">
+                {/* URL Webhook */}
+                <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                      <Link2 className="w-4 h-4 text-amber-600" /> Đường Dẫn Webhook Nhận Biến Động Số Dư:
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-mono">Phương thức: POST</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      readOnly
+                      value={typeof window !== 'undefined' ? `${window.location.origin}/api/payment/webhook` : '/api/payment/webhook'}
+                      className="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-zinc-200 font-mono text-xs font-bold text-zinc-800 select-all"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = `${window.location.origin}/api/payment/webhook`;
+                        navigator.clipboard.writeText(url);
+                        setCopiedWebhookUrl(true);
+                        setTimeout(() => setCopiedWebhookUrl(false), 2500);
+                      }}
+                      className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                    >
+                      {copiedWebhookUrl ? <Check className="w-4 h-4 text-white" /> : <Copy className="w-4 h-4" />}
+                      <span>{copiedWebhookUrl ? 'Đã Sao Chép!' : 'Sao Chép Link'}</span>
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-zinc-500">
+                    📌 <strong>Cách dùng:</strong> Sao chép link trên và dán vào mục <em>Webhook URL</em> trong tài khoản <strong>SePay.vn</strong>, <strong>PayOS.vn</strong>, hoặc <strong>Casso.vn</strong> của bạn.
+                  </p>
+                </div>
+
+                {/* Grid thông số cấu hình */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                      <Settings2 className="w-4 h-4 text-amber-600" /> Nhà Cung Cấp Dịch Vụ Cổng:
+                    </label>
+                    <select
+                      value={autoBankConfig.provider}
+                      onChange={(e) => setAutoBankConfig({ ...autoBankConfig, provider: e.target.value as any })}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 border border-zinc-300 font-bold text-zinc-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm cursor-pointer"
+                    >
+                      <option value="auto">✨ Tự Động Nhận Diện (Khuyên dùng - Tương thích mọi bên)</option>
+                      <option value="sepay">SePay.vn (Bắn qua webhook SePay)</option>
+                      <option value="payos">PayOS.vn (Cổng PayOS)</option>
+                      <option value="casso">Casso.vn (Cổng Casso)</option>
+                      <option value="custom">Generic / Ngân Hàng Trực Tiếp / App Tự Động</option>
+                    </select>
+                    <p className="text-[10px] text-zinc-400">
+                      Bộ phân giải thông minh sẽ tự chuẩn hóa định dạng dữ liệu của từng nhà cung cấp.
+                    </p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" /> Mã Bí Mật Xác Thực (Webhook Secret / API Token):
+                    </label>
+                    <input
+                      type="text"
+                      value={autoBankConfig.secretKey || ''}
+                      onChange={(e) => setAutoBankConfig({ ...autoBankConfig, secretKey: e.target.value.trim() })}
+                      placeholder="Ví dụ: my_secret_token_123 (Để trống nếu mở linh hoạt)"
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 border border-zinc-300 font-mono text-zinc-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-xs"
+                    />
+                    <p className="text-[10px] text-zinc-400">
+                      Khóa bảo mật do SePay/PayOS cấp. Nếu cài đặt, server sẽ kiểm tra header <code>x-api-key</code> hoặc query <code>?token=...</code>.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Các tùy chọn phản hồi khi có tiền về */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                  <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                    <input
+                      type="checkbox"
+                      checked={autoBankConfig.autoConfirmOrder}
+                      onChange={(e) => setAutoBankConfig({ ...autoBankConfig, autoConfirmOrder: e.target.checked })}
+                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-zinc-800">Tự Động Đóng Đơn</div>
+                      <div className="text-[10px] text-zinc-500">Tự hoàn thành đơn tại POS khi nhận đủ tiền</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                    <input
+                      type="checkbox"
+                      checked={autoBankConfig.soundAlert}
+                      onChange={(e) => setAutoBankConfig({ ...autoBankConfig, soundAlert: e.target.checked })}
+                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
+                        <Volume2 className="w-3.5 h-3.5 text-amber-600" /> Chuông Ting Ting
+                      </div>
+                      <div className="text-[10px] text-zinc-500">Phát âm thanh ngân vang tươi sáng báo nhận tiền</div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                    <input
+                      type="checkbox"
+                      checked={autoBankConfig.speechAlert}
+                      onChange={(e) => setAutoBankConfig({ ...autoBankConfig, speechAlert: e.target.checked })}
+                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
+                        <Mic className="w-3.5 h-3.5 text-amber-600" /> Giọng Nói Tiếng Việt
+                      </div>
+                      <div className="text-[10px] text-zinc-500">Đọc số tiền và mã đơn: &quot;Đã nhận 150.000đ...&quot;</div>
+                    </div>
+                  </label>
+                </div>
+
+                {/* Hộp thử nghiệm nhanh Webhook */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-3 border-t border-zinc-100">
+                  <span className="text-xs font-bold text-zinc-600">Thử nghiệm bắn Webhook giả lập:</span>
+                  <div className="flex items-center gap-2 bg-zinc-50 p-2 rounded-2xl border border-zinc-200">
+                    <input
+                      type="text"
+                      value={formatCurrencyInput(testWebhookAmount)}
+                      onChange={(e) => setTestWebhookAmount(parseCurrencyInput(e.target.value))}
+                      placeholder="Số tiền"
+                      className="w-24 px-2 py-1 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-amber-600"
+                    />
+                    <button
+                      type="button"
+                      disabled={testWebhookStatus === 'testing'}
+                      onClick={handleTestWebhook}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{testWebhookStatus === 'testing' ? 'Đang gửi...' : 'Bắn Thử Webhook'}</span>
+                    </button>
+                    {testWebhookStatus === 'success' && (
+                      <span className="text-xs font-bold text-emerald-600 animate-in fade-in flex items-center gap-1 pr-1">
+                        <Check className="w-3.5 h-3.5" /> Thành công!
+                      </span>
+                    )}
+                    {testWebhookStatus && testWebhookStatus.startsWith('error') && (
+                      <span className="text-[10px] font-bold text-red-600 animate-in fade-in pr-1">
+                        {testWebhookStatus}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* NÚT LƯU CẤU HÌNH XÁC THỰC CHUYỂN KHOẢN */}
+            <div className="pt-4 border-t border-zinc-100 flex items-center justify-between">
+              <button
+                type="button"
+                disabled={transferVerifySaving}
+                onClick={handleSaveTransferVerify}
+                className="px-6 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-black transition flex items-center gap-2 cursor-pointer shadow-md shadow-amber-600/20"
+              >
+                <Save className="w-4 h-4" />
+                <span>{transferVerifySaving ? 'Đang Lưu...' : 'Lưu Cấu Hình Xác Thực Chuyển Khoản'}</span>
+              </button>
+              {transferVerifySaved && (
+                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4" /> Đã áp dụng trên toàn bộ thiết bị POS!
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* CƠ CHẾ KHẨN CẤP: XÁC NHẬN NGAY & CHỤP ẢNH BILL KHÁCH */}
+          <div className="bg-gradient-to-br from-amber-500/10 via-orange-500/10 to-amber-500/5 rounded-3xl border-2 border-amber-300 p-6 space-y-4 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-600 text-white flex items-center justify-center shadow-md shadow-amber-600/20 shrink-0">
+                <Camera className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-black text-zinc-900">
+                    Cơ Chế Khẩn Cấp: Xác Nhận Ngay &amp; Chụp Ảnh Bill Đối Soát
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-600 text-white font-black text-[9px] uppercase tracking-wider">
+                    Chế Độ 2 &amp; 3
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-600 mt-0.5">
+                  Phòng ngừa trường hợp mất kết nối mạng, Admin vắng mặt hoặc webhook ngân hàng bị chậm trễ.
+                </p>
+              </div>
             </div>
 
-            {/* Grid thông số cấu hình */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
-                  <Settings2 className="w-4 h-4 text-amber-600" /> Nhà Cung Cấp Dịch Vụ Cổng:
-                </label>
-                <select
-                  value={autoBankConfig.provider}
-                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, provider: e.target.value as any })}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 border border-zinc-300 font-bold text-zinc-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-sm cursor-pointer"
-                >
-                  <option value="auto">✨ Tự Động Nhận Diện (Khuyên dùng - Tương thích mọi bên)</option>
-                  <option value="sepay">SePay.vn (Bắn qua webhook SePay)</option>
-                  <option value="payos">PayOS.vn (Cổng PayOS)</option>
-                  <option value="casso">Casso.vn (Cổng Casso)</option>
-                  <option value="custom">Generic / Ngân Hàng Trực Tiếp / App Tự Động</option>
-                </select>
-                <p className="text-[10px] text-zinc-400">
-                  Bộ phân giải thông minh sẽ tự chuẩn hóa định dạng dữ liệu của từng nhà cung cấp.
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs text-zinc-700 pt-1">
+              <div className="p-3.5 rounded-2xl bg-white/80 border border-amber-200/80 space-y-1">
+                <span className="font-bold text-zinc-900 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black flex items-center justify-center">1</span>
+                  Nút Xác Nhận Ngay Tại POS
+                </span>
+                <p className="text-[11px] text-zinc-500">
+                  Tại màn hình POS, luôn có nút màu vàng <b>📸 Xác Nhận Ngay (Chụp Ảnh Bill Khách)</b> nổi bật.
                 </p>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-800 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" /> Mã Bí Mật Xác Thực (Webhook Secret / API Token):
-                </label>
-                <input
-                  type="text"
-                  value={autoBankConfig.secretKey || ''}
-                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, secretKey: e.target.value.trim() })}
-                  placeholder="Ví dụ: my_secret_token_123 (Để trống nếu mở linh hoạt)"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-zinc-50 border border-zinc-300 font-mono text-zinc-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500/20 text-xs"
-                />
-                <p className="text-[10px] text-zinc-400">
-                  Khóa bảo mật do SePay/PayOS cấp. Nếu cài đặt, server sẽ kiểm tra header <code>x-api-key</code> hoặc query <code>?token=...</code>.
+              <div className="p-3.5 rounded-2xl bg-white/80 border border-amber-200/80 space-y-1">
+                <span className="font-bold text-zinc-900 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black flex items-center justify-center">2</span>
+                  Bật Camera Chụp Màn Hình
+                </span>
+                <p className="text-[11px] text-zinc-500">
+                  Máy tự động bật camera điện thoại/laptop để chụp lại bill chuyển khoản hiển thị trên điện thoại khách.
                 </p>
               </div>
-            </div>
 
-            {/* Các tùy chọn phản hồi khi có tiền về */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-              <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
-                <input
-                  type="checkbox"
-                  checked={autoBankConfig.autoConfirmOrder}
-                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, autoConfirmOrder: e.target.checked })}
-                  className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
-                />
-                <div>
-                  <div className="text-xs font-bold text-zinc-800">Tự Động Đóng Đơn</div>
-                  <div className="text-[10px] text-zinc-500">Tự hoàn thành đơn tại POS khi nhận đủ tiền</div>
-                </div>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
-                <input
-                  type="checkbox"
-                  checked={autoBankConfig.soundAlert}
-                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, soundAlert: e.target.checked })}
-                  className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
-                />
-                <div>
-                  <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
-                    <Volume2 className="w-3.5 h-3.5 text-amber-600" /> Chuông Ting Ting
-                  </div>
-                  <div className="text-[10px] text-zinc-500">Phát âm thanh ngân vang tươi sáng báo nhận tiền</div>
-                </div>
-              </label>
-
-              <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
-                <input
-                  type="checkbox"
-                  checked={autoBankConfig.speechAlert}
-                  onChange={(e) => setAutoBankConfig({ ...autoBankConfig, speechAlert: e.target.checked })}
-                  className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
-                />
-                <div>
-                  <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
-                    <Mic className="w-3.5 h-3.5 text-amber-600" /> Giọng Nói Tiếng Việt
-                  </div>
-                  <div className="text-[10px] text-zinc-500">Đọc số tiền và mã đơn: &quot;Đã nhận 150.000đ...&quot;</div>
-                </div>
-              </label>
-            </div>
-
-            {/* Nút lưu cấu hình & Khu vực Test giả lập */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-4 border-t border-zinc-100">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleSaveAutoBank}
-                  className="px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-600/20"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Lưu Cấu Hình Auto-Bank</span>
-                </button>
-              </div>
-
-              {/* Hộp thử nghiệm nhanh */}
-              <div className="flex items-center gap-2 bg-zinc-50 p-2 rounded-2xl border border-zinc-200">
-                <span className="text-[11px] font-bold text-zinc-600 whitespace-nowrap pl-1">Thử Nghiệm:</span>
-                <input
-                  type="text"
-                  value={formatCurrencyInput(testWebhookAmount)}
-                  onChange={(e) => setTestWebhookAmount(parseCurrencyInput(e.target.value))}
-                  placeholder="Số tiền"
-                  className="w-24 px-2 py-1 bg-white border border-zinc-200 rounded-lg text-xs font-bold text-amber-600"
-                />
-                <button
-                  type="button"
-                  disabled={testWebhookStatus === 'testing'}
-                  onClick={handleTestWebhook}
-                  className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{testWebhookStatus === 'testing' ? 'Đang gửi...' : 'Bắn Thử Webhook'}</span>
-                </button>
-                {testWebhookStatus === 'success' && (
-                  <span className="text-xs font-bold text-emerald-600 animate-in fade-in flex items-center gap-1 pr-1">
-                    <Check className="w-3.5 h-3.5" /> Thành công!
-                  </span>
-                )}
-                {testWebhookStatus && testWebhookStatus.startsWith('error') && (
-                  <span className="text-[10px] font-bold text-red-600 animate-in fade-in pr-1">
-                    {testWebhookStatus}
-                  </span>
-                )}
+              <div className="p-3.5 rounded-2xl bg-white/80 border border-amber-200/80 space-y-1">
+                <span className="font-bold text-zinc-900 flex items-center gap-1.5">
+                  <span className="w-5 h-5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black flex items-center justify-center">3</span>
+                  Lưu Vĩnh Viễn Để Đối Soát
+                </span>
+                <p className="text-[11px] text-zinc-500">
+                  Sau khi chụp, nút xác nhận đơn hàng hiện ra để chốt đơn ngay. Ảnh bill được nén nhẹ và lưu kèm đơn hàng vĩnh viễn.
+                </p>
               </div>
             </div>
           </div>
+
+          {/* DANH SÁCH ĐƠN HÀNG CÓ ẢNH BILL CHUYỂN KHOẢN ĐỐI SOÁT */}
+          {(() => {
+            const proofOrders = posOrders.filter((o: any) => Boolean(o.transfer_proof_image));
+            if (proofOrders.length === 0) return null;
+            return (
+              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                  <div className="flex items-center gap-2.5">
+                    <Camera className="w-5 h-5 text-amber-600" />
+                    <h3 className="text-base font-black text-zinc-900">
+                      Kho Ảnh Bill Chuyển Khoản Đối Soát ({proofOrders.length} đơn)
+                    </h3>
+                  </div>
+                  <span className="text-xs text-zinc-400">
+                    Lưu trữ tự động từ camera POS
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                  {proofOrders.slice(0, 12).map((o: any) => (
+                    <div
+                      key={o.id || o.order_number}
+                      onClick={() => setViewingAdminProofImage(o.transfer_proof_image)}
+                      className="group relative rounded-2xl border border-zinc-200 bg-zinc-50 overflow-hidden cursor-pointer hover:border-amber-400 hover:shadow-md transition"
+                    >
+                      <div className="aspect-square bg-zinc-900 flex items-center justify-center overflow-hidden">
+                        <img
+                          src={o.transfer_proof_image}
+                          alt={o.order_number}
+                          className="w-full h-full object-cover group-hover:scale-105 transition duration-200"
+                        />
+                      </div>
+                      <div className="p-2 space-y-0.5">
+                        <div className="font-mono font-bold text-[11px] text-zinc-900 truncate">
+                          {o.order_number}
+                        </div>
+                        <div className="text-[10px] font-black text-amber-600">
+                          {Number(o.total_amount || o.totalPrice || 0).toLocaleString('vi-VN')}₫
+                        </div>
+                        <div className="text-[9px] text-zinc-400 truncate">
+                          {o.cashier || 'Thu ngân'} &bull; {o.created_at ? new Date(o.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : ''}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* LIGHTBOX MODAL XEM ẢNH BILL CK CHI TIẾT */}
+          {viewingAdminProofImage && (
+            <div
+              onClick={() => setViewingAdminProofImage(null)}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 animate-in fade-in duration-150"
+            >
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white rounded-3xl max-w-lg w-full p-5 shadow-2xl border border-zinc-200 space-y-4"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Camera className="w-5 h-5 text-amber-600" />
+                    <h4 className="font-black text-sm text-zinc-900">
+                      Ảnh Bill Chuyển Khoản Khách Hàng (Đối Soát Kế Toán)
+                    </h4>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setViewingAdminProofImage(null)}
+                    className="p-1.5 rounded-full text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="rounded-2xl overflow-hidden bg-zinc-950 flex items-center justify-center max-h-[70vh]">
+                  <img
+                    src={viewingAdminProofImage}
+                    alt="Bill chuyển khoản đối soát"
+                    className="max-h-[70vh] w-auto object-contain rounded-xl"
+                  />
+                </div>
+
+                <div className="flex justify-between items-center text-xs text-zinc-500 pt-1">
+                  <span>📸 Ảnh chụp thực tế từ camera tại quầy thu ngân</span>
+                  <button
+                    type="button"
+                    onClick={() => setViewingAdminProofImage(null)}
+                    className="px-4 py-2 bg-zinc-900 hover:bg-zinc-800 text-white rounded-xl font-bold transition cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

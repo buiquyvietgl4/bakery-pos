@@ -58,9 +58,33 @@ export interface PaymentReceivedPayload {
   matched?: boolean;
 }
 
+export interface TransferApprovalPayload {
+  order_number: string;
+  amount: number;
+  customer_name?: string;
+  transfer_code?: string;
+  requested_by?: string;
+  cashier?: string;
+  order_type?: string;
+  timestamp?: string;
+  requested_at?: string;
+  order_data?: any;
+}
+
+export interface TransferApprovalResolvedPayload {
+  order_number: string;
+  action: 'approved' | 'rejected';
+  amount?: number;
+  reason?: string;
+  resolved_by?: string;
+  resolved_at?: string;
+}
+
 type BakeApprovalCallback = (payload: BakeApprovalPayload) => void;
 type BakeApprovalResolvedCallback = (payload: BakeApprovalResolvedPayload) => void;
 export type PaymentReceivedCallback = (payload: PaymentReceivedPayload) => void;
+export type TransferApprovalCallback = (payload: TransferApprovalPayload) => void;
+export type TransferApprovalResolvedCallback = (payload: TransferApprovalResolvedPayload) => void;
 
 const statusListeners = new Set<StatusCallback>();
 const newOrderListeners = new Set<NewOrderCallback>();
@@ -75,6 +99,8 @@ const ewalletConfigListeners = new Set<EwalletConfigCallback>();
 const bakeApprovalListeners = new Set<BakeApprovalCallback>();
 const bakeApprovalResolvedListeners = new Set<BakeApprovalResolvedCallback>();
 const paymentReceivedListeners = new Set<PaymentReceivedCallback>();
+const transferApprovalListeners = new Set<TransferApprovalCallback>();
+const transferApprovalResolvedListeners = new Set<TransferApprovalResolvedCallback>();
 
 const recentlyNotifiedOrders = new Map<string, number>();
 
@@ -279,6 +305,34 @@ function ensureSyncChannel() {
               cb(payload);
             } catch (e) {
               console.warn('Lỗi paymentReceivedListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'transfer_approval_requested' }, ({ payload }: any) => {
+        if (payload) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('transfer_approval_requested', { detail: payload }));
+          }
+          transferApprovalListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi transferApprovalListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'transfer_approval_resolved' }, ({ payload }: any) => {
+        if (payload) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('transfer_approval_resolved', { detail: payload }));
+          }
+          transferApprovalResolvedListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi transferApprovalResolvedListener:', e);
             }
           });
         }
@@ -561,6 +615,8 @@ export function subscribeCrossDeviceSync(callbacks: {
   onBakeApprovalRequest?: BakeApprovalCallback;
   onBakeApprovalResolved?: BakeApprovalResolvedCallback;
   onPaymentReceived?: PaymentReceivedCallback;
+  onTransferApprovalRequest?: TransferApprovalCallback;
+  onTransferApprovalResolved?: TransferApprovalResolvedCallback;
 }) {
   ensureSyncChannel();
 
@@ -578,6 +634,8 @@ export function subscribeCrossDeviceSync(callbacks: {
     onBakeApprovalRequest,
     onBakeApprovalResolved,
     onPaymentReceived,
+    onTransferApprovalRequest,
+    onTransferApprovalResolved,
   } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
@@ -593,6 +651,8 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onBakeApprovalRequest) bakeApprovalListeners.add(onBakeApprovalRequest);
   if (onBakeApprovalResolved) bakeApprovalResolvedListeners.add(onBakeApprovalResolved);
   if (onPaymentReceived) paymentReceivedListeners.add(onPaymentReceived);
+  if (onTransferApprovalRequest) transferApprovalListeners.add(onTransferApprovalRequest);
+  if (onTransferApprovalResolved) transferApprovalResolvedListeners.add(onTransferApprovalResolved);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
@@ -608,6 +668,8 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onBakeApprovalRequest) bakeApprovalListeners.delete(onBakeApprovalRequest);
     if (onBakeApprovalResolved) bakeApprovalResolvedListeners.delete(onBakeApprovalResolved);
     if (onPaymentReceived) paymentReceivedListeners.delete(onPaymentReceived);
+    if (onTransferApprovalRequest) transferApprovalListeners.delete(onTransferApprovalRequest);
+    if (onTransferApprovalResolved) transferApprovalResolvedListeners.delete(onTransferApprovalResolved);
   };
 }
 
@@ -690,6 +752,54 @@ export async function broadcastBakeApprovalResolved(payload: BakeApprovalResolve
     }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastBakeApprovalResolved:', err);
+  }
+}
+
+/**
+ * Phát sóng yêu cầu thu ngân gửi duyệt thanh toán chuyển khoản tới Chủ Tiệm (Admin)
+ */
+export async function broadcastTransferApprovalRequest(payload: TransferApprovalPayload) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'transfer_approval_requested',
+        payload: {
+          ...payload,
+          requested_at: payload.requested_at || new Date().toISOString(),
+        },
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('transfer_approval_requested', { detail: payload }));
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastTransferApprovalRequest:', err);
+  }
+}
+
+/**
+ * Phát sóng khi Chủ Tiệm (Admin) đã Xác Nhận Đã Nhận Tiền hoặc Từ Chối giao dịch chuyển khoản
+ */
+export async function broadcastTransferApprovalResolved(payload: TransferApprovalResolvedPayload) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'transfer_approval_resolved',
+        payload: {
+          ...payload,
+          resolved_at: payload.resolved_at || new Date().toISOString(),
+        },
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('transfer_approval_resolved', { detail: payload }));
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastTransferApprovalResolved:', err);
   }
 }
 

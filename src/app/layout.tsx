@@ -3,6 +3,7 @@ import './globals.css';
 import Header from '@/components/Header';
 import PhoneNotificationBanner from '@/components/PhoneNotificationBanner';
 import AdminBakeApprovalWatcher from '@/components/admin/AdminBakeApprovalWatcher';
+import AdminTransferApprovalWatcher from '@/components/admin/AdminTransferApprovalWatcher';
 import { AuthProvider } from '@/lib/auth/AuthContext';
 
 export const metadata: Metadata = {
@@ -48,6 +49,7 @@ export default function RootLayout({
           <Header />
           <PhoneNotificationBanner />
           <AdminBakeApprovalWatcher />
+          <AdminTransferApprovalWatcher />
           <main className="flex-1 flex flex-col">{children}</main>
         </AuthProvider>
       </body>
