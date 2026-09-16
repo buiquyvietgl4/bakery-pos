@@ -254,7 +254,7 @@ export default function AdminBakeApprovalWatcher() {
       await broadcastBakeApprovalResolved({
         order_number: orderNum,
         action: 'approved',
-        resolved_by: user.name || 'Chủ Tiệm (Admin)',
+        resolved_by: user?.name || 'Chủ Tiệm (Admin)',
       });
 
       window.dispatchEvent(new Event('bakery_orders_updated'));
@@ -305,7 +305,7 @@ export default function AdminBakeApprovalWatcher() {
       await broadcastBakeApprovalResolved({
         order_number: orderNum,
         action: 'rejected',
-        resolved_by: user.name || 'Chủ Tiệm (Admin)',
+        resolved_by: user?.name || 'Chủ Tiệm (Admin)',
       });
 
       window.dispatchEvent(new Event('bakery_orders_updated'));

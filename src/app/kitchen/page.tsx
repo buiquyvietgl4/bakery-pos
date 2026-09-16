@@ -19,8 +19,9 @@ import {
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
   ShoppingBag, Phone, User, Camera, X, AlertTriangle, Volume2, VolumeX, Bell,
   Package, Search, Plus, Minus, ChevronDown, Timer, Play, Calculator, Scale, BookOpen, CheckCheck, Send, History,
-  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft, Utensils, Lock, Shield, KeyRound, XCircle
+  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft, Utensils, Lock, Shield, KeyRound, XCircle, Home
 } from 'lucide-react';
+import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
@@ -126,7 +127,7 @@ export interface ActiveOvenBatch {
 }
 
 export default function KitchenPage() {
-  const { isAdmin, loginAdmin, user } = useAuth();
+  const { isAdmin, loginAdmin, user, openLoginModal } = useAuth();
   const [orders, setOrders] = useState<KDSOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>('');
@@ -2170,7 +2171,7 @@ export default function KitchenPage() {
     await broadcastBakeApprovalResolved({
       order_number: orderNum,
       action: 'approved',
-      resolved_by: user.name || 'Chủ Tiệm (Admin)',
+      resolved_by: user?.name || 'Chủ Tiệm (Admin)',
     });
     syncOrderToSupabase(updatedOrder, 'ready');
 
@@ -2272,7 +2273,7 @@ export default function KitchenPage() {
       order_number: orderNum,
       cake_name: cakeName,
       need_bake_qty: needBake,
-      requested_by: user.name || 'Nhân Viên Bếp',
+      requested_by: user?.name || 'Nhân Viên Bếp',
       order_data: order,
     });
 
@@ -2362,7 +2363,7 @@ export default function KitchenPage() {
     await broadcastBakeApprovalResolved({
       order_number: orderNum,
       action: 'rejected',
-      resolved_by: user.name || 'Chủ Tiệm (Admin)',
+      resolved_by: user?.name || 'Chủ Tiệm (Admin)',
     });
 
     setKdsToast({
@@ -2374,7 +2375,11 @@ export default function KitchenPage() {
   };
 
   // Xác nhận thanh toán & hoàn thành giao hàng ở Bước 3
-  const handleConfirmPaymentAndComplete = async (order: KDSOrder, paymentMethod: 'cash' | 'bank_transfer') => {
+  const handleConfirmPaymentAndComplete = async (
+    order: KDSOrder, 
+    paymentMethod: 'cash' | 'bank_transfer',
+    proofImageBase64?: string
+  ) => {
     const orderId = order.id;
     const orderNum = order.order_number;
     const linkedBakeOrderNum = order.linked_bake_order_number || `${orderNum}-LAM`;
@@ -2416,6 +2421,7 @@ export default function KitchenPage() {
                   remainingAmount: 0,
                   payment_status: 'paid',
                   final_payment_method: paymentMethod,
+                  transfer_proof_image: proofImageBase64 || o.transfer_proof_image,
                   paid_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 };
@@ -2575,6 +2581,42 @@ export default function KitchenPage() {
       return 0;
     }
   };
+
+  // Auth Guard: Chưa đăng nhập không thể vào Bếp
+  if (!user) {
+    return (
+      <div className="flex-1 min-h-[calc(100vh-4rem)] bg-zinc-950 flex items-center justify-center p-4">
+        <div className="bg-zinc-900 rounded-3xl border border-zinc-800 p-6 sm:p-8 max-w-md w-full text-center shadow-2xl space-y-5 text-white animate-in zoom-in-95">
+          <div className="w-16 h-16 rounded-3xl bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center justify-center mx-auto shadow-inner">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-white">Màn Hình Bếp (KDS) Đang Khóa</h2>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Vui lòng đăng nhập tài khoản Nhân viên Bếp hoặc Quản trị để theo dõi nướng bánh và xử lý giao hàng.
+            </p>
+          </div>
+          <div className="space-y-2 pt-2">
+            <button
+              type="button"
+              onClick={() => openLoginModal('staff')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-black text-sm shadow-md shadow-orange-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>Đăng Nhập Vào Bếp Ngay</span>
+            </button>
+            <Link
+              href="/"
+              className="w-full py-3 px-4 rounded-2xl border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+            >
+              <Home className="w-4 h-4 text-zinc-500" />
+              <span>Quay Về Trang Chủ</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col p-3 sm:p-6 bg-zinc-950 text-zinc-100 min-h-[calc(100vh-4rem)]">
@@ -5247,8 +5289,8 @@ export default function KitchenPage() {
         onClose={() => setDeliveryPaymentModalOrder(null)}
         order={deliveryPaymentModalOrder}
         vietqrConfig={vietqrConfig}
-        onConfirmPaymentAndComplete={(order, method) => {
-          handleConfirmPaymentAndComplete(order, method);
+        onConfirmPaymentAndComplete={(order, method, proofImage) => {
+          handleConfirmPaymentAndComplete(order, method, proofImage);
           setDeliveryPaymentModalOrder(null);
         }}
       />

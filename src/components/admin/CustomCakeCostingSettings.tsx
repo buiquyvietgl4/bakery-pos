@@ -846,7 +846,7 @@ export function CustomCakeCostingSettings() {
       {/* TAB 3: NHÂN BÁNH */}
       {activeTab === 'fillings' && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div>
               <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
                 <Utensils className="w-4 h-4 text-pink-600" />
@@ -856,7 +856,7 @@ export function CustomCakeCostingSettings() {
                 Nhập trực tiếp giá vốn (cost) của từng loại nhân bánh và phụ thu bán khi khách chọn thêm.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {availableIngredients.length > 0 && (
                 <select
                   onChange={(e) => {
@@ -865,7 +865,7 @@ export function CustomCakeCostingSettings() {
                       e.target.value = '';
                     }
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none"
+                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none max-w-full truncate"
                   defaultValue=""
                 >
                   <option value="" disabled>
@@ -881,52 +881,31 @@ export function CustomCakeCostingSettings() {
               <button
                 type="button"
                 onClick={handleAddFilling}
-                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" /> Thêm Nhân Bánh
               </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-zinc-200 rounded-2xl bg-white shadow-xs">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
-                <tr>
-                  <th className="p-3">Tên Loại Nhân Bánh</th>
-                  <th className="p-3 w-40">Giá Cost Vốn (VND)</th>
-                  <th className="p-3 w-40">Phụ Thu Bán (VND)</th>
-                  <th className="p-3 w-28 text-center">Mặc Định</th>
-                  <th className="p-3 w-16 text-center">Xóa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {config.fillings.map((fill, idx) => (
-                  <tr key={fill.id} className="hover:bg-pink-50/30 transition">
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={fill.name}
-                        onChange={(e) => handleUpdateFilling(idx, 'name', e.target.value)}
-                        className="w-full font-bold text-zinc-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={formatCurrencyInput(fill.costPrice || 0)}
-                        onChange={(e) => handleUpdateFilling(idx, 'costPrice', parseCurrencyInput(e.target.value))}
-                        className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={formatCurrencyInput(fill.extraPrice || 0)}
-                        onChange={(e) => handleUpdateFilling(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
-                        className="w-full font-bold text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {config.fillings.map((fill, idx) => (
+              <div key={fill.id} className="p-3.5 rounded-2xl bg-white border border-zinc-200 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-base shrink-0">
+                      🍓
+                    </span>
+                    <input
+                      type="text"
+                      value={fill.name}
+                      placeholder="Tên nhân bánh..."
+                      onChange={(e) => handleUpdateFilling(idx, 'name', e.target.value)}
+                      className="font-bold text-xs text-zinc-900 bg-transparent border-b border-zinc-200 focus:border-pink-500 focus:outline-none flex-1 min-w-0 py-1"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <label className="flex items-center gap-1 text-[11px] text-zinc-600 font-bold cursor-pointer hover:text-pink-600 bg-zinc-50 px-2 py-1 rounded-lg border border-zinc-200">
                       <input
                         type="radio"
                         name="default_filling"
@@ -935,22 +914,43 @@ export function CustomCakeCostingSettings() {
                           const updated = config.fillings.map((f, i) => ({ ...f, isDefault: i === idx }));
                           setConfig({ ...config, fillings: updated });
                         }}
-                        className="w-4 h-4 text-pink-600 focus:ring-pink-500 cursor-pointer"
+                        className="w-3.5 h-3.5 text-pink-600 focus:ring-pink-500 cursor-pointer"
                       />
-                    </td>
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteFilling(idx)}
-                        className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <span>Mặc định</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFilling(idx)}
+                      className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer transition"
+                      title="Xóa nhân bánh"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-100">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 font-semibold block">Giá Vốn Cost:</span>
+                    <input
+                      type="text"
+                      value={formatCurrencyInput(fill.costPrice || 0)}
+                      onChange={(e) => handleUpdateFilling(idx, 'costPrice', parseCurrencyInput(e.target.value))}
+                      className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 font-semibold block">Phụ Thu Bán:</span>
+                    <input
+                      type="text"
+                      value={formatCurrencyInput(fill.extraPrice || 0)}
+                      onChange={(e) => handleUpdateFilling(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
+                      className="w-full font-black text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -958,17 +958,17 @@ export function CustomCakeCostingSettings() {
       {/* TAB 4: HỘP VÀ BAO BÌ */}
       {activeTab === 'packagings' && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div>
               <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
                 <Package className="w-4 h-4 text-pink-600" />
                 <span>4. Hộp Đựng & Bao Bì Bánh Sinh Nhật</span>
               </h3>
               <p className="text-xs text-zinc-500">
-                Theo flowchart: Sẽ nhập trực tiếp từ kho vật tư, giá cost tự động lấy từ giá nhập vào kho.
+                Nhập trực tiếp từ kho vật tư, giá cost tự động lấy từ giá nhập vào kho.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {availableIngredients.length > 0 && (
                 <select
                   onChange={(e) => {
@@ -977,7 +977,7 @@ export function CustomCakeCostingSettings() {
                       e.target.value = '';
                     }
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none"
+                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none max-w-full truncate"
                   defaultValue=""
                 >
                   <option value="" disabled>
@@ -993,52 +993,31 @@ export function CustomCakeCostingSettings() {
               <button
                 type="button"
                 onClick={handleAddPackaging}
-                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" /> Thêm Hộp Mới
               </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-zinc-200 rounded-2xl bg-white shadow-xs">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
-                <tr>
-                  <th className="p-3">Tên Hộp & Bao Bì</th>
-                  <th className="p-3 w-40">Giá Cost Nhập Vào (VND)</th>
-                  <th className="p-3 w-40">Phụ Thu Bán (VND)</th>
-                  <th className="p-3 w-28 text-center">Mặc Định</th>
-                  <th className="p-3 w-16 text-center">Xóa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {config.packagings.map((pkg, idx) => (
-                  <tr key={pkg.id} className="hover:bg-pink-50/30 transition">
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={pkg.name}
-                        onChange={(e) => handleUpdatePackaging(idx, 'name', e.target.value)}
-                        className="w-full font-bold text-zinc-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={formatCurrencyInput(pkg.costPrice || 0)}
-                        onChange={(e) => handleUpdatePackaging(idx, 'costPrice', parseCurrencyInput(e.target.value))}
-                        className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={formatCurrencyInput(pkg.sellingPrice || 0)}
-                        onChange={(e) => handleUpdatePackaging(idx, 'sellingPrice', parseCurrencyInput(e.target.value))}
-                        className="w-full font-bold text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {config.packagings.map((pkg, idx) => (
+              <div key={pkg.id} className="p-3.5 rounded-2xl bg-white border border-zinc-200 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-base shrink-0">
+                      📦
+                    </span>
+                    <input
+                      type="text"
+                      value={pkg.name}
+                      placeholder="Tên hộp & bao bì..."
+                      onChange={(e) => handleUpdatePackaging(idx, 'name', e.target.value)}
+                      className="font-bold text-xs text-zinc-900 bg-transparent border-b border-zinc-200 focus:border-pink-500 focus:outline-none flex-1 min-w-0 py-1"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <label className="flex items-center gap-1 text-[11px] text-zinc-600 font-bold cursor-pointer hover:text-pink-600 bg-zinc-50 px-2 py-1 rounded-lg border border-zinc-200">
                       <input
                         type="radio"
                         name="default_packaging"
@@ -1047,22 +1026,43 @@ export function CustomCakeCostingSettings() {
                           const updated = config.packagings.map((p, i) => ({ ...p, isDefault: i === idx }));
                           setConfig({ ...config, packagings: updated });
                         }}
-                        className="w-4 h-4 text-pink-600 focus:ring-pink-500 cursor-pointer"
+                        className="w-3.5 h-3.5 text-pink-600 focus:ring-pink-500 cursor-pointer"
                       />
-                    </td>
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePackaging(idx)}
-                        className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <span>Mặc định</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePackaging(idx)}
+                      className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer transition"
+                      title="Xóa bao bì"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-100">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 font-semibold block">Giá Vốn Nhập:</span>
+                    <input
+                      type="text"
+                      value={formatCurrencyInput(pkg.costPrice || 0)}
+                      onChange={(e) => handleUpdatePackaging(idx, 'costPrice', parseCurrencyInput(e.target.value))}
+                      className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 font-semibold block">Phụ Thu Bán:</span>
+                    <input
+                      type="text"
+                      value={formatCurrencyInput(pkg.sellingPrice || 0)}
+                      onChange={(e) => handleUpdatePackaging(idx, 'sellingPrice', parseCurrencyInput(e.target.value))}
+                      className="w-full font-black text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1070,7 +1070,7 @@ export function CustomCakeCostingSettings() {
       {/* TAB 5: VẬT TƯ TẶNG KÈM */}
       {activeTab === 'free_accessories' && (
         <div className="space-y-4 animate-in fade-in duration-150">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div>
               <h3 className="font-black text-sm text-zinc-900 flex items-center gap-1.5">
                 <Gift className="w-4 h-4 text-pink-600" />
@@ -1080,7 +1080,7 @@ export function CustomCakeCostingSettings() {
                 Nhập trực tiếp từ kho vật tư, giá cost là giá nhập kho. Mặc định tự động tặng kèm trong bánh sinh nhật.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {availableIngredients.length > 0 && (
                 <select
                   onChange={(e) => {
@@ -1089,7 +1089,7 @@ export function CustomCakeCostingSettings() {
                       e.target.value = '';
                     }
                   }}
-                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none"
+                  className="px-3 py-1.5 rounded-xl bg-pink-50 border border-pink-200 text-pink-800 font-bold text-xs cursor-pointer focus:outline-none max-w-full truncate"
                   defaultValue=""
                 >
                   <option value="" disabled>
@@ -1105,77 +1105,77 @@ export function CustomCakeCostingSettings() {
               <button
                 type="button"
                 onClick={handleAddFreeAccessory}
-                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer"
+                className="px-3 py-1.5 rounded-xl bg-pink-100 hover:bg-pink-200 text-pink-700 font-bold text-xs flex items-center gap-1 cursor-pointer shrink-0"
               >
                 <Plus className="w-3.5 h-3.5" /> Thêm Món Tặng Kèm
               </button>
             </div>
           </div>
 
-          <div className="overflow-x-auto border border-zinc-200 rounded-2xl bg-white shadow-xs">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-zinc-50 text-zinc-600 font-bold border-b border-zinc-200">
-                <tr>
-                  <th className="p-3">Tên Vật Tư Tặng Kèm</th>
-                  <th className="p-3 w-32">Số Lượng Tặng</th>
-                  <th className="p-3 w-40">Giá Cost Vốn (VND)</th>
-                  <th className="p-3 w-36 text-center">Tặng Kèm Mặc Định</th>
-                  <th className="p-3 w-16 text-center">Xóa</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-100">
-                {config.freeAccessories.map((acc, idx) => (
-                  <tr key={acc.id} className="hover:bg-pink-50/30 transition">
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={acc.name}
-                        onChange={(e) => handleUpdateFreeAccessory(idx, 'name', e.target.value)}
-                        className="w-full font-bold text-zinc-900 bg-transparent border-b border-transparent focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3">
-                      <input
-                        type="number"
-                        min="1"
-                        value={acc.quantityDefault || 1}
-                        onChange={(e) =>
-                          handleUpdateFreeAccessory(idx, 'quantityDefault', parseInt(e.target.value) || 1)
-                        }
-                        className="w-20 font-black text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-center focus:bg-white focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3">
-                      <input
-                        type="text"
-                        value={formatCurrencyInput(acc.costPrice || 0)}
-                        onChange={(e) =>
-                          handleUpdateFreeAccessory(idx, 'costPrice', parseCurrencyInput(e.target.value))
-                        }
-                        className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 focus:bg-white focus:border-pink-500 focus:outline-none"
-                      />
-                    </td>
-                    <td className="p-3 text-center">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {config.freeAccessories.map((acc, idx) => (
+              <div key={acc.id} className="p-3.5 rounded-2xl bg-white border border-zinc-200 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-base shrink-0">
+                      🎁
+                    </span>
+                    <input
+                      type="text"
+                      value={acc.name}
+                      placeholder="Tên vật tư tặng kèm..."
+                      onChange={(e) => handleUpdateFreeAccessory(idx, 'name', e.target.value)}
+                      className="font-bold text-xs text-zinc-900 bg-transparent border-b border-zinc-200 focus:border-pink-500 focus:outline-none flex-1 min-w-0 py-1"
+                    />
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <label className="flex items-center gap-1.5 text-[11px] text-zinc-600 font-bold cursor-pointer hover:text-pink-600 bg-zinc-50 px-2 py-1 rounded-lg border border-zinc-200">
                       <input
                         type="checkbox"
                         checked={acc.isDefaultIncluded}
                         onChange={(e) => handleUpdateFreeAccessory(idx, 'isDefaultIncluded', e.target.checked)}
-                        className="w-4 h-4 text-pink-600 rounded-md focus:ring-pink-500 cursor-pointer"
+                        className="w-3.5 h-3.5 text-pink-600 rounded-md focus:ring-pink-500 cursor-pointer"
                       />
-                    </td>
-                    <td className="p-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteFreeAccessory(idx)}
-                        className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <span>Tặng kèm</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteFreeAccessory(idx)}
+                      className="text-zinc-400 hover:text-rose-600 p-1 cursor-pointer transition"
+                      title="Xóa vật tư tặng kèm"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-zinc-100">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 font-semibold block">Số Lượng Tặng:</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={acc.quantityDefault || 1}
+                      onChange={(e) =>
+                        handleUpdateFreeAccessory(idx, 'quantityDefault', parseInt(e.target.value) || 1)
+                      }
+                      className="w-full font-black text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs text-center focus:bg-white focus:border-pink-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 font-semibold block">Giá Cost Vốn:</span>
+                    <input
+                      type="text"
+                      value={formatCurrencyInput(acc.costPrice || 0)}
+                      onChange={(e) =>
+                        handleUpdateFreeAccessory(idx, 'costPrice', parseCurrencyInput(e.target.value))
+                      }
+                      className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

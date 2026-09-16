@@ -19,7 +19,8 @@ import {
   Sparkles, Wallet, Lock, History, AlertTriangle, Cake, Calendar,
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
   Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet,
-  Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings, ShieldCheck
+  Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings, ShieldCheck,
+  Home, KeyRound, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -139,7 +140,7 @@ interface PreorderFormData {
 }
 
 export default function POSPage() {
-  const { user, isAdmin, securityConfig } = useAuth();
+  const { user, isAdmin, securityConfig, openLoginModal } = useAuth();
   const [mobileTab, setMobileTab] = useState<'menu' | 'cart'>('menu');
   const [products, setProducts] = useState<CachedProduct[]>(() => {
     if (typeof window !== 'undefined') {
@@ -239,6 +240,7 @@ export default function POSPage() {
   const [adminApprovedTransfer, setAdminApprovedTransfer] = useState<boolean>(false);
   const [isProofCameraOpen, setIsProofCameraOpen] = useState<boolean>(false);
   const [capturedTransferProofImage, setCapturedTransferProofImage] = useState<string | null>(null);
+  const [transferResendStatus, setTransferResendStatus] = useState<string | null>(null);
   const incomingTransferApprovalResolvedRef = useRef<(payload: TransferApprovalResolvedPayload) => void>(() => {});
 
   // ── 3 LỰA CHỌN THANH TOÁN TẠI POS (LẤY NGAY / HẸN GIỜ / SHIP BÁNH) ──
@@ -2214,6 +2216,29 @@ export default function POSPage() {
     incomingTransferApprovalResolvedRef.current = handleIncomingTransferApprovalResolved;
   }, [handleIncomingTransferApprovalResolved]);
 
+  // Gửi lại yêu cầu xác thực 2 bước tới Admin
+  const handleResendTransferApproval = async () => {
+    try {
+      const orderNumToUse = activeCheckoutOrderNumber || 'BK-CK';
+      const cashierName = user?.name || securityConfig.staffName || 'Thu Ngân Quầy POS';
+      const isPreOrder = fulfillmentType !== 'takeaway';
+      const transferReqPayload: TransferApprovalPayload = {
+        order_number: orderNumToUse,
+        amount: dueNow,
+        customer_name: isPreOrder ? (posCustomerName || 'Khách đặt') : (posCustomerName || 'Khách tại quầy'),
+        transfer_code: checkoutTransferCode,
+        requested_by: cashierName,
+        requested_at: new Date().toISOString(),
+      };
+      await broadcastTransferApprovalRequest(transferReqPayload);
+      setTransferResendStatus('Đã gửi lại tới Admin!');
+      setTimeout(() => setTransferResendStatus(null), 2500);
+    } catch {
+      setTransferResendStatus('Lỗi kết nối khi gửi');
+      setTimeout(() => setTransferResendStatus(null), 2500);
+    }
+  };
+
   // ── HANDLER: TẠO ĐƠN ĐẶT BÁNH KEM (PREORDER CAKE) ──
   const handleCreatePreorder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2551,6 +2576,42 @@ export default function POSPage() {
     }
     return true;
   });
+
+  // Auth Guard: Chưa đăng nhập không thể vào Quầy POS
+  if (!user) {
+    return (
+      <div className="flex-1 min-h-[calc(100vh-4rem)] bg-[#faf7f2] flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl border border-amber-200/80 p-6 sm:p-8 max-w-md w-full text-center shadow-xl space-y-5 animate-in zoom-in-95">
+          <div className="w-16 h-16 rounded-3xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto shadow-inner">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-zinc-900">Quầy Bán Hàng (POS) Đang Khóa</h2>
+            <p className="text-xs text-zinc-600 leading-relaxed">
+              Vui lòng đăng nhập tài khoản Nhân viên hoặc Quản trị để mở ca bán hàng, tạo đơn và thu ngân.
+            </p>
+          </div>
+          <div className="space-y-2 pt-2">
+            <button
+              type="button"
+              onClick={() => openLoginModal('staff')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black text-sm shadow-md shadow-amber-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>Đăng Nhập Vào Ca Bán Hàng</span>
+            </button>
+            <Link
+              href="/"
+              className="w-full py-3 px-4 rounded-2xl border border-zinc-200 hover:bg-zinc-50 text-zinc-600 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+            >
+              <Home className="w-4 h-4 text-zinc-400" />
+              <span>Quay Về Trang Chủ</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 flex flex-col lg:flex-row items-start min-h-[calc(100vh-4rem)] bg-[#faf7f2] relative">
@@ -6159,8 +6220,18 @@ export default function POSPage() {
                       <p className="text-xs text-amber-800 font-medium">
                         Yêu cầu đã được gửi tới tài khoản Quản trị viên (Admin). Đơn sẽ tự động hoàn tất ngay khi Admin ấn xác nhận.
                       </p>
-                      {/* Nút khẩn cấp Chụp ảnh bill đối soát */}
-                      <div className="pt-2 border-t border-amber-300/60">
+
+                      {/* Các nút hành động khi chờ Admin duyệt */}
+                      <div className="pt-2 border-t border-amber-300/60 space-y-2">
+                        <button
+                          type="button"
+                          onClick={handleResendTransferApproval}
+                          className="w-full py-2 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>{transferResendStatus || '🔄 Gửi Lại Yêu Cầu Xác Thực'}</span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => setIsProofCameraOpen(true)}
@@ -6169,7 +6240,7 @@ export default function POSPage() {
                           <Camera className="w-4 h-4" />
                           <span>📸 Xác Nhận Ngay (Chụp Ảnh Bill Khách)</span>
                         </button>
-                        <p className="text-[10px] text-amber-700 text-center italic pt-1">
+                        <p className="text-[10px] text-amber-700 text-center italic pt-0.5">
                           Phòng khi mất mạng hoặc Admin chưa kịp duyệt. Ảnh chụp sẽ lưu cùng đơn hàng để đối soát sau.
                         </p>
                       </div>

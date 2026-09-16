@@ -100,6 +100,23 @@ export default function Header() {
               const Icon = item.icon;
               const isActive = pathname.startsWith(item.href);
 
+              // Nếu chưa đăng nhập bất kỳ tài khoản nào: Khóa tất cả các màn hình POS, Bếp, Admin
+              if (mounted && !user) {
+                return (
+                  <button
+                    key={item.href}
+                    type="button"
+                    onClick={() => openLoginModal(item.requiresAdmin ? 'admin' : 'staff')}
+                    title="Vui lòng đăng nhập tài khoản để vào màn hình này"
+                    className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-amber-800 hover:bg-white/80 transition cursor-pointer"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-zinc-400" />
+                    <span className="hidden sm:inline">{item.label}</span>
+                    <span className="text-[10px] bg-zinc-200/80 text-zinc-600 px-1.5 py-0.2 rounded font-mono hidden sm:inline">Khóa</span>
+                  </button>
+                );
+              }
+
               // Nếu là Nhân viên bấm vào Quản trị: Hiện nút khóa bảo mật & kích hoạt đăng nhập Admin
               if (mounted && item.requiresAdmin && !isAdmin) {
                 return (
@@ -138,7 +155,24 @@ export default function Header() {
           <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {mounted && (
               <>
-                {isAdmin ? (
+                {!user ? (
+                  // Chưa đăng nhập
+                  <div className="flex items-center gap-1 bg-zinc-100 p-1 sm:pl-2 rounded-xl border border-zinc-200 text-xs shadow-2xs">
+                    <span className="hidden md:flex items-center gap-1 font-bold text-zinc-500 text-[11px] sm:text-xs">
+                      <Lock className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
+                      <span>Chưa đăng nhập</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openLoginModal('staff')}
+                      className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-black flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                      title="Bấm để đăng nhập nhân viên hoặc quản trị"
+                    >
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>Đăng Nhập</span>
+                    </button>
+                  </div>
+                ) : isAdmin ? (
                   // Đang là Admin
                   <div className="flex items-center gap-1 bg-amber-50/90 p-1 sm:pl-2.5 rounded-xl border border-amber-200/80 text-xs shadow-2xs">
                     <span className="flex items-center gap-1 font-black text-amber-900 text-[11px] sm:text-xs">
@@ -148,11 +182,11 @@ export default function Header() {
                     <button
                       type="button"
                       onClick={logout}
-                      title="Khóa quyền Admin (Chuyển về quyền Nhân viên khi giao máy cho thu ngân)"
+                      title="Khóa quyền Admin và đăng xuất"
                       className="p-1 sm:px-2 sm:py-0.5 rounded-lg bg-white border border-amber-200/80 hover:bg-amber-100 text-amber-800 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
                     >
                       <LogOut className="w-3 h-3 text-amber-700" />
-                      <span className="hidden md:inline">Khóa Admin</span>
+                      <span className="hidden md:inline">Đăng Xuất</span>
                     </button>
                   </div>
                 ) : (
@@ -160,7 +194,7 @@ export default function Header() {
                   <div className="flex items-center gap-1 bg-stone-100/90 p-1 sm:pl-2 rounded-xl border border-stone-200 text-xs shadow-2xs">
                     <span className="hidden md:flex items-center gap-1 font-bold text-zinc-700 text-[11px] sm:text-xs">
                       <Users className="w-3.5 h-3.5 text-orange-600" />
-                      <span>Nhân viên</span>
+                      <span>{user?.name || 'Nhân viên'}</span>
                     </span>
                     <button
                       type="button"
@@ -170,6 +204,15 @@ export default function Header() {
                     >
                       <KeyRound className="w-3 h-3" />
                       <span className="hidden sm:inline">Mở Admin</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={logout}
+                      title="Đăng xuất khỏi ca làm"
+                      className="p-1 sm:px-1.5 sm:py-0.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <LogOut className="w-3 h-3 text-zinc-500" />
+                      <span className="hidden sm:inline">Thoát</span>
                     </button>
                   </div>
                 )}
