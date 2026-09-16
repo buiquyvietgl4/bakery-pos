@@ -12,6 +12,30 @@ export const BAKERY_PRODUCTS_KEY = 'bakery_products';
 export const BAKERY_STOCKS_KEY = 'bakery_stocks';
 
 /**
+ * Kiểm tra xem một sản phẩm có phải là hàng nhập ngoài về bán (Resale / Hàng nhập sẵn / Phụ kiện) hay không.
+ * Các sản phẩm này không do bếp tự làm/nướng, vì vậy TUYỆT ĐỐI không được bán vượt quá tồn kho thực tế,
+ * và không bao giờ đẩy vào bếp làm bánh bổ sung (-LAM / need_bake_qty).
+ */
+export function isImportedProduct(product?: any): boolean {
+  if (!product) return false;
+  if (product.product_type === 'imported') return true;
+  const cat = String(product.category || '').toLowerCase().trim();
+  if (
+    cat.includes('bánh nhập') ||
+    cat.includes('hàng nhập') ||
+    cat.includes('nhập ngoài') ||
+    cat.includes('đóng gói') ||
+    cat.includes('resale')
+  ) {
+    return true;
+  }
+  if (product.supplier_name && !product.bom_preset_id && product.cake_type_label !== 'birthday' && product.cake_type_label !== 'pre_order') {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Lấy danh sách Set các ID và Tên bánh đã bị người dùng chủ động xóa.
  * Hỗ trợ so khớp cả ID và Tên (chuẩn hóa chữ thường không dấu / khoảng trắng thừa).
  */

@@ -18,6 +18,7 @@ import {
 import {
   getFullCakeBomConfig,
 } from '@/lib/utils/cakeBomManager';
+import { isImportedProduct } from '@/lib/utils/productManager';
 import {
   Cake,
   X,
@@ -466,6 +467,13 @@ export function BirthdayCakeOrderModal({
       suggestedPrice: totalCalculation.suggestedPrice,
       finalPrice: finalPriceInput,
     };
+
+    if (isImportedProduct(matchedProduct || product)) {
+      if (cakeStock <= 0 || orderQuantity > cakeStock) {
+        alert(`❌ Sản phẩm "${matchedProduct?.name || product?.name}" là HÀNG NHẬP NGOÀI VỀ BÁN (Tồn kho hiện có: ${cakeStock} cái).\n\n⚠️ Vì đây là hàng nhập sẵn từ bên ngoài, thợ bếp không thể tự làm/nướng bánh này, do đó không thể đặt vượt quá số lượng tồn kho thực tế!`);
+        return;
+      }
+    }
 
     const initialStatus = hasStock ? 'ready' : 'pending';
 

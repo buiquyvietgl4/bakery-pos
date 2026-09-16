@@ -8,6 +8,7 @@ import {
   filterActiveProducts,
   getDeletedProductIds,
   markProductAsDeleted,
+  isImportedProduct,
 } from '@/lib/utils/productManager';
 import { generateUUID } from '@/lib/utils/uuid';
 import { 
@@ -1019,6 +1020,29 @@ export default function POSPage() {
   });
 
   const addToCart = (product: CachedProduct, forceDirectCart: boolean = false) => {
+    // 0. BÁNH / HÀNG NHẬP NGOÀI VỀ BÁN:
+    // Vì đây là hàng thương mại nhập sẵn từ bên ngoài, thợ bếp không thể tự làm/nướng.
+    // TUYỆT ĐỐI không cho phép bán quá số lượng tồn kho có sẵn trong tiệm.
+    if (isImportedProduct(product)) {
+      const availStock = Number(product.stock_qty ?? product.stock ?? 0);
+      if (availStock <= 0) {
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try { navigator.vibrate([60, 60, 60]); } catch {}
+        }
+        alert(`❌ Sản phẩm "${product.name}" là HÀNG NHẬP NGOÀI VỀ BÁN và hiện ĐÃ HẾT HÀNG TRONG KHO (Tồn: 0)!\n\n⚠️ Vì đây là hàng nhập sẵn từ bên ngoài, bếp không thể tự nướng hay làm được, do đó hệ thống KHÔNG CHO PHÉP bán khi hết tồn kho.`);
+        return;
+      }
+      const existing = cart.find((item) => item.product.id === product.id);
+      const currentQty = existing ? existing.quantity : 0;
+      if (currentQty + 1 > availStock) {
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try { navigator.vibrate([60, 60, 60]); } catch {}
+        }
+        alert(`⚠️ Sản phẩm "${product.name}" là HÀNG NHẬP NGOÀI VỀ BÁN, hiện trong tiệm chỉ còn đúng ${availStock} cái!\n\n⚠️ Bếp không thể làm thêm loại hàng này, bạn không thể thêm vượt quá số lượng tồn kho có sẵn (${availStock} cái).`);
+        return;
+      }
+    }
+
     // 1. FLOWCHART: Với bánh có nhãn bánh sinh nhật sẽ hiện cửa sổ đặt bánh sinh nhật có BOM
     if (product.cake_type_label === 'birthday' && !forceDirectCart) {
       setBirthdayOrderProduct(product);
@@ -1074,6 +1098,21 @@ export default function POSPage() {
   };
 
   const updateQuantity = (productId: string, delta: number) => {
+    // Chặn tăng số lượng quá tồn kho nếu là hàng nhập ngoài
+    if (delta > 0) {
+      const targetItem = cart.find((item) => item.product.id === productId);
+      if (targetItem && isImportedProduct(targetItem.product)) {
+        const availStock = Number(targetItem.product.stock_qty ?? targetItem.product.stock ?? 0);
+        if (targetItem.quantity + delta > availStock) {
+          if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            try { navigator.vibrate([60, 60, 60]); } catch {}
+          }
+          alert(`⚠️ Sản phẩm "${targetItem.product.name}" là HÀNG NHẬP NGOÀI VỀ BÁN (Chỉ còn ${availStock} cái trong kho)!\n\n⚠️ Bếp không thể làm thêm loại hàng này, không thể tăng vượt quá số lượng tồn kho thực tế.`);
+          return;
+        }
+      }
+    }
+
     setCart((prev) =>
       prev
         .map((item) => {
@@ -1469,6 +1508,20 @@ export default function POSPage() {
       return;
     }
 
+    // Kiểm tra chặn hàng nhập ngoài vượt quá tồn kho (Bếp không thể làm được)
+    const overstockedImported = cart.find((item) => {
+      if (isImportedProduct(item.product)) {
+        const availStock = Number(item.product.stock_qty ?? item.product.stock ?? 0);
+        return item.quantity > availStock;
+      }
+      return false;
+    });
+    if (overstockedImported) {
+      const availStock = Number(overstockedImported.product.stock_qty ?? overstockedImported.product.stock ?? 0);
+      alert(`❌ KHÔNG THỂ THANH TOÁN:\n\nSản phẩm "${overstockedImported.product.name}" là HÀNG NHẬP NGOÀI VỀ BÁN.\nSố lượng đặt (${overstockedImported.quantity} cái) vượt quá tồn kho thực tế (${availStock} cái).\n\n⚠️ Vì đây là hàng nhập sẵn từ bên ngoài, bếp không thể tự làm/nướng, hệ thống KHÔNG CHO PHÉP bán quá tồn kho.\nVui lòng chỉnh lại số lượng món này về tối đa ${availStock} cái trước khi thanh toán!`);
+      return;
+    }
+
     setProcessingOrder(true);
 
     try {
@@ -1520,8 +1573,10 @@ export default function POSPage() {
       cart.forEach((item) => {
         const availStock = Number(item.product.stock_qty ?? item.product.stock ?? 0);
         const unitCost = Number(item.product.import_price ?? item.product.base_cost_price ?? Math.round(item.product.selling_price * 0.33)) || 0;
+        const isImported = isImportedProduct(item.product);
 
-        if (availStock > 0 && item.quantity > availStock) {
+        // Chỉ bánh tự sản xuất (không phải hàng nhập ngoài) mới tách đơn đẩy vào bếp làm thêm
+        if (!isImported && availStock > 0 && item.quantity > availStock) {
           hasPartialStock = true;
           const missingQty = item.quantity - availStock;
           totalStockAvailable += availStock;
@@ -1557,7 +1612,8 @@ export default function POSPage() {
           });
         } else {
           totalStockAvailable += Math.min(availStock, item.quantity);
-          if (availStock <= 0) totalNeedToBake += item.quantity;
+          // Hàng nhập ngoài tuyệt đối không cộng vào totalNeedToBake vì bếp không thể sản xuất
+          if (!isImported && availStock <= 0) totalNeedToBake += item.quantity;
 
           partialReadyItems.push({
             product_id: item.product.id,
@@ -1568,7 +1624,7 @@ export default function POSPage() {
             line_total: item.product.selling_price * item.quantity,
             line_cost: unitCost * item.quantity,
             notes: item.notes || '',
-            product_type: item.product.product_type || 'produced',
+            product_type: isImported ? 'imported' : (item.product.product_type || 'produced'),
             supplier_name: item.product.supplier_name,
           });
         }
@@ -1589,6 +1645,7 @@ export default function POSPage() {
       const itemsWithCost = hasPartialStock ? partialReadyItems : cart.map((item) => {
         const unitCost = Number(item.product.import_price ?? item.product.base_cost_price ?? Math.round(item.product.selling_price * 0.33)) || 0;
         const lineCost = Math.round(unitCost * item.quantity);
+        const isImported = isImportedProduct(item.product);
         return {
           product_id: item.product.id,
           product_name_snapshot: item.product.name,
@@ -1598,7 +1655,7 @@ export default function POSPage() {
           line_total: item.product.selling_price * item.quantity,
           line_cost: lineCost,
           notes: item.notes || '',
-          product_type: item.product.product_type || 'produced',
+          product_type: isImported ? 'imported' : (item.product.product_type || 'produced'),
           supplier_name: item.product.supplier_name,
         };
       });
@@ -2752,21 +2809,36 @@ export default function POSPage() {
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 pb-28">
               {filteredProducts.map((product) => {
+                const isImported = isImportedProduct(product);
                 const stock = product.stock_qty ?? 0;
                 const isOutOfStock = stock <= 0;
                 const isLowStock = !isOutOfStock && stock <= (product.min_stock_alert ?? 3);
                 const itemInCart = cart.find((item) => item.product.id === product.id);
+                const isImportedOutOfStock = isImported && isOutOfStock;
+                const isImportedMaxReached = isImported && itemInCart && itemInCart.quantity >= stock;
 
                 return (
                   <div
                     key={product.id}
-                    onClick={() => addToCart(product)}
-                    className={`group bg-white rounded-3xl p-3 sm:p-3.5 border hover:border-amber-400/80 hover:shadow-xl hover:shadow-amber-950/10 hover:-translate-y-1 transition-all duration-300 text-left flex flex-col justify-between overflow-hidden relative active:scale-[0.98] cursor-pointer select-none ${
-                      itemInCart
-                        ? 'border-amber-500 ring-2 ring-amber-400/60 bg-amber-50/15 shadow-md'
+                    onClick={() => {
+                      if (isImportedOutOfStock) {
+                        alert(`❌ Sản phẩm "${product.name}" là HÀNG NHẬP NGOÀI VỀ BÁN và hiện ĐÃ HẾT HÀNG TRONG KHO (Tồn: 0)!\n\n⚠️ Vì đây là hàng nhập sẵn từ bên ngoài, bếp không thể tự nướng hay làm được, do đó hệ thống KHÔNG CHO PHÉP bán khi hết tồn kho.`);
+                        return;
+                      }
+                      if (isImportedMaxReached) {
+                        alert(`⚠️ Sản phẩm "${product.name}" là HÀNG NHẬP NGOÀI VỀ BÁN, hiện trong tiệm chỉ còn ${stock} cái!\n\n⚠️ Bếp không thể làm thêm loại hàng này, bạn không thể thêm vượt quá số lượng tồn kho có sẵn (${stock} cái).`);
+                        return;
+                      }
+                      addToCart(product);
+                    }}
+                    className={`group bg-white rounded-3xl p-3 sm:p-3.5 border hover:border-amber-400/80 hover:shadow-xl hover:shadow-amber-950/10 hover:-translate-y-1 transition-all duration-300 text-left flex flex-col justify-between overflow-hidden relative active:scale-[0.98] select-none ${
+                      isImportedOutOfStock
+                        ? 'border-zinc-300 bg-zinc-100/70 opacity-60 cursor-not-allowed hover:translate-y-0 hover:shadow-none hover:border-zinc-300'
+                        : itemInCart
+                        ? 'border-amber-500 ring-2 ring-amber-400/60 bg-amber-50/15 shadow-md cursor-pointer'
                         : isOutOfStock
-                        ? 'border-zinc-200/80 bg-zinc-50/40'
-                        : 'border-amber-200/40'
+                        ? 'border-zinc-200/80 bg-zinc-50/40 cursor-pointer'
+                        : 'border-amber-200/40 cursor-pointer'
                     }`}
                   >
                     <div className="w-full aspect-[16/11] rounded-2xl bg-stone-100 overflow-hidden mb-3 relative shrink-0">
@@ -2792,7 +2864,7 @@ export default function POSPage() {
                         <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-xl bg-amber-500 text-white text-[10px] font-black shadow-md shadow-amber-500/30 flex items-center gap-1 backdrop-blur-xs z-10">
                           <Clock className="w-3 h-3" /> ⏳ Đặt trước
                         </span>
-                      ) : product.product_type === 'imported' ? (
+                      ) : isImported ? (
                         <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 rounded-xl bg-blue-600/95 text-white text-[10px] font-black shadow-md shadow-blue-600/25 flex items-center gap-1 backdrop-blur-xs z-10">
                           <Package className="w-3 h-3" /> Hàng nhập
                         </span>
@@ -2808,7 +2880,9 @@ export default function POSPage() {
                       {/* Badge Số Lượng Tồn Kho Bán Thành Phẩm & Bánh Sẵn - Góc dưới bên phải ảnh */}
                       <span
                         className={`absolute bottom-2.5 right-2.5 px-2 py-0.5 rounded-lg text-[10px] font-black shadow-md flex items-center gap-1 backdrop-blur-xs z-10 ${
-                          isOutOfStock
+                          isImportedOutOfStock
+                            ? 'bg-rose-700 text-white font-bold'
+                            : isOutOfStock
                             ? 'bg-zinc-700/80 text-white'
                             : isLowStock
                             ? 'bg-amber-500/95 text-white shadow-amber-500/30'
@@ -2816,7 +2890,9 @@ export default function POSPage() {
                         }`}
                       >
                         <Package className="w-3 h-3" />
-                        {isOutOfStock
+                        {isImportedOutOfStock
+                          ? 'Hết hàng (Hàng nhập)'
+                          : isOutOfStock
                           ? 'Tủ: 0'
                           : isLowStock
                           ? `Sắp hết: ${stock}`
@@ -2865,9 +2941,14 @@ export default function POSPage() {
                             </span>
                             <button
                               type="button"
+                              disabled={isImportedMaxReached}
                               onClick={() => addToCart(product, true)}
-                              className="w-7 h-7 rounded-lg bg-amber-700 hover:bg-amber-800 text-white flex items-center justify-center font-black text-sm cursor-pointer active:scale-90 transition"
-                              title="Thêm 1"
+                              className={`w-7 h-7 rounded-lg text-white flex items-center justify-center font-black text-sm transition ${
+                                isImportedMaxReached
+                                  ? 'bg-amber-900/60 text-amber-300/40 cursor-not-allowed'
+                                  : 'bg-amber-700 hover:bg-amber-800 cursor-pointer active:scale-90'
+                              }`}
+                              title={isImportedMaxReached ? `Hàng nhập ngoài đã đạt tối đa tồn kho (${stock} cái)` : 'Thêm 1'}
                             >
                               +
                             </button>
@@ -2875,12 +2956,17 @@ export default function POSPage() {
                         ) : (
                           <button
                             type="button"
+                            disabled={isImportedOutOfStock}
                             onClick={(e) => {
                               e.stopPropagation();
                               addToCart(product, true);
                             }}
-                            className="w-8 h-8 rounded-xl bg-amber-50 hover:bg-amber-600 text-amber-700 hover:text-white flex items-center justify-center text-sm font-black group-hover:bg-gradient-to-tr group-hover:from-amber-600 group-hover:to-amber-500 group-hover:text-white group-hover:scale-105 transition-all duration-200 shadow-2xs cursor-pointer"
-                            title={product.is_preorder_only ? "Bấm để thêm vào giỏ bán tại quầy ngay" : "Thêm vào giỏ"}
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black transition-all duration-200 shadow-2xs ${
+                              isImportedOutOfStock
+                                ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
+                                : 'bg-amber-50 hover:bg-amber-600 text-amber-700 hover:text-white group-hover:bg-gradient-to-tr group-hover:from-amber-600 group-hover:to-amber-500 group-hover:text-white group-hover:scale-105 cursor-pointer'
+                            }`}
+                            title={isImportedOutOfStock ? 'Hàng nhập ngoài đã hết tồn kho, không thể bán' : (product.is_preorder_only ? "Bấm để thêm vào giỏ bán tại quầy ngay" : "Thêm vào giỏ")}
                           >
                             +
                           </button>
@@ -3002,10 +3088,22 @@ export default function POSPage() {
                   <div className="text-xs font-black text-amber-700">
                     {((item.product?.selling_price ?? item.product?.price ?? 0) * (item.quantity || 1)).toLocaleString('vi-VN')}₫
                   </div>
-                  {Number(item.product.stock_qty ?? item.product.stock ?? 0) < item.quantity && (
-                    <div className="mt-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded px-1.5 py-0.5 inline-block">
-                      ⚠️ Đặt {item.quantity} / Tồn {Number(item.product.stock_qty ?? item.product.stock ?? 0)} (Thiếu {item.quantity - Number(item.product.stock_qty ?? item.product.stock ?? 0)} - Bếp sẽ làm mới)
-                    </div>
+                  {isImportedProduct(item.product) ? (
+                    Number(item.product.stock_qty ?? item.product.stock ?? 0) < item.quantity ? (
+                      <div className="mt-1 text-[10px] font-black text-rose-800 bg-rose-100 border border-rose-300 rounded px-1.5 py-0.5 inline-block">
+                        ⛔ Hàng nhập ngoài: Vượt tồn kho {Number(item.product.stock_qty ?? item.product.stock ?? 0)} cái (Bếp không thể làm)
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-[10px] font-bold text-blue-800 bg-blue-50 border border-blue-200 rounded px-1.5 py-0.5 inline-block">
+                        📦 Hàng nhập ngoài (Tồn: {Number(item.product.stock_qty ?? item.product.stock ?? 0)} cái)
+                      </div>
+                    )
+                  ) : (
+                    Number(item.product.stock_qty ?? item.product.stock ?? 0) < item.quantity && (
+                      <div className="mt-1 text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 rounded px-1.5 py-0.5 inline-block">
+                        ⚠️ Đặt {item.quantity} / Tồn {Number(item.product.stock_qty ?? item.product.stock ?? 0)} (Thiếu {item.quantity - Number(item.product.stock_qty ?? item.product.stock ?? 0)} - Bếp sẽ làm mới)
+                      </div>
+                    )
                   )}
                 </div>
 
@@ -3023,8 +3121,17 @@ export default function POSPage() {
                   </span>
                   <button
                     onClick={() => updateQuantity(item.product.id, 1)}
-                    className="w-6 h-6 rounded-lg hover:bg-amber-50 hover:text-amber-700 flex items-center justify-center text-zinc-600 font-bold transition active:scale-90 cursor-pointer"
-                    title="Tăng số lượng"
+                    disabled={isImportedProduct(item.product) && item.quantity >= Number(item.product.stock_qty ?? item.product.stock ?? 0)}
+                    className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold transition active:scale-90 ${
+                      isImportedProduct(item.product) && item.quantity >= Number(item.product.stock_qty ?? item.product.stock ?? 0)
+                        ? 'bg-zinc-100 text-zinc-300 cursor-not-allowed opacity-40'
+                        : 'hover:bg-amber-50 hover:text-amber-700 text-zinc-600 cursor-pointer'
+                    }`}
+                    title={
+                      isImportedProduct(item.product) && item.quantity >= Number(item.product.stock_qty ?? item.product.stock ?? 0)
+                        ? `Hàng nhập ngoài đã đạt tối đa tồn kho (${Number(item.product.stock_qty ?? item.product.stock ?? 0)} cái)`
+                        : 'Tăng số lượng'
+                    }
                   >
                     <Plus className="w-3 h-3" />
                   </button>
@@ -3187,17 +3294,62 @@ export default function POSPage() {
             </div>
           </div>
 
+          {/* Cảnh báo chặn thanh toán nếu có hàng nhập ngoài vượt tồn kho */}
+          {(() => {
+            const overstockedItem = cart.find(
+              (item) =>
+                isImportedProduct(item.product) &&
+                item.quantity > Number(item.product.stock_qty ?? item.product.stock ?? 0)
+            );
+            if (!overstockedItem) return null;
+            const itemStock = Number(overstockedItem.product.stock_qty ?? overstockedItem.product.stock ?? 0);
+            return (
+              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-300 text-rose-800 text-[11px] font-bold flex items-start gap-2 animate-pulse">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-extrabold text-rose-900 block">Chặn thanh toán vì quá tồn kho hàng nhập:</span>
+                  <span>
+                    "{overstockedItem.product.name}" là hàng nhập ngoài chỉ còn <b>{itemStock} cái</b> trong kho. Bếp không thể sản xuất mặt hàng này, vui lòng giảm bớt số lượng!
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
           <button
-            disabled={cart.length === 0}
+            disabled={
+              cart.length === 0 ||
+              cart.some(
+                (item) =>
+                  isImportedProduct(item.product) &&
+                  item.quantity > Number(item.product.stock_qty ?? item.product.stock ?? 0)
+              )
+            }
             onClick={() => {
               setCashGiven(grandTotal);
               setPaymentMethod('cash');
               setIsCheckoutOpen(true);
             }}
-            className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 hover:from-amber-700 hover:to-orange-600 text-white font-black text-sm sm:text-base shadow-xl shadow-amber-600/25 hover:shadow-amber-600/35 disabled:opacity-50 disabled:pointer-events-none transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+            className={`w-full py-3.5 rounded-2xl text-white font-black text-sm sm:text-base shadow-xl disabled:opacity-50 disabled:pointer-events-none transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${
+              cart.some(
+                (item) =>
+                  isImportedProduct(item.product) &&
+                  item.quantity > Number(item.product.stock_qty ?? item.product.stock ?? 0)
+              )
+                ? 'bg-zinc-700 cursor-not-allowed'
+                : 'bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 hover:from-amber-700 hover:to-orange-600 shadow-amber-600/25 hover:shadow-amber-600/35'
+            }`}
           >
             <Banknote className="w-5 h-5" />
-            <span>Thanh Toán Ngay ({(totalAmount || 0).toLocaleString('vi-VN')}₫)</span>
+            <span>
+              {cart.some(
+                (item) =>
+                  isImportedProduct(item.product) &&
+                  item.quantity > Number(item.product.stock_qty ?? item.product.stock ?? 0)
+              )
+                ? '⛔ Hàng Nhập Quá Tồn Kho - Không Thể Bán'
+                : `Thanh Toán Ngay (${(totalAmount || 0).toLocaleString('vi-VN')}₫)`}
+            </span>
           </button>
         </div>
       </div>
@@ -3434,11 +3586,13 @@ export default function POSPage() {
                         }}
                         className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-bold min-w-0 text-xs"
                       >
-                        {products.map((p) => (
-                          <option key={p.id} value={p.name}>
-                            {p.name}
-                          </option>
-                        ))}
+                        {products
+                          .filter((p) => !isImportedProduct(p))
+                          .map((p) => (
+                            <option key={p.id} value={p.name}>
+                              {p.name}
+                            </option>
+                          ))}
                         <option value="Bánh Kem Bắp Phô Mai">Bánh Kem Bắp Phô Mai</option>
                         <option value="Bánh Kem Socola Trái Cây">Bánh Kem Socola Trái Cây</option>
                         <option value="__custom__">✏️ + Nhập tên bánh tùy chọn khác (theo yêu cầu)...</option>
