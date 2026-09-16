@@ -29,6 +29,26 @@ type StoreBrandingCallback = (branding: any) => void;
 type VietqrConfigCallback = (config: any) => void;
 type EwalletConfigCallback = (config: any) => void;
 
+export interface BakeApprovalPayload {
+  order_number: string;
+  cake_name: string;
+  need_bake_qty: number;
+  requested_by?: string;
+  requested_at?: string;
+  order_data?: any;
+}
+
+export interface BakeApprovalResolvedPayload {
+  order_number: string;
+  action: 'approved' | 'rejected';
+  resolved_by?: string;
+  resolved_at?: string;
+  order_data?: any;
+}
+
+type BakeApprovalCallback = (payload: BakeApprovalPayload) => void;
+type BakeApprovalResolvedCallback = (payload: BakeApprovalResolvedPayload) => void;
+
 const statusListeners = new Set<StatusCallback>();
 const newOrderListeners = new Set<NewOrderCallback>();
 const clearDemoListeners = new Set<ClearDemoCallback>();
@@ -39,6 +59,8 @@ const telegramConfigListeners = new Set<TelegramConfigCallback>();
 const storeBrandingListeners = new Set<StoreBrandingCallback>();
 const vietqrConfigListeners = new Set<VietqrConfigCallback>();
 const ewalletConfigListeners = new Set<EwalletConfigCallback>();
+const bakeApprovalListeners = new Set<BakeApprovalCallback>();
+const bakeApprovalResolvedListeners = new Set<BakeApprovalResolvedCallback>();
 
 const recentlyNotifiedOrders = new Map<string, number>();
 
@@ -201,6 +223,34 @@ function ensureSyncChannel() {
               cb(payload);
             } catch (e) {
               console.warn('Lỗi recipeListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'bake_approval_requested' }, ({ payload }: any) => {
+        if (payload) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('bake_approval_requested', { detail: payload }));
+          }
+          bakeApprovalListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi bakeApprovalListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'bake_approval_resolved' }, ({ payload }: any) => {
+        if (payload) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('bake_approval_resolved', { detail: payload }));
+          }
+          bakeApprovalResolvedListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi bakeApprovalResolvedListener:', e);
             }
           });
         }
@@ -480,6 +530,8 @@ export function subscribeCrossDeviceSync(callbacks: {
   onStoreBrandingChange?: StoreBrandingCallback;
   onVietqrConfigChange?: VietqrConfigCallback;
   onEwalletConfigChange?: EwalletConfigCallback;
+  onBakeApprovalRequest?: BakeApprovalCallback;
+  onBakeApprovalResolved?: BakeApprovalResolvedCallback;
 }) {
   ensureSyncChannel();
 
@@ -494,6 +546,8 @@ export function subscribeCrossDeviceSync(callbacks: {
     onStoreBrandingChange,
     onVietqrConfigChange,
     onEwalletConfigChange,
+    onBakeApprovalRequest,
+    onBakeApprovalResolved,
   } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
@@ -506,6 +560,8 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onStoreBrandingChange) storeBrandingListeners.add(onStoreBrandingChange);
   if (onVietqrConfigChange) vietqrConfigListeners.add(onVietqrConfigChange);
   if (onEwalletConfigChange) ewalletConfigListeners.add(onEwalletConfigChange);
+  if (onBakeApprovalRequest) bakeApprovalListeners.add(onBakeApprovalRequest);
+  if (onBakeApprovalResolved) bakeApprovalResolvedListeners.add(onBakeApprovalResolved);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
@@ -518,7 +574,57 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onStoreBrandingChange) storeBrandingListeners.delete(onStoreBrandingChange);
     if (onVietqrConfigChange) vietqrConfigListeners.delete(onVietqrConfigChange);
     if (onEwalletConfigChange) ewalletConfigListeners.delete(onEwalletConfigChange);
+    if (onBakeApprovalRequest) bakeApprovalListeners.delete(onBakeApprovalRequest);
+    if (onBakeApprovalResolved) bakeApprovalResolvedListeners.delete(onBakeApprovalResolved);
   };
+}
+
+/**
+ * Phát sóng yêu cầu thợ bếp/nhân viên gửi duyệt nướng xong tới Chủ Tiệm (Admin)
+ */
+export async function broadcastBakeApprovalRequest(payload: BakeApprovalPayload) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'bake_approval_requested',
+        payload: {
+          ...payload,
+          requested_at: payload.requested_at || new Date().toISOString(),
+        },
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bake_approval_requested', { detail: payload }));
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastBakeApprovalRequest:', err);
+  }
+}
+
+/**
+ * Phát sóng khi Chủ Tiệm (Admin) đã Chấp Nhận hoặc Từ Chối duyệt nướng xong
+ */
+export async function broadcastBakeApprovalResolved(payload: BakeApprovalResolvedPayload) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'bake_approval_resolved',
+        payload: {
+          ...payload,
+          resolved_at: payload.resolved_at || new Date().toISOString(),
+        },
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('bake_approval_resolved', { detail: payload }));
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastBakeApprovalResolved:', err);
+  }
 }
 
 /**

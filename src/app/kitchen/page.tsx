@@ -10,14 +10,16 @@ import {
   reconnectSyncChannel,
   parsePreorderFromNotes, 
   formatPickupDateTime,
-  cleanDisplayNotes
+  cleanDisplayNotes,
+  broadcastBakeApprovalRequest,
+  broadcastBakeApprovalResolved
 } from '@/lib/supabase/realtimeSync';
 import { 
   ChefHat, Clock, CheckCircle2, ArrowRight, Flame, Sparkles, 
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
   ShoppingBag, Phone, User, Camera, X, AlertTriangle, Volume2, VolumeX, Bell,
   Package, Search, Plus, Minus, ChevronDown, Timer, Play, Calculator, Scale, BookOpen, CheckCheck, Send, History,
-  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft, Utensils, Lock, Shield, KeyRound
+  Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft, Utensils, Lock, Shield, KeyRound, XCircle
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { soundManager } from '@/lib/utils/audioAlert';
@@ -97,6 +99,9 @@ interface KDSOrder {
   ready_stock_qty?: number;
   need_bake_qty?: number;
   bake_status?: 'pending' | 'preparing' | 'done';
+  bake_approval_status?: 'idle' | 'pending' | 'approved' | 'rejected';
+  bake_approval_requested_at?: string;
+  bake_approval_requested_by?: string;
   linked_bake_order_number?: string;
   parent_order_number?: string;
   items: OrderItem[];
@@ -188,17 +193,6 @@ export default function KitchenPage() {
 
   // ── MODAL XEM CHI TIẾT ĐƠN ĐẶT BÁNH ──
   const [orderDetailModalData, setOrderDetailModalData] = useState<KDSOrder | null>(null);
-
-  // ── MODAL XÁC THỰC QUYỀN CHỦ TIỆM (ADMIN) MỞ KHÓA GIAO BÁNH ──
-  const [adminUnlockModalState, setAdminUnlockModalState] = useState<{
-    isOpen: boolean;
-    order: KDSOrder | null;
-  }>({
-    isOpen: false,
-    order: null,
-  });
-  const [adminUnlockPassword, setAdminUnlockPassword] = useState('');
-  const [adminUnlockError, setAdminUnlockError] = useState('');
 
   // ── MODAL CÔNG THỨC BOM CỐT BÁNH CHO THỢ BẾP ──
   const [bomModalOrder, setBomModalOrder] = useState<KDSOrder | null>(null);
@@ -809,6 +803,12 @@ export default function KitchenPage() {
                   const readyStockQty = isDoneBake ? (ordQty || Number(o.ready_stock_qty || 0)) : (o.ready_stock_qty !== undefined ? Number(o.ready_stock_qty) : (matchBake && matchBake[2] ? Number(matchBake[2]) : undefined));
                   const bakeStatus = isDoneBake ? 'done' : (o.bake_status || (needBakeQty && needBakeQty > 0 ? 'pending' : 'done'));
 
+                  const isApprovalPending = Boolean(
+                    o.bake_approval_status === 'pending' || 
+                    o.notes?.includes('YÊU CẦU DUYỆT NƯỚNG XONG')
+                  );
+                  const bakeApprovalStatus = isDoneBake ? 'approved' : (isApprovalPending ? 'pending' : (o.bake_approval_status || 'idle'));
+
                   const matchParent = o.notes?.match(/BỔ SUNG CHO ĐƠN #(BK-[A-Z0-9-]+)/i);
                   const parentOrderNum = o.parent_order_number || (matchParent ? matchParent[1] : (o.order_number?.endsWith('-LAM') ? o.order_number.replace(/-LAM$/, '') : undefined));
                   const linkedBakeOrder = o.linked_bake_order_number || (needBakeQty && needBakeQty > 0 ? `${o.order_number}-LAM` : undefined);
@@ -841,6 +841,7 @@ export default function KitchenPage() {
                     ready_stock_qty: readyStockQty,
                     need_bake_qty: needBakeQty,
                     bake_status: bakeStatus,
+                    bake_approval_status: bakeApprovalStatus,
                     linked_bake_order_number: linkedBakeOrder,
                     parent_order_number: parentOrderNum,
                     cake_order_spec: o.cake_order_spec || o.items?.[0]?.cake_order_spec,
@@ -999,6 +1000,11 @@ export default function KitchenPage() {
                 bake_status: (existing?.bake_status === 'done' || so.bake_status === 'done' || so.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || existing?.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ'))
                   ? 'done'
                   : (existing?.bake_status ?? so.bake_status),
+                bake_approval_status: (existing?.bake_status === 'done' || so.bake_status === 'done' || so.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || existing?.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ'))
+                  ? 'approved'
+                  : (so.notes?.includes('YÊU CẦU DUYỆT NƯỚNG XONG') || existing?.notes?.includes('YÊU CẦU DUYỆT NƯỚNG XONG') || existing?.bake_approval_status === 'pending'
+                    ? 'pending'
+                    : (existing?.bake_approval_status || 'idle')),
                 linked_bake_order_number: existing?.linked_bake_order_number ?? so.linked_bake_order_number,
                 parent_order_number: existing?.parent_order_number ?? so.parent_order_number,
                 cake_order_spec: existing?.cake_order_spec ?? so.cake_order_spec,
@@ -2077,26 +2083,18 @@ export default function KitchenPage() {
     };
   };
 
-  // ⚡ Mở khóa giao hàng khẩn cấp: Chỉ Chủ Tiệm (Admin) mới có quyền xác nhận nướng xong đủ bánh để giao ngay
-  const handleForceUnlockDelivery = async (order: KDSOrder, isAlreadyVerifiedAdmin: boolean = false) => {
-    // Kiểm tra quyền Admin
-    if (!isAdmin && !isAlreadyVerifiedAdmin) {
-      setAdminUnlockPassword('');
-      setAdminUnlockError('');
-      setAdminUnlockModalState({ isOpen: true, order });
-      return;
-    }
-
+  // ⚡ Mở khóa giao hàng khẩn cấp khi Admin duyệt nướng xong
+  const handleForceUnlockDelivery = async (order: KDSOrder) => {
     const orderId = order.id;
     const orderNum = order.order_number;
     const fullQty = order.orderQuantity || ((order.ready_stock_qty || 0) + (order.need_bake_qty || 0)) || 1;
 
     let updatedNotes = order.notes || '';
-    if (updatedNotes.includes('CHỜ BẾP LÀM')) {
-      updatedNotes = updatedNotes
-        .replace(/\[⏳\s*CHỜ BẾP LÀM \d+ CÁI(?:\s*\(ĐÃ CÓ SẴN \d+(?:\/\d+)? CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI]`)
-        .replace(/CHỜ BẾP LÀM \d+ CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI`);
-    } else {
+    updatedNotes = updatedNotes
+      .replace(/\[⏳\s*YÊU CẦU DUYỆT NƯỚNG XONG:\s*\d+\s*CÁI\]/gi, '')
+      .replace(/\[⏳\s*CHỜ BẾP LÀM \d+ CÁI(?:\s*\(ĐÃ CÓ SẴN \d+(?:\/\d+)? CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI]`)
+      .replace(/CHỜ BẾP LÀM \d+ CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI`);
+    if (!updatedNotes.includes('ĐÃ BẾP LÀM XONG ĐỦ')) {
       updatedNotes = `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI] ${updatedNotes}`.trim();
     }
 
@@ -2104,6 +2102,7 @@ export default function KitchenPage() {
       ...order,
       need_bake_qty: 0,
       bake_status: 'done',
+      bake_approval_status: 'approved',
       ready_stock_qty: fullQty,
       notes: updatedNotes,
     };
@@ -2115,7 +2114,7 @@ export default function KitchenPage() {
           return updatedOrder;
         }
         if (o.order_number === `${orderNum}-LAM` || o.parent_order_number === orderNum) {
-          return { ...o, status: 'completed', need_bake_qty: 0, bake_status: 'done' };
+          return { ...o, status: 'completed', need_bake_qty: 0, bake_status: 'done', bake_approval_status: 'approved' };
         }
         return o;
       })
@@ -2134,13 +2133,14 @@ export default function KitchenPage() {
                   ...o,
                   need_bake_qty: 0,
                   bake_status: 'done',
+                  bake_approval_status: 'approved',
                   ready_stock_qty: fullQty,
                   notes: updatedNotes,
                   updated_at: new Date().toISOString(),
                 };
               }
               if (o.order_number === `${orderNum}-LAM` || o.parent_order_number === orderNum) {
-                return { ...o, status: 'completed', need_bake_qty: 0, bake_status: 'done', updated_at: new Date().toISOString() };
+                return { ...o, status: 'completed', need_bake_qty: 0, bake_status: 'done', bake_approval_status: 'approved', updated_at: new Date().toISOString() };
               }
               return o;
             });
@@ -2155,6 +2155,11 @@ export default function KitchenPage() {
 
     // 3. Broadcast và đồng bộ Supabase + IndexedDB
     await broadcastOrderStatusUpdate(orderNum, 'ready', updatedOrder);
+    await broadcastBakeApprovalResolved({
+      order_number: orderNum,
+      action: 'approved',
+      resolved_by: user.name || 'Chủ Tiệm (Admin)',
+    });
     syncOrderToSupabase(updatedOrder, 'ready');
 
     if (typeof navigator !== 'undefined' && navigator.onLine) {
@@ -2177,6 +2182,7 @@ export default function KitchenPage() {
       (db.orders.where('order_number').equals(orderNum) as any).modify({
         need_bake_qty: 0,
         bake_status: 'done',
+        bake_approval_status: 'approved',
         ready_stock_qty: fullQty,
         notes: updatedNotes,
         updated_at: new Date().toISOString(),
@@ -2186,43 +2192,173 @@ export default function KitchenPage() {
     soundManager.playNewOrderChime();
     setKdsToast({
       id: String(Date.now()),
-      title: '⚡ Chủ Tiệm Đã Duyệt Nướng Xong!',
+      title: '⚡ Đã Phê Duyệt Nướng Xong!',
       subtitle: `Đơn #${orderNum} đã xác nhận đủ ${fullQty} cái bánh, sẵn sàng giao ngay.`,
       orderNumber: orderNum,
     });
   };
 
-  // Kích hoạt khi bấm nút "Xác Nhận Đã Nướng Xong"
-  const handleRequestUnlockDelivery = (order: KDSOrder) => {
-    if (isAdmin) {
-      if (confirm(`👑 Xác nhận với tư cách Chủ Tiệm (Admin):\nBếp đã hoàn tất nướng đủ bánh cho đơn #${order.order_number}?\n\nBấm OK để mở khóa giao ngay!`)) {
-        handleForceUnlockDelivery(order, true);
-      }
-    } else {
-      setAdminUnlockPassword('');
-      setAdminUnlockError('');
-      setAdminUnlockModalState({ isOpen: true, order });
+  // 1. Dành cho nhân viên: Báo đã nướng xong, gửi yêu cầu thời gian thực tới Chủ Tiệm (Admin)
+  const handleRequestStaffBakeApproval = async (order: KDSOrder) => {
+    const orderNum = order.order_number;
+    const needBake = order.need_bake_qty || 1;
+    const cakeName = order.cake_name || order.items?.[0]?.product_name_snapshot || 'Bánh sinh nhật';
+
+    // Cập nhật ghi chú thêm thẻ yêu cầu duyệt
+    let notes = order.notes || '';
+    if (!notes.includes('YÊU CẦU DUYỆT NƯỚNG XONG')) {
+      notes = `[⏳ YÊU CẦU DUYỆT NƯỚNG XONG: ${needBake} CÁI] ${notes}`.trim();
     }
+
+    // Cập nhật state UI
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.order_number === orderNum || o.id === order.id
+          ? { ...o, bake_approval_status: 'pending', notes }
+          : o
+      )
+    );
+
+    // Cập nhật localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((o: any) =>
+              o.order_number === orderNum || o.id === order.id
+                ? { ...o, bake_approval_status: 'pending', notes, updated_at: new Date().toISOString() }
+                : o
+            );
+            localStorage.setItem('bakery_orders', JSON.stringify(updated));
+          }
+        }
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+      } catch {}
+    }
+
+    // Cập nhật Supabase & Dexie
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      try {
+        supabase.from('orders').update({
+          notes,
+          updated_at: new Date().toISOString(),
+        }).eq('order_number', orderNum).then();
+      } catch {}
+    }
+    try {
+      (db.orders.where('order_number').equals(orderNum) as any).modify({
+        bake_approval_status: 'pending',
+        notes,
+        updated_at: new Date().toISOString(),
+      });
+    } catch {}
+
+    // Phát sóng Realtime tới tài khoản Admin ngay lập tức
+    await broadcastBakeApprovalRequest({
+      order_number: orderNum,
+      cake_name: cakeName,
+      need_bake_qty: needBake,
+      requested_by: user.name || 'Nhân Viên Bếp',
+      order_data: order,
+    });
+
+    soundManager.playNewOrderChime();
+    setKdsToast({
+      id: String(Date.now()),
+      title: '⏳ Đã Gửi Yêu Cầu Duyệt Nướng Xong!',
+      subtitle: `Hệ thống đã gửi thông báo thời gian thực tới Chủ Tiệm (Admin) cho đơn #${orderNum}. Vui lòng chờ phê duyệt!`,
+      orderNumber: orderNum,
+    });
   };
 
-  // Xác thực mật khẩu Chủ Tiệm (Admin) trong modal mở khóa
-  const handleAdminUnlockSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setAdminUnlockError('');
-    if (!adminUnlockPassword.trim()) {
-      setAdminUnlockError('Vui lòng nhập mật khẩu Chủ Tiệm (Admin)!');
-      return;
+  // 2. Dành cho nhân viên: Hủy yêu cầu duyệt nếu bấm nhầm
+  const handleCancelStaffBakeApproval = async (order: KDSOrder) => {
+    const orderNum = order.order_number;
+    let notes = (order.notes || '').replace(/\[⏳\s*YÊU CẦU DUYỆT NƯỚNG XONG:\s*\d+\s*CÁI\]/gi, '').trim();
+
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.order_number === orderNum || o.id === order.id
+          ? { ...o, bake_approval_status: 'idle', notes }
+          : o
+      )
+    );
+
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((o: any) =>
+              o.order_number === orderNum || o.id === order.id
+                ? { ...o, bake_approval_status: 'idle', notes, updated_at: new Date().toISOString() }
+                : o
+            );
+            localStorage.setItem('bakery_orders', JSON.stringify(updated));
+          }
+        }
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+      } catch {}
     }
-    const res = loginAdmin(adminUnlockPassword);
-    if (!res.success) {
-      setAdminUnlockError(res.error || 'Mật khẩu Admin không chính xác!');
-      return;
+
+    await broadcastBakeApprovalResolved({
+      order_number: orderNum,
+      action: 'rejected',
+      resolved_by: 'Nhân viên hủy yêu cầu',
+    });
+  };
+
+  // 3. Dành cho Admin: Duyệt ngay tại thẻ đơn hàng
+  const handleApproveBakeApproval = async (order: KDSOrder) => {
+    await handleForceUnlockDelivery(order);
+  };
+
+  // 4. Dành cho Admin: Từ chối duyệt tại thẻ đơn hàng
+  const handleRejectBakeApproval = async (order: KDSOrder) => {
+    const orderNum = order.order_number;
+    let notes = (order.notes || '').replace(/\[⏳\s*YÊU CẦU DUYỆT NƯỚNG XONG:\s*\d+\s*CÁI\]/gi, '').trim();
+
+    setOrders((prev) =>
+      prev.map((o) =>
+        o.order_number === orderNum || o.id === order.id
+          ? { ...o, bake_approval_status: 'rejected', notes }
+          : o
+      )
+    );
+
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((o: any) =>
+              o.order_number === orderNum || o.id === order.id
+                ? { ...o, bake_approval_status: 'rejected', notes, updated_at: new Date().toISOString() }
+                : o
+            );
+            localStorage.setItem('bakery_orders', JSON.stringify(updated));
+          }
+        }
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+      } catch {}
     }
-    if (adminUnlockModalState.order) {
-      handleForceUnlockDelivery(adminUnlockModalState.order, true);
-    }
-    setAdminUnlockModalState({ isOpen: false, order: null });
-    setAdminUnlockPassword('');
+
+    await broadcastBakeApprovalResolved({
+      order_number: orderNum,
+      action: 'rejected',
+      resolved_by: user.name || 'Chủ Tiệm (Admin)',
+    });
+
+    setKdsToast({
+      id: String(Date.now()),
+      title: '❌ Đã Từ Chối Duyệt Nướng Xong',
+      subtitle: `Đơn #${orderNum} đã được trả về trạng thái chờ nướng tiếp.`,
+      orderNumber: orderNum,
+    });
   };
 
   // Xác nhận thanh toán & hoàn thành giao hàng ở Bước 3
@@ -3959,7 +4095,7 @@ export default function KitchenPage() {
 
                       {/* Nút hành động giao hàng: 100% vs Cần thu tiền (Khóa nếu đang chờ bếp làm bổ sung) */}
                       {Boolean(order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done') ? (
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           <div className="p-2.5 rounded-xl bg-amber-950/80 border border-amber-500/50 text-amber-300 text-xs font-semibold flex items-center gap-2">
                             <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
                             <div className="leading-tight flex-1">
@@ -3969,36 +4105,89 @@ export default function KitchenPage() {
                               </div>
                             </div>
                           </div>
-                          <button
-                            type="button"
-                            disabled
-                            className="w-full py-2 rounded-xl bg-zinc-800 text-zinc-500 font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed opacity-60"
-                            title={`Chờ bếp hoàn thành nướng ${order.need_bake_qty} cái bánh bổ sung ở Bước 1 & 2 trước khi giao`}
-                          >
-                            <Clock className="w-4 h-4" /> Đang Chờ Bếp Làm Bổ Sung ({order.need_bake_qty} cái)
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleRequestUnlockDelivery(order)}
-                            className={`w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-md ${
-                              isAdmin
-                                ? 'bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white shadow-emerald-900/30'
-                                : 'bg-zinc-800/90 hover:bg-zinc-700/90 text-amber-300 border border-amber-500/40 shadow-amber-950/30'
-                            }`}
-                            title="Chỉ tài khoản Chủ Tiệm (Admin) mới có quyền xác nhận nướng xong để mở khóa giao hàng"
-                          >
-                            {isAdmin ? (
-                              <>
-                                <CheckCircle2 className="w-4 h-4 text-emerald-300" />
-                                <span>⚡ Xác Nhận Đã Nướng Xong ({order.need_bake_qty} cái) Để Giao Ngay</span>
-                              </>
+
+                          {/* Kiểm tra trạng thái yêu cầu phê duyệt thời gian thực */}
+                          {(order.bake_approval_status === 'pending' || order.notes?.includes('YÊU CẦU DUYỆT NƯỚNG XONG')) ? (
+                            !isAdmin ? (
+                              /* GIAO DIỆN NHÂN VIÊN: ĐANG CHỜ ADMIN DUYỆT */
+                              <div className="p-3 rounded-2xl bg-amber-950/80 border-2 border-amber-500/80 text-amber-200 space-y-2 shadow-lg shadow-amber-950/50 animate-pulse">
+                                <div className="flex items-center gap-2 font-black text-xs text-amber-300">
+                                  <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
+                                  <span>⏳ ĐANG CHỜ CHỦ TIỆM (ADMIN) PHÊ DUYỆT</span>
+                                </div>
+                                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                                  Đã gửi thông báo thời gian thực tới Chủ Tiệm. Ngay khi Chủ Tiệm bấm [Chấp Nhận], nút Giao Ngay sẽ tự động mở khóa tức thì!
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCancelStaffBakeApproval(order)}
+                                  className="w-full py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-[11px] border border-zinc-700 transition cursor-pointer active:scale-95"
+                                >
+                                  Hủy yêu cầu duyệt (Nếu bấm nhầm)
+                                </button>
+                              </div>
                             ) : (
-                              <>
-                                <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                                <span>Xác Nhận Đã Nướng Xong ({order.need_bake_qty} cái) • <span className="underline font-bold text-amber-200">Chỉ Admin</span></span>
-                              </>
-                            )}
-                          </button>
+                              /* GIAO DIỆN ADMIN: THẺ THÔNG BÁO DUYỆT TRỰC TIẾP TRÊN ĐƠN */
+                              <div className="p-3 rounded-2xl bg-amber-950/90 border-2 border-amber-500 text-amber-200 space-y-2.5 shadow-xl shadow-amber-950/50">
+                                <div className="flex items-center gap-2 font-black text-xs text-amber-300">
+                                  <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 animate-bounce" />
+                                  <span>🔔 NHÂN VIÊN BÁO ĐÃ NƯỚNG XONG ({order.need_bake_qty} CÁI)!</span>
+                                </div>
+                                <p className="text-[11px] text-amber-200/80">
+                                  Xác nhận hoàn tất nướng đủ bánh để gộp vào đơn gốc và mở khóa nút Giao Ngay?
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRejectBakeApproval(order)}
+                                    className="flex-1 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs border border-zinc-700 transition cursor-pointer active:scale-95"
+                                  >
+                                    ❌ Từ Chối
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApproveBakeApproval(order)}
+                                    className="flex-1 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-900/40 cursor-pointer active:scale-95"
+                                  >
+                                    <CheckCircle2 className="w-4 h-4" /> ✅ Chấp Nhận & Giao
+                                  </button>
+                                </div>
+                              </div>
+                            )
+                          ) : (
+                            /* TRẠNG THÁI BÌNH THƯỜNG (CHƯA GỬI DUYỆT) */
+                            <>
+                              <button
+                                type="button"
+                                disabled
+                                className="w-full py-2 rounded-xl bg-zinc-800 text-zinc-500 font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed opacity-60"
+                                title={`Chờ bếp hoàn thành nướng ${order.need_bake_qty} cái bánh bổ sung ở Bước 1 & 2 trước khi giao`}
+                              >
+                                <Clock className="w-4 h-4" /> Đang Chờ Bếp Làm Bổ Sung ({order.need_bake_qty} cái)
+                              </button>
+                              {isAdmin ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleApproveBakeApproval(order)}
+                                  className="w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-md bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white shadow-emerald-900/30"
+                                  title="Chủ Tiệm phê duyệt nướng xong để mở khóa giao ngay"
+                                >
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                                  <span>⚡ Xác Nhận Đã Nướng Xong ({order.need_bake_qty} cái) Để Giao Ngay</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRequestStaffBakeApproval(order)}
+                                  className="w-full py-2.5 rounded-xl font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shadow-md bg-gradient-to-r from-amber-600/90 to-orange-600/90 hover:from-amber-500 hover:to-orange-500 text-white border border-amber-400/30"
+                                  title="Báo với Chủ Tiệm là bánh đã nướng xong để Chủ Tiệm duyệt thời gian thực"
+                                >
+                                  <Clock className="w-4 h-4 text-amber-200" />
+                                  <span>⚡ Báo Đã Nướng Xong • Gửi Duyệt Admin ({order.need_bake_qty} cái)</span>
+                                </button>
+                              )}
+                            </>
+                          )}
                         </div>
                       ) : (
                         <>
@@ -4837,97 +5026,6 @@ export default function KitchenPage() {
         onClose={() => setIsStickerModalOpen(false)}
         data={stickerModalData}
       />
-
-      {/* ── MODAL XÁC THỰC QUYỀN CHỦ TIỆM (ADMIN) MỞ KHÓA GIAO BÁNH ── */}
-      {adminUnlockModalState.isOpen && adminUnlockModalState.order && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
-          <div className="bg-[#1e1713] border-2 border-amber-600/70 rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 text-zinc-100">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-amber-900/40">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center">
-                  <Shield className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-black text-sm sm:text-base text-amber-200 flex items-center gap-1.5">
-                    Xác Thực Quyền Chủ Tiệm (Admin)
-                  </h3>
-                  <p className="text-[11px] text-zinc-400">Yêu cầu quyền Admin để duyệt nướng xong & mở khóa giao</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setAdminUnlockModalState({ isOpen: false, order: null })}
-                className="text-zinc-400 hover:text-white p-1 rounded-xl hover:bg-zinc-800 transition cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Thông tin đơn hàng cần mở khóa */}
-            <div className="p-3.5 bg-zinc-900/90 rounded-2xl border border-zinc-800 space-y-1.5 text-xs">
-              <div className="flex justify-between items-center text-zinc-300">
-                <span>Mã đơn hàng:</span>
-                <span className="font-mono font-bold text-amber-400">#{adminUnlockModalState.order.order_number}</span>
-              </div>
-              <div className="flex justify-between items-center text-zinc-300">
-                <span>Món bánh:</span>
-                <span className="font-bold text-white truncate max-w-[200px]">
-                  {adminUnlockModalState.order.cake_name || adminUnlockModalState.order.items?.[0]?.product_name_snapshot || 'Bánh sinh nhật'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center text-amber-300 pt-1 border-t border-zinc-800">
-                <span>Số bánh cần nướng thêm:</span>
-                <span className="font-black text-amber-400 bg-amber-950/80 px-2 py-0.5 rounded-md border border-amber-500/40">
-                  {adminUnlockModalState.order.need_bake_qty || 1} cái
-                </span>
-              </div>
-            </div>
-
-            {/* Form nhập mật khẩu Admin */}
-            <form onSubmit={handleAdminUnlockSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-amber-400" /> Mật khẩu Chủ Tiệm (Admin):
-                </label>
-                <input
-                  type="password"
-                  autoFocus
-                  value={adminUnlockPassword}
-                  onChange={(e) => setAdminUnlockPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu Admin..."
-                  className="w-full px-3.5 py-2.5 bg-zinc-950/90 border border-zinc-700 focus:border-amber-500 focus:ring-2 focus:ring-amber-500/30 rounded-xl text-sm font-bold text-white placeholder:text-zinc-600 outline-none"
-                />
-                {adminUnlockError && (
-                  <p className="text-xs text-rose-400 font-semibold flex items-center gap-1 mt-1">
-                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" /> {adminUnlockError}
-                  </p>
-                )}
-                <p className="text-[10px] text-zinc-500">
-                  Mật khẩu mặc định: <code className="text-amber-300 font-mono">admin123</code> (hoặc mật khẩu admin bạn đã đổi)
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => setAdminUnlockModalState({ isOpen: false, order: null })}
-                  className="flex-1 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-bold text-xs transition cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-500 hover:to-emerald-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg shadow-emerald-900/40 cursor-pointer active:scale-95"
-                >
-                  <CheckCircle2 className="w-4 h-4" /> Xác Nhận & Mở Khóa
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }
