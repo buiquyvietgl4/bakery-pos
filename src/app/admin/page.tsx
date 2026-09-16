@@ -28,6 +28,9 @@ import {
   getDeletedProductIds,
   markProductAsDeleted,
   unmarkProductDeleted,
+  decodeProductWithMeta,
+  mergeProductLists,
+  persistProductToSupabase,
 } from '@/lib/utils/productManager';
 import {
   getTelegramConfig,
@@ -475,7 +478,8 @@ export default function AdminDashboard() {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed)) {
-            const active = filterActiveProducts(parsed);
+            const decoded = parsed.map(decodeProductWithMeta);
+            const active = filterActiveProducts(decoded);
             return active.map((p: any) => ({
               ...p,
               stock_qty: stockMap[p.id] ?? (p.name ? stockMap[p.name.toLowerCase().trim()] : undefined) ?? p.stock_qty ?? 10,
@@ -1251,17 +1255,18 @@ export default function AdminDashboard() {
       } catch {}
 
       if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
-        const { data: prodData } = await supabase
-          .from('products')
-          .select('id, name, category, image_url, selling_price, base_cost_price, food_cost_pct, is_preorder_only, is_active, show_on_menu, cake_type_label, product_type, supplier_name, barcode')
-          .eq('is_active', true)
-          .order('created_at', { ascending: false });
+        try {
+          const { data: prodData, error: sbErr } = await supabase
+            .from('products')
+            .select('*')
+            .eq('is_active', true)
+            .order('created_at', { ascending: false });
 
-        if (prodData && prodData.length > 0) {
-          const activeSupabaseProds = filterActiveProducts(prodData);
-          if (activeSupabaseProds.length > 0) {
-            currentProds = activeSupabaseProds;
+          if (!sbErr && prodData && prodData.length > 0) {
+            currentProds = mergeProductLists(currentProds, prodData);
           }
+        } catch (e) {
+          console.warn('Lỗi tải sản phẩm từ Supabase:', e);
         }
       }
 
@@ -1388,9 +1393,10 @@ export default function AdminDashboard() {
         if (!payload || !payload.product) return;
         const { action, product } = payload;
         if (action === 'create') {
+          const dec = decodeProductWithMeta(product);
           setProducts((prev) => {
-            if (prev.some((p) => p.id === product.id || p.name === product.name)) return prev;
-            const updated = [product, ...prev];
+            if (prev.some((p) => p.id === dec.id || p.name === dec.name)) return prev;
+            const updated = [dec, ...prev];
             try {
               localStorage.setItem('bakery_products', JSON.stringify(updated));
               db.products.put(product);
@@ -2026,11 +2032,12 @@ export default function AdminDashboard() {
       window.dispatchEvent(new Event('bakery_products_updated'));
     }
     try {
-      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
-        await supabase.from('products').update({ show_on_menu: nextShow }).eq('id', productId);
+      const target = updated.find((p) => p.id === productId);
+      if (target) {
+        await persistProductToSupabase(target);
       }
       await db.products.update(productId, { show_on_menu: nextShow });
-      await broadcastProductChange({ action: 'update', product: updated.find((p) => p.id === productId) });
+      await broadcastProductChange({ action: 'update', product: target });
     } catch {}
   };
 
@@ -2045,11 +2052,12 @@ export default function AdminDashboard() {
       window.dispatchEvent(new Event('bakery_products_updated'));
     }
     try {
-      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
-        await supabase.from('products').update({ cake_type_label: label, is_preorder_only: isPreorder }).eq('id', productId);
+      const target = updated.find((p) => p.id === productId);
+      if (target) {
+        await persistProductToSupabase(target);
       }
       await db.products.update(productId, { cake_type_label: label, is_preorder_only: isPreorder });
-      await broadcastProductChange({ action: 'update', product: updated.find((p) => p.id === productId) });
+      await broadcastProductChange({ action: 'update', product: target });
     } catch {}
   };
 
@@ -2093,28 +2101,10 @@ export default function AdminDashboard() {
     }
 
     try {
-      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
-        await supabase.from('products').insert({
-          id: newId,
-          name: newProdName,
-          category: newProdCategory,
-          selling_price: newProdPrice,
-          base_cost_price: baseCost,
-          import_price: newProductObj.import_price || null,
-          product_type: newProductObj.product_type || 'produced',
-          supplier_name: newProductObj.supplier_name || null,
-          barcode: newProductObj.barcode || null,
-          stock_qty: newProductObj.stock_qty ?? 0,
-          image_url: newProductObj.image_url,
-          is_preorder_only: isImported ? false : (newProdCakeLabel === 'pre_order' || newProdIsPreorder),
-          cake_type_label: newProductObj.cake_type_label || 'standard',
-          show_on_menu: newProductObj.show_on_menu !== false,
-          bom_preset_id: newProductObj.bom_preset_id || null,
-          is_active: true,
-        });
-      }
+      unmarkProductDeleted(newId, newProdName);
+      await persistProductToSupabase(newProductObj);
 
-      const updated = [newProductObj, ...products];
+      const updated = [newProductObj, ...products.filter((p) => p.id !== newId)];
       setProducts(updated);
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_products', JSON.stringify(updated));
@@ -2244,17 +2234,9 @@ export default function AdminDashboard() {
       });
 
       // Cập nhật lên Supabase nếu online và không ở chế độ Local Mode
-      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
-        try {
-          await supabase.from('products').update({
-            stock_qty: newStock,
-            import_price: unitPrice,
-            base_cost_price: targetProd.product_type === 'imported' ? unitPrice : (targetProd.base_cost_price || unitPrice),
-            supplier_name: poProductSupplier || targetProd.supplier_name || null,
-          }).eq('id', targetProd.id);
-        } catch (err) {
-          console.warn('Lỗi cập nhật PO sản phẩm lên Supabase:', err);
-        }
+      const updatedTargetProd = updatedProducts.find((p) => p.id === targetProd.id);
+      if (updatedTargetProd) {
+        persistProductToSupabase(updatedTargetProd).catch(console.error);
       }
 
       // Phát sóng cập nhật
@@ -2344,6 +2326,7 @@ export default function AdminDashboard() {
     try {
       if (targetProduct) {
         await db.products.update(productId, { stock_qty: qty });
+        persistProductToSupabase(targetProduct).catch(console.error);
         // Phát sóng đồng bộ tức thì sang POS và KDS bếp (< 50ms)
         await broadcastProductChange({ action: 'update', product: targetProduct });
       }

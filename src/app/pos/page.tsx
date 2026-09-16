@@ -9,6 +9,8 @@ import {
   getDeletedProductIds,
   markProductAsDeleted,
   isImportedProduct,
+  decodeProductWithMeta,
+  mergeProductLists,
 } from '@/lib/utils/productManager';
 import { generateUUID } from '@/lib/utils/uuid';
 import { 
@@ -146,7 +148,7 @@ export default function POSPage() {
         if (saved) {
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.map((p: any) => ({
+            return parsed.map((p: any) => decodeProductWithMeta({
               ...p,
               selling_price: Number(p.selling_price ?? p.price ?? 0),
             }));
@@ -755,8 +757,8 @@ export default function POSPage() {
           try {
             const parsed = JSON.parse(saved);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              localProducts = parsed;
-              currentProducts = parsed;
+              localProducts = parsed.map(decodeProductWithMeta);
+              currentProducts = localProducts;
             }
           } catch {}
         }
@@ -808,36 +810,27 @@ export default function POSPage() {
 
       // Sync from Supabase if online
       if (typeof navigator !== 'undefined' && navigator.onLine) {
-        const { data, error } = await supabase
-          .from('products')
-          .select('id, name, category, image_url, selling_price, is_active, is_preorder_only')
-          .eq('is_active', true)
-          .order('category')
-          .order('name');
+        try {
+          const { data, error } = await supabase
+            .from('products')
+            .select('*')
+            .eq('is_active', true)
+            .order('category')
+            .order('name');
 
-        if (!error && data && data.length > 0) {
-          const nonDeleted = filterActiveProducts(data);
-          const merged = nonDeleted.map((d: any) => {
-            const existing = currentProducts.find((cp) => cp.id === d.id);
-            const def = defMap.get(d.id);
-            const price = Number(d.selling_price ?? existing?.selling_price ?? def?.selling_price ?? 0);
-            return {
-              ...d,
-              selling_price: price,
-              stock_qty: existing?.stock_qty ?? def?.stock_qty ?? 10,
-              min_stock_alert: existing?.min_stock_alert ?? def?.min_stock_alert ?? 3,
-              unit: existing?.unit || def?.unit || 'cái',
-              is_semi_finished: existing?.is_semi_finished ?? def?.is_semi_finished ?? false,
-            };
-          });
-          setProducts(merged);
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('bakery_products', JSON.stringify(merged));
+          if (!error && data && data.length > 0) {
+            const merged = mergeProductLists(currentProducts, data);
+            setProducts(merged);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('bakery_products', JSON.stringify(merged));
+            }
+            try {
+              await db.products.clear();
+              await db.products.bulkPut(merged);
+            } catch {}
           }
-          try {
-            await db.products.clear();
-            await db.products.bulkPut(merged);
-          } catch {}
+        } catch (sbErr) {
+          console.warn('Lỗi đồng bộ sản phẩm từ Supabase tại POS:', sbErr);
         }
       }
     } catch (err) {
@@ -991,10 +984,10 @@ export default function POSPage() {
         if (!payload || !payload.product) return;
         const { action, product } = payload;
         if (action === 'create') {
-          const sanitized = {
+          const sanitized = decodeProductWithMeta({
             ...product,
             selling_price: Number(product.selling_price ?? product.price ?? 0),
-          };
+          });
           setProducts((prev) => {
             if (prev.some((p) => p.id === sanitized.id || p.name === sanitized.name)) return prev;
             const updated = [sanitized, ...prev];

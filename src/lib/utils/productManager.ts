@@ -233,3 +233,237 @@ export async function deleteProductEverywhere(
 
   return { success: true, method };
 }
+
+export const BAKERY_PRODUCT_METADATA_KEY = 'bakery_product_metadata_map';
+
+/**
+ * Đóng gói metadata sản phẩm vào URL ảnh (sử dụng hash #meta=...) để truyền an toàn qua Supabase
+ * mà không bị lỗi do thiếu cột trong bảng products.
+ */
+export function encodeProductImageUrl(baseImageUrl?: string, meta?: any): string {
+  const url = baseImageUrl || 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&auto=format&fit=crop';
+  if (!meta || Object.keys(meta).length === 0) return url;
+
+  const cleanUrl = url.split('#meta=')[0];
+  try {
+    const jsonStr = JSON.stringify(meta);
+    return `${cleanUrl}#meta=${encodeURIComponent(jsonStr)}`;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Giải mã metadata sản phẩm từ image_url hoặc từ local metadata map.
+ */
+export function decodeProductWithMeta(product: any): any {
+  if (!product) return product;
+
+  let meta: any = {};
+  const rawUrl = String(product.image_url || '');
+
+  // 1. Thử lấy từ hash URL
+  const hashIdx = rawUrl.indexOf('#meta=');
+  let cleanImageUrl = rawUrl;
+  if (hashIdx !== -1) {
+    cleanImageUrl = rawUrl.substring(0, hashIdx);
+    try {
+      meta = JSON.parse(decodeURIComponent(rawUrl.substring(hashIdx + 6)));
+    } catch {}
+  }
+
+  // 2. Thử lấy từ local metadata storage nếu có
+  if (typeof window !== 'undefined' && product.id) {
+    try {
+      const rawMetaMap = localStorage.getItem(BAKERY_PRODUCT_METADATA_KEY);
+      if (rawMetaMap) {
+        const metaMap = JSON.parse(rawMetaMap);
+        const localMeta = metaMap[product.id] || (product.name ? metaMap[String(product.name).toLowerCase().trim()] : null);
+        if (localMeta) {
+          meta = { ...localMeta, ...meta };
+        }
+      }
+    } catch {}
+  }
+
+  // 3. Nhận diện hàng nhập về bán
+  const isImported = isImportedProduct({ ...product, ...meta });
+  const prodType = meta.product_type || product.product_type || (isImported ? 'imported' : 'produced');
+
+  const baseCost = Number(product.base_cost_price ?? meta.import_price ?? product.import_price ?? 0);
+  const sellPrice = Number(product.selling_price ?? product.price ?? 0);
+  const foodCostPct = Number(product.food_cost_pct) || (sellPrice > 0 ? Math.round((baseCost / sellPrice) * 100 * 100) / 100 : 33);
+
+  return {
+    ...product,
+    ...meta,
+    image_url: cleanImageUrl || product.image_url,
+    product_type: prodType,
+    import_price: meta.import_price !== undefined ? meta.import_price : (isImported ? baseCost : product.import_price),
+    supplier_name: meta.supplier_name || product.supplier_name || (isImported ? 'Hàng nhập ngoài' : undefined),
+    barcode: meta.barcode || product.barcode || undefined,
+    stock_qty: product.stock_qty !== undefined ? product.stock_qty : (meta.stock_qty ?? 10),
+    unit: product.unit || meta.unit || 'cái',
+    is_preorder_only: isImported ? false : (product.is_preorder_only ?? false),
+    cake_type_label: isImported ? 'standard' : (product.cake_type_label || meta.cake_type_label || 'standard'),
+    show_on_menu: product.show_on_menu !== undefined ? product.show_on_menu : (meta.show_on_menu !== false),
+    bom_preset_id: product.bom_preset_id || meta.bom_preset_id || undefined,
+    base_cost_price: baseCost,
+    selling_price: sellPrice,
+    food_cost_pct: foodCostPct,
+    is_active: product.is_active !== false,
+  };
+}
+
+/**
+ * Lưu metadata của sản phẩm vào local cache
+ */
+export function saveProductMetadata(id: string, name: string, meta: any): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = localStorage.getItem(BAKERY_PRODUCT_METADATA_KEY);
+    const map = raw ? JSON.parse(raw) : {};
+    if (id) map[id] = meta;
+    if (name) map[name.toLowerCase().trim()] = meta;
+    localStorage.setItem(BAKERY_PRODUCT_METADATA_KEY, JSON.stringify(map));
+  } catch {}
+}
+
+/**
+ * Lưu sản phẩm lên Supabase một cách an toàn và chống lỗi schema.
+ */
+export async function persistProductToSupabase(product: any): Promise<{ success: boolean; error?: any }> {
+  const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+  if (!isOnline || isLocalMode()) return { success: true };
+
+  const isImported = isImportedProduct(product);
+  const baseCost = Number(product.base_cost_price ?? product.import_price ?? 0);
+  const sellPrice = Number(product.selling_price ?? 0);
+
+  const metaData = {
+    product_type: product.product_type || (isImported ? 'imported' : 'produced'),
+    import_price: product.import_price || (isImported ? baseCost : undefined),
+    supplier_name: product.supplier_name || (isImported ? 'Hàng nhập ngoài' : undefined),
+    barcode: product.barcode || undefined,
+    stock_qty: product.stock_qty ?? 0,
+    unit: product.unit || 'cái',
+    cake_type_label: product.cake_type_label || 'standard',
+    show_on_menu: product.show_on_menu !== false,
+    bom_preset_id: product.bom_preset_id || undefined,
+  };
+
+  // Lưu metadata cục bộ
+  saveProductMetadata(product.id, product.name, metaData);
+
+  // 1. Thử insert/upsert với đầy đủ các cột (nếu DB đã có schema mới)
+  const fullPayload: any = {
+    id: product.id,
+    name: product.name,
+    category: product.category || (isImported ? 'Bánh nhập về bán' : 'Bánh tiệm làm'),
+    selling_price: sellPrice,
+    base_cost_price: baseCost,
+    import_price: metaData.import_price || null,
+    product_type: metaData.product_type || 'produced',
+    supplier_name: metaData.supplier_name || null,
+    barcode: metaData.barcode || null,
+    stock_qty: metaData.stock_qty ?? 0,
+    image_url: product.image_url || null,
+    is_preorder_only: isImported ? false : Boolean(product.is_preorder_only),
+    cake_type_label: metaData.cake_type_label || 'standard',
+    show_on_menu: metaData.show_on_menu !== false,
+    bom_preset_id: metaData.bom_preset_id || null,
+    is_active: product.is_active !== false,
+  };
+  if (product.recipe_id) fullPayload.recipe_id = product.recipe_id;
+
+  try {
+    const { error: fullErr } = await supabase.from('products').upsert(fullPayload);
+    if (!fullErr) {
+      return { success: true };
+    }
+  } catch {}
+
+  // 2. Fallback: Lưu các cột tiêu chuẩn của Supabase, đóng gói metadata vào image_url
+  const encodedImageUrl = encodeProductImageUrl(product.image_url, metaData);
+  const standardPayload: any = {
+    id: product.id,
+    name: product.name,
+    category: product.category || (isImported ? 'Bánh nhập về bán' : 'Bánh tiệm làm'),
+    selling_price: sellPrice,
+    base_cost_price: baseCost,
+    image_url: encodedImageUrl,
+    is_active: product.is_active !== false,
+    is_preorder_only: isImported ? false : Boolean(product.is_preorder_only),
+  };
+  if (product.recipe_id) standardPayload.recipe_id = product.recipe_id;
+
+  try {
+    const { error: stdErr } = await supabase.from('products').upsert(standardPayload);
+    if (stdErr) {
+      console.error('Lưu sản phẩm Supabase thất bại:', stdErr);
+      return { success: false, error: stdErr };
+    }
+    return { success: true };
+  } catch (e) {
+    console.error('Lỗi ngoại lệ khi lưu sản phẩm Supabase:', e);
+    return { success: false, error: e };
+  }
+}
+
+/**
+ * Hợp nhất danh sách sản phẩm cục bộ (Local / Dexie) với danh sách từ Supabase Cloud.
+ * ĐẢM BẢO: Không bao giờ làm mất sản phẩm vừa tạo ở máy cục bộ chỉ vì Supabase chưa kịp có hoặc tải lại trang!
+ */
+export function mergeProductLists(localList: any[], supabaseList: any[]): any[] {
+  const deletedSet = getDeletedProductIds();
+  const productMap = new Map<string, any>();
+
+  // 1. Đưa các sản phẩm Supabase vào map trước
+  if (Array.isArray(supabaseList)) {
+    for (const raw of supabaseList) {
+      if (!raw) continue;
+      const decoded = decodeProductWithMeta(raw);
+      if (decoded.is_active === false) continue;
+      const idKey = String(decoded.id || '').toLowerCase().trim();
+      const nameKey = String(decoded.name || '').toLowerCase().trim();
+      if (idKey && deletedSet.has(idKey)) continue;
+      if (nameKey && deletedSet.has(nameKey)) continue;
+
+      productMap.set(decoded.id || nameKey, decoded);
+    }
+  }
+
+  // 2. Hợp nhất các sản phẩm Local
+  if (Array.isArray(localList)) {
+    for (const raw of localList) {
+      if (!raw) continue;
+      const decoded = decodeProductWithMeta(raw);
+      if (decoded.is_active === false) continue;
+      const idKey = String(decoded.id || '').toLowerCase().trim();
+      const nameKey = String(decoded.name || '').toLowerCase().trim();
+      if (idKey && deletedSet.has(idKey)) continue;
+      if (nameKey && deletedSet.has(nameKey)) continue;
+
+      const key = decoded.id || nameKey;
+      if (productMap.has(key)) {
+        const existing = productMap.get(key);
+        productMap.set(key, {
+          ...existing,
+          ...decoded,
+          stock_qty: decoded.stock_qty !== undefined ? decoded.stock_qty : existing.stock_qty,
+          image_url: decoded.image_url || existing.image_url,
+          product_type: decoded.product_type || existing.product_type,
+          supplier_name: decoded.supplier_name || existing.supplier_name,
+          import_price: decoded.import_price || existing.import_price,
+          barcode: decoded.barcode || existing.barcode,
+        });
+      } else {
+        // Giữ lại sản phẩm local và đẩy lên Supabase ngầm
+        productMap.set(key, decoded);
+        persistProductToSupabase(decoded).catch(console.error);
+      }
+    }
+  }
+
+  return Array.from(productMap.values());
+}
