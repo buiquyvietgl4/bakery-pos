@@ -17,7 +17,7 @@ import {
 import { 
   ChefHat, Clock, CheckCircle2, ArrowRight, Flame, Sparkles, 
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
-  ShoppingBag, Phone, User, Camera, X, AlertTriangle, Volume2, VolumeX, Bell,
+  ShoppingBag, ShoppingCart, Phone, User, Camera, X, AlertTriangle, Volume2, VolumeX, Bell,
   Package, Search, Plus, Minus, ChevronDown, Timer, Play, Calculator, Scale, BookOpen, CheckCheck, Send, History,
   Tag, RotateCcw, Eye, Banknote, DollarSign, ArrowLeft, Utensils, Lock, Shield, KeyRound, XCircle, Home
 } from 'lucide-react';
@@ -127,7 +127,7 @@ export interface ActiveOvenBatch {
 }
 
 export default function KitchenPage() {
-  const { isAdmin, loginAdmin, user, openLoginModal } = useAuth();
+  const { isAdmin, loginAdmin, user, openLoginModal, canAccessKitchen, isCashier } = useAuth();
   const [orders, setOrders] = useState<KDSOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>('');
@@ -2582,7 +2582,7 @@ export default function KitchenPage() {
     }
   };
 
-  // Auth Guard: Chưa đăng nhập không thể vào Bếp
+  // Auth Guard 1: Chưa đăng nhập không thể vào Bếp
   if (!user) {
     return (
       <div className="flex-1 min-h-[calc(100vh-4rem)] bg-zinc-950 flex items-center justify-center p-4">
@@ -2593,24 +2593,63 @@ export default function KitchenPage() {
           <div className="space-y-2">
             <h2 className="text-xl font-black text-white">Màn Hình Bếp (KDS) Đang Khóa</h2>
             <p className="text-xs text-zinc-400 leading-relaxed">
-              Vui lòng đăng nhập tài khoản Nhân viên Bếp hoặc Quản trị để theo dõi nướng bánh và xử lý giao hàng.
+              Vui lòng đăng nhập tài khoản Nhân Viên Bếp hoặc Quản trị để theo dõi nướng bánh và xử lý giao hàng.
             </p>
           </div>
           <div className="space-y-2 pt-2">
             <button
               type="button"
-              onClick={() => openLoginModal('staff')}
+              onClick={() => openLoginModal('kitchen')}
               className="w-full py-3.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-black text-sm shadow-md shadow-orange-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
             >
               <KeyRound className="w-4 h-4" />
-              <span>Đăng Nhập Vào Bếp Ngay</span>
+              <span>Đăng Nhập Tài Khoản Bếp (PIN 5678)</span>
             </button>
             <Link
-              href="/"
+              href="/pos"
               className="w-full py-3 px-4 rounded-2xl border border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
             >
-              <Home className="w-4 h-4 text-zinc-500" />
-              <span>Quay Về Trang Chủ</span>
+              <ShoppingCart className="w-4 h-4 text-amber-500" />
+              <span>Vào Bán Hàng (POS)</span>
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Auth Guard 2: Tài khoản Bán Hàng (Cashier) không có quyền vào Bếp
+  if (!canAccessKitchen) {
+    return (
+      <div className="flex-1 min-h-[calc(100vh-4rem)] bg-zinc-950 flex items-center justify-center p-4">
+        <div className="bg-zinc-900 rounded-3xl border border-zinc-800 p-6 sm:p-8 max-w-md w-full text-center shadow-2xl space-y-5 text-white animate-in zoom-in-95">
+          <div className="w-16 h-16 rounded-3xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto shadow-inner">
+            <Lock className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-xl font-black text-white">Giới Hạn Phân Quyền</h2>
+            <p className="text-xs text-zinc-400 leading-relaxed">
+              Tài khoản hiện tại của bạn là <strong className="text-amber-400 font-bold">{user.name || 'Thu Ngân / Bán Hàng'}</strong>, chỉ có quyền thao tác trên màn hình Bán Hàng (POS).
+            </p>
+            <p className="text-[11px] text-zinc-500">
+              Để vào Bếp bánh (KDS), vui lòng đăng nhập tài khoản Nhân Viên Bếp (Mã PIN: 5678) hoặc Chủ Tiệm!
+            </p>
+          </div>
+          <div className="space-y-2 pt-2">
+            <button
+              type="button"
+              onClick={() => openLoginModal('kitchen')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-black text-sm shadow-md shadow-orange-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>Đăng Nhập Tài Khoản Bếp (PIN 5678)</span>
+            </button>
+            <Link
+              href="/pos"
+              className="w-full py-3 px-4 rounded-2xl bg-amber-600/20 hover:bg-amber-600/30 border border-amber-500/40 text-amber-300 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+            >
+              <ShoppingCart className="w-4 h-4 text-amber-400" />
+              <span>Quay Lại Màn Hình Bán Hàng (POS)</span>
             </Link>
           </div>
         </div>

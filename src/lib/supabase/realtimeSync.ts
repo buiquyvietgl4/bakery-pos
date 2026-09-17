@@ -758,8 +758,142 @@ export async function broadcastBakeApprovalResolved(payload: BakeApprovalResolve
 /**
  * Phát sóng yêu cầu thu ngân gửi duyệt thanh toán chuyển khoản tới Chủ Tiệm (Admin)
  */
+// ── ĐỒNG BỘ YÊU CẦU DUYỆT CHUYỂN KHOẢN VÀO SUPABASE (PHÒNG ĐIỆN THOẠI KHÓA MÀN HÌNH) ──
+const DB_ROW_PENDING_TRANSFERS_ID = '00000000-0000-0000-0000-00000000000d';
+const DB_ROW_PENDING_TRANSFERS_NAME = 'SYS_CONFIG_PENDING_TRANSFERS';
+
+export async function fetchPendingTransfersFromDb(): Promise<TransferApprovalPayload[]> {
+  if (isLocalMode()) return [];
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return [];
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed)) {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('bakery_pending_transfers', JSON.stringify(parsed));
+            window.dispatchEvent(new CustomEvent('bakery_pending_transfers_updated'));
+          } catch {}
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi khi fetchPendingTransfersFromDb:', err);
+  }
+  return [];
+}
+
+export async function savePendingTransferToDb(payload: TransferApprovalPayload): Promise<void> {
+  // 1. Cập nhật local storage trước
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_pending_transfers');
+      const list: TransferApprovalPayload[] = raw ? JSON.parse(raw) : [];
+      if (!list.some((p) => p.order_number === payload.order_number)) {
+        const updated = [payload, ...list];
+        localStorage.setItem('bakery_pending_transfers', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('bakery_pending_transfers_updated'));
+      }
+    } catch {}
+  }
+
+  // 2. Lưu vào Supabase Database
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    const currentList = await fetchPendingTransfersFromDb();
+    const filtered = currentList.filter((p) => p.order_number !== payload.order_number);
+    const updatedList = [payload, ...filtered];
+    const notesContent = JSON.stringify(updatedList);
+
+    const { error } = await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_PENDING_TRANSFERS_ID,
+        name: DB_ROW_PENDING_TRANSFERS_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+    if (error) {
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`);
+      await supabase.from('recipes').insert({
+        id: DB_ROW_PENDING_TRANSFERS_ID,
+        name: DB_ROW_PENDING_TRANSFERS_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi khi savePendingTransferToDb:', err);
+  }
+}
+
+export async function removePendingTransferFromDb(orderNumber: string): Promise<void> {
+  // 1. Cập nhật local storage
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_pending_transfers');
+      if (raw) {
+        const list: TransferApprovalPayload[] = JSON.parse(raw);
+        const updated = list.filter((p) => p.order_number !== orderNumber);
+        localStorage.setItem('bakery_pending_transfers', JSON.stringify(updated));
+        window.dispatchEvent(new CustomEvent('bakery_pending_transfers_updated'));
+      }
+    } catch {}
+  }
+
+  // 2. Cập nhật Supabase
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    const currentList = await fetchPendingTransfersFromDb();
+    const updatedList = currentList.filter((p) => p.order_number !== orderNumber);
+    const notesContent = JSON.stringify(updatedList);
+
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_PENDING_TRANSFERS_ID,
+        name: DB_ROW_PENDING_TRANSFERS_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi khi removePendingTransferFromDb:', err);
+  }
+}
+
+/**
+ * Phát sóng yêu cầu thu ngân gửi duyệt thanh toán chuyển khoản tới Chủ Tiệm (Admin)
+ */
 export async function broadcastTransferApprovalRequest(payload: TransferApprovalPayload) {
   try {
+    // 1. Lưu vĩnh viễn vào Database trước để khi Admin mở điện thoại sau khi tắt màn hình vẫn đọc được ngay
+    savePendingTransferToDb(payload).catch(console.error);
+
+    // 2. Phát sóng Realtime
     const channel = ensureSyncChannel();
     if (channel) {
       await channel.send({
@@ -775,15 +909,17 @@ export async function broadcastTransferApprovalRequest(payload: TransferApproval
       window.dispatchEvent(new CustomEvent('transfer_approval_requested', { detail: payload }));
     }
 
-    // Bắn Web Push Notification tới máy chủ để đánh thức màn hình khóa điện thoại của Admin
+    // 3. Bắn Web Push Notification tới máy chủ kèm đầy đủ thông tin trên URL query
     try {
+      const deepLinkUrl = `/admin?tab=transfer_verification&approvalOrder=${encodeURIComponent(payload.order_number)}&amount=${payload.amount}&customer=${encodeURIComponent(payload.customer_name || '')}&code=${encodeURIComponent(payload.transfer_code || '')}&by=${encodeURIComponent(payload.requested_by || '')}`;
+
       fetch('/api/push/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: '⚡ YÊU CẦU DUYỆT CHUYỂN KHOẢN (2 BƯỚC)',
           body: `Đơn #${payload.order_number}: ${(Number(payload.amount) || 0).toLocaleString('vi-VN')}₫ từ ${payload.requested_by || 'Thu ngân'}. Bấm để mở duyệt ngay!`,
-          url: '/admin?tab=transfer_verification',
+          url: deepLinkUrl,
           type: 'transfer_approval',
           isUrgent: true,
           orderNumber: payload.order_number,
@@ -800,6 +936,12 @@ export async function broadcastTransferApprovalRequest(payload: TransferApproval
  */
 export async function broadcastTransferApprovalResolved(payload: TransferApprovalResolvedPayload) {
   try {
+    // 1. Xóa yêu cầu khỏi Database
+    if (payload.order_number) {
+      removePendingTransferFromDb(payload.order_number).catch(console.error);
+    }
+
+    // 2. Phát sóng Realtime
     const channel = ensureSyncChannel();
     if (channel) {
       await channel.send({
@@ -815,7 +957,7 @@ export async function broadcastTransferApprovalResolved(payload: TransferApprova
       window.dispatchEvent(new CustomEvent('transfer_approval_resolved', { detail: payload }));
     }
 
-    // Bắn Web Push Notification thông báo kết quả duyệt về máy thu ngân
+    // 3. Bắn Web Push Notification thông báo kết quả duyệt về máy thu ngân
     try {
       fetch('/api/push/send', {
         method: 'POST',

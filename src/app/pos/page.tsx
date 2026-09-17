@@ -87,12 +87,15 @@ import {
   calculateCustomCakeCost,
   CakeCostCalculationResult,
   fetchCakeCostingFromDb,
+  cleanCakeNameAndSize,
 } from '@/lib/utils/customCakeCosting';
 import {
   CustomCakeCostingConfig,
   DEFAULT_CUSTOM_CAKE_CONFIG,
 } from '@/lib/constants/cakeCostingData';
 import { BirthdayCakeOrderModal } from '@/components/pos/BirthdayCakeOrderModal';
+import { PosReadyShippingModal } from '@/components/pos/PosReadyShippingModal';
+import { broadcastOrderStatusUpdate } from '@/lib/supabase/realtimeSync';
 
 interface CartItem {
   product: CachedProduct;
@@ -448,6 +451,9 @@ export default function POSPage() {
       }
     ];
   });
+
+  // ── ĐƠN CHỜ SHIP / CHỜ GIAO QUẦY (BƯỚC 3 BẾP SẴN SÀNG) ──
+  const [isReadyShippingModalOpen, setIsReadyShippingModalOpen] = useState(false);
 
   // ── LỊCH SỬ HÓA ĐƠN & LƯU TRỮ ĐƠN ĐÃ XUẤT STATE ──
   const [isInvoiceHistoryOpen, setIsInvoiceHistoryOpen] = useState(false);
@@ -909,6 +915,152 @@ export default function POSPage() {
       window.removeEventListener(AUTOBANK_CONFIG_UPDATED_EVENT, handleAutoBankEvt);
     };
   }, []);
+
+  // Lọc các đơn Bước 3 (status === 'ready') sẵn sàng giao từ cả hóa đơn và đơn đặt trước
+  const readyShippingOrders = useMemo(() => {
+    const list = [...invoicesList, ...preordersList];
+    const uniqueMap = new Map<string, any>();
+    for (const o of list) {
+      if (!o || o.status !== 'ready') continue;
+      if (o.parent_order_number || o.order_number?.endsWith('-LAM') || o.notes?.includes('BỔ SUNG CHO ĐƠN')) continue;
+      const key = o.order_number || o.id;
+      if (!uniqueMap.has(key)) uniqueMap.set(key, o);
+    }
+    return Array.from(uniqueMap.values());
+  }, [invoicesList, preordersList]);
+
+  // Xử lý hoàn tất đơn hàng Bước 3 từ POS (Giao bánh & thu tiền)
+  const handleCompleteReadyOrder = (order: any, method: 'cash' | 'bank_transfer', proofImageBase64?: string) => {
+    const orderId = order.id;
+    const orderNum = order.order_number || order.orderNumber;
+    const linkedBakeOrderNum = order.linked_bake_order_number || `${orderNum}-LAM`;
+
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((o: any) => {
+              if (
+                o.id === orderId ||
+                o.local_id === orderId ||
+                o.order_number === orderId ||
+                o.orderNumber === orderId ||
+                o.order_number === orderNum
+              ) {
+                return {
+                  ...o,
+                  status: 'completed',
+                  remaining_amount: 0,
+                  remainingAmount: 0,
+                  payment_status: 'paid',
+                  final_payment_method: method,
+                  transfer_proof_image: proofImageBase64 || o.transfer_proof_image,
+                  paid_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                };
+              }
+              if (o.order_number === linkedBakeOrderNum || o.orderNumber === linkedBakeOrderNum) {
+                return {
+                  ...o,
+                  status: 'completed',
+                  updated_at: new Date().toISOString(),
+                };
+              }
+              return o;
+            });
+            localStorage.setItem('bakery_orders', JSON.stringify(updated));
+          }
+        }
+
+        const rawPo = localStorage.getItem('bakery_preorders');
+        if (rawPo) {
+          const parsedPo = JSON.parse(rawPo);
+          if (Array.isArray(parsedPo)) {
+            const updatedPo = parsedPo.map((po: any) => {
+              if (po.id === orderId || po.orderNumber === orderId || po.orderNumber === orderNum) {
+                return {
+                  ...po,
+                  status: 'completed',
+                  remaining_amount: 0,
+                  remainingAmount: 0,
+                  payment_status: 'paid',
+                  final_payment_method: method,
+                  paid_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                };
+              }
+              if (po.orderNumber === linkedBakeOrderNum) {
+                return {
+                  ...po,
+                  status: 'completed',
+                  updated_at: new Date().toISOString(),
+                };
+              }
+              return po;
+            });
+            localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo));
+          }
+        }
+
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+      } catch (err) {
+        console.warn('Lỗi lưu đơn hoàn tất giao tại POS:', err);
+      }
+    }
+
+    const updatedOrder = {
+      ...order,
+      status: 'completed',
+      remaining_amount: 0,
+      remainingAmount: 0,
+      payment_status: 'paid',
+      final_payment_method: method,
+      transfer_proof_image: proofImageBase64 || order.transfer_proof_image,
+      paid_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    syncOrderToSupabase(updatedOrder, 'completed');
+    broadcastOrderStatusUpdate(orderNum, 'completed', updatedOrder);
+    soundManager.playPaymentSuccessChime();
+    reloadOrdersData();
+  };
+
+  const handleOpenReadySticker = (order: any) => {
+    const mainItem = order.items?.[0];
+    const fromN = parsePreorderFromNotes(order.notes);
+    const isShip = order.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
+    const shipAddr = order.shipping_address || fromN.shipping_address;
+    const cakeFullName = mainItem?.product_name_snapshot || order.cake_name || fromN?.cake_name || 'Bánh Sinh Nhật';
+    const parsedCake = cleanCakeNameAndSize(cakeFullName, order.cake_size || fromN?.cake_size || order.size || '');
+    const totalAmt = Number(order.total_amount ?? order.totalPrice ?? fromN.total_amount ?? 0);
+    const depAmt = Number(order.deposit_amount ?? order.depositAmount ?? fromN.deposit_amount ?? 0);
+    const remAmt = order.remaining_amount !== undefined 
+      ? Number(order.remaining_amount) 
+      : (fromN.remaining_amount !== undefined ? Number(fromN.remaining_amount) : Math.max(0, totalAmt - depAmt));
+
+    openStickerModal({
+      orderNumber: order.order_number || order.orderNumber || `DH-${order.id?.slice(0, 6)}`,
+      cakeName: parsedCake.name,
+      customerName: order.customer_name || fromN?.customer_name || 'Khách tiệm',
+      customerPhone: order.customer_phone || fromN?.customer_phone || undefined,
+      cakeMessage: order.cake_message || fromN?.cake_message || undefined,
+      pickupTime: order.preorder_pickup_at ? formatPickupDateTime(order.preorder_pickup_at) : undefined,
+      deliveryMethod: isShip ? 'shipping' : 'pickup',
+      shippingAddress: shipAddr || undefined,
+      createdAt: order.created_at,
+      price: totalAmt,
+      totalAmount: totalAmt,
+      depositAmount: depAmt,
+      remainingAmount: remAmt,
+      flavor: order.flavor || fromN?.flavor,
+      cream: order.cream || fromN?.cream,
+      filling: order.filling || fromN?.filling,
+      packaging: order.packaging || fromN?.packaging,
+    });
+  };
 
   // Đồng bộ hóa đơn và đơn đặt trước từ LocalStorage Realtime
   const reloadOrdersData = () => {
@@ -2671,6 +2823,21 @@ export default function POSPage() {
             </span>
           )}
         </button>
+        {/* Nút Chờ Ship trên mobile */}
+        <button
+          type="button"
+          onClick={() => setIsReadyShippingModalOpen(true)}
+          className={`flex-1 py-2 px-1 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition relative ${
+            readyShippingOrders.length > 0
+              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 ring-1 ring-emerald-300'
+              : 'text-zinc-700 bg-zinc-50 hover:bg-emerald-50 border border-zinc-200/80'
+          }`}
+          title="Đơn bánh chờ ship / giao (Bước 3)"
+        >
+          <Truck className="w-3.5 h-3.5" />
+          <span>Chờ Ship ({readyShippingOrders.length})</span>
+        </button>
+
         <button
           onClick={() => setIsInvoiceHistoryOpen(true)}
           className="flex-1 py-2 px-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-zinc-700 bg-zinc-50 hover:bg-amber-50 border border-zinc-200/80 transition"
@@ -2978,6 +3145,26 @@ export default function POSPage() {
                   🚨 {urgentPreorders.length} gấp!
                 </span>
               )}
+            </button>
+
+            {/* NÚT MỤC MỚI: ĐƠN CHỜ SHIP / CHỜ GIAO QUẦY (BƯỚC 3 BẾP) */}
+            <button
+              type="button"
+              onClick={() => setIsReadyShippingModalOpen(true)}
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition cursor-pointer ${
+                readyShippingOrders.length > 0
+                  ? 'bg-emerald-50 border-emerald-400 text-emerald-950 shadow-sm ring-2 ring-emerald-400/40 hover:bg-emerald-100'
+                  : 'bg-white border-stone-200/90 hover:border-emerald-300 text-zinc-700 shadow-2xs hover:bg-emerald-50/50'
+              }`}
+              title="Xem danh sách đơn bánh làm xong ở Bếp đang chờ ship hoặc chờ giao quầy (Bước 3)"
+            >
+              <Truck className={`w-4 h-4 ${readyShippingOrders.length > 0 ? 'text-emerald-600 animate-bounce' : 'text-emerald-600'}`} />
+              <span className="hidden sm:inline">Chờ ship / giao</span>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                readyShippingOrders.length > 0 ? 'bg-emerald-600 text-white animate-pulse' : 'bg-zinc-100 text-zinc-600'
+              }`}>
+                {readyShippingOrders.length}
+              </span>
             </button>
 
             {/* Nút Xem Lịch Sử Hóa Đơn Đã Xuất */}
@@ -7431,6 +7618,18 @@ export default function POSPage() {
       <PrinterSettingsModal
         isOpen={isPrinterSettingsOpen}
         onClose={() => setIsPrinterSettingsOpen(false)}
+      />
+
+      {/* ── MODAL ĐƠN CHỜ SHIP / CHỜ GIAO QUẦY (BƯỚC 3 BẾP) ── */}
+      <PosReadyShippingModal
+        isOpen={isReadyShippingModalOpen}
+        onClose={() => setIsReadyShippingModalOpen(false)}
+        orders={readyShippingOrders}
+        currentTime={currentTime}
+        vietqrConfig={vietqrConfig}
+        onCompleteOrder={handleCompleteReadyOrder}
+        onOpenSticker={handleOpenReadySticker}
+        onOpenDetail={(o) => setPosViewingOrderDetail(o)}
       />
 
       {/* ── MODAL ĐẶT BÁNH SINH NHẬT THEO CƠ CHẾ FLOWCHART MỚI ── */}

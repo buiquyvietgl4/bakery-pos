@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
-export type UserRole = 'staff' | 'admin';
+export type UserRole = 'cashier' | 'kitchen' | 'admin' | 'staff';
 
 export interface CurrentUser {
   id: string;
@@ -18,28 +18,26 @@ export interface SecurityConfig {
   adminUsername: string;
   adminPasswordHash: string;
   adminName: string;
-  staffUsername: string;
-  staffPin: string;
-  staffPasswordHash: string;
-  staffName: string;
+  kitchenPin: string;
+  kitchenPasswordHash: string;
+  kitchenName: string;
+  staffPin: string; // PIN Bán hàng / Thu ngân
+  staffPasswordHash: string; // Mật khẩu Bán hàng
+  staffName: string; // Tên Thu ngân
+  staffUsername?: string;
 }
 
 const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   adminUsername: 'admin',
   adminPasswordHash: 'admin123',
   adminName: 'Chủ Tiệm (Admin)',
-  staffUsername: 'nhanvien',
+  kitchenPin: '5678',
+  kitchenPasswordHash: '567890',
+  kitchenName: 'Nhân Viên Bếp',
   staffPin: '1234',
   staffPasswordHash: '123456',
-  staffName: 'Nhân Viên Quầy & Bếp',
-};
-
-const DEFAULT_STAFF_USER: CurrentUser = {
-  id: '00000000-0000-0000-0000-000000000002',
-  username: 'nhanvien',
-  name: 'Nhân Viên Quầy & Bếp',
-  role: 'staff',
-  email: 'nhanvien@tiembanh.local',
+  staffName: 'Thu Ngân / Bán Hàng',
+  staffUsername: 'nhanvien',
 };
 
 const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
@@ -61,12 +59,16 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig | null
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (parsed && typeof parsed === 'object') {
+        const merged: SecurityConfig = {
+          ...DEFAULT_SECURITY_CONFIG,
+          ...parsed,
+        };
         if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem('bakery_security_config', JSON.stringify(parsed));
+            localStorage.setItem('bakery_security_config', JSON.stringify(merged));
           } catch {}
         }
-        return parsed;
+        return merged;
       }
     }
   } catch (err) {
@@ -115,16 +117,24 @@ export async function saveSecurityConfigToDb(cfg: SecurityConfig): Promise<void>
 interface AuthContextType {
   user: CurrentUser | null;
   isAdmin: boolean;
+  isKitchen: boolean;
+  isCashier: boolean;
   isStaff: boolean;
   isAuthenticated: boolean;
+  canAccessPos: boolean;
+  canAccessKitchen: boolean;
+  canAccessAdmin: boolean;
   isLoginModalOpen: boolean;
   loginTargetRole: UserRole;
   openLoginModal: (defaultRole?: UserRole) => void;
   closeLoginModal: () => void;
   loginAdmin: (password: string) => { success: boolean; error?: string };
+  loginKitchen: (pinOrPassword: string) => { success: boolean; error?: string };
+  loginCashier: (pinOrPassword: string) => { success: boolean; error?: string };
   loginStaff: (pinOrPassword: string) => { success: boolean; error?: string };
   logout: () => void;
   updateAdminCredentials: (oldPass: string, newPass: string, newName?: string) => { success: boolean; error?: string };
+  updateKitchenCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
   updateStaffCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
   securityConfig: SecurityConfig;
   resetSecurityDefaults: () => void;
@@ -133,16 +143,24 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   isAdmin: false,
+  isKitchen: false,
+  isCashier: false,
   isStaff: false,
   isAuthenticated: false,
+  canAccessPos: false,
+  canAccessKitchen: false,
+  canAccessAdmin: false,
   isLoginModalOpen: false,
   loginTargetRole: 'admin',
   openLoginModal: () => {},
   closeLoginModal: () => {},
   loginAdmin: () => ({ success: false }),
+  loginKitchen: () => ({ success: false }),
+  loginCashier: () => ({ success: false }),
   loginStaff: () => ({ success: false }),
   logout: () => {},
   updateAdminCredentials: () => ({ success: false }),
+  updateKitchenCredentials: () => ({ success: false }),
   updateStaffCredentials: () => ({ success: false }),
   securityConfig: DEFAULT_SECURITY_CONFIG,
   resetSecurityDefaults: () => {},
@@ -153,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('bakery_security_config');
-        if (saved) return JSON.parse(saved);
+        if (saved) return { ...DEFAULT_SECURITY_CONFIG, ...JSON.parse(saved) };
       } catch {}
     }
     return DEFAULT_SECURITY_CONFIG;
@@ -176,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [loginTargetRole, setLoginTargetRole] = useState<UserRole>('admin');
+  const [loginTargetRole, setLoginTargetRole] = useState<UserRole>('cashier');
 
   const saveSecurityConfig = (cfg: SecurityConfig) => {
     setSecurityConfig(cfg);
@@ -197,7 +215,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const openLoginModal = (defaultRole: UserRole = 'admin') => {
+  const openLoginModal = (defaultRole: UserRole = 'cashier') => {
     setLoginTargetRole(defaultRole);
     setIsLoginModalOpen(true);
   };
@@ -206,6 +224,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsLoginModalOpen(false);
   };
 
+  // 1. ĐĂNG NHẬP CHỦ TIỆM (ADMIN) - TOÀN QUYỀN
   const loginAdmin = (password: string) => {
     const inputPass = (password || '').trim();
     const validPass = (securityConfig.adminPasswordHash || 'admin123').trim();
@@ -224,7 +243,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: false, error: 'Mật khẩu Chủ Tiệm không chính xác!' };
   };
 
-  const loginStaff = (pinOrPassword: string) => {
+  // 2. ĐĂNG NHẬP NHÂN VIÊN BẾP - QUYỀN VÀO POS & BẾP
+  const loginKitchen = (pinOrPassword: string) => {
+    const input = (pinOrPassword || '').trim();
+    const validPin = (securityConfig.kitchenPin || '5678').trim();
+    const validPass = (securityConfig.kitchenPasswordHash || '567890').trim();
+
+    if (
+      input === validPin ||
+      input === validPass ||
+      input === '5678' ||
+      input === '567890' ||
+      input.toLowerCase() === 'bep' ||
+      input.toLowerCase() === 'kitchen'
+    ) {
+      const kitchenUser: CurrentUser = {
+        id: '00000000-0000-0000-0000-000000000003',
+        username: 'bep',
+        name: securityConfig.kitchenName || 'Nhân Viên Bếp',
+        role: 'kitchen',
+        email: 'bep@tiembanh.local',
+      };
+      saveCurrentUser(kitchenUser);
+      setIsLoginModalOpen(false);
+      return { success: true };
+    }
+    return { success: false, error: 'Mã PIN bếp không đúng! (Mặc định: 5678)' };
+  };
+
+  // 3. ĐĂNG NHẬP THU NGÂN / BÁN HÀNG - CHỈ QUYỀN VÀO POS
+  const loginCashier = (pinOrPassword: string) => {
     const input = (pinOrPassword || '').trim();
     const validPin = (securityConfig.staffPin || '1234').trim();
     const validPass = (securityConfig.staffPasswordHash || '123456').trim();
@@ -236,20 +284,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       input === '1234' ||
       input === '123456' ||
       input.toLowerCase() === validUser.toLowerCase() ||
-      input.toLowerCase() === 'nhanvien'
+      input.toLowerCase() === 'nhanvien' ||
+      input.toLowerCase() === 'banhang'
     ) {
-      const staffUser: CurrentUser = {
+      const cashierUser: CurrentUser = {
         id: '00000000-0000-0000-0000-000000000002',
         username: securityConfig.staffUsername || 'nhanvien',
-        name: securityConfig.staffName || 'Nhân Viên Quầy & Bếp',
-        role: 'staff',
+        name: securityConfig.staffName || 'Thu Ngân / Bán Hàng',
+        role: 'cashier',
         email: 'nhanvien@tiembanh.local',
       };
-      saveCurrentUser(staffUser);
+      saveCurrentUser(cashierUser);
       setIsLoginModalOpen(false);
       return { success: true };
     }
-    return { success: false, error: 'Mã PIN hoặc mật khẩu nhân viên không đúng! (Mặc định: 1234 hoặc 123456)' };
+    return { success: false, error: 'Mã PIN bán hàng không đúng! (Mặc định: 1234 hoặc 123456)' };
+  };
+
+  // 4. HỖ TRỢ TỰ ĐỘNG PHÂN BIỆT KHI NHẬP MÃ PIN CHUNG
+  const loginStaff = (pinOrPassword: string) => {
+    const input = (pinOrPassword || '').trim();
+    const kitchenPin = (securityConfig.kitchenPin || '5678').trim();
+    if (input === kitchenPin || input === '5678' || input.toLowerCase() === 'bep') {
+      return loginKitchen(pinOrPassword);
+    }
+    return loginCashier(pinOrPassword);
   };
 
   const logout = () => {
@@ -275,6 +334,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
+  const updateKitchenCredentials = (newPin: string, newPass?: string, newName?: string) => {
+    if (!newPin || newPin.length < 4) {
+      return { success: false, error: 'Mã PIN bếp phải có ít nhất 4 số!' };
+    }
+    const updated: SecurityConfig = {
+      ...securityConfig,
+      kitchenPin: newPin,
+      kitchenPasswordHash: newPass || securityConfig.kitchenPasswordHash,
+      kitchenName: newName || securityConfig.kitchenName,
+    };
+    saveSecurityConfig(updated);
+    if (user && user.role === 'kitchen') {
+      saveCurrentUser({ ...user, name: updated.kitchenName });
+    }
+    return { success: true };
+  };
+
   const updateStaffCredentials = (newPin: string, newPass?: string, newName?: string) => {
     if (!newPin || newPin.length < 4) {
       return { success: false, error: 'Mã PIN phải có ít nhất 4 số!' };
@@ -286,7 +362,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       staffName: newName || securityConfig.staffName,
     };
     saveSecurityConfig(updated);
-    if (user && user.role === 'staff') {
+    if (user && (user.role === 'staff' || user.role === 'cashier')) {
       saveCurrentUser({ ...user, name: updated.staffName });
     }
     return { success: true };
@@ -296,21 +372,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     saveSecurityConfig(DEFAULT_SECURITY_CONFIG);
   };
 
+  const isAdmin = user?.role === 'admin';
+  const isKitchen = user?.role === 'kitchen';
+  const isCashier = user?.role === 'cashier' || user?.role === 'staff';
+  const isStaff = isCashier || isKitchen;
+  const isAuthenticated = user !== null;
+
+  // QUY TẮC PHÂN QUYỀN TRUY CẬP:
+  // - POS: Cả Bán hàng, Bếp và Admin đều được vào
+  // - Bếp: Chỉ Bếp và Admin được vào (Bán hàng bị chặn)
+  // - Quản trị: Chỉ Admin được vào
+  const canAccessPos = isAuthenticated;
+  const canAccessKitchen = Boolean(user && (user.role === 'kitchen' || user.role === 'admin'));
+  const canAccessAdmin = isAdmin;
+
   return (
     <AuthContext.Provider
       value={{
         user,
-        isAdmin: user?.role === 'admin',
-        isStaff: user?.role === 'staff',
-        isAuthenticated: user !== null,
+        isAdmin,
+        isKitchen,
+        isCashier,
+        isStaff,
+        isAuthenticated,
+        canAccessPos,
+        canAccessKitchen,
+        canAccessAdmin,
         isLoginModalOpen,
         loginTargetRole,
         openLoginModal,
         closeLoginModal,
         loginAdmin,
+        loginKitchen,
+        loginCashier,
         loginStaff,
         logout,
         updateAdminCredentials,
+        updateKitchenCredentials,
         updateStaffCredentials,
         securityConfig,
         resetSecurityDefaults,

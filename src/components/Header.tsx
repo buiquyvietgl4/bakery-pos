@@ -21,7 +21,7 @@ export default function Header() {
   const [notifModalTab, setNotifModalTab] = useState<'history' | 'pwa' | 'telegram' | 'kiosk'>('history');
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
   const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
-  const { user, isAdmin, isStaff, logout, openLoginModal } = useAuth();
+  const { user, isAdmin, isKitchen, isCashier, canAccessKitchen, canAccessAdmin, logout, openLoginModal } = useAuth();
 
   useEffect(() => {
     setBranding(getStoreBranding());
@@ -100,13 +100,13 @@ export default function Header() {
               const Icon = item.icon;
               const isActive = pathname.startsWith(item.href);
 
-              // Nếu chưa đăng nhập bất kỳ tài khoản nào: Khóa tất cả các màn hình POS, Bếp, Admin
+              // 1. Chưa đăng nhập bất kỳ tài khoản nào: Khóa tất cả
               if (mounted && !user) {
                 return (
                   <button
                     key={item.href}
                     type="button"
-                    onClick={() => openLoginModal(item.requiresAdmin ? 'admin' : 'staff')}
+                    onClick={() => openLoginModal(item.requiresAdmin ? 'admin' : (item.href === '/kitchen' ? 'kitchen' : 'cashier'))}
                     title="Vui lòng đăng nhập tài khoản để vào màn hình này"
                     className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-amber-800 hover:bg-white/80 transition cursor-pointer"
                   >
@@ -117,7 +117,24 @@ export default function Header() {
                 );
               }
 
-              // Nếu là Nhân viên bấm vào Quản trị: Hiện nút khóa bảo mật & kích hoạt đăng nhập Admin
+              // 2. Tài khoản Bán Hàng (Cashier) bấm vào Bếp: Khóa bảo mật
+              if (mounted && item.href === '/kitchen' && !canAccessKitchen) {
+                return (
+                  <button
+                    key={item.href}
+                    type="button"
+                    onClick={() => openLoginModal('kitchen')}
+                    title="Khu vực Bếp dành cho Thợ Bếp & Chủ Tiệm (Bấm để nhập PIN bếp)"
+                    className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-orange-800 hover:bg-white/80 transition cursor-pointer"
+                  >
+                    <Lock className="w-3.5 h-3.5 text-orange-400" />
+                    <span className="hidden sm:inline">{item.label}</span>
+                    <span className="text-[10px] bg-orange-100 text-orange-700 font-bold px-1.5 py-0.2 rounded hidden sm:inline">Khóa</span>
+                  </button>
+                );
+              }
+
+              // 3. Nhân viên (Bán hàng hoặc Bếp) bấm vào Quản trị: Khóa bảo mật
               if (mounted && item.requiresAdmin && !isAdmin) {
                 return (
                   <button
@@ -189,12 +206,38 @@ export default function Header() {
                       <span className="hidden md:inline">Đăng Xuất</span>
                     </button>
                   </div>
+                ) : isKitchen ? (
+                  // Đang là Nhân viên Bếp
+                  <div className="flex items-center gap-1 bg-orange-50/90 p-1 sm:pl-2 rounded-xl border border-orange-200 text-xs shadow-2xs">
+                    <span className="hidden md:flex items-center gap-1 font-bold text-orange-950 text-[11px] sm:text-xs">
+                      <ChefHat className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                      <span>{user?.name || 'Thợ Bếp'}</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => openLoginModal('admin')}
+                      className="p-1.5 sm:px-2 sm:py-0.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[10px] font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                      title="Nhập mật khẩu để mở quyền Chủ Tiệm"
+                    >
+                      <KeyRound className="w-3 h-3" />
+                      <span className="hidden sm:inline">Mở Admin</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={logout}
+                      title="Đăng xuất khỏi ca làm"
+                      className="p-1 sm:px-1.5 sm:py-0.5 rounded-lg bg-white border border-orange-200 hover:bg-orange-100 text-zinc-600 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                    >
+                      <LogOut className="w-3 h-3 text-zinc-500" />
+                      <span className="hidden sm:inline">Thoát</span>
+                    </button>
+                  </div>
                 ) : (
-                  // Đang là Nhân viên
+                  // Đang là Thu Ngân / Bán Hàng
                   <div className="flex items-center gap-1 bg-stone-100/90 p-1 sm:pl-2 rounded-xl border border-stone-200 text-xs shadow-2xs">
-                    <span className="hidden md:flex items-center gap-1 font-bold text-zinc-700 text-[11px] sm:text-xs">
-                      <Users className="w-3.5 h-3.5 text-orange-600" />
-                      <span>{user?.name || 'Nhân viên'}</span>
+                    <span className="hidden md:flex items-center gap-1 font-bold text-zinc-800 text-[11px] sm:text-xs">
+                      <ShoppingBag className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>{user?.name || 'Thu Ngân'}</span>
                     </span>
                     <button
                       type="button"
