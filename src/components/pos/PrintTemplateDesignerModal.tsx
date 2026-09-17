@@ -46,6 +46,7 @@ import {
 } from '@/lib/utils/printTemplateManager';
 import { printHtml } from '@/lib/utils/printHelper';
 import { getStoreBranding } from '@/lib/utils/storeBranding';
+import { cleanCakeNameAndSize } from '@/lib/utils/customCakeCosting';
 
 interface PrintTemplateDesignerModalProps {
   isOpen: boolean;
@@ -65,6 +66,9 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
   const [stickerConfig, setStickerConfig] = useState<StickerTemplateConfig>(() => getStickerTemplate('50x30'));
   const [selectedElementId, setSelectedElementId] = useState<string | null>('cake_name');
   const [showGrid, setShowGrid] = useState<boolean>(true);
+  const [showGuides, setShowGuides] = useState<boolean>(true);
+  const [snapGuideX, setSnapGuideX] = useState<number | null>(null);
+  const [snapGuideY, setSnapGuideY] = useState<number | null>(null);
 
   // ── RECEIPT TEMPLATE STATE ──
   const [receiptPaperSize, setReceiptPaperSize] = useState<ReceiptPaperSize>('80mm');
@@ -216,7 +220,44 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
     newX = Math.max(0, Math.min(95, newX));
     newY = Math.max(0, Math.min(95, newY));
 
-    // Lưới Snap nếu bật Grid (bước 1%)
+    // ── BẮT DÍNH ĐƯỜNG CĂN GIÓNG (SMART SNAP ALIGNMENT) ──
+    let activeSnapX: number | null = null;
+    let activeSnapY: number | null = null;
+
+    if (showGuides) {
+      // 1. Căn lề trái chuẩn 2%
+      if (Math.abs(newX - 2) <= 1.8) {
+        newX = 2;
+        activeSnapX = 2;
+      }
+
+      // 2. Căn theo các dòng khác đang hiển thị trên tem
+      const otherVisibleElements = stickerConfig.elements.filter(
+        (item) => item.visible && item.id !== elementId
+      );
+
+      for (const other of otherVisibleElements) {
+        // Căn thẳng hàng lề trái (X)
+        if (Math.abs(newX - other.x) <= 1.8) {
+          newX = other.x;
+          activeSnapX = other.x;
+          break;
+        }
+      }
+
+      for (const other of otherVisibleElements) {
+        // Căn thẳng hàng ngang (Y)
+        if (Math.abs(newY - other.y) <= 1.8) {
+          newY = other.y;
+          activeSnapY = other.y;
+          break;
+        }
+      }
+    }
+
+    setSnapGuideX(activeSnapX);
+    setSnapGuideY(activeSnapY);
+
     setStickerConfig((prev) => ({
       ...prev,
       elements: prev.elements.map((item) => (item.id === elementId ? { ...item, x: newX, y: newY } : item)),
@@ -227,6 +268,53 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
     if (dragInfoRef.current) {
       dragInfoRef.current = null;
     }
+    setSnapGuideX(null);
+    setSnapGuideY(null);
+  };
+
+  // Căn tất cả các dòng đang hiện về cùng tọa độ X của phần tử đang chọn
+  const handleAlignAllToSelectedX = () => {
+    if (!selectedElement) return;
+    const targetX = selectedElement.x;
+    setStickerConfig((prev) => ({
+      ...prev,
+      elements: prev.elements.map((el) => (el.visible ? { ...el, x: targetX } : el)),
+    }));
+    showToast(`Đã căn thẳng lề trái tất cả các dòng về X = ${targetX}%!`);
+  };
+
+  // Căn thẳng lề trái chuẩn 2% cho phần tử đang chọn
+  const handleAlignToStandardLeft = (elId: string) => {
+    handleUpdateElement(elId, { x: 2 });
+    showToast('Đã căn thẳng lề trái chuẩn (X = 2%)!');
+  };
+
+  // Giãn đều khoảng cách dọc (Y) giữa các dòng
+  const handleDistributeYEvenly = () => {
+    const visibleElements = stickerConfig.elements.filter((el) => el.visible);
+    if (visibleElements.length <= 1) return;
+
+    // Sắp xếp theo Y hiện tại
+    const sorted = [...visibleElements].sort((a, b) => a.y - b.y);
+    const minY = 3;
+    const maxY = stickerLabelSize === '50x30' ? 88 : 92;
+    const step = (maxY - minY) / (sorted.length - 1);
+
+    const updatedYMap = new Map<string, number>();
+    sorted.forEach((el, index) => {
+      updatedYMap.set(el.id, Math.round(minY + index * step));
+    });
+
+    setStickerConfig((prev) => ({
+      ...prev,
+      elements: prev.elements.map((el) => {
+        if (updatedYMap.has(el.id)) {
+          return { ...el, y: updatedYMap.get(el.id)! };
+        }
+        return el;
+      }),
+    }));
+    showToast('Đã giãn đều khoảng cách các dòng theo chiều dọc!');
   };
 
   // ── XỬ LÝ HÓA ĐƠN IN NHIỆT (RECEIPT) ──
@@ -296,22 +384,31 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
   const handlePrintTestSticker = () => {
     const el = document.getElementById('designer-preview-sticker');
     if (!el) return;
-    printHtml(el.outerHTML, {
+    const is30 = stickerLabelSize === '50x30';
+    // Dùng innerHTML để loại bỏ display: none của thẻ bọc ngoài, đảm bảo in ra hình rõ nét không bị trắng tinh
+    printHtml(el.innerHTML, {
       title: 'In_Thu_Tem_Dan',
       pageSize: stickerLabelSize,
       customCss: `
+        @page {
+          size: 50mm ${is30 ? '30mm' : '40mm'};
+          margin: 0 !important;
+        }
+        *, *::before, *::after {
+          box-sizing: border-box !important;
+          -webkit-print-color-adjust: exact !important;
+          print-color-adjust: exact !important;
+        }
         html, body {
           width: 50mm !important;
-          height: ${stickerLabelSize === '50x30' ? '30mm' : '40mm'} !important;
+          height: ${is30 ? '30mm' : '40mm'} !important;
+          max-width: 50mm !important;
+          max-height: ${is30 ? '30mm' : '40mm'} !important;
           margin: 0 !important;
           padding: 0 !important;
           overflow: hidden !important;
-        }
-        #designer-preview-sticker {
-          width: 50mm !important;
-          height: ${stickerLabelSize === '50x30' ? '30mm' : '40mm'} !important;
-          border: none !important;
-          box-shadow: none !important;
+          background: #ffffff !important;
+          color: #000000 !important;
         }
       `,
     });
@@ -346,6 +443,7 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
     cakeName: 'BÁNH BÔNG LAN TRỨNG MUỐI HOÀNG GIA',
     cakeMessage: 'Chúc Mừng Sinh Nhật Mẹ Yêu 50 Tuổi',
     customerInfo: 'Chị Mai Lan • 0918.765.432',
+    storeAddress: branding.address || '128 Lê Lợi, Phường Bến Thành, Quận 1, TP.HCM',
     pickupTime: '17:30 ngày 18/09/2026',
     deliveryMethod: '🚚 Giao tận nơi (Ship bánh)',
     shippingAddress: '128 Nguyễn Trãi, P.3, Quận 5, TP.HCM',
@@ -463,6 +561,17 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                   >
                     <Grid className="w-3.5 h-3.5" />
                     <span className="hidden md:inline">Lưới căn</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowGuides(!showGuides)}
+                    className={`p-1.5 rounded-lg border text-xs font-medium flex items-center gap-1 transition cursor-pointer ${
+                      showGuides ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-white text-zinc-500 border-zinc-200'
+                    }`}
+                    title="Bật/tắt đường căn gióng lề thông minh giữa các dòng"
+                  >
+                    <AlignLeft className="w-3.5 h-3.5 text-amber-700" />
+                    <span className="hidden md:inline">Đường gióng</span>
                   </button>
                 </div>
 
@@ -641,6 +750,43 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                           </div>
                         </div>
                       </div>
+
+                      {/* Công cụ Căn Thẳng Hàng Nhanh */}
+                      <div className="pt-2 border-t border-amber-200/50 space-y-1.5">
+                        <span className="text-[10px] font-black text-amber-900 uppercase tracking-wide block">
+                          ⚡ Căn thẳng hàng & Gióng lề:
+                        </span>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleAlignToStandardLeft(selectedElement.id)}
+                            className="px-2 py-1.5 bg-white hover:bg-amber-100/70 text-zinc-700 hover:text-amber-900 border border-zinc-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
+                            title="Đặt lề trái dòng này về 2%"
+                          >
+                            <AlignLeft className="w-3 h-3 text-amber-600" />
+                            <span>Lề chuẩn (2%)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={handleAlignAllToSelectedX}
+                            className="px-2 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-black flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
+                            title="Căn lề trái tất cả các dòng theo dòng đang chọn"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            <span>Gióng thẳng tất cả</span>
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleDistributeYEvenly}
+                          className="w-full px-2 py-1.5 bg-white hover:bg-zinc-100 text-zinc-700 border border-zinc-200 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1 transition cursor-pointer"
+                          title="Tự động chia đều khoảng cách dòng từ trên xuống dưới"
+                        >
+                          <Sliders className="w-3 h-3 text-zinc-500" />
+                          <span>Giãn đều khoảng cách dòng (Y)</span>
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="p-3 bg-zinc-50 border border-dashed border-zinc-300 rounded-2xl text-center text-xs text-zinc-500">
@@ -707,6 +853,56 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                         : 'w-[360px] h-[288px]' // Tỉ lệ 5:4
                     }`}
                   >
+                    {/* ── ĐƯỜNG CĂN GIÓNG TRỤC LỀ TRÁI & NGANG (ALIGNMENT GUIDELINES) ── */}
+                    {showGuides && (
+                      <>
+                        {/* Đường gióng lề trái tiêu chuẩn 2% */}
+                        <div
+                          className="absolute top-0 bottom-0 pointer-events-none z-0 border-r border-dashed border-emerald-400/60"
+                          style={{ left: '2%' }}
+                        >
+                          <span className="absolute top-1 left-0.5 text-[8px] font-mono font-bold text-emerald-700 bg-emerald-50/90 px-0.5 rounded border border-emerald-200 leading-none">
+                            Lề 2%
+                          </span>
+                        </div>
+
+                        {/* Đường gióng lề trái theo dòng đang chọn */}
+                        {selectedElement && (
+                          <div
+                            className="absolute top-0 bottom-0 pointer-events-none z-15 border-r-2 border-dashed border-amber-500/80"
+                            style={{ left: `${selectedElement.x}%` }}
+                          >
+                            <span className="absolute bottom-1 -left-2 text-[8px] font-mono font-black text-amber-900 bg-amber-100/95 px-1 py-0.5 rounded border border-amber-300 shadow-xs leading-none whitespace-nowrap">
+                              Trục gióng X: {selectedElement.x}%
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Đường gióng bắt dính từ tính (Magnetic Snap Lines) khi kéo chuột */}
+                        {snapGuideX !== null && (
+                          <div
+                            className="absolute top-0 bottom-0 pointer-events-none z-30 border-r-2 border-solid border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.7)]"
+                            style={{ left: `${snapGuideX}%` }}
+                          >
+                            <span className="absolute top-1/2 -translate-y-1/2 -left-3 text-[9px] font-mono font-black text-white bg-rose-600 px-1.5 py-0.5 rounded shadow-md whitespace-nowrap animate-pulse">
+                              🎯 Khớp trục X: {snapGuideX}%
+                            </span>
+                          </div>
+                        )}
+
+                        {snapGuideY !== null && (
+                          <div
+                            className="absolute left-0 right-0 pointer-events-none z-30 border-b-2 border-solid border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.7)]"
+                            style={{ top: `${snapGuideY}%` }}
+                          >
+                            <span className="absolute left-1/2 -translate-x-1/2 -top-3 text-[9px] font-mono font-black text-white bg-rose-600 px-1.5 py-0.5 rounded shadow-md whitespace-nowrap animate-pulse">
+                              🎯 Khớp trục Y: {snapGuideY}%
+                            </span>
+                          </div>
+                        )}
+                      </>
+                    )}
+
                     {/* Render từng phần tử trên con tem */}
                     {stickerConfig.elements
                       .filter((el) => el.visible)
@@ -717,8 +913,9 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                         let displayVal = el.label;
                         if (el.id === 'store_name') displayVal = branding.storeName || 'TIỆM BÁNH HOÀNG GIA';
                         else if (el.id === 'store_hotline') displayVal = `Hotline: ${branding.phone || '0901.234.567'}`;
+                        else if (el.id === 'store_address') displayVal = `Đ/c: ${branding.address || sampleStickerData.storeAddress}`;
                         else if (el.id === 'order_code') displayVal = `#${sampleStickerData.orderCode}`;
-                        else if (el.id === 'cake_name') displayVal = sampleStickerData.cakeName;
+                        else if (el.id === 'cake_name') displayVal = cleanCakeNameAndSize(sampleStickerData.cakeName).name;
                         else if (el.id === 'cake_message') displayVal = `✍️ "${sampleStickerData.cakeMessage}"`;
                         else if (el.id === 'customer_info') displayVal = `👤 ${sampleStickerData.customerInfo}`;
                         else if (el.id === 'pickup_time') displayVal = `⏰ ${sampleStickerData.pickupTime}`;
@@ -782,7 +979,7 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                   </div>
 
                   {/* Thẻ in ẩn dành cho việc in thử tem dán */}
-                  <div id="designer-preview-sticker" className="hidden">
+                  <div id="designer-preview-sticker" style={{ display: 'none' }}>
                     <div
                       style={{
                         position: 'relative',
@@ -800,8 +997,9 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                           let val = el.label;
                           if (el.id === 'store_name') val = branding.storeName || 'TIỆM BÁNH HOÀNG GIA';
                           else if (el.id === 'store_hotline') val = `Hotline: ${branding.phone || '0901.234.567'}`;
+                          else if (el.id === 'store_address') val = `Đ/c: ${branding.address || sampleStickerData.storeAddress}`;
                           else if (el.id === 'order_code') val = `#${sampleStickerData.orderCode}`;
-                          else if (el.id === 'cake_name') val = sampleStickerData.cakeName;
+                          else if (el.id === 'cake_name') val = cleanCakeNameAndSize(sampleStickerData.cakeName).name;
                           else if (el.id === 'cake_message') val = `✍️ "${sampleStickerData.cakeMessage}"`;
                           else if (el.id === 'customer_info') val = `👤 ${sampleStickerData.customerInfo}`;
                           else if (el.id === 'pickup_time') val = `⏰ ${sampleStickerData.pickupTime}`;
@@ -830,7 +1028,22 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                                 textOverflow: 'ellipsis',
                               }}
                             >
-                              {val}
+                              {el.id === 'barcode' ? (
+                                <svg style={{ width: '28mm', height: '5mm', display: 'block' }} viewBox="0 0 160 20" preserveAspectRatio="none">
+                                  <rect x="0" y="0" width="2" height="20" fill="black" />
+                                  <rect x="4" y="0" width="1" height="20" fill="black" />
+                                  <rect x="7" y="0" width="3" height="20" fill="black" />
+                                  <rect x="12" y="0" width="2" height="20" fill="black" />
+                                  <rect x="16" y="0" width="4" height="20" fill="black" />
+                                  <rect x="22" y="0" width="1" height="20" fill="black" />
+                                  <rect x="25" y="0" width="3" height="20" fill="black" />
+                                  <rect x="30" y="0" width="2" height="20" fill="black" />
+                                  <rect x="34" y="0" width="4" height="20" fill="black" />
+                                  <rect x="40" y="0" width="2" height="20" fill="black" />
+                                </svg>
+                              ) : (
+                                val
+                              )}
                             </div>
                           );
                         })}

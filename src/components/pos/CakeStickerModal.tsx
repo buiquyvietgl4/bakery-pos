@@ -9,6 +9,7 @@ import { PrintTemplateDesignerModal } from './PrintTemplateDesignerModal';
 import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 import { StickerTemplateConfig, StickerElementConfig } from '@/lib/types/printTemplate';
 import { getStickerTemplate, PRINT_TEMPLATE_UPDATED_EVENT } from '@/lib/utils/printTemplateManager';
+import { cleanCakeNameAndSize } from '@/lib/utils/customCakeCosting';
 
 export interface CakeStickerData {
   orderNumber?: string;
@@ -113,6 +114,8 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
       content = branding.storeName || 'TIỆM BÁNH HOÀNG GIA';
     } else if (el.id === 'store_hotline') {
       content = `Hotline: ${branding.phone || '0901.234.567'}`;
+    } else if (el.id === 'store_address') {
+      content = `Đ/c: ${branding.address || 'Tại tiệm'}`;
     } else if (el.id === 'order_code') {
       content = (
         <span className="font-mono bg-black text-white px-1.5 py-0.5 rounded leading-none">
@@ -120,7 +123,7 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
         </span>
       );
     } else if (el.id === 'cake_name') {
-      content = data.cakeName;
+      content = cleanCakeNameAndSize(data.cakeName).name;
     } else if (el.id === 'cake_message') {
       if (!data.cakeMessage) return null;
       content = (

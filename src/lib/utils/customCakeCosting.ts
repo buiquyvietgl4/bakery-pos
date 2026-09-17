@@ -303,7 +303,15 @@ export function cleanCakeNameAndSize(fullName: string, existingSize?: string): {
   let name = fullName.trim();
   let size = (existingSize || '').trim();
 
-  // Tìm vị trí mở ngoặc đầu tiên
+  // Loại bỏ các đoạn ghi chú trạng thái bánh như:
+  // - "(Sẵn 4 cái • Chờ bếp làm 4 cái)"
+  // - "[Bếp làm 4 cái bổ sung]" hoặc "[Làm thêm 4 cái]"
+  name = name
+    .replace(/\s*\[(?:Bếp làm|Làm thêm|Làm bổ sung|Bổ sung).*?\]/gi, '')
+    .replace(/\s*\((?:Sẵn|Đã có sẵn|Còn|Chờ bếp|Thiếu|Làm thêm).*?\)/gi, '')
+    .trim();
+
+  // Tìm vị trí mở ngoặc đầu tiên (thường là Size bánh ví dụ: "BÁNH BÔNG LAN (Size 18cm)")
   const firstParenIdx = name.indexOf('(');
   if (firstParenIdx !== -1) {
     const candidateName = name.slice(0, firstParenIdx).trim();
@@ -311,20 +319,29 @@ export function cleanCakeNameAndSize(fullName: string, existingSize?: string): {
     if (candidateSize.startsWith('(') && candidateSize.endsWith(')')) {
       candidateSize = candidateSize.slice(1, -1).trim();
     }
-    if (candidateName) {
+    // Chỉ coi là size nếu không phải là ghi chú trạng thái
+    const isStatusNote = /^(Sẵn|Đã có sẵn|Còn|Chờ bếp|Thiếu|Làm thêm)/i.test(candidateSize);
+    if (!isStatusNote) {
+      if (candidateName) {
+        name = candidateName;
+      }
+      if (!size && candidateSize) {
+        size = candidateSize;
+      }
+    } else {
       name = candidateName;
-    }
-    if (!size && candidateSize) {
-      size = candidateSize;
     }
   }
 
-  // Xóa các dấu đóng ngoặc dư thừa ở cuối tên bánh
+  // Xóa các dấu đóng/mở ngoặc dư thừa ở cuối tên bánh
   name = name.replace(/[\(\)]+$/g, '').trim();
 
   // Làm sạch kích thước
   if (size) {
     size = size.replace(/^\(+/, '').replace(/\)+$/, '').trim();
+    if (/^(Sẵn|Đã có sẵn|Còn|Chờ bếp|Thiếu|Làm thêm)/i.test(size)) {
+      size = '';
+    }
   }
 
   return { name: name || fullName, size };

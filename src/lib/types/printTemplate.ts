@@ -7,6 +7,7 @@ export type ReceiptPaperSize = '80mm' | '58mm';
 export type StickerFieldId =
   | 'store_name'         // Tên tiệm bánh
   | 'store_hotline'      // Hotline tiệm
+  | 'store_address'      // Địa chỉ quán / tiệm bánh
   | 'order_code'         // Mã đơn hàng (VD: #BK-123)
   | 'cake_name'          // Tên món bánh
   | 'cake_message'       // Lời nhắn viết lên bánh
