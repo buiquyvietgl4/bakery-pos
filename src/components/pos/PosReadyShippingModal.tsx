@@ -239,12 +239,28 @@ export const PosReadyShippingModal: React.FC<PosReadyShippingModalProps> = ({
                 const custPhone = order.customer_phone || fromN.customer_phone;
                 const custName = order.customer_name || fromN.customer_name || 'Khách tiệm';
 
+                // Kiểm tra đơn có đang chờ bếp làm thêm số lượng bổ sung (thiếu bánh tồn)
+                const needBakeQty = Number(order.need_bake_qty || 0);
+                const isWaitingBake = Boolean(
+                  needBakeQty > 0 &&
+                  order.bake_status !== 'done' &&
+                  !order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ')
+                );
+                const totalOrderQty = Number(order.orderQuantity || mainItem?.quantity || ((order.ready_stock_qty || 0) + needBakeQty) || 1);
+                const readyStockQty = order.ready_stock_qty !== undefined ? Number(order.ready_stock_qty) : Math.max(0, totalOrderQty - needBakeQty);
+                const isDoneBake = Boolean(
+                  order.bake_status === 'done' &&
+                  (order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || totalOrderQty > 1 || (order.need_bake_qty !== undefined && Number(order.need_bake_qty) > 0))
+                );
+
                 return (
                   <div
                     key={order.id || order.order_number}
                     className={`rounded-2xl p-4 shadow-lg space-y-3 border flex flex-col justify-between transition ${
                       urgency.isUrgent
                         ? 'bg-zinc-900 border-2 border-rose-500 ring-2 ring-rose-500/40 shadow-rose-950/40'
+                        : isWaitingBake
+                        ? 'bg-zinc-900/95 border-2 border-amber-500/80 shadow-amber-950/40 ring-1 ring-amber-500/30'
                         : isPaid100
                         ? 'bg-zinc-900/90 border border-emerald-500/50 shadow-emerald-950/20'
                         : 'bg-zinc-900/90 border-2 border-amber-500/60 shadow-amber-950/30'
@@ -282,12 +298,40 @@ export const PosReadyShippingModal: React.FC<PosReadyShippingModalProps> = ({
                           <h3 className="font-black text-sm text-zinc-100 uppercase leading-snug">
                             {parsedCake.name}
                           </h3>
-                          {(order.orderQuantity || mainItem?.quantity || 1) > 1 && (
-                            <span className="shrink-0 px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-black text-xs">
-                              {order.orderQuantity || mainItem?.quantity}x
+                          {isWaitingBake ? (
+                            <span className="shrink-0 px-2 py-0.5 rounded-lg bg-amber-600 text-white font-black text-xs">
+                              Có sẵn: {readyStockQty}/{totalOrderQty} cái
                             </span>
-                          )}
+                          ) : totalOrderQty > 1 ? (
+                            <span className="shrink-0 px-2 py-0.5 rounded-lg bg-emerald-600 text-white font-black text-xs">
+                              {totalOrderQty}x
+                            </span>
+                          ) : null}
                         </div>
+
+                        {/* Banner cảnh báo đang chờ bếp làm bù */}
+                        {isWaitingBake ? (
+                          <div className="p-2 rounded-xl bg-amber-950/80 border border-amber-500/60 text-amber-200 text-xs space-y-1">
+                            <div className="flex items-center justify-between font-black text-amber-300">
+                              <span className="flex items-center gap-1.5">
+                                <Clock className="w-3.5 h-3.5 text-amber-400 animate-spin shrink-0" />
+                                <span>Đang chờ bếp làm thêm {needBakeQty} cái</span>
+                              </span>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-500/40">
+                                Sẵn: {readyStockQty}/{totalOrderQty}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-amber-300/80 flex items-center justify-between font-medium">
+                              <span>📦 Có sẵn chờ ship: <b>{readyStockQty} cái</b></span>
+                              <span className="text-amber-400">⏳ Bếp cần làm bù: <b>{needBakeQty} cái</b></span>
+                            </div>
+                          </div>
+                        ) : isDoneBake ? (
+                          <div className="p-1.5 px-2.5 rounded-lg bg-emerald-950/80 border border-emerald-600/60 text-emerald-200 text-[11px] font-extrabold flex items-center justify-between">
+                            <span>✓ Đã làm xong đủ: <b>{totalOrderQty} cái bánh</b></span>
+                            <span className="text-emerald-400">Đã gộp đủ • Sẵn sàng</span>
+                          </div>
+                        ) : null}
 
                         {parsedCake.size && (
                           <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-950/80 border border-emerald-700/80 text-emerald-300 font-extrabold text-[11px]">
@@ -405,7 +449,22 @@ export const PosReadyShippingModal: React.FC<PosReadyShippingModalProps> = ({
                         </button>
                       </div>
 
-                      {isPaid100 ? (
+                      {isWaitingBake ? (
+                        <div className="space-y-1.5">
+                          <button
+                            type="button"
+                            disabled
+                            className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-400 font-bold text-xs flex items-center justify-center gap-1.5 cursor-not-allowed opacity-80 border border-zinc-700 shadow-inner"
+                            title={`Đơn đang chờ bếp nướng làm thêm ${needBakeQty} cái bánh bổ sung. Khi thợ bếp hoàn thành và duyệt đủ ${totalOrderQty} cái mới mở khóa giao hàng.`}
+                          >
+                            <Clock className="w-4 h-4 text-amber-400 animate-spin" />
+                            <span>Chờ Bếp Làm Bù ({needBakeQty} cái) • Chưa Thể Giao</span>
+                          </button>
+                          <p className="text-[10px] text-amber-400/90 text-center italic">
+                            ⚠️ Bếp chưa làm xong số lượng bù. Vui lòng chờ bếp hoàn tất để mở khóa giao hàng.
+                          </p>
+                        </div>
+                      ) : isPaid100 ? (
                         <button
                           type="button"
                           onClick={() => {

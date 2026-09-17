@@ -935,6 +935,19 @@ export default function POSPage() {
     const orderNum = order.order_number || order.orderNumber;
     const linkedBakeOrderNum = order.linked_bake_order_number || `${orderNum}-LAM`;
 
+    // Khóa an toàn: Ngăn chặn giao đơn nếu bánh làm bù chưa nướng xong ở bếp
+    if (
+      order.need_bake_qty &&
+      Number(order.need_bake_qty) > 0 &&
+      order.bake_status !== 'done' &&
+      !order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ')
+    ) {
+      alert(
+        `Đơn #${orderNum} đang chờ bếp nướng làm thêm ${order.need_bake_qty} cái bánh bổ sung (Hiện có sẵn: ${order.ready_stock_qty ?? 0} cái). Vui lòng đợi thợ bếp nướng xong trước khi hoàn tất giao hàng!`
+      );
+      return;
+    }
+
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('bakery_orders');

@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, CheckCircle2, Banknote, QrCode, Copy, Check, 
   MapPin, Phone, User, Cake, AlertCircle, Sparkles,
-  Camera, RefreshCw, ShieldCheck, ArrowRight
+  Camera, RefreshCw, ShieldCheck, ArrowRight, Clock
 } from 'lucide-react';
 import { parsePreorderFromNotes, broadcastTransferApprovalRequest, subscribeCrossDeviceSync, TransferApprovalPayload, TransferApprovalResolvedPayload } from '@/lib/supabase/realtimeSync';
 import { getTransferVerificationConfig, TransferVerificationConfig, TRANSFER_VERIFY_UPDATED_EVENT } from '@/lib/utils/paymentSync';
@@ -179,7 +179,19 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
     }
   };
 
+  const isWaitingBake = Boolean(
+    order.need_bake_qty &&
+    Number(order.need_bake_qty) > 0 &&
+    order.bake_status !== 'done' &&
+    !order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ')
+  );
+
   const handleConfirm = async () => {
+    if (isWaitingBake) {
+      alert(`Đơn #${order.order_number} đang chờ bếp nướng làm thêm ${order.need_bake_qty} cái bánh bổ sung. Vui lòng đợi thợ bếp làm xong trước khi thu tiền và giao bánh!`);
+      return;
+    }
+
     if (paymentMethod === 'bank_transfer' && requireAdminApproval && !isWaitingAdminApproval) {
       // Bấm lần đầu ở chế độ 2 bước: phát yêu cầu tới Admin
       await handleSendOrResendApproval();
@@ -456,6 +468,19 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
             </div>
           )}
 
+          {/* Cảnh báo nếu đang chờ bếp làm thêm số lượng bổ sung */}
+          {isWaitingBake && (
+            <div className="p-3 rounded-2xl bg-amber-950/80 border border-amber-500/60 text-amber-200 text-xs flex items-center gap-2">
+              <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
+              <div>
+                <span className="font-bold text-amber-300">Đang chờ bếp nướng làm thêm {order.need_bake_qty} cái</span>
+                <p className="text-[10px] text-amber-300/80 mt-0.5">
+                  Đơn chưa nướng xong số lượng bù. Không thể xác nhận giao và thu tiền lúc này.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Nút hành động */}
           <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-zinc-800">
             <button
@@ -468,14 +493,22 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
 
             <button
               type="button"
+              disabled={isWaitingBake}
               onClick={handleConfirm}
-              className={`py-3 px-4 rounded-2xl font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg cursor-pointer active:scale-95 ${
-                paymentMethod === 'bank_transfer' && requireAdminApproval && !isWaitingAdminApproval
-                  ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30'
-                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+              className={`py-3 px-4 rounded-2xl font-black text-xs flex items-center justify-center gap-1.5 transition shadow-lg ${
+                isWaitingBake
+                  ? 'bg-zinc-800 text-zinc-500 border border-zinc-700 cursor-not-allowed opacity-60 shadow-none'
+                  : paymentMethod === 'bank_transfer' && requireAdminApproval && !isWaitingAdminApproval
+                  ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30 cursor-pointer active:scale-95'
+                  : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 cursor-pointer active:scale-95'
               }`}
             >
-              {paymentMethod === 'bank_transfer' && requireAdminApproval && !isWaitingAdminApproval ? (
+              {isWaitingBake ? (
+                <>
+                  <Clock className="w-4 h-4 text-amber-400" />
+                  <span>Chờ Bếp Làm Bù</span>
+                </>
+              ) : paymentMethod === 'bank_transfer' && requireAdminApproval && !isWaitingAdminApproval ? (
                 <>
                   <ShieldCheck className="w-4 h-4" />
                   <span>Gửi Duyệt 2 Bước</span>
