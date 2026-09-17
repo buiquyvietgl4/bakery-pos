@@ -1111,13 +1111,17 @@ export async function syncOrderToSupabase(
 
   try {
     // 1. Thử cập nhật trạng thái nếu đơn đã tồn tại trong Supabase
-    // LƯU Ý QUAN TRỌNG: Chỉ cập nhật status và updated_at, TUYỆT ĐỐI KHÔNG ghi đè preorder_pickup_at!
+    // LƯU Ý QUAN TRỌNG: Chỉ cập nhật status, updated_at và notes (để bảo toàn tiến độ làm bù/xong bù), TUYỆT ĐỐI KHÔNG ghi đè preorder_pickup_at!
+    const updatePayload: any = {
+      status: nextStatus,
+      updated_at: new Date().toISOString(),
+    };
+    if (order.notes) {
+      updatePayload.notes = order.notes;
+    }
     const { data: updatedRows, error: updateErr } = await supabase
       .from('orders')
-      .update({
-        status: nextStatus,
-        updated_at: new Date().toISOString(),
-      })
+      .update(updatePayload)
       .eq('order_number', orderNum)
       .select('id');
 
@@ -1434,4 +1438,84 @@ export function formatPickupDateTime(dt?: string): string {
   } catch {}
 
   return dt;
+}
+
+export interface OrderBakeShortageInfo {
+  isWaitingBake: boolean;
+  needBakeQty: number;
+  readyStockQty: number;
+  totalOrderQty: number;
+  bakeStatus: 'pending' | 'done';
+  isDoneBake: boolean;
+}
+
+/**
+ * Hàm phân tích và nhận diện trạng thái làm bù/thiếu bánh tồn kho từ đơn hàng
+ * Chuẩn hóa logic xuyên suốt giữa Máy A (tạo đơn), Máy B (nhận đơn), Bếp và POS
+ * Bảo toàn 100% dữ liệu ngay cả khi Supabase chỉ lưu trường notes
+ */
+export function parseOrderBakeShortage(order: any): OrderBakeShortageInfo {
+  if (!order || typeof order !== 'object') {
+    return {
+      isWaitingBake: false,
+      needBakeQty: 0,
+      readyStockQty: 0,
+      totalOrderQty: 0,
+      bakeStatus: 'done',
+      isDoneBake: true,
+    };
+  }
+
+  const notes = typeof order.notes === 'string' ? order.notes : '';
+
+  // 1. Kiểm tra trạng thái đã hoàn thành nướng đủ
+  const isExplicitlyDone = Boolean(
+    order.bake_status === 'done' || 
+    notes.includes('ĐÃ BẾP LÀM XONG ĐỦ') ||
+    notes.includes('✓ ĐÃ BẾP LÀM XONG ĐỦ')
+  );
+
+  // 2. Trích xuất regex từ notes nếu có tag chờ làm bù
+  // Khớp với [⏳ CHỜ BẾP LÀM 3 CÁI (ĐÃ CÓ SẴN 7/10 CÁI)] hoặc [⏳ CHỜ BẾP LÀM 3 CÁI (ĐÃ CÓ SẴN 7 CÁI)] hoặc CHỜ BẾP LÀM 3 CÁI
+  const matchBake = isExplicitlyDone ? null : notes.match(/CHỜ BẾP LÀM\s*(\d+)\s*CÁI(?:\s*\(ĐÃ CÓ SẴN\s*(\d+)(?:\/(\d+))?\s*CÁI\))?/i);
+
+  let needBakeQty = 0;
+  if (!isExplicitlyDone) {
+    if (order.need_bake_qty !== undefined && order.need_bake_qty !== null && Number(order.need_bake_qty) > 0) {
+      needBakeQty = Number(order.need_bake_qty);
+    } else if (matchBake && matchBake[1]) {
+      needBakeQty = Number(matchBake[1]);
+    }
+  }
+
+  const totalOrderQty = Number(
+    order.orderQuantity || 
+    (matchBake && matchBake[3] ? Number(matchBake[3]) : undefined) ||
+    order.items?.[0]?.quantity || 
+    ((order.ready_stock_qty || 0) + needBakeQty) || 
+    1
+  );
+
+  let readyStockQty = 0;
+  if (isExplicitlyDone) {
+    readyStockQty = totalOrderQty;
+  } else if (order.ready_stock_qty !== undefined && order.ready_stock_qty !== null) {
+    readyStockQty = Number(order.ready_stock_qty);
+  } else if (matchBake && matchBake[2]) {
+    readyStockQty = Number(matchBake[2]);
+  } else {
+    readyStockQty = Math.max(0, totalOrderQty - needBakeQty);
+  }
+
+  const isWaitingBake = needBakeQty > 0 && !isExplicitlyDone;
+  const bakeStatus: 'pending' | 'done' = isWaitingBake ? 'pending' : 'done';
+
+  return {
+    isWaitingBake,
+    needBakeQty,
+    readyStockQty,
+    totalOrderQty,
+    bakeStatus,
+    isDoneBake: isExplicitlyDone,
+  };
 }

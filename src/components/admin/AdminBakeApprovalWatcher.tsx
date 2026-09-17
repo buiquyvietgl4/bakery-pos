@@ -9,7 +9,8 @@ import {
   subscribeCrossDeviceSync, 
   broadcastOrderStatusUpdate, 
   broadcastBakeApprovalResolved, 
-  BakeApprovalPayload 
+  BakeApprovalPayload,
+  parseOrderBakeShortage
 } from '@/lib/supabase/realtimeSync';
 import { 
   Bell, Shield, CheckCircle2, XCircle, X, Clock, Cake, 
@@ -40,12 +41,15 @@ export default function AdminBakeApprovalWatcher() {
           o.notes?.includes('YÊU CẦU DUYỆT NƯỚNG XONG')
         );
 
-        if (isBakePending && o.need_bake_qty && o.need_bake_qty > 0) {
+        const shortage = parseOrderBakeShortage(o);
+        const effectiveNeedBake = shortage.needBakeQty > 0 ? shortage.needBakeQty : Number(o.need_bake_qty || 0);
+
+        if (isBakePending && effectiveNeedBake > 0) {
           const cakeName = o.cake_name || o.items?.[0]?.product_name_snapshot || 'Bánh sinh nhật';
           pendings.push({
             order_number: o.order_number,
             cake_name: cakeName,
-            need_bake_qty: Number(o.need_bake_qty || 1),
+            need_bake_qty: effectiveNeedBake,
             requested_by: o.bake_approval_requested_by || 'Thợ Bếp / Nhân Viên',
             requested_at: o.bake_approval_requested_at || o.updated_at || new Date().toISOString(),
             order_data: o,

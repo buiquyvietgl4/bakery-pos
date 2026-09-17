@@ -6,7 +6,7 @@ import {
   MapPin, Phone, User, Cake, AlertCircle, Sparkles,
   Camera, RefreshCw, ShieldCheck, ArrowRight, Clock
 } from 'lucide-react';
-import { parsePreorderFromNotes, broadcastTransferApprovalRequest, subscribeCrossDeviceSync, TransferApprovalPayload, TransferApprovalResolvedPayload } from '@/lib/supabase/realtimeSync';
+import { parsePreorderFromNotes, broadcastTransferApprovalRequest, subscribeCrossDeviceSync, TransferApprovalPayload, TransferApprovalResolvedPayload, parseOrderBakeShortage } from '@/lib/supabase/realtimeSync';
 import { getTransferVerificationConfig, TransferVerificationConfig, TRANSFER_VERIFY_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 import { TransferProofCameraModal } from '@/components/pos/TransferProofCameraModal';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -179,16 +179,12 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
     }
   };
 
-  const isWaitingBake = Boolean(
-    order.need_bake_qty &&
-    Number(order.need_bake_qty) > 0 &&
-    order.bake_status !== 'done' &&
-    !order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ')
-  );
+  const shortage = parseOrderBakeShortage(order);
+  const isWaitingBake = shortage.isWaitingBake;
 
   const handleConfirm = async () => {
     if (isWaitingBake) {
-      alert(`Đơn #${order.order_number} đang chờ bếp nướng làm thêm ${order.need_bake_qty} cái bánh bổ sung. Vui lòng đợi thợ bếp làm xong trước khi thu tiền và giao bánh!`);
+      alert(`Đơn #${order.order_number} đang chờ bếp nướng làm thêm ${shortage.needBakeQty} cái bánh bổ sung. Vui lòng đợi thợ bếp làm xong trước khi thu tiền và giao bánh!`);
       return;
     }
 
@@ -473,7 +469,7 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
             <div className="p-3 rounded-2xl bg-amber-950/80 border border-amber-500/60 text-amber-200 text-xs flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-400 shrink-0 animate-spin" />
               <div>
-                <span className="font-bold text-amber-300">Đang chờ bếp nướng làm thêm {order.need_bake_qty} cái</span>
+                <span className="font-bold text-amber-300">Đang chờ bếp nướng làm thêm {shortage.needBakeQty} cái</span>
                 <p className="text-[10px] text-amber-300/80 mt-0.5">
                   Đơn chưa nướng xong số lượng bù. Không thể xác nhận giao và thu tiền lúc này.
                 </p>

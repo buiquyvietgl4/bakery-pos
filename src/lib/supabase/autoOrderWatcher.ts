@@ -2,7 +2,7 @@
 
 import { supabase } from './client';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
-import { formatPickupDateTime, parsePreorderFromNotes } from './realtimeSync';
+import { formatPickupDateTime, parsePreorderFromNotes, parseOrderBakeShortage } from './realtimeSync';
 import { getDeliveryUrgency } from '@/lib/utils/deliveryAlerts';
 import { sendTelegramOrderAlert, sendTelegramUrgentAlert } from '@/lib/utils/telegramNotify';
 import { soundManager } from '@/lib/utils/audioAlert';
@@ -234,6 +234,8 @@ class AutoOrderWatcher {
       const fromN = parsePreorderFromNotes(order.notes);
       const isShip = (order.delivery_method || fromN.delivery_method) === 'shipping';
       const isPre = order.order_type === 'preorder' || (order.order_number && order.order_number.startsWith('BK-PRE')) || !!order.preorder_pickup_at;
+      const shortage = parseOrderBakeShortage(order);
+
       const unified: any = {
         id: String(order.id),
         order_number: order.order_number,
@@ -255,13 +257,18 @@ class AutoOrderWatcher {
         subtotal: order.subtotal || order.total_amount || 0,
         deposit_amount: fromN.deposit_amount || 0,
         remaining_amount: fromN.remaining_amount || 0,
+        orderQuantity: shortage.totalOrderQty,
+        need_bake_qty: shortage.needBakeQty,
+        ready_stock_qty: shortage.readyStockQty,
+        bake_status: shortage.bakeStatus,
+        is_waiting_bake: shortage.isWaitingBake,
         items: Array.isArray(order.items) && order.items.length > 0
           ? order.items
           : [
               {
                 id: 'cake-item-auto',
                 product_name_snapshot: fromN.cake_name || 'Bánh Đặt Trước',
-                quantity: 1,
+                quantity: shortage.totalOrderQty || 1,
                 notes: order.cake_message ? `Chữ: "${order.cake_message}"` : '',
               }
             ],
@@ -270,22 +277,31 @@ class AutoOrderWatcher {
       const raw = localStorage.getItem('bakery_orders');
       const list = raw ? JSON.parse(raw) : [];
       if (Array.isArray(list)) {
-        if (!list.some((o: any) => o.order_number === unified.order_number)) {
+        const idx = list.findIndex((o: any) => o.order_number === unified.order_number || o.id === unified.id);
+        if (idx >= 0) {
+          list[idx] = { ...list[idx], ...unified };
+        } else {
           list.unshift(unified);
-          localStorage.setItem('bakery_orders', JSON.stringify(list.slice(0, 100)));
         }
+        localStorage.setItem('bakery_orders', JSON.stringify(list.slice(0, 100)));
       }
 
       if (isPre) {
         const rawPo = localStorage.getItem('bakery_preorders');
         const poList = rawPo ? JSON.parse(rawPo) : [];
         if (Array.isArray(poList)) {
-          if (!poList.some((o: any) => (o.order_number || o.orderNumber) === unified.order_number)) {
+          const pIdx = poList.findIndex((o: any) => (o.order_number || o.orderNumber) === unified.order_number || o.id === unified.id);
+          if (pIdx >= 0) {
+            poList[pIdx] = { ...poList[pIdx], ...unified };
+          } else {
             poList.unshift(unified);
-            localStorage.setItem('bakery_preorders', JSON.stringify(poList.slice(0, 100)));
           }
+          localStorage.setItem('bakery_preorders', JSON.stringify(poList.slice(0, 100)));
         }
       }
+
+      // Kích hoạt cập nhật giao diện quầy POS và Bếp tức thì
+      window.dispatchEvent(new Event('bakery_orders_updated'));
     } catch {}
   }
 }

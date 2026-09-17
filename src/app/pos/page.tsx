@@ -33,6 +33,7 @@ import {
   formatPickupDateTime,
   cleanDisplayNotes,
   PaymentReceivedPayload,
+  parseOrderBakeShortage,
 } from '@/lib/supabase/realtimeSync';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
@@ -924,7 +925,17 @@ export default function POSPage() {
       if (!o || o.status !== 'ready') continue;
       if (o.parent_order_number || o.order_number?.endsWith('-LAM') || o.notes?.includes('BỔ SUNG CHO ĐƠN')) continue;
       const key = o.order_number || o.id;
-      if (!uniqueMap.has(key)) uniqueMap.set(key, o);
+      if (!uniqueMap.has(key)) {
+        const shortage = parseOrderBakeShortage(o);
+        uniqueMap.set(key, {
+          ...o,
+          orderQuantity: o.orderQuantity || shortage.totalOrderQty,
+          need_bake_qty: shortage.needBakeQty,
+          ready_stock_qty: shortage.readyStockQty,
+          bake_status: shortage.bakeStatus,
+          is_waiting_bake: shortage.isWaitingBake,
+        });
+      }
     }
     return Array.from(uniqueMap.values());
   }, [invoicesList, preordersList]);
@@ -936,14 +947,10 @@ export default function POSPage() {
     const linkedBakeOrderNum = order.linked_bake_order_number || `${orderNum}-LAM`;
 
     // Khóa an toàn: Ngăn chặn giao đơn nếu bánh làm bù chưa nướng xong ở bếp
-    if (
-      order.need_bake_qty &&
-      Number(order.need_bake_qty) > 0 &&
-      order.bake_status !== 'done' &&
-      !order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ')
-    ) {
+    const shortage = parseOrderBakeShortage(order);
+    if (shortage.isWaitingBake) {
       alert(
-        `Đơn #${orderNum} đang chờ bếp nướng làm thêm ${order.need_bake_qty} cái bánh bổ sung (Hiện có sẵn: ${order.ready_stock_qty ?? 0} cái). Vui lòng đợi thợ bếp nướng xong trước khi hoàn tất giao hàng!`
+        `Đơn #${orderNum} đang chờ bếp nướng làm thêm ${shortage.needBakeQty} cái bánh bổ sung (Hiện có sẵn: ${shortage.readyStockQty} cái). Vui lòng đợi thợ bếp nướng xong trước khi hoàn tất giao hàng!`
       );
       return;
     }
@@ -1083,8 +1090,19 @@ export default function POSPage() {
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
-            setInvoicesList(parsed);
-            const pos = parsed.filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime);
+            const enriched = parsed.map((o: any) => {
+              const shortage = parseOrderBakeShortage(o);
+              return {
+                ...o,
+                orderQuantity: o.orderQuantity || shortage.totalOrderQty,
+                need_bake_qty: shortage.needBakeQty,
+                ready_stock_qty: shortage.readyStockQty,
+                bake_status: shortage.bakeStatus,
+                is_waiting_bake: shortage.isWaitingBake,
+              };
+            });
+            setInvoicesList(enriched);
+            const pos = enriched.filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime);
             if (pos.length > 0) {
               setPreordersList(pos);
             }
@@ -1116,8 +1134,87 @@ export default function POSPage() {
 
     // Kênh đồng bộ đa thiết bị tức thì (Điện thoại bếp bấm đổi trạng thái -> Quầy POS cập nhật ngay)
     const unsubscribeSync = subscribeCrossDeviceSync({
-      onStatusUpdate: () => reloadOrdersData(),
+      onStatusUpdate: (payload?: any) => {
+        if (payload && payload.order_number) {
+          if (typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem('bakery_orders');
+              if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                  let found = false;
+                  const updated = parsed.map((o: any) => {
+                    if (o.order_number === payload.order_number || o.id === payload.order_number) {
+                      found = true;
+                      const od = payload.order_data || {};
+                      const nextNotes = od.notes || o.notes || '';
+                      const nextOrder = {
+                        ...o,
+                        ...od,
+                        status: payload.status,
+                        notes: nextNotes,
+                        updated_at: payload.updated_at || new Date().toISOString(),
+                      };
+                      const shortage = parseOrderBakeShortage(nextOrder);
+                      nextOrder.orderQuantity = nextOrder.orderQuantity || shortage.totalOrderQty;
+                      nextOrder.need_bake_qty = shortage.needBakeQty;
+                      nextOrder.ready_stock_qty = shortage.readyStockQty;
+                      nextOrder.bake_status = shortage.bakeStatus;
+                      nextOrder.is_waiting_bake = shortage.isWaitingBake;
+                      return nextOrder;
+                    }
+                    return o;
+                  });
+                  if (!found && payload.order_data) {
+                    const nextOrder = { ...payload.order_data, status: payload.status };
+                    const shortage = parseOrderBakeShortage(nextOrder);
+                    nextOrder.orderQuantity = nextOrder.orderQuantity || shortage.totalOrderQty;
+                    nextOrder.need_bake_qty = shortage.needBakeQty;
+                    nextOrder.ready_stock_qty = shortage.readyStockQty;
+                    nextOrder.bake_status = shortage.bakeStatus;
+                    nextOrder.is_waiting_bake = shortage.isWaitingBake;
+                    updated.unshift(nextOrder);
+                  }
+                  localStorage.setItem('bakery_orders', JSON.stringify(updated.slice(0, 100)));
+                }
+              }
+            } catch {}
+          }
+        }
+        reloadOrdersData();
+      },
       onNewOrder: (incomingOrder?: any) => {
+        if (incomingOrder && (incomingOrder.order_number || incomingOrder.orderNumber)) {
+          if (typeof window !== 'undefined') {
+            try {
+              const raw = localStorage.getItem('bakery_orders');
+              const parsed = raw ? JSON.parse(raw) : [];
+              const shortage = parseOrderBakeShortage(incomingOrder);
+              const oNum = incomingOrder.order_number || incomingOrder.orderNumber;
+              const enrichedOrder = {
+                ...incomingOrder,
+                orderQuantity: incomingOrder.orderQuantity || shortage.totalOrderQty,
+                need_bake_qty: shortage.needBakeQty,
+                ready_stock_qty: shortage.readyStockQty,
+                bake_status: shortage.bakeStatus,
+                is_waiting_bake: shortage.isWaitingBake,
+              };
+              const idx = parsed.findIndex((o: any) => (o.order_number || o.orderNumber) === oNum);
+              if (idx >= 0) parsed[idx] = { ...parsed[idx], ...enrichedOrder };
+              else parsed.unshift(enrichedOrder);
+              localStorage.setItem('bakery_orders', JSON.stringify(parsed.slice(0, 100)));
+
+              if (enrichedOrder.order_type === 'preorder' || oNum.startsWith('BK-PRE') || !!enrichedOrder.preorder_pickup_at) {
+                const rawPo = localStorage.getItem('bakery_preorders');
+                const parsedPo = rawPo ? JSON.parse(rawPo) : [];
+                const pIdx = parsedPo.findIndex((o: any) => (o.order_number || o.orderNumber) === oNum);
+                if (pIdx >= 0) parsedPo[pIdx] = { ...parsedPo[pIdx], ...enrichedOrder };
+                else parsedPo.unshift(enrichedOrder);
+                localStorage.setItem('bakery_preorders', JSON.stringify(parsedPo.slice(0, 100)));
+              }
+            } catch {}
+          }
+        }
         reloadOrdersData();
         if (incomingOrder) {
           const orderNum = incomingOrder.order_number || incomingOrder.orderNumber || 'BK-XXX';

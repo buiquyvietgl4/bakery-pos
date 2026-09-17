@@ -12,7 +12,8 @@ import {
   formatPickupDateTime,
   cleanDisplayNotes,
   broadcastBakeApprovalRequest,
-  broadcastBakeApprovalResolved
+  broadcastBakeApprovalResolved,
+  parseOrderBakeShortage
 } from '@/lib/supabase/realtimeSync';
 import { 
   ChefHat, Clock, CheckCircle2, ArrowRight, Flame, Sparkles, 
@@ -809,12 +810,12 @@ export default function KitchenPage() {
                   const isShip = (o.delivery_method || o.deliveryMethod) === 'shipping' || fromNotes.delivery_method === 'shipping';
 
                   // Tự động khôi phục số lượng tồn và thiếu từ ghi chú nếu chưa có trong object
-                  const isDoneBake = o.bake_status === 'done' || (o.notes && o.notes.includes('ĐÃ BẾP LÀM XONG ĐỦ'));
-                  const matchBake = isDoneBake ? null : o.notes?.match(/CHỜ BẾP LÀM (\d+) CÁI(?:\s*\(ĐÃ CÓ SẴN (\d+)(?:\/(\d+))? CÁI\))?/i);
-                  const ordQty = o.orderQuantity !== undefined ? Number(o.orderQuantity) : (matchBake && matchBake[3] ? Number(matchBake[3]) : Number(o.items?.[0]?.quantity || 1));
-                  const needBakeQty = isDoneBake ? 0 : (o.need_bake_qty !== undefined ? Number(o.need_bake_qty) : (matchBake ? Number(matchBake[1]) : undefined));
-                  const readyStockQty = isDoneBake ? (ordQty || Number(o.ready_stock_qty || 0)) : (o.ready_stock_qty !== undefined ? Number(o.ready_stock_qty) : (matchBake && matchBake[2] ? Number(matchBake[2]) : undefined));
-                  const bakeStatus = isDoneBake ? 'done' : (o.bake_status || (needBakeQty && needBakeQty > 0 ? 'pending' : 'done'));
+                  const shortage = parseOrderBakeShortage(o);
+                  const isDoneBake = shortage.isDoneBake;
+                  const ordQty = o.orderQuantity !== undefined ? Number(o.orderQuantity) : shortage.totalOrderQty;
+                  const needBakeQty = shortage.needBakeQty;
+                  const readyStockQty = shortage.readyStockQty;
+                  const bakeStatus = shortage.bakeStatus;
 
                   const isApprovalPending = Boolean(
                     o.bake_approval_status === 'pending' || 
@@ -1309,6 +1310,12 @@ export default function KitchenPage() {
         if (incomingOrder && (incomingOrder.order_number || incomingOrder.orderNumber)) {
           const fromN = parsePreorderFromNotes(incomingOrder.notes);
           const isShip = (incomingOrder.delivery_method || incomingOrder.deliveryMethod) === 'shipping' || fromN.delivery_method === 'shipping';
+          const shortage = parseOrderBakeShortage(incomingOrder);
+          const ordQty = incomingOrder.orderQuantity !== undefined ? Number(incomingOrder.orderQuantity) : shortage.totalOrderQty;
+          const matchParent = incomingOrder.notes?.match(/BỔ SUNG CHO ĐƠN #(BK-[A-Z0-9-]+)/i);
+          const parentOrderNum = incomingOrder.parent_order_number || (matchParent ? matchParent[1] : (incomingOrder.order_number?.endsWith('-LAM') ? incomingOrder.order_number.replace(/-LAM$/, '') : undefined));
+          const linkedBakeOrder = incomingOrder.linked_bake_order_number || (shortage.needBakeQty > 0 ? `${incomingOrder.order_number || incomingOrder.orderNumber}-LAM` : undefined);
+
           const normalizedOrder: KDSOrder = {
             id: String(incomingOrder.id || incomingOrder.local_id || incomingOrder.order_number || Math.random()),
             order_number: String(incomingOrder.order_number || incomingOrder.orderNumber),
@@ -1333,6 +1340,12 @@ export default function KitchenPage() {
             addons: Array.isArray(incomingOrder.addons) && incomingOrder.addons.length > 0 ? incomingOrder.addons : (fromN.addons || []),
             selected_addons: incomingOrder.selected_addons || [],
             cost_breakdown: incomingOrder.cost_breakdown,
+            orderQuantity: ordQty,
+            ready_stock_qty: shortage.readyStockQty,
+            need_bake_qty: shortage.needBakeQty,
+            bake_status: shortage.bakeStatus,
+            linked_bake_order_number: linkedBakeOrder,
+            parent_order_number: parentOrderNum,
             items: Array.isArray(incomingOrder.items) && incomingOrder.items.length > 0 
               ? incomingOrder.items 
               : incomingOrder.cake_name || fromN.cake_name
@@ -1340,7 +1353,7 @@ export default function KitchenPage() {
                   {
                     id: 'cake-item-auto',
                     product_name_snapshot: incomingOrder.cake_name || fromN.cake_name || 'Bánh Đặt Trước',
-                    quantity: 1,
+                    quantity: ordQty,
                     notes: incomingOrder.cake_message ? `Chữ: "${incomingOrder.cake_message}"` : '',
                   }
                 ]

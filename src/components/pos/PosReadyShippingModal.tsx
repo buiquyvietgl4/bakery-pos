@@ -6,7 +6,7 @@ import {
   CheckCircle2, Banknote, Eye, Tag, AlertTriangle, Search,
   Store, Copy, Check, Sparkles, ExternalLink
 } from 'lucide-react';
-import { formatPickupDateTime, parsePreorderFromNotes } from '@/lib/supabase/realtimeSync';
+import { formatPickupDateTime, parsePreorderFromNotes, parseOrderBakeShortage } from '@/lib/supabase/realtimeSync';
 import { getDeliveryUrgency, sortPreordersByUrgency } from '@/lib/utils/deliveryAlerts';
 import { cleanCakeNameAndSize, getAddonIcon } from '@/lib/utils/customCakeCosting';
 import { DeliveryPaymentModal } from '@/components/kitchen/DeliveryPaymentModal';
@@ -240,18 +240,12 @@ export const PosReadyShippingModal: React.FC<PosReadyShippingModalProps> = ({
                 const custName = order.customer_name || fromN.customer_name || 'Khách tiệm';
 
                 // Kiểm tra đơn có đang chờ bếp làm thêm số lượng bổ sung (thiếu bánh tồn)
-                const needBakeQty = Number(order.need_bake_qty || 0);
-                const isWaitingBake = Boolean(
-                  needBakeQty > 0 &&
-                  order.bake_status !== 'done' &&
-                  !order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ')
-                );
-                const totalOrderQty = Number(order.orderQuantity || mainItem?.quantity || ((order.ready_stock_qty || 0) + needBakeQty) || 1);
-                const readyStockQty = order.ready_stock_qty !== undefined ? Number(order.ready_stock_qty) : Math.max(0, totalOrderQty - needBakeQty);
-                const isDoneBake = Boolean(
-                  order.bake_status === 'done' &&
-                  (order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || totalOrderQty > 1 || (order.need_bake_qty !== undefined && Number(order.need_bake_qty) > 0))
-                );
+                const shortage = parseOrderBakeShortage(order);
+                const needBakeQty = shortage.needBakeQty;
+                const isWaitingBake = shortage.isWaitingBake;
+                const totalOrderQty = shortage.totalOrderQty;
+                const readyStockQty = shortage.readyStockQty;
+                const isDoneBake = shortage.isDoneBake;
 
                 return (
                   <div
