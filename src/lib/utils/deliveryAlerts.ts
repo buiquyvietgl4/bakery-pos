@@ -83,19 +83,88 @@ export function parsePickupDate(pickupStr?: string): Date | null {
 }
 
 /**
+ * Kiểm tra xem đơn hàng đã được giao thành công hoặc đã hủy hay chưa.
+ * Hỗ trợ đa dạng các định dạng dữ liệu (status, delivery_status, ghi chú tiếng Việt, cờ delivered...).
+ */
+export function isOrderCompletedOrCancelled(orderOrStatus?: any): boolean {
+  if (!orderOrStatus) return false;
+
+  // Nếu truyền trực tiếp chuỗi status
+  if (typeof orderOrStatus === 'string') {
+    const s = orderOrStatus.toLowerCase().trim();
+    return (
+      s === 'completed' ||
+      s === 'cancelled' ||
+      s === 'canceled' ||
+      s === 'delivered' ||
+      s === 'done' ||
+      s === 'đã giao' ||
+      s === 'đã giao khách' ||
+      s === 'đã hoàn thành' ||
+      s === 'hoàn thành' ||
+      s === 'đã hủy' ||
+      s === 'hủy'
+    );
+  }
+
+  // Nếu truyền object đơn hàng
+  const o = orderOrStatus;
+  const s = String(o.status || '').toLowerCase().trim();
+  if (
+    s === 'completed' ||
+    s === 'cancelled' ||
+    s === 'canceled' ||
+    s === 'delivered' ||
+    s === 'done' ||
+    s === 'đã giao' ||
+    s === 'đã giao khách' ||
+    s === 'đã hoàn thành' ||
+    s === 'hoàn thành' ||
+    s === 'đã hủy' ||
+    s === 'hủy'
+  ) {
+    return true;
+  }
+
+  // Kiểm tra delivery_status
+  const ds = String(o.delivery_status || '').toLowerCase().trim();
+  if (ds === 'delivered' || ds === 'completed' || ds === 'done') {
+    return true;
+  }
+
+  // Kiểm tra cờ is_delivered
+  if (o.is_delivered === true) {
+    return true;
+  }
+
+  // Kiểm tra ghi chú có chứa đánh dấu hoàn tất giao
+  const notes = String(o.notes || '');
+  if (notes.includes('[✓ ĐÃ GIAO') || notes.includes('ĐÃ GIAO KHÁCH THÀNH CÔNG')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Tính toán mức độ khẩn cấp của đơn hàng dựa trên thời gian hẹn giao
  */
 export function getDeliveryUrgency(
   pickupAt?: string,
-  status?: string,
+  statusOrOrder?: string | any,
   referenceNow: Date = new Date()
 ): UrgencyInfo {
-  if (status === 'completed' || status === 'cancelled') {
+  const isDone = isOrderCompletedOrCancelled(statusOrOrder);
+  if (isDone) {
+    const statusStr = typeof statusOrOrder === 'string'
+      ? statusOrOrder
+      : String(statusOrOrder?.status || '');
+    const isCancelled = statusStr.toLowerCase().includes('cancel') || statusStr.toLowerCase().includes('hủy');
     return {
       level: 'completed',
       minutesLeft: 999999,
-      formattedRemaining: status === 'completed' ? 'Đã giao xong' : 'Đã hủy',
-      badgeText: status === 'completed' ? '✓ Đã hoàn thành' : 'Đã hủy',
+      formattedRemaining: isCancelled ? 'Đã hủy' : 'Đã giao xong',
+      badgeText: isCancelled ? 'Đã hủy' : '✓ Đã hoàn thành',
       badgeColorClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
       borderClass: 'border-zinc-200',
       isUrgent: false,
@@ -168,11 +237,10 @@ export function getUrgentPreorders<T = any>(orders: T[], referenceNow: Date = ne
   if (!Array.isArray(orders)) return [];
   return orders.filter((o: any) => {
     if (!o) return false;
-    const status = o.status || 'pending';
-    if (status === 'completed' || status === 'cancelled') return false;
-    const pickup = o.preorder_pickup_at || o.pickupDateTime;
+    if (isOrderCompletedOrCancelled(o)) return false;
+    const pickup = o.preorder_pickup_at || o.pickupDateTime || o.pickup_time;
     if (!pickup) return false;
-    const urgency = getDeliveryUrgency(pickup, status, referenceNow);
+    const urgency = getDeliveryUrgency(pickup, o, referenceNow);
     return urgency.isUrgent;
   });
 }
@@ -183,19 +251,16 @@ export function getUrgentPreorders<T = any>(orders: T[], referenceNow: Date = ne
 export function sortPreordersByUrgency<T = any>(orders: T[], referenceNow: Date = new Date()): T[] {
   if (!Array.isArray(orders)) return [];
   return [...orders].sort((a: any, b: any) => {
-    const statusA = a?.status || 'pending';
-    const statusB = b?.status || 'pending';
-
-    const isDoneA = statusA === 'completed' || statusA === 'cancelled';
-    const isDoneB = statusB === 'completed' || statusB === 'cancelled';
+    const isDoneA = isOrderCompletedOrCancelled(a);
+    const isDoneB = isOrderCompletedOrCancelled(b);
     if (isDoneA && !isDoneB) return 1;
     if (!isDoneA && isDoneB) return -1;
 
     const pickupA = a?.preorder_pickup_at || a?.pickupDateTime;
     const pickupB = b?.preorder_pickup_at || b?.pickupDateTime;
 
-    const urgA = getDeliveryUrgency(pickupA, statusA, referenceNow);
-    const urgB = getDeliveryUrgency(pickupB, statusB, referenceNow);
+    const urgA = getDeliveryUrgency(pickupA, a, referenceNow);
+    const urgB = getDeliveryUrgency(pickupB, b, referenceNow);
 
     return urgA.minutesLeft - urgB.minutesLeft;
   });

@@ -7,6 +7,7 @@ import {
   formatPickupDateTime,
 } from '@/lib/supabase/realtimeSync';
 import { addNotificationLog } from './notificationHistory';
+import { isOrderCompletedOrCancelled } from './deliveryAlerts';
 
 export interface TelegramConfig {
   enabled: boolean;
@@ -320,6 +321,7 @@ export async function sendTelegramOrderAlert(order: any): Promise<{ success: boo
  * Cảnh báo đơn gấp sát giờ giao tới Telegram
  */
 export async function sendTelegramUrgentAlert(order: any, minutesLeft: number): Promise<void> {
+  if (!order || isOrderCompletedOrCancelled(order)) return;
   const config = getTelegramConfig();
   if (!config.enabled || !config.botToken || !config.chatId) return;
 

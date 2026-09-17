@@ -26,7 +26,7 @@ import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
-import { getDeliveryUrgency, getUrgentPreorders, sortPreordersByUrgency } from '@/lib/utils/deliveryAlerts';
+import { getDeliveryUrgency, getUrgentPreorders, sortPreordersByUrgency, isOrderCompletedOrCancelled } from '@/lib/utils/deliveryAlerts';
 import { 
   sendTelegramReadyForShipAlert, 
   sendTelegramDeliveredSuccessAlert, 
@@ -401,21 +401,23 @@ export default function KitchenPage() {
   // Lọc các đơn cần làm gấp trong 60 phút hoặc đã quá hạn
   const urgentOrders = useMemo(() => {
     return (orders || []).filter((o) => {
-      if (!o || o.status === 'completed' || o.status === 'cancelled') return false;
-      const pickup = o.preorder_pickup_at;
+      if (!o || isOrderCompletedOrCancelled(o)) return false;
+      const pickup = o.preorder_pickup_at || o.pickupDateTime;
       if (!pickup) return false;
-      return getDeliveryUrgency(pickup, o.status, currentTime).isUrgent;
+      return getDeliveryUrgency(pickup, o, currentTime).isUrgent;
     });
   }, [orders, currentTime]);
 
   // Cảnh báo âm thanh & thông báo tin nhắn khi phát hiện có đơn mới rơi vào trạng thái khẩn cấp
   useEffect(() => {
     if (urgentOrders.length > 0 && urgentOrders.length > prevUrgentCountRef.current) {
-      soundManager.playUrgentAlert();
       const top: any = urgentOrders[0];
+      if (isOrderCompletedOrCancelled(top)) return;
+
+      soundManager.playUrgentAlert();
       const orderNo = top.order_number || top.orderNumber || top.id || 'ĐƠN MỚI';
       const pickupTimeRaw = top.preorder_pickup_at || top.pickupDateTime || top.pickup_time || '';
-      const urg = getDeliveryUrgency(pickupTimeRaw, top.status, currentTime);
+      const urg = getDeliveryUrgency(pickupTimeRaw, top, currentTime);
       const pickupFormatted = pickupTimeRaw ? formatPickupDateTime(pickupTimeRaw) : 'Trong ngày';
       const custName = top.customer_name || top.customerName || '';
       const custPhone = top.customer_phone || top.customerPhone || '';

@@ -37,8 +37,8 @@ import {
 } from '@/lib/supabase/realtimeSync';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
-import { getDeliveryUrgency, getUrgentPreorders, sortPreordersByUrgency } from '@/lib/utils/deliveryAlerts';
-import { sendTelegramOrderAlert } from '@/lib/utils/telegramNotify';
+import { getDeliveryUrgency, getUrgentPreorders, sortPreordersByUrgency, isOrderCompletedOrCancelled } from '@/lib/utils/deliveryAlerts';
+import { sendTelegramOrderAlert, sendTelegramDeliveredSuccessAlert } from '@/lib/utils/telegramNotify';
 import { triggerServerPush } from '@/lib/utils/webPushManager';
 import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerModal';
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
@@ -743,11 +743,14 @@ export default function POSPage() {
   // Cảnh báo âm thanh & thông báo tin nhắn khi có đơn mới rơi vào trạng thái khẩn cấp
   useEffect(() => {
     if (urgentPreorders.length > 0 && urgentPreorders.length > prevUrgentCountRef.current) {
-      soundManager.playUrgentAlert();
       const top = urgentPreorders[0];
-      const minLeft = top.urgency?.minutesLeft ?? 0;
-      const orderNo = top.order_number || top.orderNumber || top.id || 'ĐƠN MỚI';
+      if (isOrderCompletedOrCancelled(top)) return;
+
+      soundManager.playUrgentAlert();
       const pickupTimeRaw = top.preorder_pickup_at || top.pickupDateTime || top.pickup_time;
+      const urg = getDeliveryUrgency(pickupTimeRaw, top, currentTime);
+      const minLeft = urg.minutesLeft;
+      const orderNo = top.order_number || top.orderNumber || top.id || 'ĐƠN MỚI';
       const pickupFormatted = pickupTimeRaw ? formatPickupDateTime(pickupTimeRaw) : 'Trong ngày';
       const custName = top.customer_name || top.customerName || '';
       const custPhone = top.customer_phone || top.customerPhone || '';
@@ -768,7 +771,7 @@ export default function POSPage() {
       });
     }
     prevUrgentCountRef.current = urgentPreorders.length;
-  }, [urgentPreorders.length]);
+  }, [urgentPreorders.length, currentTime]);
 
   // 1. Fetch Products with offline-first persistence
   const loadProducts = async () => {
@@ -982,7 +985,8 @@ export default function POSPage() {
                 o.local_id === orderId ||
                 o.order_number === orderId ||
                 o.orderNumber === orderId ||
-                o.order_number === orderNum
+                o.order_number === orderNum ||
+                o.orderNumber === orderNum
               ) {
                 return {
                   ...o,
@@ -1014,7 +1018,14 @@ export default function POSPage() {
           const parsedPo = JSON.parse(rawPo);
           if (Array.isArray(parsedPo)) {
             const updatedPo = parsedPo.map((po: any) => {
-              if (po.id === orderId || po.orderNumber === orderId || po.orderNumber === orderNum) {
+              if (
+                po.id === orderId ||
+                po.local_id === orderId ||
+                po.order_number === orderId ||
+                po.orderNumber === orderId ||
+                po.order_number === orderNum ||
+                po.orderNumber === orderNum
+              ) {
                 return {
                   ...po,
                   status: 'completed',
@@ -1026,7 +1037,7 @@ export default function POSPage() {
                   updated_at: new Date().toISOString(),
                 };
               }
-              if (po.orderNumber === linkedBakeOrderNum) {
+              if (po.order_number === linkedBakeOrderNum || po.orderNumber === linkedBakeOrderNum) {
                 return {
                   ...po,
                   status: 'completed',
@@ -1057,8 +1068,28 @@ export default function POSPage() {
       updated_at: new Date().toISOString(),
     };
 
+    setPreordersList((prev) =>
+      prev.map((po: any) => {
+        if (
+          po.id === orderId ||
+          po.local_id === orderId ||
+          po.order_number === orderId ||
+          po.orderNumber === orderId ||
+          po.order_number === orderNum ||
+          po.orderNumber === orderNum
+        ) {
+          return {
+            ...po,
+            ...updatedOrder,
+          };
+        }
+        return po;
+      })
+    );
+
     syncOrderToSupabase(updatedOrder, 'completed');
     broadcastOrderStatusUpdate(orderNum, 'completed', updatedOrder);
+    sendTelegramDeliveredSuccessAlert(updatedOrder).catch(() => {});
     soundManager.playPaymentSuccessChime();
     reloadOrdersData();
   };
@@ -1117,9 +1148,33 @@ export default function POSPage() {
               };
             });
             setInvoicesList(enriched);
-            const pos = enriched.filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime);
-            if (pos.length > 0) {
-              setPreordersList(pos);
+            const posFromOrders = enriched.filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime || o.preorder_pickup_at || o.order_number?.startsWith('BK-PRE') || o.orderNumber?.startsWith('BK-PRE'));
+            
+            // Đồng bộ hợp nhất với bakery_preorders
+            const rawPo = localStorage.getItem('bakery_preorders');
+            let mergedPos = posFromOrders;
+            if (rawPo) {
+              try {
+                const parsedPo = JSON.parse(rawPo);
+                if (Array.isArray(parsedPo)) {
+                  const poMap = new Map<string, any>();
+                  posFromOrders.forEach((p: any) => {
+                    const key = p.order_number || p.orderNumber || p.id;
+                    if (key) poMap.set(key, p);
+                  });
+                  parsedPo.forEach((p: any) => {
+                    const key = p.order_number || p.orderNumber || p.id;
+                    if (key) {
+                      const exist = poMap.get(key);
+                      poMap.set(key, { ...exist, ...p });
+                    }
+                  });
+                  mergedPos = Array.from(poMap.values());
+                }
+              } catch {}
+            }
+            if (mergedPos.length > 0) {
+              setPreordersList(mergedPos);
             }
           }
         }
@@ -1163,10 +1218,14 @@ export default function POSPage() {
                       found = true;
                       const od = payload.order_data || {};
                       const nextNotes = od.notes || o.notes || '';
+                      const isCompleted = payload.status === 'completed' || payload.status === 'delivered';
                       const nextOrder = {
                         ...o,
                         ...od,
                         status: payload.status,
+                        remaining_amount: isCompleted ? 0 : (od.remaining_amount ?? o.remaining_amount ?? 0),
+                        remainingAmount: isCompleted ? 0 : (od.remainingAmount ?? o.remainingAmount ?? 0),
+                        payment_status: isCompleted ? 'paid' : (od.payment_status || o.payment_status),
                         notes: nextNotes,
                         updated_at: payload.updated_at || new Date().toISOString(),
                       };
@@ -1193,6 +1252,56 @@ export default function POSPage() {
                   localStorage.setItem('bakery_orders', JSON.stringify(updated.slice(0, 100)));
                 }
               }
+
+              // Cập nhật cả bakery_preorders khi nhận status từ thiết bị khác
+              const rawPo = localStorage.getItem('bakery_preorders');
+              if (rawPo) {
+                const poList = JSON.parse(rawPo);
+                if (Array.isArray(poList)) {
+                  const isCompleted = payload.status === 'completed' || payload.status === 'delivered';
+                  const updatedPo = poList.map((p: any) => {
+                    if (
+                      p.order_number === payload.order_number ||
+                      p.orderNumber === payload.order_number ||
+                      p.id === payload.order_number
+                    ) {
+                      return {
+                        ...p,
+                        ...(payload.order_data || {}),
+                        status: payload.status,
+                        remaining_amount: isCompleted ? 0 : (p.remaining_amount ?? 0),
+                        remainingAmount: isCompleted ? 0 : (p.remainingAmount ?? 0),
+                        payment_status: isCompleted ? 'paid' : p.payment_status,
+                        updated_at: payload.updated_at || new Date().toISOString(),
+                      };
+                    }
+                    return p;
+                  });
+                  localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo.slice(0, 100)));
+                }
+              }
+
+              setPreordersList((prev) =>
+                prev.map((p: any) => {
+                  if (
+                    p.order_number === payload.order_number ||
+                    p.orderNumber === payload.order_number ||
+                    p.id === payload.order_number
+                  ) {
+                    const isCompleted = payload.status === 'completed' || payload.status === 'delivered';
+                    return {
+                      ...p,
+                      ...(payload.order_data || {}),
+                      status: payload.status,
+                      remaining_amount: isCompleted ? 0 : (p.remaining_amount ?? 0),
+                      remainingAmount: isCompleted ? 0 : (p.remainingAmount ?? 0),
+                      payment_status: isCompleted ? 'paid' : p.payment_status,
+                      updated_at: payload.updated_at || new Date().toISOString(),
+                    };
+                  }
+                  return p;
+                })
+              );
             } catch {}
           }
         }
@@ -5308,28 +5417,51 @@ export default function POSPage() {
                           </button>
 
                           {/* Nút Đã giao bánh / Hoàn thành */}
-                          {status !== 'completed' && (
+                          {!isOrderCompletedOrCancelled(po) && (
                             <button
                               type="button"
                               onClick={() => {
+                                const completedPo = {
+                                  ...po,
+                                  status: 'completed',
+                                  remaining_amount: 0,
+                                  remainingAmount: 0,
+                                  payment_status: 'paid',
+                                  paid_at: new Date().toISOString(),
+                                  updated_at: new Date().toISOString(),
+                                };
                                 if (typeof window !== 'undefined') {
                                   try {
                                     const raw = localStorage.getItem('bakery_orders');
                                     if (raw) {
                                       const parsed = JSON.parse(raw);
                                       const updated = parsed.map((o: any) =>
-                                        (o.id === po.id || o.order_number === orderNum || o.orderNumber === orderNum)
-                                          ? { ...o, status: 'completed', updated_at: new Date().toISOString() }
+                                        (o.id === po.id || o.local_id === po.id || o.order_number === orderNum || o.orderNumber === orderNum || o.order_number === po.id)
+                                          ? { ...o, ...completedPo }
                                           : o
                                       );
                                       localStorage.setItem('bakery_orders', JSON.stringify(updated));
-                                      window.dispatchEvent(new Event('bakery_orders_updated'));
                                     }
+                                    const rawPo = localStorage.getItem('bakery_preorders');
+                                    if (rawPo) {
+                                      const parsedPo = JSON.parse(rawPo);
+                                      const updatedPo = parsedPo.map((p: any) =>
+                                        (p.id === po.id || p.local_id === po.id || p.order_number === orderNum || p.orderNumber === orderNum || p.order_number === po.id)
+                                          ? { ...p, ...completedPo }
+                                          : p
+                                      );
+                                      localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo));
+                                    }
+                                    window.dispatchEvent(new Event('bakery_orders_updated'));
                                     setPreordersList((prev) =>
-                                      prev.map((o) => (o.id === po.id || o.orderNumber === orderNum ? { ...o, status: 'completed' } : o))
+                                      prev.map((o) => (o.id === po.id || o.order_number === orderNum || o.orderNumber === orderNum ? { ...o, ...completedPo } : o))
                                     );
                                   } catch {}
                                 }
+                                syncOrderToSupabase(completedPo, 'completed');
+                                broadcastOrderStatusUpdate(orderNum, 'completed', completedPo);
+                                sendTelegramDeliveredSuccessAlert(completedPo).catch(() => {});
+                                soundManager.playPaymentSuccessChime();
                               }}
                               className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition cursor-pointer shadow-xs"
                             >

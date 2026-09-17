@@ -2,8 +2,8 @@
 
 import { supabase } from './client';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
-import { formatPickupDateTime, parsePreorderFromNotes, parseOrderBakeShortage } from './realtimeSync';
-import { getDeliveryUrgency } from '@/lib/utils/deliveryAlerts';
+import { formatPickupDateTime, parsePreorderFromNotes, parseOrderBakeShortage, subscribeCrossDeviceSync } from './realtimeSync';
+import { getDeliveryUrgency, isOrderCompletedOrCancelled } from '@/lib/utils/deliveryAlerts';
 import { sendTelegramOrderAlert, sendTelegramUrgentAlert } from '@/lib/utils/telegramNotify';
 import { soundManager } from '@/lib/utils/audioAlert';
 
@@ -13,6 +13,7 @@ class AutoOrderWatcher {
   private isWatching: boolean = false;
   private pollTimer: NodeJS.Timeout | null = null;
   private urgentTimer: NodeJS.Timeout | null = null;
+  private unsubCrossSync: (() => void) | null = null;
 
   constructor() {
     if (typeof window !== 'undefined') {
@@ -42,12 +43,26 @@ class AutoOrderWatcher {
     // 1. Tải danh sách đơn đã biết ban đầu để không báo lại các đơn cũ
     this.initKnownOrders();
 
-    // 2. Vòng quét đồng bộ Supabase tự động mỗi 4 giây (Bắt trọn mọi đơn từ máy khác/khách đặt)
+    // 2. Lắng nghe cập nhật trạng thái đa thiết bị thời gian thực (Supabase Realtime Broadcast)
+    this.unsubCrossSync = subscribeCrossDeviceSync({
+      onStatusUpdate: (payload?: any) => {
+        if (payload && payload.order_number) {
+          if (isOrderCompletedOrCancelled({ status: payload.status })) {
+            this.markOrderCompletedLocally(payload.order_number, payload.status, payload.order_data);
+          }
+        }
+      },
+    });
+
+    // 3. Lắng nghe sự kiện cập nhật đơn nội bộ
+    window.addEventListener('bakery_orders_updated', this.handleLocalOrdersUpdated);
+
+    // 4. Vòng quét đồng bộ Supabase tự động mỗi 4 giây (Bắt trọn mọi đơn từ máy khác/khách đặt)
     this.pollTimer = setInterval(() => {
       this.checkNewOrdersFromSupabase();
     }, 4000);
 
-    // 3. Vòng quét cảnh báo giao gấp tự động mỗi 15 giây
+    // 5. Vòng quét cảnh báo giao gấp tự động mỗi 15 giây
     this.urgentTimer = setInterval(() => {
       this.checkUrgentDeliveries();
     }, 15000);
@@ -58,8 +73,36 @@ class AutoOrderWatcher {
   public stop() {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.urgentTimer) clearInterval(this.urgentTimer);
+    if (this.unsubCrossSync) {
+      this.unsubCrossSync();
+      this.unsubCrossSync = null;
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('bakery_orders_updated', this.handleLocalOrdersUpdated);
+    }
     this.isWatching = false;
   }
+
+  private handleLocalOrdersUpdated = () => {
+    try {
+      const raw = localStorage.getItem('bakery_orders');
+      if (!raw) return;
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) return;
+
+      list.forEach((o: any) => {
+        if (isOrderCompletedOrCancelled(o)) {
+          const num = o.order_number || o.orderNumber;
+          if (num && this.alertedUrgentMap.has(num)) {
+            this.alertedUrgentMap.delete(num);
+          }
+          if (o.id && this.alertedUrgentMap.has(String(o.id))) {
+            this.alertedUrgentMap.delete(String(o.id));
+          }
+        }
+      });
+    } catch {}
+  };
 
   private initKnownOrders() {
     try {
@@ -93,8 +136,90 @@ class AutoOrderWatcher {
   }
 
   /**
-   * Tự động kiểm tra đơn mới từ Supabase
-   * Bất kể thiết bị nào (điện thoại hoặc máy tính) tạo đơn, tất cả các máy khác đều nhảy thông báo tức thì!
+   * Đánh dấu một đơn hàng đã hoàn thành / giao thành công trong localStorage
+   * và xóa ngay khỏi danh sách cảnh báo quá hạn.
+   */
+  public markOrderCompletedLocally(orderNum: string, status: string = 'completed', orderData?: any) {
+    if (!orderNum || typeof window === 'undefined') return;
+
+    // 1. Xóa ngay khỏi bộ đệm cảnh báo quá hạn
+    this.alertedUrgentMap.delete(orderNum);
+
+    try {
+      // 2. Cập nhật bakery_orders
+      const raw = localStorage.getItem('bakery_orders');
+      let ordersUpdated = false;
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const updated = list.map((o: any) => {
+            if (
+              o.order_number === orderNum ||
+              o.orderNumber === orderNum ||
+              o.id === orderNum ||
+              String(o.id) === orderNum
+            ) {
+              ordersUpdated = true;
+              return {
+                ...o,
+                ...(orderData || {}),
+                status: 'completed',
+                remaining_amount: 0,
+                remainingAmount: 0,
+                payment_status: 'paid',
+                updated_at: new Date().toISOString(),
+              };
+            }
+            return o;
+          });
+          if (ordersUpdated) {
+            localStorage.setItem('bakery_orders', JSON.stringify(updated.slice(0, 100)));
+          }
+        }
+      }
+
+      // 3. Cập nhật bakery_preorders
+      const rawPo = localStorage.getItem('bakery_preorders');
+      let preordersUpdated = false;
+      if (rawPo) {
+        const poList = JSON.parse(rawPo);
+        if (Array.isArray(poList)) {
+          const updatedPo = poList.map((p: any) => {
+            if (
+              p.order_number === orderNum ||
+              p.orderNumber === orderNum ||
+              p.id === orderNum ||
+              String(p.id) === orderNum
+            ) {
+              preordersUpdated = true;
+              return {
+                ...p,
+                ...(orderData || {}),
+                status: 'completed',
+                remaining_amount: 0,
+                remainingAmount: 0,
+                payment_status: 'paid',
+                updated_at: new Date().toISOString(),
+              };
+            }
+            return p;
+          });
+          if (preordersUpdated) {
+            localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo.slice(0, 100)));
+          }
+        }
+      }
+
+      if (ordersUpdated || preordersUpdated) {
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+      }
+    } catch (e) {
+      console.warn('Lỗi markOrderCompletedLocally:', e);
+    }
+  }
+
+  /**
+   * Tự động kiểm tra đơn mới và cập nhật trạng thái từ Supabase
    */
   public async checkNewOrdersFromSupabase() {
     if (typeof navigator === 'undefined' || !navigator.onLine) return;
@@ -104,7 +229,7 @@ class AutoOrderWatcher {
         .from('orders')
         .select('*')
         .order('created_at', { ascending: false })
-        .limit(10);
+        .limit(30);
 
       if (error || !data || !Array.isArray(data)) return;
 
@@ -112,13 +237,18 @@ class AutoOrderWatcher {
         const orderNum = order.order_number;
         const idStr = String(order.id);
 
-        // Nếu đơn này chưa từng được biết đến trên máy này -> ĐÂY LÀ ĐƠN MỚI TỰ ĐỘNG ĐẾN!
+        // Trường hợp 1: ĐƠN MỚI CHƯA BIẾT ĐẾN
         if (orderNum && !this.knownOrders.has(orderNum) && !this.knownOrders.has(idStr)) {
           this.knownOrders.add(orderNum);
           this.knownOrders.add(idStr);
 
           // Cập nhật đơn mới vào localStorage máy này
           this.saveOrderToLocalStorage(order);
+
+          // Nếu đơn tải về đã là đơn hoàn tất / đã giao thì không báo chuông đơn mới
+          if (isOrderCompletedOrCancelled(order)) {
+            continue;
+          }
 
           // KÍCH HOẠT THÔNG BÁO NỔI & CHUÔNG BÁO TỰ ĐỘNG 100%!
           try {
@@ -159,6 +289,10 @@ class AutoOrderWatcher {
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new Event('bakery_orders_updated'));
           }
+        } 
+        // Trường hợp 2: ĐƠN ĐÃ BIẾT -> KIỂM TRA NẾU ĐƠN ĐÃ ĐƯỢC HOÀN TẤT / GIAO HÀNG TRÊN SUPABASE
+        else if (orderNum && isOrderCompletedOrCancelled(order)) {
+          this.markOrderCompletedLocally(orderNum, order.status, order);
         }
       }
     } catch (e) {
@@ -168,8 +302,9 @@ class AutoOrderWatcher {
 
   /**
    * Tự động quét các đơn hẹn giao bánh sắp tới hạn hoặc quá hạn
+   * ĐẶC BIỆT: Khóa chặt chẽ, tuyệt đối KHÔNG gửi thông báo cho đơn đã giao thành công.
    */
-  public checkUrgentDeliveries() {
+  public async checkUrgentDeliveries() {
     if (typeof window === 'undefined') return;
 
     try {
@@ -178,9 +313,41 @@ class AutoOrderWatcher {
       const orders = JSON.parse(raw);
       if (!Array.isArray(orders)) return;
 
+      // Thu thập các đơn đã hoàn thành từ cả bakery_orders và bakery_preorders
+      const completedOrderNums = new Set<string>();
+      orders.forEach((o: any) => {
+        if (isOrderCompletedOrCancelled(o)) {
+          if (o.order_number) completedOrderNums.add(o.order_number);
+          if (o.orderNumber) completedOrderNums.add(o.orderNumber);
+          if (o.id) completedOrderNums.add(String(o.id));
+        }
+      });
+
+      const rawPo = localStorage.getItem('bakery_preorders');
+      if (rawPo) {
+        try {
+          const poList = JSON.parse(rawPo);
+          if (Array.isArray(poList)) {
+            poList.forEach((p: any) => {
+              if (isOrderCompletedOrCancelled(p)) {
+                if (p.order_number) completedOrderNums.add(p.order_number);
+                if (p.orderNumber) completedOrderNums.add(p.orderNumber);
+                if (p.id) completedOrderNums.add(String(p.id));
+              }
+            });
+          }
+        } catch {}
+      }
+
       const now = new Date();
       const pendingPreorders = orders.filter((o) => {
-        if (!o || o.status === 'completed' || o.status === 'cancelled') return false;
+        if (!o) return false;
+        // Bỏ qua tuyệt đối đơn đã hoàn thành / đã giao
+        if (isOrderCompletedOrCancelled(o)) return false;
+
+        const orderNum = o.order_number || o.orderNumber || o.id;
+        if (orderNum && completedOrderNums.has(orderNum)) return false;
+
         return o.order_type === 'preorder' || o.preorder_pickup_at || o.order_number?.startsWith('BK-PRE');
       });
 
@@ -188,13 +355,36 @@ class AutoOrderWatcher {
         const pickup = order.preorder_pickup_at || order.pickupDateTime;
         if (!pickup) continue;
 
-        const urg = getDeliveryUrgency(pickup, order.status, now);
+        const urg = getDeliveryUrgency(pickup, order, now);
         if (urg.isUrgent) {
           const orderNum = order.order_number || order.orderNumber || order.id || 'ĐƠN MỚI';
+
+          // Kiểm tra kép lại trong tập completedOrderNums
+          if (completedOrderNums.has(orderNum)) {
+            this.alertedUrgentMap.delete(orderNum);
+            continue;
+          }
+
           const lastAlert = this.alertedUrgentMap.get(orderNum) || 0;
 
-          // Báo động lại sau mỗi 3 phút nếu đơn vẫn chưa được giao/hoàn tất
+          // Báo động lại sau mỗi 3 phút nếu đơn thực sự vẫn chưa được giao
           if (Date.now() - lastAlert > 180000) {
+            // Kiểm tra bảo vệ thời gian thực trên Supabase: nếu đơn đã được giao từ máy khác, lập tức hủy báo động!
+            if (typeof navigator !== 'undefined' && navigator.onLine && order.order_number) {
+              try {
+                const { data: sbCheck } = await supabase
+                  .from('orders')
+                  .select('status, delivery_status')
+                  .eq('order_number', order.order_number)
+                  .maybeSingle();
+
+                if (sbCheck && isOrderCompletedOrCancelled(sbCheck)) {
+                  this.markOrderCompletedLocally(order.order_number, sbCheck.status);
+                  continue;
+                }
+              } catch {}
+            }
+
             this.alertedUrgentMap.set(orderNum, Date.now());
             const custName = order.customer_name || order.customerName || '';
             const custPhone = order.customer_phone || order.customerPhone || '';
@@ -218,6 +408,7 @@ class AutoOrderWatcher {
                 }
               }
             });
+
             // Báo qua Telegram khẩn cấp
             sendTelegramUrgentAlert(order, urg.minutesLeft).catch(() => {});
           }
