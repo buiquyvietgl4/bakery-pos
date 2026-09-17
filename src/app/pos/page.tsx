@@ -2766,7 +2766,7 @@ export default function POSPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row items-start min-h-[calc(100vh-4rem)] lg:h-[calc(100dvh-4rem)] lg:max-h-[calc(100dvh-4rem)] lg:overflow-hidden bg-[#faf7f2] relative">
+    <div className="flex-1 flex flex-col lg:flex-row items-start min-h-[calc(100vh-4rem)] bg-[#faf7f2] relative">
       {/* Toast thông báo tức thời khi thêm bánh vào giỏ */}
       {cartToast && (
         <div className="fixed top-14 sm:top-16 left-1/2 -translate-x-1/2 z-[99999] bg-zinc-900/95 text-white px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-200 border border-amber-500/40 pointer-events-none">
@@ -2847,8 +2847,8 @@ export default function POSPage() {
         </button>
       </div>
 
-      {/* ── CỘT TRÁI: MENU SẢN PHẨM (Cuộn menu độc lập trên desktop, không kéo trôi giỏ hàng) ── */}
-      <div className={`flex-1 w-full lg:min-w-0 p-3 sm:p-6 lg:h-full lg:overflow-y-auto ${mobileTab === 'cart' ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
+      {/* ── CỘT TRÁI: MENU SẢN PHẨM (Cuộn theo toàn trang tự nhiên) ── */}
+      <div className={`flex-1 w-full lg:min-w-0 p-3 sm:p-6 ${mobileTab === 'cart' ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
         {/* Top Controls: Search, Nút Đặt Bánh Kem & Két tiền ca */}
         <div className="space-y-4 mb-5">
           {/* ── BỐ CỤC MOBILE (DÀNH RIÊNG CHO ĐIỆN THOẠI < lg): TINH GỌN, KHOA HỌC, KHÔNG TRÙNG LẶP ── */}
@@ -3554,8 +3554,8 @@ export default function POSPage() {
         )}
       </div>
 
-      {/* ── CỘT PHẢI: GIỎ HÀNG (DẠNG THẺ NỔI FLOATING CARD CỐ ĐỊNH HOÀN TOÀN TRÊN DESKTOP) ── */}
-      <div className={`w-full lg:w-96 xl:w-[420px] bg-white rounded-3xl shadow-xl shadow-amber-950/5 border border-amber-200/60 flex flex-col justify-between shrink-0 lg:h-[calc(100%-1.5rem)] lg:max-h-[calc(100dvh-5.5rem)] lg:my-3 lg:mr-6 overflow-hidden z-20 ${mobileTab === 'cart' ? 'flex flex-1 min-h-[calc(100vh-4rem)] rounded-none border-none shadow-none m-0' : 'hidden lg:flex'}`}>
+      {/* ── CỘT PHẢI: GIỎ HÀNG (CỐ ĐỊNH DẠNG STICKY TRÊN DESKTOP) ── */}
+      <div className={`w-full lg:w-96 xl:w-[420px] bg-white rounded-3xl shadow-xl shadow-amber-950/5 border border-amber-200/60 flex flex-col justify-between shrink-0 lg:sticky lg:top-20 lg:self-start lg:h-[calc(100vh-6rem)] lg:max-h-[calc(100vh-6rem)] overflow-hidden lg:mr-6 lg:my-3 z-20 ${mobileTab === 'cart' ? 'flex flex-1 min-h-[calc(100vh-4rem)] rounded-none border-none shadow-none m-0' : 'hidden lg:flex'}`}>
         {/* Header Giỏ Hàng */}
         <div className="p-4 border-b border-stone-200/80 flex items-center justify-between shrink-0 bg-white/95 backdrop-blur-md">
           <div className="flex items-center gap-2.5">
