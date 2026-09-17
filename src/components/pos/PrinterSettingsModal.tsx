@@ -37,6 +37,7 @@ import {
   printTestSticker,
   PRINTER_CONFIG_EVENT,
 } from '@/lib/utils/printerManager';
+import { PrintTemplateDesignerModal } from './PrintTemplateDesignerModal';
 
 interface PrinterSettingsModalProps {
   isOpen: boolean;
@@ -53,6 +54,8 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
   const [connectingBt, setConnectingBt] = useState(false);
   const [connectingUsb, setConnectingUsb] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
+  const [isDesignerOpen, setIsDesignerOpen] = useState(false);
+  const [designerTab, setDesignerTab] = useState<'sticker' | 'receipt'>('receipt');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -282,6 +285,43 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
                 </p>
               </div>
 
+              {/* BANNER TRÌNH THIẾT KẾ MẪU IN KÉO THẢ */}
+              <div className="p-3.5 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/10 rounded-2xl border border-amber-300/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <div className="font-black text-xs text-amber-950 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
+                    Trình Thiết Kế Mẫu In Kéo Thả (WYSIWYG)
+                  </div>
+                  <p className="text-[11px] text-zinc-600 leading-snug">
+                    Tự chọn thông tin in bill, kéo thả tọa độ khung text tem bánh, chỉnh cỡ chữ & căn lề trực quan.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDesignerTab('receipt');
+                      setIsDesignerOpen(true);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Mẫu Hóa Đơn</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDesignerTab('sticker');
+                      setIsDesignerOpen(true);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Tag className="w-3.5 h-3.5" />
+                    <span>Mẫu Tem Bánh</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Nút In Thử Hóa Đơn */}
               <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-2.5">
                 <div className="flex justify-between items-center">
@@ -437,6 +477,29 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
                     </div>
                   </button>
                 </div>
+              </div>
+
+              {/* Nút Chuyển Vào Trình Thiết Kế Bố Cục Kéo Thả */}
+              <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border border-amber-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="font-bold text-xs text-amber-900 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                    Tùy chỉnh bố cục in kéo thả (WYSIWYG)
+                  </div>
+                  <div className="text-[11px] text-zinc-600">
+                    Bật tắt thông tin hóa đơn, kéo thả vị trí và kích thước khung chữ tem bánh
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDesignerTab('receipt');
+                    setIsDesignerOpen(true);
+                  }}
+                  className="px-3 py-2 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs shadow-xs transition cursor-pointer shrink-0"
+                >
+                  Mở Trình Thiết Kế
+                </button>
               </div>
 
               {/* Thông tin tiệm in lên đầu hóa đơn và tem */}
@@ -656,6 +719,13 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      {/* MODAL TRÌNH THIẾT KẾ MẪU IN KÉO THẢ (HÓA ĐƠN & TEM DÁN) */}
+      <PrintTemplateDesignerModal
+        isOpen={isDesignerOpen}
+        onClose={() => setIsDesignerOpen(false)}
+        initialTab={designerTab}
+      />
     </div>
   );
 };

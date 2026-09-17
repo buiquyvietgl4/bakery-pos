@@ -5,7 +5,10 @@ import { X, Printer, Tag, Check, Copy, Sparkles, Clock, MapPin, Phone, User, Set
 import { printHtml } from '@/lib/utils/printHelper';
 import { formatPickupDateTime } from '@/lib/supabase/realtimeSync';
 import { PrinterSettingsModal } from './PrinterSettingsModal';
+import { PrintTemplateDesignerModal } from './PrintTemplateDesignerModal';
 import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { StickerTemplateConfig, StickerElementConfig } from '@/lib/types/printTemplate';
+import { getStickerTemplate, PRINT_TEMPLATE_UPDATED_EVENT } from '@/lib/utils/printTemplateManager';
 
 export interface CakeStickerData {
   orderNumber?: string;
@@ -43,7 +46,13 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
   const [labelSize, setLabelSize] = useState<'50x30' | '50x40'>('50x30');
   const [copied, setCopied] = useState(false);
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
+  const [isDesignerOpen, setIsDesignerOpen] = useState(false);
   const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
+  const [stickerConfig, setStickerConfig] = useState<StickerTemplateConfig>(() => getStickerTemplate('50x30'));
+
+  useEffect(() => {
+    setStickerConfig(getStickerTemplate(labelSize));
+  }, [labelSize]);
 
   useEffect(() => {
     setBranding(getStoreBranding());
@@ -55,9 +64,18 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
       if (detail) setBranding(detail);
       else setBranding(getStoreBranding());
     };
+    const handleTemplateUpdate = (e: any) => {
+      if (e?.detail?.type === 'sticker') {
+        setStickerConfig(getStickerTemplate(labelSize));
+      }
+    };
     window.addEventListener(BRANDING_UPDATED_EVENT, handleUpdate);
-    return () => window.removeEventListener(BRANDING_UPDATED_EVENT, handleUpdate);
-  }, []);
+    window.addEventListener(PRINT_TEMPLATE_UPDATED_EVENT, handleTemplateUpdate);
+    return () => {
+      window.removeEventListener(BRANDING_UPDATED_EVENT, handleUpdate);
+      window.removeEventListener(PRINT_TEMPLATE_UPDATED_EVENT, handleTemplateUpdate);
+    };
+  }, [labelSize]);
 
   if (!isOpen || !data) return null;
 
@@ -87,6 +105,109 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
 
   const orderShortCode = getOrderShortCode(orderNum);
   const showSubOrderNum = orderNum.length > 10 && orderNum !== orderShortCode;
+
+  const renderStickerElement = (el: StickerElementConfig) => {
+    let content: React.ReactNode = null;
+
+    if (el.id === 'store_name') {
+      content = branding.storeName || 'TIỆM BÁNH HOÀNG GIA';
+    } else if (el.id === 'store_hotline') {
+      content = `Hotline: ${branding.phone || '0901.234.567'}`;
+    } else if (el.id === 'order_code') {
+      content = (
+        <span className="font-mono bg-black text-white px-1.5 py-0.5 rounded leading-none">
+          #{orderShortCode}
+        </span>
+      );
+    } else if (el.id === 'cake_name') {
+      content = data.cakeName;
+    } else if (el.id === 'cake_message') {
+      if (!data.cakeMessage) return null;
+      content = (
+        <span className="bg-zinc-100 px-1 py-0.5 rounded border border-zinc-200 block truncate">
+          ✍️ &ldquo;{data.cakeMessage}&rdquo;
+        </span>
+      );
+    } else if (el.id === 'customer_info') {
+      if (!data.customerName) return null;
+      content = `👤 ${data.customerName}${data.customerPhone ? ` • ${data.customerPhone}` : ''}`;
+    } else if (el.id === 'pickup_time') {
+      if (!data.pickupTime) return null;
+      content = `⏰ ${isShipping ? 'Hẹn giao:' : 'Hẹn lấy:'} ${formatPickupDateTime(data.pickupTime) || data.pickupTime}`;
+    } else if (el.id === 'delivery_method') {
+      content = isShipping
+        ? (data.shippingAddress ? `🚚 Ship: ${data.shippingAddress}` : '🚚 Giao tận nơi')
+        : '🏪 Nhận tại tiệm';
+    } else if (el.id === 'shipping_address') {
+      if (!data.shippingAddress) return null;
+      content = `📍 ${data.shippingAddress}`;
+    } else if (el.id === 'filling_flavor') {
+      if (!data.filling && !data.flavor) return null;
+      content = `🍓 Nhân: ${data.filling || data.flavor}`;
+    } else if (el.id === 'price_and_cod') {
+      const priceVal = Number(data.totalAmount ?? data.price ?? 0);
+      const remVal = data.remainingAmount !== undefined
+        ? Number(data.remainingAmount)
+        : (data.totalAmount !== undefined && data.depositAmount !== undefined
+            ? Math.max(0, Number(data.totalAmount) - Number(data.depositAmount))
+            : 0);
+      content = (
+        <span>
+          💰 Giá: {priceVal.toLocaleString('vi-VN')}₫
+          {remVal > 0 ? (
+            <span className="text-red-700 font-black"> • Còn thu: {remVal.toLocaleString('vi-VN')}₫</span>
+          ) : (
+            <span className="text-emerald-700 font-bold"> • Đã thu đủ</span>
+          )}
+        </span>
+      );
+    } else if (el.id === 'dates') {
+      content = `NSX: ${dateStr} ${timeStr}`;
+    } else if (el.id === 'barcode') {
+      content = (
+        <div className="w-full h-3 flex items-center justify-center">
+          <svg className="w-32 h-full" viewBox="0 0 160 20" preserveAspectRatio="none">
+            <rect x="0" y="0" width="2" height="20" fill="black" />
+            <rect x="4" y="0" width="1" height="20" fill="black" />
+            <rect x="7" y="0" width="3" height="20" fill="black" />
+            <rect x="12" y="0" width="2" height="20" fill="black" />
+            <rect x="16" y="0" width="4" height="20" fill="black" />
+            <rect x="22" y="0" width="1" height="20" fill="black" />
+            <rect x="25" y="0" width="3" height="20" fill="black" />
+            <rect x="30" y="0" width="2" height="20" fill="black" />
+            <rect x="34" y="0" width="4" height="20" fill="black" />
+            <rect x="40" y="0" width="2" height="20" fill="black" />
+          </svg>
+        </div>
+      );
+    } else if (el.customText) {
+      content = el.customText;
+    }
+
+    if (!content) return null;
+
+    return (
+      <div
+        key={el.id}
+        style={{
+          position: 'absolute',
+          left: `${el.x}%`,
+          top: `${el.y}%`,
+          width: el.width ? `${el.width}%` : 'auto',
+          fontSize: `${el.fontSize}pt`,
+          fontWeight: el.fontWeight === 'black' ? 900 : el.fontWeight === 'bold' ? 700 : 400,
+          fontStyle: el.fontStyle || 'normal',
+          textAlign: el.align,
+          lineHeight: 1.15,
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+        }}
+      >
+        {content}
+      </div>
+    );
+  };
 
   const handlePrint = () => {
     const el = document.getElementById('printable-cake-sticker');
@@ -423,186 +544,41 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
             {/* CHÍNH THỨC CON TEM CÓ ID PRINTABLE */}
             <div
               id="printable-cake-sticker"
-              className={`w-72 bg-white rounded-xl border border-zinc-400/80 shadow-md text-black flex flex-col justify-between font-sans select-none overflow-hidden ${
-                labelSize === '50x30' ? 'p-2 h-[173px]' : 'p-2.5 h-[230px]'
+              className={`relative bg-white rounded-xl border border-zinc-400/80 shadow-md text-black font-sans select-none overflow-hidden ${
+                labelSize === '50x30' ? 'w-72 h-[173px]' : 'w-72 h-[230px]'
               }`}
             >
-              {/* Header tem */}
-              <div className="sticker-header border-b border-black pb-1 flex justify-between items-center text-[10px] leading-tight shrink-0">
-                <div className="sticker-store-info min-w-0 pr-1.5">
-                  <span className="sticker-store-name font-black uppercase tracking-tight block truncate">
-                    {branding.storeName || 'TIỆM BÁNH HOÀNG GIA'}
-                  </span>
-                  <span className="sticker-hotline block text-[8px] text-zinc-600 font-semibold truncate mt-0.5">
-                    Hotline: {branding.phone || '0901.234.567'}
-                  </span>
-                </div>
-                <div className="sticker-badge-group flex flex-col items-end shrink-0">
-                  <span className="sticker-order-badge font-mono font-black text-[9px] bg-black text-white px-1.5 py-0.5 rounded leading-none">
-                    #{orderShortCode}
-                  </span>
-                  {showSubOrderNum && (
-                    <span className="sticker-order-sub font-mono text-[6.5px] text-zinc-500 font-bold leading-none mt-0.5" title={orderNum}>
-                      {orderNum}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              {/* Thân tem: Tên bánh cực to & rõ */}
-              <div className="sticker-body py-0.5 flex-1 flex flex-col justify-between overflow-hidden min-h-0">
-                <div className="sticker-cake-name-wrapper shrink-0">
-                  <h4
-                    className={`sticker-cake-name font-black leading-tight line-clamp-2 text-zinc-950 uppercase ${
-                      data.cakeName.length > 35
-                        ? 'text-[9.5px]'
-                        : data.cakeName.length > 25
-                        ? 'text-[10.5px]'
-                        : 'text-xs'
-                    }`}
-                  >
-                    {data.cakeName}
-                  </h4>
-                </div>
-
-                {/* Lời nhắn / Ghi chữ bánh */}
-                {data.cakeMessage && (
-                  <div className="sticker-cake-msg text-[8.5px] font-bold text-zinc-800 italic px-1.5 py-0.5 bg-zinc-100 border border-zinc-200 rounded flex items-center gap-1 shrink-0">
-                    <span className="sticker-icon shrink-0 not-italic text-[8px]">✍️</span>
-                    <span className="truncate"><b>Ghi chữ:</b> &ldquo;{data.cakeMessage}&rdquo;</span>
-                  </div>
-                )}
-
-                {/* Khách hàng & Hẹn giờ & Địa chỉ nhận bánh */}
-                <div className="sticker-info-block text-[8px] space-y-0.5 text-zinc-900 leading-tight shrink-0">
-                  {data.customerName && (
-                    <div className="sticker-info-line flex items-center gap-1 font-semibold truncate">
-                      <span className="sticker-icon shrink-0 text-[8px]">👤</span>
-                      <span className="truncate"><b>Khách:</b> {data.customerName} {data.customerPhone ? `• ${data.customerPhone}` : ''}</span>
-                    </div>
-                  )}
-                  {data.pickupTime && (
-                    <div className="sticker-info-line flex items-center gap-1 font-black truncate">
-                      <span className="sticker-icon shrink-0 text-[8px]">⏰</span>
-                      <span className="truncate">
-                        <b>{isShipping ? 'Hẹn giao:' : 'Hẹn lấy:'}</b> {formatPickupDateTime(data.pickupTime) || data.pickupTime}
-                      </span>
-                    </div>
-                  )}
-                  {/* NẾU TẠI TIỆM GHI TẠI TIỆM, NẾU SHIP GHI ĐỊA CHỈ NHẬN */}
-                  <div className={`sticker-info-line flex items-center gap-1 font-black truncate ${isShipping ? 'text-blue-900' : 'text-zinc-950'}`}>
-                    <span className="sticker-icon shrink-0 text-[8px]">{isShipping ? '🚚' : '🏪'}</span>
-                    <span className="truncate">
-                      <b>{isShipping ? 'Giao tận nơi:' : 'Nhận tại tiệm:'}</b>{' '}
-                      {isShipping
-                        ? (data.shippingAddress || 'Theo địa chỉ khách yêu cầu')
-                        : (branding.address ? `Tại ${branding.address}` : 'Tại cửa hàng')}
-                    </span>
-                  </div>
-                  {data.filling && (
-                    <div className="sticker-info-line flex items-center gap-1 font-bold text-pink-950 truncate">
-                      <span className="sticker-icon shrink-0 text-[8px]">🍓</span>
-                      <span className="truncate"><b>Nhân:</b> {data.filling}</span>
-                    </div>
-                  )}
-                  {/* GIÁ BÁNH VÀ SỐ TIỀN CÒN LẠI CẦN THU (THAY THẾ THÔNG TIN YÊU CẦU/KÈM THEO YÊU CẦU) */}
-                  {(data.totalAmount !== undefined || data.price !== undefined || data.remainingAmount !== undefined) && (() => {
-                    const priceVal = Number(data.totalAmount ?? data.price ?? 0);
-                    const remVal = data.remainingAmount !== undefined 
-                      ? Number(data.remainingAmount)
-                      : (data.totalAmount !== undefined && data.depositAmount !== undefined 
-                          ? Math.max(0, Number(data.totalAmount) - Number(data.depositAmount))
-                          : 0);
-                    return (
-                      <div className="sticker-info-line flex items-center gap-1 font-black text-zinc-950 truncate">
-                        <span className="sticker-icon shrink-0 text-[8px]">💰</span>
-                        <span className="truncate">
-                          <b>Giá:</b> {priceVal.toLocaleString('vi-VN')}đ
-                          {' • '}
-                          {remVal > 0 ? (
-                            <span className="text-red-700 font-black">
-                              <b>Còn thu:</b> {remVal.toLocaleString('vi-VN')}đ
-                            </span>
-                          ) : (
-                            <span className="text-emerald-800 font-bold">
-                              <b>Đã thu đủ</b>
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              {/* Footer tem: Barcode SVG + NSX & HSD */}
-              <div className="sticker-footer pt-1 border-t border-black/80 flex flex-col items-center shrink-0">
-                {/* Giả lập Barcode SVG sắc nét */}
-                <div className="sticker-barcode-wrapper w-full flex items-center justify-center h-3 mb-0.5 shrink-0">
-                  <svg className="sticker-barcode-svg w-36 h-full" viewBox="0 0 160 20" preserveAspectRatio="none">
-                    <rect x="0" y="0" width="2" height="20" fill="black" />
-                    <rect x="4" y="0" width="1" height="20" fill="black" />
-                    <rect x="7" y="0" width="3" height="20" fill="black" />
-                    <rect x="12" y="0" width="1" height="20" fill="black" />
-                    <rect x="15" y="0" width="2" height="20" fill="black" />
-                    <rect x="19" y="0" width="4" height="20" fill="black" />
-                    <rect x="25" y="0" width="1" height="20" fill="black" />
-                    <rect x="28" y="0" width="2" height="20" fill="black" />
-                    <rect x="32" y="0" width="3" height="20" fill="black" />
-                    <rect x="37" y="0" width="1" height="20" fill="black" />
-                    <rect x="40" y="0" width="2" height="20" fill="black" />
-                    <rect x="44" y="0" width="4" height="20" fill="black" />
-                    <rect x="50" y="0" width="1" height="20" fill="black" />
-                    <rect x="53" y="0" width="3" height="20" fill="black" />
-                    <rect x="58" y="0" width="2" height="20" fill="black" />
-                    <rect x="62" y="0" width="1" height="20" fill="black" />
-                    <rect x="65" y="0" width="3" height="20" fill="black" />
-                    <rect x="70" y="0" width="2" height="20" fill="black" />
-                    <rect x="74" y="0" width="4" height="20" fill="black" />
-                    <rect x="80" y="0" width="1" height="20" fill="black" />
-                    <rect x="83" y="0" width="2" height="20" fill="black" />
-                    <rect x="87" y="0" width="3" height="20" fill="black" />
-                    <rect x="92" y="0" width="1" height="20" fill="black" />
-                    <rect x="95" y="0" width="3" height="20" fill="black" />
-                    <rect x="100" y="0" width="2" height="20" fill="black" />
-                    <rect x="104" y="0" width="4" height="20" fill="black" />
-                    <rect x="110" y="0" width="1" height="20" fill="black" />
-                    <rect x="113" y="0" width="2" height="20" fill="black" />
-                    <rect x="117" y="0" width="3" height="20" fill="black" />
-                    <rect x="122" y="0" width="1" height="20" fill="black" />
-                    <rect x="125" y="0" width="2" height="20" fill="black" />
-                    <rect x="130" y="0" width="3" height="20" fill="black" />
-                    <rect x="135" y="0" width="1" height="20" fill="black" />
-                    <rect x="138" y="0" width="3" height="20" fill="black" />
-                    <rect x="143" y="0" width="2" height="20" fill="black" />
-                    <rect x="147" y="0" width="4" height="20" fill="black" />
-                    <rect x="153" y="0" width="2" height="20" fill="black" />
-                    <rect x="157" y="0" width="2" height="20" fill="black" />
-                  </svg>
-                </div>
-
-                <div className="sticker-dates w-full flex justify-between items-center text-[7px] font-bold text-zinc-700 whitespace-nowrap shrink-0">
-                  <span className="whitespace-nowrap">NSX: {dateStr} {timeStr}</span>
-                  <span className="whitespace-nowrap">HSD: 48h (2-5°C)</span>
-                </div>
-              </div>
+              {stickerConfig.elements
+                .filter((el) => el.visible)
+                .map((el) => renderStickerElement(el))}
             </div>
           </div>
 
           {/* Hướng dẫn máy in & Nút Cài đặt */}
-          <div className="p-3 bg-amber-50/80 rounded-2xl border border-amber-200/80 text-[11px] text-amber-950 flex items-center justify-between gap-2">
+          <div className="p-3 bg-amber-50/80 rounded-2xl border border-amber-200/80 text-[11px] text-amber-950 flex flex-wrap items-center justify-between gap-2">
             <div className="leading-relaxed">
-              💡 <b>Khổ in:</b> Khổ {labelSize}mm. Tương thích máy in nhiệt Bluetooth, USB, iPhone (AirPrint) & Android.
+              💡 <b>Khổ in:</b> Khổ {labelSize}mm. Tự động áp dụng mẫu tem kéo thả đã lưu.
             </div>
-            <button
-              type="button"
-              onClick={() => setIsPrinterSettingsOpen(true)}
-              className="shrink-0 px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer active:scale-95"
-              title="Mở cấu hình máy in và kiểm tra kết nối"
-            >
-              <Settings className="w-3.5 h-3.5 text-amber-700" />
-              <span>Cài đặt máy in</span>
-            </button>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsDesignerOpen(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer active:scale-95"
+                title="Mở trình thiết kế kéo thả vị trí & chọn nội dung tem"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Thiết kế mẫu tem</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPrinterSettingsOpen(true)}
+                className="px-2.5 py-1.5 rounded-xl bg-white border border-amber-300 hover:bg-amber-100 text-amber-900 font-bold text-xs flex items-center gap-1 shadow-2xs transition cursor-pointer active:scale-95"
+                title="Mở cấu hình máy in và kiểm tra kết nối"
+              >
+                <Settings className="w-3.5 h-3.5 text-amber-700" />
+                <span>Cài đặt máy in</span>
+              </button>
+            </div>
           </div>
 
           {/* Nút hành động */}
@@ -633,6 +609,16 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
       <PrinterSettingsModal
         isOpen={isPrinterSettingsOpen}
         onClose={() => setIsPrinterSettingsOpen(false)}
+      />
+
+      {/* TRÌNH THIẾT KẾ MẪU IN KÉO THẢ */}
+      <PrintTemplateDesignerModal
+        isOpen={isDesignerOpen}
+        onClose={() => {
+          setIsDesignerOpen(false);
+          setStickerConfig(getStickerTemplate(labelSize));
+        }}
+        initialTab="sticker"
       />
     </>
   );

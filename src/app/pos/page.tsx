@@ -55,6 +55,9 @@ import {
 import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
+import { PrintTemplateDesignerModal } from '@/components/pos/PrintTemplateDesignerModal';
+import { ReceiptTemplateConfig } from '@/lib/types/printTemplate';
+import { getReceiptTemplate, PRINT_TEMPLATE_UPDATED_EVENT } from '@/lib/utils/printTemplateManager';
 import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
@@ -218,6 +221,18 @@ export default function POSPage() {
   const [cashGiven, setCashGiven] = useState<number>(0);
   const [processingOrder, setProcessingOrder] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<any | null>(null);
+  const [isPrintTemplateDesignerOpen, setIsPrintTemplateDesignerOpen] = useState(false);
+  const [receiptConfig, setReceiptConfig] = useState<ReceiptTemplateConfig>(() => getReceiptTemplate('80mm'));
+
+  useEffect(() => {
+    const handleTemplateUpdate = (e: any) => {
+      if (e?.detail?.type === 'receipt') {
+        setReceiptConfig(getReceiptTemplate('80mm'));
+      }
+    };
+    window.addEventListener(PRINT_TEMPLATE_UPDATED_EVENT, handleTemplateUpdate);
+    return () => window.removeEventListener(PRINT_TEMPLATE_UPDATED_EVENT, handleTemplateUpdate);
+  }, []);
 
   // ── AUTO-BANK WEBHOOK PAYMENT & LIVE CONFIRMATION STATE ──
   const [checkoutTransferCode, setCheckoutTransferCode] = useState<string>('');
@@ -6847,223 +6862,262 @@ export default function POSPage() {
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-sm w-full p-4 sm:p-6 space-y-4 shadow-2xl max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in duration-200">
             <div id="printable-pos-receipt" className="p-4 bg-amber-50/40 rounded-2xl border border-zinc-300 text-zinc-900 font-mono text-xs space-y-3">
-              <div className="text-center space-y-1 border-b border-dashed border-zinc-300 pb-2">
-                {branding.logoUrl && (
-                  <div className="flex justify-center mb-1">
-                    <img
-                      src={branding.logoUrl}
-                      alt={branding.storeName}
-                      className="h-9 w-auto max-w-[120px] object-contain mx-auto"
-                    />
-                  </div>
-                )}
-                <h2 className="font-black text-sm tracking-wider uppercase">{branding.storeName || 'TIỆM BÁNH ABC'}</h2>
-                {branding.slogan && (
-                  <p className="text-[9px] text-zinc-600 font-medium italic">{branding.slogan}</p>
-                )}
-                <p className="text-[10px] text-zinc-500">{branding.address || '123 Đường Bánh Ngọt, TP.HCM'}</p>
-                <p className="text-[10px] text-zinc-500">Hotline: {branding.phone || '0901 234 567'}</p>
-                <p className="font-bold text-xs pt-1">
-                  {completedOrder.deliveryMethod === 'shipping'
-                    ? 'PHIẾU GIAO HÀNG TẬN NƠI (SHIP BÁNH)'
-                    : completedOrder.pickupDateTimeStr
-                    ? 'PHIẾU HẸN GIAO BÁNH KEM'
-                    : 'HÓA ĐƠN THANH TOÁN'}
-                </p>
-                <p className="text-[11px] font-bold text-amber-700">#{completedOrder.orderNumber}</p>
-              </div>
-
-              <div className="text-[10px] space-y-1 text-zinc-600 border-b border-dashed border-zinc-300 pb-2">
-                <div>Ngày tạo: {completedOrder.createdAt}</div>
-                <div>Thu ngân: {completedOrder.cashier}</div>
-                {completedOrder.customerName && (
-                  <>
-                    <div className="font-bold text-zinc-900">Khách hàng: {completedOrder.customerName} ({completedOrder.customerPhone})</div>
-                    <div className="font-bold text-pink-700">
-                      {completedOrder.deliveryMethod === 'shipping' ? 'HẸN GIỜ GIAO:' : 'HẸN LẤY BÁNH:'}{' '}
-                      {formatPickupDateTime(completedOrder.pickupDateTimeStr) || completedOrder.pickupDateTimeStr}
-                    </div>
-                    <div className="flex items-center gap-1 font-semibold text-zinc-800">
-                      <span>Hình thức nhận:</span>
-                      <span className={completedOrder.deliveryMethod === 'shipping' ? 'text-blue-700 font-bold' : 'text-zinc-700 font-bold'}>
-                        {completedOrder.deliveryMethod === 'shipping' ? '🚚 Giao hàng tận nơi (Ship)' : '🏪 Khách lấy tại tiệm'}
-                      </span>
-                    </div>
-                    {completedOrder.shippingAddress && (
-                      <div className="font-bold text-blue-900 bg-blue-50/80 p-2 rounded-lg border border-blue-200 mt-1">
-                        📍 ĐỊA CHỈ GIAO HÀNG:
-                        <div className="text-zinc-900 font-normal mt-0.5">{completedOrder.shippingAddress}</div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-
-              <div className="space-y-1.5 border-b border-dashed border-zinc-300 pb-2 text-[11px]">
-                {completedOrder.items.filter((item: any) => item.product?.id !== 'shipping-fee-item').map((item: any, i: number) => (
-                  <div key={i} className="space-y-0.5">
-                    <div className="flex justify-between">
-                      <span className="flex-1 pr-2">
-                        {item.product?.name || item.product_name_snapshot} x{item.quantity}
-                      </span>
-                      <span className="font-bold">
-                        {(((Number(item.product?.selling_price) || Number(item.product?.price) || Number(item.unit_price) || 0) * (Number(item.quantity) || 1))).toLocaleString('vi-VN')}₫
-                      </span>
-                    </div>
-                  </div>
-                ))}
-                {completedOrder.cakeMessage && (
-                  <div className="text-[10px] text-pink-700 italic">
-                    ✍️ Chữ: "{completedOrder.cakeMessage}"
-                  </div>
-                )}
-              </div>
-
-              <div className="space-y-1 text-xs pt-1">
-                <div className="flex justify-between text-zinc-600">
-                  <span>Tiền bánh:</span>
-                  <span className="font-bold">{(Number(completedOrder.subtotal ?? (Number(completedOrder.totalAmount || 0) - Number(completedOrder.shippingFee || 0))) || 0).toLocaleString('vi-VN')}₫</span>
-                </div>
-                {completedOrder.discountAmount !== undefined && completedOrder.discountAmount > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-bold">
-                    <span>Giảm giá:</span>
-                    <span>-{(Number(completedOrder.discountAmount) || 0).toLocaleString('vi-VN')}₫</span>
-                  </div>
-                )}
-                {completedOrder.shippingFee && completedOrder.shippingFee > 0 ? (
-                  <div className="flex justify-between text-blue-700 font-bold">
-                    <span>Phí giao hàng (Ship):</span>
-                    <span>+{(Number(completedOrder.shippingFee) || 0).toLocaleString('vi-VN')}₫</span>
-                  </div>
-                ) : null}
-                <div className="flex justify-between font-black text-zinc-900 border-t border-dashed border-zinc-300 pt-1 text-sm">
-                  <span>TỔNG CỘNG GIÁ CUỐI:</span>
-                  <span className="text-amber-700 font-black">{(Number(completedOrder.totalAmount) || 0).toLocaleString('vi-VN')}₫</span>
-                </div>
-                {completedOrder.depositAmount !== undefined && completedOrder.depositAmount > 0 && (
-                  <>
-                    <div className="flex justify-between text-emerald-600 font-bold">
-                      <span>Tiền khách đã cọc:</span>
-                      <span>-{(Number(completedOrder.depositAmount) || 0).toLocaleString('vi-VN')}₫</span>
-                    </div>
-                    <div className="flex justify-between font-black text-sm pt-1 border-t border-zinc-300 text-rose-600 bg-rose-50/80 p-1.5 rounded-lg border border-rose-200">
-                      <span>CÒN LẠI CẦN THU (COD):</span>
-                      <span>{(Number(completedOrder.remainingAmount !== undefined ? completedOrder.remainingAmount : (Number(completedOrder.totalAmount || 0) - Number(completedOrder.depositAmount || 0))) || 0).toLocaleString('vi-VN')}₫</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-                {/* Chi tiết phương thức thanh toán */}
-                {(() => {
-                  const isDepositOrder = completedOrder.depositAmount !== undefined && Number(completedOrder.remainingAmount || 0) > 0;
-                  const targetDue = isDepositOrder ? Number(completedOrder.depositAmount || 0) : Number(completedOrder.totalAmount || 0);
-
-                  let displayCashGiven = targetDue;
-                  if (completedOrder.cashGiven !== undefined && completedOrder.cashGiven !== null) {
-                    const rawCash = Number(completedOrder.cashGiven);
-                    // Nếu đơn có cọc nhưng cashGiven lại bằng grandTotal (do lỗi cũ) và lớn hơn targetDue -> đưa về targetDue
-                    if (isDepositOrder && rawCash === Number(completedOrder.totalAmount || 0) && rawCash > targetDue) {
-                      displayCashGiven = targetDue;
-                    } else {
-                      displayCashGiven = rawCash;
-                    }
-                  }
-
-                  let displayChange = 0;
-                  if (completedOrder.changeAmount !== undefined && completedOrder.changeAmount !== null) {
-                    const rawChange = Number(completedOrder.changeAmount);
-                    // Nếu đơn có cọc và changeAmount lại bằng đúng remainingAmount (do lỗi cũ) -> sửa về đúng hiệu số
-                    if (isDepositOrder && rawChange === Number(completedOrder.remainingAmount || 0)) {
-                      displayChange = Math.max(0, displayCashGiven - targetDue);
-                    } else {
-                      displayChange = Math.max(0, rawChange);
-                    }
-                  } else {
-                    displayChange = Math.max(0, displayCashGiven - targetDue);
-                  }
-
-                  return (
-                    <div className="border-t border-dashed border-zinc-300 pt-2 space-y-1">
-                      <div className="flex justify-between items-center text-zinc-700">
-                        <span>Hình thức thanh toán:</span>
-                        <span className="font-bold text-zinc-900">
-                          {completedOrder.paymentMethod === 'cash'
-                            ? '💵 Tiền mặt'
-                            : completedOrder.paymentMethod === 'momo'
-                            ? '📱 Ví MoMo'
-                            : '🏦 Chuyển khoản VietQR'}
-                        </span>
-                      </div>
-
-                      {completedOrder.paymentMethod === 'cash' && (
-                        <>
-                          <div className="flex justify-between text-zinc-600">
-                            <span>{isDepositOrder ? 'Tiền khách đưa (Cọc):' : 'Tiền khách đưa:'}</span>
-                            <span className="font-medium">
-                              {displayCashGiven.toLocaleString('vi-VN')}₫
-                            </span>
+              {receiptConfig.blocks
+                .filter((b) => b.visible)
+                .map((block) => {
+                  if (block.id === 'header_store') {
+                    return (
+                      <div key={block.id} className="text-center space-y-1 border-b border-dashed border-zinc-300 pb-2">
+                        {block.options?.showLogo !== false && branding.logoUrl && (
+                          <div className="flex justify-center mb-1">
+                            <img
+                              src={branding.logoUrl}
+                              alt={branding.storeName}
+                              className="h-9 w-auto max-w-[120px] object-contain mx-auto"
+                            />
                           </div>
-                          {displayChange > 0 && (
-                            <div className="flex justify-between text-emerald-700 font-bold">
-                              <span>Tiền thừa trả khách:</span>
-                              <span>
-                                {displayChange.toLocaleString('vi-VN')}₫
+                        )}
+                        <h2 className="font-black text-sm tracking-wider uppercase">{branding.storeName || 'TIỆM BÁNH ABC'}</h2>
+                        {block.options?.showSlogan !== false && branding.slogan && (
+                          <p className="text-[9px] text-zinc-600 font-medium italic">{branding.slogan}</p>
+                        )}
+                        {block.options?.showAddress !== false && (
+                          <p className="text-[10px] text-zinc-500">{branding.address || '123 Đường Bánh Ngọt, TP.HCM'}</p>
+                        )}
+                        {block.options?.showHotline !== false && (
+                          <p className="text-[10px] text-zinc-500">Hotline: {branding.phone || '0901 234 567'}</p>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  if (block.id === 'order_meta') {
+                    return (
+                      <div key={block.id} className="text-center space-y-0.5 border-b border-dashed border-zinc-300 pb-2 text-[10px] text-zinc-600">
+                        <p className="font-bold text-xs pt-1 text-zinc-900">
+                          {completedOrder.deliveryMethod === 'shipping'
+                            ? 'PHIẾU GIAO HÀNG TẬN NƠI (SHIP BÁNH)'
+                            : completedOrder.pickupDateTimeStr
+                            ? 'PHIẾU HẸN GIAO BÁNH KEM'
+                            : 'HÓA ĐƠN THANH TOÁN'}
+                        </p>
+                        <p className="text-[11px] font-bold text-amber-700">#{completedOrder.orderNumber}</p>
+                        <div className="flex justify-between pt-1">
+                          <div>Ngày tạo: {completedOrder.createdAt}</div>
+                          {block.options?.showCashier !== false && <div>Thu ngân: {completedOrder.cashier}</div>}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (block.id === 'customer_info') {
+                    if (!completedOrder.customerName && !completedOrder.pickupDateTimeStr) return null;
+                    return (
+                      <div key={block.id} className="text-[10px] space-y-1 text-zinc-600 border-b border-dashed border-zinc-300 pb-2">
+                        {completedOrder.customerName && (
+                          <div className="font-bold text-zinc-900">Khách hàng: {completedOrder.customerName} ({completedOrder.customerPhone})</div>
+                        )}
+                        {completedOrder.pickupDateTimeStr && (
+                          <div className="font-bold text-pink-700">
+                            {completedOrder.deliveryMethod === 'shipping' ? 'HẸN GIỜ GIAO:' : 'HẸN LẤY BÁNH:'}{' '}
+                            {formatPickupDateTime(completedOrder.pickupDateTimeStr) || completedOrder.pickupDateTimeStr}
+                          </div>
+                        )}
+                        <div className="flex items-center gap-1 font-semibold text-zinc-800">
+                          <span>Hình thức nhận:</span>
+                          <span className={completedOrder.deliveryMethod === 'shipping' ? 'text-blue-700 font-bold' : 'text-zinc-700 font-bold'}>
+                            {completedOrder.deliveryMethod === 'shipping' ? '🚚 Giao hàng tận nơi (Ship)' : '🏪 Khách lấy tại tiệm'}
+                          </span>
+                        </div>
+                        {block.options?.showAddress !== false && completedOrder.shippingAddress && (
+                          <div className="font-bold text-blue-900 bg-blue-50/80 p-2 rounded-lg border border-blue-200 mt-1">
+                            📍 ĐỊA CHỈ GIAO HÀNG:
+                            <div className="text-zinc-900 font-normal mt-0.5">{completedOrder.shippingAddress}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  if (block.id === 'items_table') {
+                    return (
+                      <div key={block.id} className="space-y-1.5 border-b border-dashed border-zinc-300 pb-2 text-[11px]">
+                        {completedOrder.items.filter((item: any) => item.product?.id !== 'shipping-fee-item').map((item: any, i: number) => (
+                          <div key={i} className="space-y-0.5">
+                            <div className="flex justify-between">
+                              <span className="flex-1 pr-2">
+                                {item.product?.name || item.product_name_snapshot} x{item.quantity}
+                              </span>
+                              <span className="font-bold">
+                                {(((Number(item.product?.selling_price) || Number(item.product?.price) || Number(item.unit_price) || 0) * (Number(item.quantity) || 1))).toLocaleString('vi-VN')}₫
                               </span>
                             </div>
-                          )}
-                          <div className="text-center py-1.5 mt-2 bg-emerald-50 text-emerald-800 font-black text-[11px] rounded-xl border border-emerald-200/80">
-                            {isDepositOrder
-                              ? `✓ ĐÃ THANH TOÁN TIỀN CỌC (${targetDue.toLocaleString('vi-VN')}₫)`
-                              : '✓ ĐÃ THANH TOÁN TIỀN MẶT'}
                           </div>
-                        </>
-                      )}
+                        ))}
+                        {block.options?.showCakeMessage !== false && completedOrder.cakeMessage && (
+                          <div className="text-[10px] text-pink-700 italic">
+                            ✍️ Chữ: "{completedOrder.cakeMessage}"
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
 
-                      {completedOrder.paymentMethod === 'momo' && (
-                        <div className="text-center py-1.5 mt-2 bg-pink-50 text-pink-800 font-black text-[11px] rounded-xl border border-pink-200/80">
-                          {isDepositOrder
-                            ? `✓ ĐÃ CỌC QUA VÍ MOMO (${targetDue.toLocaleString('vi-VN')}₫)`
-                            : '✓ ĐÃ THANH TOÁN QUA VÍ MOMO'}
+                  if (block.id === 'pricing_summary') {
+                    return (
+                      <div key={block.id} className="space-y-1 text-xs pt-1">
+                        <div className="flex justify-between text-zinc-600">
+                          <span>Tiền bánh:</span>
+                          <span className="font-bold">{(Number(completedOrder.subtotal ?? (Number(completedOrder.totalAmount || 0) - Number(completedOrder.shippingFee || 0))) || 0).toLocaleString('vi-VN')}₫</span>
                         </div>
-                      )}
-
-                      {completedOrder.paymentMethod === 'transfer' && (
-                        <div className="text-center py-1.5 mt-2 bg-blue-50 text-blue-800 font-black text-[11px] rounded-xl border border-blue-200/80">
-                          {isDepositOrder
-                            ? `✓ ĐÃ CỌC CHUYỂN KHOẢN (${targetDue.toLocaleString('vi-VN')}₫)`
-                            : '✓ ĐÃ THANH TOÁN CHUYỂN KHOẢN'}
+                        {block.options?.showDiscount !== false && completedOrder.discountAmount !== undefined && completedOrder.discountAmount > 0 && (
+                          <div className="flex justify-between text-emerald-600 font-bold">
+                            <span>Giảm giá:</span>
+                            <span>-{(Number(completedOrder.discountAmount) || 0).toLocaleString('vi-VN')}₫</span>
+                          </div>
+                        )}
+                        {block.options?.showShippingFee !== false && completedOrder.shippingFee && completedOrder.shippingFee > 0 ? (
+                          <div className="flex justify-between text-blue-700 font-bold">
+                            <span>Phí giao hàng (Ship):</span>
+                            <span>+{(Number(completedOrder.shippingFee) || 0).toLocaleString('vi-VN')}₫</span>
+                          </div>
+                        ) : null}
+                        <div className="flex justify-between font-black text-zinc-900 border-t border-dashed border-zinc-300 pt-1 text-sm">
+                          <span>TỔNG CỘNG GIÁ CUỐI:</span>
+                          <span className="text-amber-700 font-black">{(Number(completedOrder.totalAmount) || 0).toLocaleString('vi-VN')}₫</span>
                         </div>
-                      )}
-                    </div>
-                  );
-                })()}
+                        {completedOrder.depositAmount !== undefined && completedOrder.depositAmount > 0 && (
+                          <>
+                            <div className="flex justify-between text-emerald-600 font-bold">
+                              <span>Tiền khách đã cọc:</span>
+                              <span>-{(Number(completedOrder.depositAmount) || 0).toLocaleString('vi-VN')}₫</span>
+                            </div>
+                            <div className="flex justify-between font-black text-sm pt-1 border-t border-zinc-300 text-rose-600 bg-rose-50/80 p-1.5 rounded-lg border border-rose-200">
+                              <span>CÒN LẠI CẦN THU (COD):</span>
+                              <span>{(Number(completedOrder.remainingAmount !== undefined ? completedOrder.remainingAmount : (Number(completedOrder.totalAmount || 0) - Number(completedOrder.depositAmount || 0))) || 0).toLocaleString('vi-VN')}₫</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    );
+                  }
 
-              {/* CHỈ HIỆN MÃ VIETQR KHI ĐƠN ĐẶT BÁNH KEM CÒN SỐ TIỀN CẦN THU KHI GIAO (COD) */}
-              {completedOrder.remainingAmount !== undefined && completedOrder.remainingAmount > 0 && (
-                <div className="text-center py-2 border-t border-dashed border-zinc-300 space-y-1">
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-rose-600">
-                    Mã VietQR Thu Tiền Còn Lại Khi Giao (COD)
-                  </p>
-                  <div className="inline-block p-1 bg-white border border-zinc-300 rounded-lg">
-                    <img
-                      src={`https://api.vietqr.io/image/${vietqrConfig.bankId}-${vietqrConfig.accountNo}-compact.jpg?amount=${completedOrder.remainingAmount}&addInfo=${encodeURIComponent(`DH${completedOrder.orderNumber}`)}&accountName=${encodeURIComponent(vietqrConfig.accountName)}`}
-                      alt="VietQR In Bill"
-                      className="w-28 h-auto mx-auto"
-                    />
-                  </div>
-                  <p className="text-[9px] text-zinc-500 font-mono">
-                    {vietqrConfig.bankId} • {vietqrConfig.accountNo} • {vietqrConfig.accountName}
-                  </p>
-                  <p className="text-[10px] font-black text-rose-600">
-                    Số tiền quét QR: {(Number(completedOrder.remainingAmount) || 0).toLocaleString('vi-VN')}₫
-                  </p>
-                </div>
-              )}
+                  if (block.id === 'payment_details') {
+                    const isDepositOrder = completedOrder.depositAmount !== undefined && Number(completedOrder.remainingAmount || 0) > 0;
+                    const targetDue = isDepositOrder ? Number(completedOrder.depositAmount || 0) : Number(completedOrder.totalAmount || 0);
 
-              <div className="text-center pt-2 text-[10px] text-zinc-500 border-t border-dashed border-zinc-300">
-                <p>{branding.footerMessage || 'Cảm ơn Quý Khách & Hẹn Gặp Lại!'}</p>
-              </div>
+                    let displayCashGiven = targetDue;
+                    if (completedOrder.cashGiven !== undefined && completedOrder.cashGiven !== null) {
+                      const rawCash = Number(completedOrder.cashGiven);
+                      if (isDepositOrder && rawCash === Number(completedOrder.totalAmount || 0) && rawCash > targetDue) {
+                        displayCashGiven = targetDue;
+                      } else {
+                        displayCashGiven = rawCash;
+                      }
+                    }
+
+                    let displayChange = 0;
+                    if (completedOrder.changeAmount !== undefined && completedOrder.changeAmount !== null) {
+                      const rawChange = Number(completedOrder.changeAmount);
+                      if (isDepositOrder && rawChange === Number(completedOrder.remainingAmount || 0)) {
+                        displayChange = Math.max(0, displayCashGiven - targetDue);
+                      } else {
+                        displayChange = Math.max(0, rawChange);
+                      }
+                    } else {
+                      displayChange = Math.max(0, displayCashGiven - targetDue);
+                    }
+
+                    return (
+                      <div key={block.id} className="border-t border-dashed border-zinc-300 pt-2 space-y-1">
+                        <div className="flex justify-between items-center text-zinc-700">
+                          <span>Hình thức thanh toán:</span>
+                          <span className="font-bold text-zinc-900">
+                            {completedOrder.paymentMethod === 'cash'
+                              ? '💵 Tiền mặt'
+                              : completedOrder.paymentMethod === 'momo'
+                              ? '📱 Ví MoMo'
+                              : '🏦 Chuyển khoản VietQR'}
+                          </span>
+                        </div>
+
+                        {completedOrder.paymentMethod === 'cash' && (
+                          <>
+                            <div className="flex justify-between text-zinc-600">
+                              <span>{isDepositOrder ? 'Tiền khách đưa (Cọc):' : 'Tiền khách đưa:'}</span>
+                              <span className="font-medium">
+                                {displayCashGiven.toLocaleString('vi-VN')}₫
+                              </span>
+                            </div>
+                            {block.options?.showChangeAmount !== false && displayChange > 0 && (
+                              <div className="flex justify-between text-emerald-700 font-bold">
+                                <span>Tiền thừa trả khách:</span>
+                                <span>
+                                  {displayChange.toLocaleString('vi-VN')}₫
+                                </span>
+                              </div>
+                            )}
+                            <div className="text-center py-1.5 mt-2 bg-emerald-50 text-emerald-800 font-black text-[11px] rounded-xl border border-emerald-200/80">
+                              {isDepositOrder
+                                ? `✓ ĐÃ THANH TOÁN TIỀN CỌC (${targetDue.toLocaleString('vi-VN')}₫)`
+                                : '✓ ĐÃ THANH TOÁN TIỀN MẶT'}
+                            </div>
+                          </>
+                        )}
+
+                        {completedOrder.paymentMethod === 'momo' && (
+                          <div className="text-center py-1.5 mt-2 bg-pink-50 text-pink-800 font-black text-[11px] rounded-xl border border-pink-200/80">
+                            {isDepositOrder
+                              ? `✓ ĐÃ CỌC QUA VÍ MOMO (${targetDue.toLocaleString('vi-VN')}₫)`
+                              : '✓ ĐÃ THANH TOÁN QUA VÍ MOMO'}
+                          </div>
+                        )}
+
+                        {completedOrder.paymentMethod === 'transfer' && (
+                          <div className="text-center py-1.5 mt-2 bg-blue-50 text-blue-800 font-black text-[11px] rounded-xl border border-blue-200/80">
+                            {isDepositOrder
+                              ? `✓ ĐÃ CỌC CHUYỂN KHOẢN (${targetDue.toLocaleString('vi-VN')}₫)`
+                              : '✓ ĐÃ THANH TOÁN CHUYỂN KHOẢN'}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  if (block.id === 'vietqr_cod' && block.options?.showVietQrCod !== false) {
+                    if (!completedOrder.remainingAmount || completedOrder.remainingAmount <= 0) return null;
+                    return (
+                      <div key={block.id} className="text-center py-2 border-t border-dashed border-zinc-300 space-y-1">
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-rose-600">
+                          Mã VietQR Thu Tiền Còn Lại Khi Giao (COD)
+                        </p>
+                        <div className="inline-block p-1 bg-white border border-zinc-300 rounded-lg">
+                          <img
+                            src={`https://api.vietqr.io/image/${vietqrConfig.bankId}-${vietqrConfig.accountNo}-compact.jpg?amount=${completedOrder.remainingAmount}&addInfo=${encodeURIComponent(`DH${completedOrder.orderNumber}`)}&accountName=${encodeURIComponent(vietqrConfig.accountName)}`}
+                            alt="VietQR In Bill"
+                            className="w-28 h-auto mx-auto"
+                          />
+                        </div>
+                        <p className="text-[9px] text-zinc-500 font-mono">
+                          {vietqrConfig.bankId} • {vietqrConfig.accountNo} • {vietqrConfig.accountName}
+                        </p>
+                        <p className="text-[10px] font-black text-rose-600">
+                          Số tiền quét QR: {(Number(completedOrder.remainingAmount) || 0).toLocaleString('vi-VN')}₫
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  if (block.id === 'footer_greeting' && block.options?.showFooterMessage !== false) {
+                    return (
+                      <div key={block.id} className="text-center pt-2 text-[10px] text-zinc-500 border-t border-dashed border-zinc-300">
+                        <p>{branding.footerMessage || 'Cảm ơn Quý Khách & Hẹn Gặp Lại!'}</p>
+                      </div>
+                    );
+                  }
+
+                  return null;
+                })}
             </div>
 
             <div className="flex flex-col gap-2 pt-1">
@@ -7100,6 +7154,14 @@ export default function POSPage() {
                   {completedOrder.pickupDateTimeStr || completedOrder.customerName
                     ? 'In Phiếu Hẹn'
                     : 'In Hóa Đơn'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPrintTemplateDesignerOpen(true)}
+                  className="p-2.5 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white transition cursor-pointer shadow-xs flex items-center justify-center"
+                  title="Tùy chỉnh mẫu in hóa đơn & tem dán kéo thả"
+                >
+                  <Sparkles className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
@@ -7780,6 +7842,16 @@ export default function POSPage() {
       <PrinterSettingsModal
         isOpen={isPrinterSettingsOpen}
         onClose={() => setIsPrinterSettingsOpen(false)}
+      />
+
+      {/* ── MODAL TRÌNH THIẾT KẾ MẪU IN KÉO THẢ (HÓA ĐƠN & TEM DÁN) ── */}
+      <PrintTemplateDesignerModal
+        isOpen={isPrintTemplateDesignerOpen}
+        onClose={() => {
+          setIsPrintTemplateDesignerOpen(false);
+          setReceiptConfig(getReceiptTemplate('80mm'));
+        }}
+        initialTab="receipt"
       />
 
       {/* ── MODAL ĐƠN CHỜ SHIP / CHỜ GIAO QUẦY (BƯỚC 3 BẾP) ── */}
