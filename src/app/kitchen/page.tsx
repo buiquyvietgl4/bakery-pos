@@ -1083,7 +1083,11 @@ export default function KitchenPage() {
                         .replace(/\[⏳\s*CHỜ BẾP LÀM \d+ CÁI(?:\s*\(ĐÃ CÓ SẴN \d+(?:\/\d+)? CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI]`)
                         .replace(/CHỜ BẾP LÀM \d+ CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI`);
                     }
+                    const wasPending = sup.status !== 'completed';
                     sup.status = 'completed';
+                    if (wasPending && sbMap.has(sup.order_number) && sbMap.get(sup.order_number)?.status !== 'completed') {
+                      syncOrderToSupabase(sup, 'completed').catch(() => {});
+                    }
                   }
                 }
               });
@@ -1179,16 +1183,23 @@ export default function KitchenPage() {
     const unsubscribeSync = subscribeCrossDeviceSync({
       onStatusUpdate: (payload) => {
         if (!payload || !payload.order_number) return;
+        const targetNums = new Set<string>([payload.order_number]);
+        if (payload.order_number.endsWith('-LAM')) {
+          targetNums.add(payload.order_number.replace(/-LAM$/, ''));
+        } else {
+          targetNums.add(`${payload.order_number}-LAM`);
+        }
+
         // Nhận lệnh đổi bước từ điện thoại hoặc máy khác
         setOrders((prev) => {
           const list = Array.isArray(prev) ? prev : [];
-          const exists = list.some((o) => o && (o.order_number === payload.order_number || o.id === payload.order_number));
+          const exists = list.some((o) => o && (targetNums.has(o.order_number) || targetNums.has(o.id)));
           if (payload.status === 'completed' || payload.status === 'cancelled') {
-            return list.filter((o) => o && o.order_number !== payload.order_number && o.id !== payload.order_number);
+            return list.filter((o) => o && !targetNums.has(o.order_number) && !targetNums.has(o.id));
           }
           if (exists) {
             return list.map((o) => {
-              if (o && (o.order_number === payload.order_number || o.id === payload.order_number)) {
+              if (o && (targetNums.has(o.order_number) || targetNums.has(o.id))) {
                 const notesParse = parsePreorderFromNotes(o.notes || payload.order_data?.notes);
                 const isShip = o.delivery_method === 'shipping' || payload.order_data?.delivery_method === 'shipping' || notesParse.delivery_method === 'shipping';
                 return { 
@@ -1253,7 +1264,7 @@ export default function KitchenPage() {
               if (Array.isArray(parsed)) {
                 let found = false;
                 const updated = parsed.map((o: any) => {
-                  if (o.order_number === payload.order_number || o.id === payload.order_number) {
+                  if (targetNums.has(o.order_number) || targetNums.has(o.id)) {
                     found = true;
                     const fromN = parsePreorderFromNotes(o.notes || payload.order_data?.notes);
                     const isS = o.delivery_method === 'shipping' || payload.order_data?.delivery_method === 'shipping' || fromN.delivery_method === 'shipping';
@@ -1263,7 +1274,8 @@ export default function KitchenPage() {
                       updated_at: payload.updated_at,
                       delivery_method: isS ? 'shipping' : 'pickup',
                       shipping_address: o.shipping_address || payload.order_data?.shipping_address || fromN.shipping_address || '',
-                      remaining_amount: o.remaining_amount !== undefined ? o.remaining_amount : (payload.order_data?.remaining_amount !== undefined ? payload.order_data?.remaining_amount : fromN.remaining_amount),
+                      remaining_amount: payload.status === 'completed' ? 0 : (o.remaining_amount !== undefined ? o.remaining_amount : (payload.order_data?.remaining_amount !== undefined ? payload.order_data?.remaining_amount : fromN.remaining_amount)),
+                      payment_status: payload.status === 'completed' ? 'paid' : o.payment_status,
                       reference_image_url: o.reference_image_url || payload.order_data?.reference_image_url || payload.order_data?.referenceImageUrl || '',
                       preorder_pickup_at: o.preorder_pickup_at || payload.order_data?.preorder_pickup_at || fromN.preorder_pickup_at || '',
                     };
@@ -1292,7 +1304,8 @@ export default function KitchenPage() {
                     cake_message: od.cake_message || od.cakeMessage || odNotes.cake_message || '',
                     total_amount: od.total_amount || od.totalPrice,
                     deposit_amount: od.deposit_amount !== undefined ? od.deposit_amount : (od.depositAmount !== undefined ? od.depositAmount : odNotes.deposit_amount),
-                    remaining_amount: od.remaining_amount !== undefined ? od.remaining_amount : (od.remainingAmount !== undefined ? od.remainingAmount : odNotes.remaining_amount),
+                    remaining_amount: payload.status === 'completed' ? 0 : (od.remaining_amount !== undefined ? od.remaining_amount : (od.remainingAmount !== undefined ? od.remainingAmount : odNotes.remaining_amount)),
+                    payment_status: payload.status === 'completed' ? 'paid' : od.payment_status,
                     reference_image_url: od.reference_image_url || od.referenceImageUrl || odNotes.reference_image_url || '',
                     flavor: od.flavor || odNotes.flavor || '',
                     cream: od.cream || odNotes.cream || '',
@@ -1303,6 +1316,29 @@ export default function KitchenPage() {
                 }
 
                 localStorage.setItem('bakery_orders', JSON.stringify(updated));
+              }
+            }
+
+            const rawPre = localStorage.getItem('bakery_preorders');
+            if (rawPre) {
+              const preList = JSON.parse(rawPre);
+              if (Array.isArray(preList)) {
+                let changed = false;
+                const updatedPre = preList.map((po: any) => {
+                  if (targetNums.has(po.orderNumber) || targetNums.has(po.order_number) || targetNums.has(po.id)) {
+                    changed = true;
+                    return {
+                      ...po,
+                      status: payload.status,
+                      remainingAmount: payload.status === 'completed' ? 0 : po.remainingAmount,
+                      paymentStatus: payload.status === 'completed' ? 'paid' : po.paymentStatus,
+                    };
+                  }
+                  return po;
+                });
+                if (changed) {
+                  localStorage.setItem('bakery_preorders', JSON.stringify(updatedPre));
+                }
               }
             }
           } catch {}

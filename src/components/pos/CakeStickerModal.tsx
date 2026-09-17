@@ -118,7 +118,19 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
       content = `Đ/c: ${branding.address || 'Tại tiệm'}`;
     } else if (el.id === 'order_code') {
       content = (
-        <span className="font-mono bg-black text-white px-1.5 py-0.5 rounded leading-none">
+        <span
+          style={{
+            fontFamily: 'monospace',
+            backgroundColor: '#000000',
+            color: '#ffffff',
+            padding: '1px 3.5px',
+            borderRadius: '2px',
+            lineHeight: 1,
+            display: 'inline-block',
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          }}
+        >
           #{orderShortCode}
         </span>
       );
@@ -127,7 +139,20 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
     } else if (el.id === 'cake_message') {
       if (!data.cakeMessage) return null;
       content = (
-        <span className="bg-zinc-100 px-1 py-0.5 rounded border border-zinc-200 block truncate">
+        <span
+          style={{
+            backgroundColor: '#f4f4f5',
+            padding: '1px 3px',
+            borderRadius: '2px',
+            border: '1px solid #e4e4e7',
+            display: 'block',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            WebkitPrintColorAdjust: 'exact',
+            printColorAdjust: 'exact',
+          }}
+        >
           ✍️ &ldquo;{data.cakeMessage}&rdquo;
         </span>
       );
@@ -158,9 +183,9 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
         <span>
           💰 Giá: {priceVal.toLocaleString('vi-VN')}₫
           {remVal > 0 ? (
-            <span className="text-red-700 font-black"> • Còn thu: {remVal.toLocaleString('vi-VN')}₫</span>
+            <span style={{ color: '#b91c1c', fontWeight: 900 }}> • Còn thu: {remVal.toLocaleString('vi-VN')}₫</span>
           ) : (
-            <span className="text-emerald-700 font-bold"> • Đã thu đủ</span>
+            <span style={{ color: '#047857', fontWeight: 700 }}> • Đã thu đủ</span>
           )}
         </span>
       );
@@ -197,6 +222,7 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
           left: `${el.x}%`,
           top: `${el.y}%`,
           width: el.width ? `${el.width}%` : 'auto',
+          maxWidth: el.width ? `${el.width}%` : '96%',
           fontSize: `${el.fontSize}pt`,
           fontWeight: el.fontWeight === 'black' ? 900 : el.fontWeight === 'bold' ? 700 : 400,
           fontStyle: el.fontStyle || 'normal',
@@ -243,6 +269,7 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
           color: #000000 !important;
         }
         #printable-cake-sticker {
+          position: relative !important;
           width: 50mm !important;
           height: ${is30 ? '30mm' : '40mm'} !important;
           max-width: 50mm !important;
@@ -251,225 +278,19 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
           border: none !important;
           border-radius: 0 !important;
           margin: 0 !important;
-          padding: ${is30 ? '0.7mm 1.5mm 0.7mm 1.5mm' : '1.2mm 2mm 1.2mm 2mm'} !important;
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: space-between !important;
+          padding: 0 !important;
+          display: block !important;
           overflow: hidden !important;
+          background: #ffffff !important;
+          color: #000000 !important;
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
           page-break-after: avoid !important;
           break-after: avoid !important;
           page-break-inside: avoid !important;
           break-inside: avoid !important;
         }
-        #printable-cake-sticker .sticker-header {
-          border-bottom: 1px solid #000000 !important;
-          padding-bottom: ${is30 ? '0.5mm' : '1mm'} !important;
-          margin-bottom: ${is30 ? '0.5mm' : '1mm'} !important;
-          display: flex !important;
-          justify-content: space-between !important;
-          align-items: center !important;
-          line-height: 1 !important;
-          flex-shrink: 0 !important;
-          width: 100% !important;
-        }
-        #printable-cake-sticker .sticker-store-info {
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: center !important;
-          min-width: 0 !important;
-          flex: 1 1 auto !important;
-          padding-right: 1.5mm !important;
-        }
-        #printable-cake-sticker .sticker-store-name {
-          font-size: ${is30 ? '7.5pt' : '9.5pt'} !important;
-          font-weight: 900 !important;
-          text-transform: uppercase !important;
-          color: #000000 !important;
-          display: block !important;
-          line-height: 1.1 !important;
-          letter-spacing: -0.1px !important;
-          white-space: nowrap !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-        }
-        #printable-cake-sticker .sticker-hotline {
-          font-size: ${is30 ? '5.2pt' : '6.5pt'} !important;
-          font-weight: 600 !important;
-          color: #222222 !important;
-          display: block !important;
-          line-height: 1.1 !important;
-          margin-top: 0.3mm !important;
-          white-space: nowrap !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-        }
-        #printable-cake-sticker .sticker-badge-group {
-          display: flex !important;
-          flex-direction: column !important;
-          align-items: flex-end !important;
-          justify-content: center !important;
-          flex-shrink: 0 !important;
-        }
-        #printable-cake-sticker .sticker-order-badge {
-          font-family: monospace !important;
-          font-size: ${is30 ? '6.8pt' : '8pt'} !important;
-          font-weight: 900 !important;
-          background-color: #000000 !important;
-          color: #ffffff !important;
-          padding: 1px 3.5px !important;
-          border-radius: 2px !important;
-          line-height: 1 !important;
-          white-space: nowrap !important;
-          flex-shrink: 0 !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        #printable-cake-sticker .sticker-order-sub {
-          font-family: monospace !important;
-          font-size: ${is30 ? '4.5pt' : '5.5pt'} !important;
-          font-weight: 700 !important;
-          color: #444444 !important;
-          line-height: 1 !important;
-          margin-top: 0.3mm !important;
-          white-space: nowrap !important;
-          flex-shrink: 0 !important;
-        }
-        #printable-cake-sticker .sticker-body {
-          padding: 0 !important;
-          margin: 0 !important;
-          flex: 1 1 auto !important;
-          min-height: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          justify-content: ${is30 ? 'space-between' : 'space-around'} !important;
-          overflow: hidden !important;
-        }
-        #printable-cake-sticker .sticker-cake-name-wrapper {
-          margin: 0 !important;
-          padding: 0 !important;
-          flex-shrink: 0 !important;
-        }
-        #printable-cake-sticker .sticker-cake-name {
-          font-size: ${
-            is30
-              ? data.cakeName.length > 40
-                ? '6pt'
-                : data.cakeName.length > 26
-                ? '6.6pt'
-                : '7.5pt'
-              : data.cakeName.length > 40
-              ? '7.5pt'
-              : data.cakeName.length > 26
-              ? '8.2pt'
-              : '9.2pt'
-          } !important;
-          font-weight: 900 !important;
-          text-transform: uppercase !important;
-          line-height: 1.15 !important;
-          color: #000000 !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          word-break: break-word !important;
-          overflow: hidden !important;
-          display: -webkit-box !important;
-          -webkit-line-clamp: 2 !important;
-          -webkit-box-orient: vertical !important;
-        }
-        #printable-cake-sticker .sticker-cake-msg {
-          font-size: ${is30 ? '5.2pt' : '6.5pt'} !important;
-          font-weight: 700 !important;
-          line-height: 1.15 !important;
-          margin: ${is30 ? '0.4mm 0' : '0.8mm 0'} !important;
-          padding: ${is30 ? '0.4mm 1.5mm' : '0.8mm 2mm'} !important;
-          background: #f4f4f5 !important;
-          border: 0.5px solid #d4d4d8 !important;
-          border-radius: 2px !important;
-          color: #09090b !important;
-          white-space: nowrap !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-          display: flex !important;
-          align-items: center !important;
-          gap: 2px !important;
-          flex-shrink: 0 !important;
-          -webkit-print-color-adjust: exact !important;
-          print-color-adjust: exact !important;
-        }
-        #printable-cake-sticker .sticker-info-block {
-          margin: 0 !important;
-          padding: 0 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          gap: ${is30 ? '0.3mm' : '0.7mm'} !important;
-          flex-shrink: 0 !important;
-        }
-        #printable-cake-sticker .sticker-info-line {
-          font-size: ${is30 ? '5.3pt' : '6.6pt'} !important;
-          line-height: 1.15 !important;
-          color: #000000 !important;
-          white-space: nowrap !important;
-          overflow: hidden !important;
-          text-overflow: ellipsis !important;
-          margin: 0 !important;
-          display: flex !important;
-          align-items: center !important;
-          gap: 2px !important;
-        }
-        #printable-cake-sticker .sticker-info-line b {
-          font-weight: 900 !important;
-        }
-        #printable-cake-sticker .sticker-icon {
-          font-size: ${is30 ? '5.6pt' : '7pt'} !important;
-          line-height: 1 !important;
-          display: inline-flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          width: ${is30 ? '7.5px' : '9.5px'} !important;
-          flex-shrink: 0 !important;
-        }
-        #printable-cake-sticker .sticker-footer {
-          border-top: 1px solid #000000 !important;
-          padding-top: ${is30 ? '0.5mm' : '1mm'} !important;
-          margin-top: ${is30 ? '0.4mm' : '0.8mm'} !important;
-          display: flex !important;
-          flex-direction: column !important;
-          align-items: center !important;
-          width: 100% !important;
-          flex-shrink: 0 !important;
-        }
-        #printable-cake-sticker .sticker-barcode-wrapper {
-          width: 100% !important;
-          height: ${is30 ? '5.5mm' : '8.5mm'} !important;
-          display: flex !important;
-          align-items: center !important;
-          justify-content: center !important;
-          overflow: hidden !important;
-          margin-bottom: ${is30 ? '0.4mm' : '0.8mm'} !important;
-        }
-        #printable-cake-sticker .sticker-barcode-svg {
-          width: ${is30 ? '38mm' : '44mm'} !important;
-          height: 100% !important;
-          max-height: 100% !important;
-          display: block !important;
-        }
-        #printable-cake-sticker .sticker-dates {
-          width: 100% !important;
-          display: flex !important;
-          justify-content: space-between !important;
-          align-items: center !important;
-          font-size: ${is30 ? '4.8pt' : '5.8pt'} !important;
-          font-weight: 700 !important;
-          color: #000000 !important;
-          line-height: 1 !important;
-          margin: 0 !important;
-          padding: 0 !important;
-          white-space: nowrap !important;
-          flex-shrink: 0 !important;
-        }
-        #printable-cake-sticker .sticker-dates span {
-          white-space: nowrap !important;
-          display: inline-block !important;
+        #printable-cake-sticker * {
+          box-sizing: border-box !important;
         }
       `,
     });

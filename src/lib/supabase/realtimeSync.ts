@@ -1111,19 +1111,46 @@ export async function syncOrderToSupabase(
 
   try {
     // 1. Thử cập nhật trạng thái nếu đơn đã tồn tại trong Supabase
-    // LƯU Ý QUAN TRỌNG: Chỉ cập nhật status, updated_at và notes (để bảo toàn tiến độ làm bù/xong bù), TUYỆT ĐỐI KHÔNG ghi đè preorder_pickup_at!
+    // Đồng bộ đồng thời cả mã đơn chính lẫn mã đơn bếp làm thêm (${orderNum}-LAM) nếu có
+    const targetNumbers = new Set<string>();
+    targetNumbers.add(orderNum);
+    if (order.linked_bake_order_number) targetNumbers.add(order.linked_bake_order_number);
+    if (orderNum.endsWith('-LAM')) {
+      targetNumbers.add(orderNum.replace(/-LAM$/, ''));
+    } else {
+      targetNumbers.add(`${orderNum}-LAM`);
+    }
+
     const updatePayload: any = {
       status: nextStatus,
       updated_at: new Date().toISOString(),
     };
+    if (nextStatus === 'completed') {
+      updatePayload.remaining_amount = 0;
+      updatePayload.payment_status = 'paid';
+    }
     if (order.notes) {
       updatePayload.notes = order.notes;
     }
+
     const { data: updatedRows, error: updateErr } = await supabase
       .from('orders')
       .update(updatePayload)
-      .eq('order_number', orderNum)
-      .select('id');
+      .in('order_number', Array.from(targetNumbers))
+      .select('id, order_number');
+
+    if (order.id && isValidUUID(order.id)) {
+      await supabase.from('orders').update(updatePayload).eq('id', order.id);
+    }
+
+    // Phát sóng cập nhật trạng thái cho tất cả các mã đơn liên quan
+    if (nextStatus === 'completed') {
+      targetNumbers.forEach((num) => {
+        if (num !== orderNum) {
+          broadcastOrderStatusUpdate(num, 'completed', { ...order, order_number: num, status: 'completed' }).catch(() => {});
+        }
+      });
+    }
 
     // 2. Nếu đơn chưa có trong Supabase (0 dòng cập nhật), tiến hành INSERT đơn lên Supabase
     if (!updateErr && (!updatedRows || updatedRows.length === 0)) {

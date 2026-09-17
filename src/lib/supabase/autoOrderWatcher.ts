@@ -142,8 +142,18 @@ class AutoOrderWatcher {
   public markOrderCompletedLocally(orderNum: string, status: string = 'completed', orderData?: any) {
     if (!orderNum || typeof window === 'undefined') return;
 
-    // 1. Xóa ngay khỏi bộ đệm cảnh báo quá hạn
-    this.alertedUrgentMap.delete(orderNum);
+    // 1. Xóa ngay khỏi bộ đệm cảnh báo quá hạn cho cả mã gốc và mã -LAM
+    const relatedNumbers = new Set<string>();
+    relatedNumbers.add(orderNum);
+    if (orderNum.endsWith('-LAM')) {
+      relatedNumbers.add(orderNum.replace(/-LAM$/, ''));
+    } else {
+      relatedNumbers.add(`${orderNum}-LAM`);
+    }
+
+    relatedNumbers.forEach((num) => {
+      this.alertedUrgentMap.delete(num);
+    });
 
     try {
       // 2. Cập nhật bakery_orders
@@ -153,12 +163,12 @@ class AutoOrderWatcher {
         const list = JSON.parse(raw);
         if (Array.isArray(list)) {
           const updated = list.map((o: any) => {
-            if (
-              o.order_number === orderNum ||
-              o.orderNumber === orderNum ||
-              o.id === orderNum ||
-              String(o.id) === orderNum
-            ) {
+            const match =
+              relatedNumbers.has(o.order_number) ||
+              relatedNumbers.has(o.orderNumber) ||
+              relatedNumbers.has(o.id) ||
+              relatedNumbers.has(String(o.id));
+            if (match) {
               ordersUpdated = true;
               return {
                 ...o,
@@ -185,12 +195,12 @@ class AutoOrderWatcher {
         const poList = JSON.parse(rawPo);
         if (Array.isArray(poList)) {
           const updatedPo = poList.map((p: any) => {
-            if (
-              p.order_number === orderNum ||
-              p.orderNumber === orderNum ||
-              p.id === orderNum ||
-              String(p.id) === orderNum
-            ) {
+            const match =
+              relatedNumbers.has(p.order_number) ||
+              relatedNumbers.has(p.orderNumber) ||
+              relatedNumbers.has(p.id) ||
+              relatedNumbers.has(String(p.id));
+            if (match) {
               preordersUpdated = true;
               return {
                 ...p,
@@ -225,13 +235,30 @@ class AutoOrderWatcher {
     if (typeof navigator === 'undefined' || !navigator.onLine) return;
 
     try {
-      const { data, error } = await supabase
-        .from('orders')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(30);
+      // Quét song song cả đơn mới nhất (created_at DESC) lẫn đơn vừa đổi trạng thái (updated_at DESC)
+      const [resCreated, resUpdated] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(40),
+        supabase
+          .from('orders')
+          .select('*')
+          .order('updated_at', { ascending: false })
+          .limit(40),
+      ]);
 
-      if (error || !data || !Array.isArray(data)) return;
+      const orderMap = new Map<string, any>();
+      (resCreated.data || []).forEach((o: any) => {
+        if (o && o.order_number) orderMap.set(o.order_number, o);
+      });
+      (resUpdated.data || []).forEach((o: any) => {
+        if (o && o.order_number) orderMap.set(o.order_number, o);
+      });
+
+      const data = Array.from(orderMap.values());
+      if (data.length === 0) return;
 
       for (const order of data) {
         const orderNum = order.order_number;

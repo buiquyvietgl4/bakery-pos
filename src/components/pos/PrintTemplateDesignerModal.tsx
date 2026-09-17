@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   X,
   Printer,
@@ -27,6 +27,7 @@ import {
   Receipt,
   Move,
   Info,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   LabelPaperSize,
@@ -317,6 +318,124 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
     showToast('Đã giãn đều khoảng cách các dòng theo chiều dọc!');
   };
 
+  // ── TỰ ĐỘNG CO GIÃN CỠ CHỮ & PHÂN BỔ VỪA KHÍT 100% TEM KHÔNG TRÀN MÉP ──
+  const handleAutoFitSticker = () => {
+    const is30 = stickerLabelSize === '50x30';
+    const visibleElements = stickerConfig.elements.filter((el) => el.visible);
+    if (visibleElements.length === 0) return;
+
+    // Thứ tự ưu tiên hiển thị từ trên xuống dưới
+    const fieldOrder = [
+      'store_name',
+      'order_code',
+      'store_hotline',
+      'store_address',
+      'cake_name',
+      'cake_message',
+      'pickup_time',
+      'customer_info',
+      'delivery_method',
+      'shipping_address',
+      'filling_flavor',
+      'price_and_cod',
+      'dates',
+      'custom_note',
+      'barcode',
+    ];
+
+    // Dòng đầu: Tên tiệm (trái) và Mã đơn (phải) cùng nằm dòng Y: 2%
+    const hasStoreName = visibleElements.some((e) => e.id === 'store_name');
+    const hasOrderCode = visibleElements.some((e) => e.id === 'order_code');
+
+    // Các phần tử còn lại
+    const bodyElements = visibleElements
+      .filter((e) => e.id !== 'store_name' && e.id !== 'order_code')
+      .sort((a, b) => {
+        const idxA = fieldOrder.indexOf(a.id);
+        const idxB = fieldOrder.indexOf(b.id);
+        const orderA = idxA >= 0 ? idxA : 99;
+        const orderB = idxB >= 0 ? idxB : 99;
+        return orderA - orderB;
+      });
+
+    const bodyCount = bodyElements.length;
+    const startY = (hasStoreName || hasOrderCode) ? (is30 ? 10 : 10) : 2;
+    const endY = is30 ? 84 : 88;
+    const stepY = bodyCount > 1 ? (endY - startY) / (bodyCount - 1) : 0;
+    const isCrowded = is30 && bodyCount >= 7;
+
+    const updatedElements = stickerConfig.elements.map((el) => {
+      if (!el.visible) return el;
+
+      if (el.id === 'store_name') {
+        return {
+          ...el,
+          x: 2,
+          y: 2,
+          width: hasOrderCode ? 66 : 96,
+          fontSize: isCrowded ? 7.2 : 7.8,
+          align: 'left' as const,
+        };
+      }
+      if (el.id === 'order_code') {
+        return {
+          ...el,
+          x: hasStoreName ? 68 : 2,
+          y: 2,
+          width: hasStoreName ? 30 : 96,
+          fontSize: isCrowded ? 6.8 : 7.2,
+          align: hasStoreName ? ('right' as const) : ('left' as const),
+        };
+      }
+
+      const bodyIdx = bodyElements.findIndex((b) => b.id === el.id);
+      if (bodyIdx >= 0) {
+        const newY = Math.round(startY + bodyIdx * stepY);
+        let newFontSize = el.fontSize;
+
+        if (el.id === 'cake_name') {
+          newFontSize = isCrowded ? 7.6 : is30 ? 8.2 : 10;
+        } else if (el.id === 'cake_message') {
+          newFontSize = isCrowded ? 5.8 : 6.5;
+        } else if (el.id === 'price_and_cod') {
+          newFontSize = isCrowded ? 6.2 : 6.8;
+        } else if (el.id === 'pickup_time') {
+          newFontSize = isCrowded ? 6.2 : 6.8;
+        } else {
+          newFontSize = isCrowded ? 5.4 : 6.2;
+        }
+
+        return {
+          ...el,
+          x: 2,
+          y: newY,
+          width: 96,
+          fontSize: newFontSize,
+        };
+      }
+
+      return el;
+    });
+
+    setStickerConfig((prev) => ({
+      ...prev,
+      elements: updatedElements,
+    }));
+    showToast(`Đã tự động co giãn và căn chỉnh vừa khít 100% tem ${stickerLabelSize} mm!`);
+  };
+
+  // Cảnh báo khi có quá nhiều dòng hoặc dòng ở đáy bị tràn/đè nhau
+  const isStickerOverflowRisk = useMemo(() => {
+    const visible = stickerConfig.elements.filter((e) => e.visible);
+    if (visible.length === 0) return false;
+    const is30 = stickerLabelSize === '50x30';
+    const maxYLimit = is30 ? 86 : 90;
+    const hasBottomOverflow = visible.some((e) => e.y >= maxYLimit);
+    const yValues = visible.map((e) => e.y);
+    const hasYCollision = yValues.some((y, i) => yValues.slice(i + 1).some((y2) => Math.abs(y - y2) < 4));
+    return hasBottomOverflow || hasYCollision;
+  }, [stickerConfig.elements, stickerLabelSize]);
+
   // ── XỬ LÝ HÓA ĐƠN IN NHIỆT (RECEIPT) ──
   const handleReceiptSizeChange = (size: ReceiptPaperSize) => {
     setReceiptPaperSize(size);
@@ -578,6 +697,15 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                 <div className="flex items-center gap-1.5">
                   <button
                     type="button"
+                    onClick={handleAutoFitSticker}
+                    className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs flex items-center gap-1.5 shadow-sm transition cursor-pointer"
+                    title="Tự động co giãn cỡ chữ và xếp đều vừa khít 100% không lo tràn mép tem"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>⚡ Tự co vừa khít</span>
+                  </button>
+                  <button
+                    type="button"
                     onClick={handleAddCustomTextElement}
                     className="px-2.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 font-bold text-xs flex items-center gap-1 transition cursor-pointer"
                   >
@@ -786,6 +914,16 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                           <Sliders className="w-3 h-3 text-zinc-500" />
                           <span>Giãn đều khoảng cách dòng (Y)</span>
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={handleAutoFitSticker}
+                          className="w-full px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-[10px] font-black flex items-center justify-center gap-1 transition cursor-pointer shadow-2xs"
+                          title="Tự động co giãn cỡ chữ và xếp đều vừa khít 100% không lo tràn tem"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          <span>⚡ Tự co vừa khít tem (Auto-Fit)</span>
+                        </button>
                       </div>
                     </div>
                   ) : (
@@ -839,6 +977,25 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                     <Sparkles className="w-4 h-4 text-amber-500" />
                     <span>Mô phỏng mặt tem ({stickerLabelSize}mm) - Bấm giữ chuột để kéo thả vị trí</span>
                   </div>
+
+                  {/* Cảnh báo dính dòng hoặc tràn đáy tem */}
+                  {isStickerOverflowRisk && (
+                    <div className="w-full max-w-[360px] mb-2.5 p-2 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-2 text-rose-800 text-xs animate-in fade-in">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span className="text-[11px] leading-tight truncate">
+                          <b>Cảnh báo:</b> Dòng ở đáy tem đang sát mép/dính nhau!
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAutoFitSticker}
+                        className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] shrink-0 cursor-pointer shadow-xs"
+                      >
+                        ⚡ Tự co khít ngay
+                      </button>
+                    </div>
+                  )}
 
                   {/* VÙNG CON TEM KÉO THẢ (CANVAS) */}
                   <div
