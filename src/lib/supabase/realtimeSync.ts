@@ -776,13 +776,17 @@ export async function fetchPendingTransfersFromDb(): Promise<TransferApprovalPay
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (Array.isArray(parsed)) {
+        let resolvedSet = new Set<string>();
         if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem('bakery_pending_transfers', JSON.stringify(parsed));
-            window.dispatchEvent(new CustomEvent('bakery_pending_transfers_updated'));
+            const resRaw = localStorage.getItem('bakery_resolved_transfers');
+            if (resRaw) {
+              const arr = JSON.parse(resRaw);
+              if (Array.isArray(arr)) resolvedSet = new Set(arr);
+            }
           } catch {}
         }
-        return parsed;
+        return parsed.filter((p: any) => p && p.order_number && !resolvedSet.has(p.order_number));
       }
     }
   } catch (err) {
@@ -792,15 +796,24 @@ export async function fetchPendingTransfersFromDb(): Promise<TransferApprovalPay
 }
 
 export async function savePendingTransferToDb(payload: TransferApprovalPayload): Promise<void> {
+  if (!payload?.order_number) return;
+
   // 1. Cập nhật local storage trước
   if (typeof window !== 'undefined') {
     try {
+      const resRaw = localStorage.getItem('bakery_resolved_transfers');
+      if (resRaw) {
+        const arr = JSON.parse(resRaw);
+        if (Array.isArray(arr) && arr.includes(payload.order_number)) {
+          return; // Đơn đã được duyệt, không lưu lại
+        }
+      }
+
       const raw = localStorage.getItem('bakery_pending_transfers');
       const list: TransferApprovalPayload[] = raw ? JSON.parse(raw) : [];
       if (!list.some((p) => p.order_number === payload.order_number)) {
         const updated = [payload, ...list];
         localStorage.setItem('bakery_pending_transfers', JSON.stringify(updated));
-        window.dispatchEvent(new CustomEvent('bakery_pending_transfers_updated'));
       }
     } catch {}
   }
@@ -809,12 +822,26 @@ export async function savePendingTransferToDb(payload: TransferApprovalPayload):
   if (isLocalMode()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   try {
-    const currentList = await fetchPendingTransfersFromDb();
+    const { data } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    let currentList: TransferApprovalPayload[] = [];
+    if (data?.notes) {
+      try {
+        const parsed = JSON.parse(data.notes);
+        if (Array.isArray(parsed)) currentList = parsed;
+      } catch {}
+    }
+
     const filtered = currentList.filter((p) => p.order_number !== payload.order_number);
     const updatedList = [payload, ...filtered];
     const notesContent = JSON.stringify(updatedList);
 
-    const { error } = await supabase.from('recipes').upsert(
+    await supabase.from('recipes').upsert(
       {
         id: DB_ROW_PENDING_TRANSFERS_ID,
         name: DB_ROW_PENDING_TRANSFERS_NAME,
@@ -827,43 +854,50 @@ export async function savePendingTransferToDb(payload: TransferApprovalPayload):
       },
       { onConflict: 'id' }
     );
-    if (error) {
-      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`);
-      await supabase.from('recipes').insert({
-        id: DB_ROW_PENDING_TRANSFERS_ID,
-        name: DB_ROW_PENDING_TRANSFERS_NAME,
-        yield_qty: 1,
-        yield_unit: 'chiếc',
-        cost_per_unit: 0,
-        total_material_cost: 0,
-        notes: notesContent,
-        is_active: false,
-      });
-    }
   } catch (err) {
     console.warn('Lỗi khi savePendingTransferToDb:', err);
   }
 }
 
 export async function removePendingTransferFromDb(orderNumber: string): Promise<void> {
-  // 1. Cập nhật local storage
+  if (!orderNumber) return;
+
+  // 1. Ghi nhận vĩnh viễn vào danh sách đơn đã duyệt để không bao giờ hiện lại
   if (typeof window !== 'undefined') {
     try {
+      const resRaw = localStorage.getItem('bakery_resolved_transfers');
+      const resList: string[] = resRaw ? JSON.parse(resRaw) : [];
+      if (!resList.includes(orderNumber)) {
+        resList.push(orderNumber);
+        localStorage.setItem('bakery_resolved_transfers', JSON.stringify(resList.slice(-100)));
+      }
       const raw = localStorage.getItem('bakery_pending_transfers');
       if (raw) {
         const list: TransferApprovalPayload[] = JSON.parse(raw);
         const updated = list.filter((p) => p.order_number !== orderNumber);
         localStorage.setItem('bakery_pending_transfers', JSON.stringify(updated));
-        window.dispatchEvent(new CustomEvent('bakery_pending_transfers_updated'));
       }
     } catch {}
   }
 
-  // 2. Cập nhật Supabase
+  // 2. Cập nhật Supabase Database
   if (isLocalMode()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   try {
-    const currentList = await fetchPendingTransfersFromDb();
+    const { data } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    let currentList: TransferApprovalPayload[] = [];
+    if (data?.notes) {
+      try {
+        const parsed = JSON.parse(data.notes);
+        if (Array.isArray(parsed)) currentList = parsed;
+      } catch {}
+    }
     const updatedList = currentList.filter((p) => p.order_number !== orderNumber);
     const notesContent = JSON.stringify(updatedList);
 

@@ -166,6 +166,7 @@ export default function AdminDashboard() {
     isAdmin,
     loginAdmin,
     updateAdminCredentials,
+    updateKitchenCredentials,
     updateStaffCredentials,
     securityConfig,
     resetSecurityDefaults,
@@ -185,8 +186,10 @@ export default function AdminDashboard() {
   const [adminOldPass, setAdminOldPass] = useState('');
   const [adminNewPass, setAdminNewPass] = useState('');
   const [adminNameInput, setAdminNameInput] = useState(securityConfig.adminName);
-  const [staffPinInput, setStaffPinInput] = useState(securityConfig.staffPin);
-  const [staffNameInput, setStaffNameInput] = useState(securityConfig.staffName);
+  const [kitchenPinInput, setKitchenPinInput] = useState(securityConfig.kitchenPin || '5678');
+  const [kitchenNameInput, setKitchenNameInput] = useState(securityConfig.kitchenName || 'Nhân Viên Bếp');
+  const [staffPinInput, setStaffPinInput] = useState(securityConfig.staffPin || '1234');
+  const [staffNameInput, setStaffNameInput] = useState(securityConfig.staffName || 'Thu Ngân / Bán Hàng');
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
@@ -6992,11 +6995,13 @@ export default function AdminDashboard() {
             <button
               type="button"
               onClick={() => {
-                if (confirm('Khôi phục mật khẩu Admin về "admin123" và mã PIN nhân viên về "1234"?')) {
+                if (confirm('Khôi phục mật khẩu Admin về "admin123", mã PIN Bếp về "5678", và mã PIN Thu Ngân về "1234"?')) {
                   resetSecurityDefaults();
                   setAdminNameInput('Chủ Tiệm (Admin)');
+                  setKitchenPinInput('5678');
+                  setKitchenNameInput('Nhân Viên Bếp');
                   setStaffPinInput('1234');
-                  setStaffNameInput('Nhân Viên Quầy & Bếp');
+                  setStaffNameInput('Thu Ngân / Bán Hàng');
                   setSecurityMsg({ type: 'success', text: 'Đã khôi phục thông tin đăng nhập về mặc định thành công!' });
                   setTimeout(() => setSecurityMsg(null), 4000);
                 }
@@ -7020,18 +7025,18 @@ export default function AdminDashboard() {
             </div>
           )}
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
             {/* THẺ 1: TÀI KHOẢN CHỦ TIỆM (ADMIN) */}
-            <div className="bg-white p-5 rounded-3xl border border-amber-200 shadow-xs space-y-4">
+            <div className="bg-white p-5 rounded-3xl border border-rose-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center font-black">
+                  <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center font-black text-lg">
                     👑
                   </div>
                   <div>
-                    <h3 className="font-black text-base text-zinc-900">Tài Khoản Chủ Tiệm (Admin)</h3>
-                    <span className="text-[11px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                      Toàn Quyền Quản Trị
+                    <h3 className="font-black text-base text-zinc-900">Chủ Tiệm (Admin)</h3>
+                    <span className="text-[10px] font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
+                      Toàn Quyền (POS + Bếp + Admin)
                     </span>
                   </div>
                 </div>
@@ -7059,23 +7064,23 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* Đổi mật khẩu Admin */}
-                <div className="p-3.5 bg-amber-50/50 rounded-2xl border border-amber-200/80 space-y-2.5">
-                  <span className="font-bold text-amber-900 block text-xs">
+                <div className="p-3 bg-rose-50/50 rounded-2xl border border-rose-200/80 space-y-2">
+                  <span className="font-bold text-rose-900 block text-xs">
                     🔑 Đổi Mật Khẩu Đăng Nhập Quản Trị:
                   </span>
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div>
-                      <label className="text-[11px] text-zinc-600 block mb-0.5">Mật khẩu cũ hiện tại:</label>
+                      <label className="text-[10px] text-zinc-600 block mb-0.5">Mật khẩu cũ hiện tại:</label>
                       <input
                         type="password"
                         value={adminOldPass}
                         onChange={(e) => setAdminOldPass(e.target.value)}
-                        placeholder="Nhập mật khẩu cũ (mặc định: admin123)..."
+                        placeholder="Mặc định: admin123"
                         className="w-full p-2 bg-white border border-zinc-200 rounded-xl text-xs font-mono"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] text-zinc-600 block mb-0.5">Mật khẩu mới:</label>
+                      <label className="text-[10px] text-zinc-600 block mb-0.5">Mật khẩu mới:</label>
                       <input
                         type="password"
                         value={adminNewPass}
@@ -7099,7 +7104,7 @@ export default function AdminDashboard() {
                       }
                       setTimeout(() => setSecurityMsg(null), 4000);
                     }}
-                    className="w-full py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                    className="w-full py-2 bg-rose-700 hover:bg-rose-800 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
                   >
                     Lưu Mật Khẩu Admin Mới
                   </button>
@@ -7107,17 +7112,17 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* THẺ 2: TÀI KHOẢN NHÂN VIÊN (STAFF) */}
+            {/* THẺ 2: TÀI KHOẢN NHÂN VIÊN BẾP (KITCHEN) */}
             <div className="bg-white p-5 rounded-3xl border border-orange-200 shadow-xs space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-700 flex items-center justify-center font-black">
-                    👤
+                  <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-700 flex items-center justify-center font-black text-lg">
+                    🍳
                   </div>
                   <div>
-                    <h3 className="font-black text-base text-zinc-900">Tài Khoản Nhân Viên (Staff)</h3>
-                    <span className="text-[11px] font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
-                      Chỉ Bán Hàng & Bếp (Khóa Giá Vốn & P&L)
+                    <h3 className="font-black text-base text-zinc-900">Nhân Viên Bếp (Kitchen)</h3>
+                    <span className="text-[10px] font-black text-orange-700 bg-orange-50 px-2 py-0.5 rounded-md border border-orange-200">
+                      Quyền Vào POS & Bếp Bánh (KDS)
                     </span>
                   </div>
                 </div>
@@ -7125,7 +7130,83 @@ export default function AdminDashboard() {
 
               <div className="space-y-3 text-xs">
                 <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Tên hiển thị Nhân viên:</label>
+                  <label className="font-bold text-zinc-700 block mb-1">Tên hiển thị Thợ Bếp:</label>
+                  <input
+                    type="text"
+                    value={kitchenNameInput}
+                    onChange={(e) => setKitchenNameInput(e.target.value)}
+                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl font-bold text-zinc-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Tên tài khoản:</label>
+                  <input
+                    type="text"
+                    disabled
+                    value="bep"
+                    className="w-full p-2.5 bg-zinc-100 border border-zinc-200 rounded-xl font-mono font-bold text-zinc-500 cursor-not-allowed"
+                  />
+                </div>
+
+                {/* Đổi mã PIN Bếp */}
+                <div className="p-3 bg-orange-50/60 rounded-2xl border border-orange-200/80 space-y-2">
+                  <span className="font-bold text-orange-950 block text-xs">
+                    🔢 Mã PIN Đăng Nhập Thợ Bếp:
+                  </span>
+                  <p className="text-[11px] text-zinc-500 leading-snug">
+                    Thợ bếp bấm 4 số PIN này để vào màn hình Bếp bánh (KDS) và quầy POS. Tự động khóa Quản trị & Báo cáo.
+                  </p>
+                  <div>
+                    <label className="text-[10px] text-zinc-600 block mb-0.5">Mã PIN Bếp (4 số):</label>
+                    <input
+                      type="text"
+                      maxLength={6}
+                      value={kitchenPinInput}
+                      onChange={(e) => setKitchenPinInput(e.target.value)}
+                      placeholder="Mặc định: 5678"
+                      className="w-full p-2 bg-white border border-zinc-200 rounded-xl text-sm font-black text-center tracking-widest font-mono text-zinc-900"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSecurityMsg(null);
+                      const res = updateKitchenCredentials(kitchenPinInput, undefined, kitchenNameInput);
+                      if (res.success) {
+                        setSecurityMsg({ type: 'success', text: `Đã cập nhật mã PIN thợ bếp (${kitchenPinInput}) thành công!` });
+                      } else {
+                        setSecurityMsg({ type: 'error', text: res.error || 'Cập nhật mã PIN thất bại' });
+                      }
+                      setTimeout(() => setSecurityMsg(null), 4000);
+                    }}
+                    className="w-full py-2 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                  >
+                    Lưu Mã PIN Cho Nhân Viên Bếp
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* THẺ 3: TÀI KHOẢN THU NGÂN / BÁN HÀNG (CASHIER) */}
+            <div className="bg-white p-5 rounded-3xl border border-amber-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center font-black text-lg">
+                    🛒
+                  </div>
+                  <div>
+                    <h3 className="font-black text-base text-zinc-900">Thu Ngân / Bán Hàng</h3>
+                    <span className="text-[10px] font-black text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                      Chỉ Bán Hàng POS (Khóa Bếp & Admin)
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="font-bold text-zinc-700 block mb-1">Tên hiển thị Thu Ngân:</label>
                   <input
                     type="text"
                     value={staffNameInput}
@@ -7135,7 +7216,7 @@ export default function AdminDashboard() {
                 </div>
 
                 <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Tên đăng nhập:</label>
+                  <label className="font-bold text-zinc-700 block mb-1">Tên tài khoản:</label>
                   <input
                     type="text"
                     disabled
@@ -7144,22 +7225,22 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                {/* Đổi mã PIN nhân viên */}
-                <div className="p-3.5 bg-orange-50/50 rounded-2xl border border-orange-200/80 space-y-2.5">
-                  <span className="font-bold text-orange-900 block text-xs">
-                    🔢 Cài Đặt Mã PIN Đăng Nhập Nhanh Cho Thu Ngân:
+                {/* Đổi mã PIN Thu Ngân */}
+                <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-2">
+                  <span className="font-bold text-amber-950 block text-xs">
+                    🔢 Mã PIN Đăng Nhập Thu Ngân:
                   </span>
-                  <p className="text-[11px] text-zinc-500">
-                    Nhân viên đứng quầy thu ngân chỉ cần bấm 4 số PIN này trên màn hình cảm ứng để vào ca bán bánh, không cần gõ bàn phím phức tạp.
+                  <p className="text-[11px] text-zinc-500 leading-snug">
+                    Nhân viên đứng quầy bấm 4 số PIN này để vào bán bánh. Không được phép truy cập màn hình Bếp và Quản trị.
                   </p>
                   <div>
-                    <label className="text-[11px] text-zinc-600 block mb-0.5">Mã PIN mới (4 số):</label>
+                    <label className="text-[10px] text-zinc-600 block mb-0.5">Mã PIN Thu Ngân (4 số):</label>
                     <input
                       type="text"
                       maxLength={6}
                       value={staffPinInput}
                       onChange={(e) => setStaffPinInput(e.target.value)}
-                      placeholder="Ví dụ: 1234, 6868..."
+                      placeholder="Mặc định: 1234"
                       className="w-full p-2 bg-white border border-zinc-200 rounded-xl text-sm font-black text-center tracking-widest font-mono text-zinc-900"
                     />
                   </div>
@@ -7169,15 +7250,15 @@ export default function AdminDashboard() {
                       setSecurityMsg(null);
                       const res = updateStaffCredentials(staffPinInput, undefined, staffNameInput);
                       if (res.success) {
-                        setSecurityMsg({ type: 'success', text: `Đã cập nhật mã PIN nhân viên (${staffPinInput}) thành công!` });
+                        setSecurityMsg({ type: 'success', text: `Đã cập nhật mã PIN thu ngân (${staffPinInput}) thành công!` });
                       } else {
                         setSecurityMsg({ type: 'error', text: res.error || 'Cập nhật mã PIN thất bại' });
                       }
                       setTimeout(() => setSecurityMsg(null), 4000);
                     }}
-                    className="w-full py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                    className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
                   >
-                    Lưu Mã PIN Cho Nhân Viên
+                    Lưu Mã PIN Cho Thu Ngân
                   </button>
                 </div>
               </div>

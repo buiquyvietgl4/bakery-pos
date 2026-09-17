@@ -7,6 +7,7 @@ import {
   subscribeCrossDeviceSync,
   broadcastTransferApprovalResolved,
   fetchPendingTransfersFromDb,
+  removePendingTransferFromDb,
   TransferApprovalPayload,
 } from '@/lib/supabase/realtimeSync';
 import {
@@ -24,6 +25,31 @@ import {
 } from 'lucide-react';
 
 const STORAGE_KEY_PENDING_TRANSFERS = 'bakery_pending_transfers';
+const STORAGE_KEY_RESOLVED_TRANSFERS = 'bakery_resolved_transfers';
+
+function getStoredResolvedSet(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_RESOLVED_TRANSFERS);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function markOrderAsResolved(orderNumber: string) {
+  if (typeof window === 'undefined' || !orderNumber) return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_RESOLVED_TRANSFERS);
+    const arr: string[] = raw ? JSON.parse(raw) : [];
+    if (!arr.includes(orderNumber)) {
+      arr.push(orderNumber);
+      localStorage.setItem(STORAGE_KEY_RESOLVED_TRANSFERS, JSON.stringify(arr.slice(-150)));
+    }
+  } catch {}
+}
 
 export function getStoredPendingTransfers(): TransferApprovalPayload[] {
   if (typeof window === 'undefined') return [];
@@ -31,7 +57,9 @@ export function getStoredPendingTransfers(): TransferApprovalPayload[] {
     const raw = localStorage.getItem(STORAGE_KEY_PENDING_TRANSFERS);
     if (!raw) return [];
     const list = JSON.parse(raw);
-    return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    const resolved = getStoredResolvedSet();
+    return list.filter((item: any) => item && item.order_number && !resolved.has(item.order_number));
   } catch {
     return [];
   }
@@ -40,8 +68,9 @@ export function getStoredPendingTransfers(): TransferApprovalPayload[] {
 export function saveStoredPendingTransfers(list: TransferApprovalPayload[]) {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY_PENDING_TRANSFERS, JSON.stringify(list));
-    window.dispatchEvent(new CustomEvent('bakery_pending_transfers_updated'));
+    const resolved = getStoredResolvedSet();
+    const cleanList = list.filter((item) => item && item.order_number && !resolved.has(item.order_number));
+    localStorage.setItem(STORAGE_KEY_PENDING_TRANSFERS, JSON.stringify(cleanList));
   } catch {}
 }
 
@@ -52,65 +81,88 @@ export default function AdminTransferApprovalWatcher() {
   const [processing, setProcessing] = useState(false);
   const [showPushPrompt, setShowPushPrompt] = useState(false);
   const [subscribingPush, setSubscribingPush] = useState(false);
+
   const notifiedOrderNumsRef = useRef<Set<string>>(new Set());
+  const dismissedOrderNumsRef = useRef<Set<string>>(new Set());
+  const resolvedOrderNumsRef = useRef<Set<string>>(getStoredResolvedSet());
+
+  // Xóa sạch query parameters trên thanh URL (ngăn trình duyệt refresh nạp lại đơn đã xử lý)
+  const cleanUrlParams = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const url = new URL(window.location.href);
+      let changed = false;
+      ['approvalOrder', 'order_number', 'amount', 'customer', 'code', 'by'].forEach((k) => {
+        if (url.searchParams.has(k)) {
+          url.searchParams.delete(k);
+          changed = true;
+        }
+      });
+      if (changed) {
+        const clean = url.pathname + (url.search ? url.search : '') + url.hash;
+        window.history.replaceState({}, '', clean);
+      }
+    } catch {}
+  }, []);
 
   // Đọc danh sách yêu cầu chờ duyệt từ Local Storage & Database
   const loadPendingFromStorageAndDb = useCallback(async () => {
+    // Luôn nạp lại set đã duyệt
+    resolvedOrderNumsRef.current = getStoredResolvedSet();
+
     // 1. Đọc từ Local Storage
-    let list = getStoredPendingTransfers();
+    let list = getStoredPendingTransfers().filter(
+      (p) => !resolvedOrderNumsRef.current.has(p.order_number) && !dismissedOrderNumsRef.current.has(p.order_number)
+    );
 
-    // 2. Đồng bộ thêm từ Database Supabase (phòng trường hợp điện thoại vừa mở sau khi tắt màn hình)
-    try {
-      const dbList = await fetchPendingTransfersFromDb();
-      if (Array.isArray(dbList) && dbList.length > 0) {
-        const mergedMap = new Map<string, TransferApprovalPayload>();
-        list.forEach((item) => mergedMap.set(item.order_number, item));
-        dbList.forEach((item) => mergedMap.set(item.order_number, item));
-        list = Array.from(mergedMap.values());
-        saveStoredPendingTransfers(list);
-      }
-    } catch {}
-
-    // 3. Kiểm tra nếu mở từ Deep Link URL Web Push (?approvalOrder=...)
+    // 2. Kiểm tra nếu mở từ Deep Link URL Web Push (?approvalOrder=...)
     if (typeof window !== 'undefined') {
       try {
         const params = new URLSearchParams(window.location.search);
         const approvalOrder = params.get('approvalOrder') || params.get('order_number');
         if (approvalOrder) {
-          const exists = list.find((p) => p.order_number === approvalOrder);
-          if (!exists) {
-            const urlItem: TransferApprovalPayload = {
-              order_number: approvalOrder,
-              amount: Number(params.get('amount')) || 0,
-              customer_name: params.get('customer') || 'Khách thanh toán',
-              transfer_code: params.get('code') || `DH ${approvalOrder}`,
-              requested_by: params.get('by') || 'Thu ngân',
-              requested_at: new Date().toISOString(),
-            };
-            list = [urlItem, ...list];
-            saveStoredPendingTransfers(list);
+          if (resolvedOrderNumsRef.current.has(approvalOrder) || dismissedOrderNumsRef.current.has(approvalOrder)) {
+            cleanUrlParams();
+          } else {
+            const exists = list.find((p) => p.order_number === approvalOrder);
+            if (!exists) {
+              const urlItem: TransferApprovalPayload = {
+                order_number: approvalOrder,
+                amount: Number(params.get('amount')) || 0,
+                customer_name: params.get('customer') || 'Khách thanh toán',
+                transfer_code: params.get('code') || `DH ${approvalOrder}`,
+                requested_by: params.get('by') || 'Thu ngân',
+                requested_at: new Date().toISOString(),
+              };
+              list = [urlItem, ...list];
+              saveStoredPendingTransfers(list);
+            }
           }
         }
       } catch {}
     }
 
+    // 3. Đồng bộ thêm từ Database Supabase
+    try {
+      const dbList = await fetchPendingTransfersFromDb();
+      if (Array.isArray(dbList) && dbList.length > 0) {
+        const mergedMap = new Map<string, TransferApprovalPayload>();
+        list.forEach((item) => mergedMap.set(item.order_number, item));
+        dbList.forEach((item) => {
+          if (item && item.order_number && !resolvedOrderNumsRef.current.has(item.order_number) && !dismissedOrderNumsRef.current.has(item.order_number)) {
+            mergedMap.set(item.order_number, item);
+          }
+        });
+        list = Array.from(mergedMap.values());
+        saveStoredPendingTransfers(list);
+      }
+    } catch {}
+
     setPendingList(list);
 
     if (list.length > 0) {
-      // Ưu tiên đơn mở từ Deep Link hoặc đơn chưa thông báo
-      let targetOrder = activeRequest;
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        const urlOrderNum = params.get('approvalOrder') || params.get('order_number');
-        if (urlOrderNum) {
-          targetOrder = list.find((item) => item.order_number === urlOrderNum) || list[0];
-        }
-      }
-
-      if (!targetOrder) {
-        const unnotified = list.find((item) => !notifiedOrderNumsRef.current.has(item.order_number));
-        targetOrder = unnotified || list[0];
-      }
+      // Ưu tiên đơn chưa xử lý
+      let targetOrder = activeRequest && list.some((p) => p.order_number === activeRequest.order_number) ? activeRequest : list[0];
 
       if (targetOrder) {
         if (!notifiedOrderNumsRef.current.has(targetOrder.order_number)) {
@@ -125,8 +177,9 @@ export default function AdminTransferApprovalWatcher() {
       }
     } else {
       setActiveRequest(null);
+      cleanUrlParams();
     }
-  }, [activeRequest, isAdmin]);
+  }, [activeRequest, isAdmin, cleanUrlParams]);
 
   // Tự động kích hoạt Web Push nếu quyền đã được cấp trước đó
   useEffect(() => {
@@ -165,6 +218,10 @@ export default function AdminTransferApprovalWatcher() {
     const unsubscribe = subscribeCrossDeviceSync({
       onTransferApprovalRequest: (payload) => {
         if (!payload?.order_number) return;
+        if (resolvedOrderNumsRef.current.has(payload.order_number) || dismissedOrderNumsRef.current.has(payload.order_number)) {
+          return;
+        }
+
         notifiedOrderNumsRef.current.add(payload.order_number);
 
         setPendingList((prev) => {
@@ -184,18 +241,28 @@ export default function AdminTransferApprovalWatcher() {
       },
       onTransferApprovalResolved: (payload) => {
         if (!payload?.order_number) return;
+        const num = payload.order_number;
+        markOrderAsResolved(num);
+        resolvedOrderNumsRef.current.add(num);
+        dismissedOrderNumsRef.current.add(num);
+        cleanUrlParams();
+
         setPendingList((prev) => {
-          const updated = prev.filter((p) => p.order_number !== payload.order_number);
+          const updated = prev.filter((p) => p.order_number !== num);
           saveStoredPendingTransfers(updated);
           return updated;
         });
-        setActiveRequest((current) => (current?.order_number === payload.order_number ? null : current));
+        setActiveRequest((current) => (current?.order_number === num ? null : current));
       },
     });
 
     const handleCustomEventReq = (e: any) => {
       if (e.detail?.order_number) {
         const payload: TransferApprovalPayload = e.detail;
+        if (resolvedOrderNumsRef.current.has(payload.order_number) || dismissedOrderNumsRef.current.has(payload.order_number)) {
+          return;
+        }
+
         notifiedOrderNumsRef.current.add(payload.order_number);
         setPendingList((prev) => {
           const exists = prev.some((p) => p.order_number === payload.order_number);
@@ -215,6 +282,11 @@ export default function AdminTransferApprovalWatcher() {
     const handleCustomEventRes = (e: any) => {
       if (e.detail?.order_number) {
         const num = e.detail.order_number;
+        markOrderAsResolved(num);
+        resolvedOrderNumsRef.current.add(num);
+        dismissedOrderNumsRef.current.add(num);
+        cleanUrlParams();
+
         setPendingList((prev) => {
           const updated = prev.filter((p) => p.order_number !== num);
           saveStoredPendingTransfers(updated);
@@ -224,33 +296,46 @@ export default function AdminTransferApprovalWatcher() {
       }
     };
 
-    const handleStorageUpdate = () => {
-      loadPendingFromStorageAndDb();
-    };
-
     window.addEventListener('transfer_approval_requested', handleCustomEventReq as EventListener);
     window.addEventListener('transfer_approval_resolved', handleCustomEventRes as EventListener);
-    window.addEventListener('bakery_pending_transfers_updated', handleStorageUpdate);
 
-    // Quét định kỳ 4 giây để đồng bộ và chống sót đơn khi điện thoại vừa mở lại
-    const interval = setInterval(loadPendingFromStorageAndDb, 4000);
+    // Quét định kỳ 15 giây để đồng bộ nhẹ nhàng, không gây lag hay giật
+    const interval = setInterval(loadPendingFromStorageAndDb, 15000);
 
     return () => {
       unsubscribe();
       window.removeEventListener('transfer_approval_requested', handleCustomEventReq as EventListener);
       window.removeEventListener('transfer_approval_resolved', handleCustomEventRes as EventListener);
-      window.removeEventListener('bakery_pending_transfers_updated', handleStorageUpdate);
       clearInterval(interval);
     };
-  }, [isAdmin, loadPendingFromStorageAndDb]);
+  }, [isAdmin, loadPendingFromStorageAndDb, cleanUrlParams]);
 
   // Hành động: XÁC NHẬN ĐÃ NHẬN TIỀN
   const handleApprove = async (req: TransferApprovalPayload) => {
     setProcessing(true);
     try {
+      const orderNo = req.order_number;
+      // 1. Ghi nhớ ngay là đã duyệt để không bao giờ lặp lại
+      markOrderAsResolved(orderNo);
+      resolvedOrderNumsRef.current.add(orderNo);
+      dismissedOrderNumsRef.current.add(orderNo);
+
+      // 2. Xóa sạch URL params
+      cleanUrlParams();
+
+      // 3. Xóa khỏi state và local storage ngay tức khắc
+      const remaining = pendingList.filter((p) => p.order_number !== orderNo);
+      setPendingList(remaining);
+      saveStoredPendingTransfers(remaining);
+      setActiveRequest(remaining.length > 0 ? remaining[0] : null);
+
+      // 4. Xóa khỏi Supabase Database
+      removePendingTransferFromDb(orderNo).catch(console.error);
+
+      // 5. Phát sóng realtime về quầy thu ngân
       const adminName = user?.name || 'Chủ Tiệm (Admin)';
       await broadcastTransferApprovalResolved({
-        order_number: req.order_number,
+        order_number: orderNo,
         action: 'approved',
         amount: req.amount,
         resolved_by: adminName,
@@ -260,12 +345,6 @@ export default function AdminTransferApprovalWatcher() {
       try {
         soundManager.playPaymentSuccessChime();
       } catch {}
-
-      // Xóa khỏi danh sách chờ
-      const remaining = pendingList.filter((p) => p.order_number !== req.order_number);
-      setPendingList(remaining);
-      saveStoredPendingTransfers(remaining);
-      setActiveRequest(remaining.length > 0 ? remaining[0] : null);
     } catch (err) {
       console.error('Lỗi khi duyệt chuyển khoản:', err);
     } finally {
@@ -277,21 +356,34 @@ export default function AdminTransferApprovalWatcher() {
   const handleReject = async (req: TransferApprovalPayload) => {
     setProcessing(true);
     try {
+      const orderNo = req.order_number;
+      // 1. Ghi nhớ ngay là đã xử lý
+      markOrderAsResolved(orderNo);
+      resolvedOrderNumsRef.current.add(orderNo);
+      dismissedOrderNumsRef.current.add(orderNo);
+
+      // 2. Xóa sạch URL params
+      cleanUrlParams();
+
+      // 3. Xóa khỏi state và local storage
+      const remaining = pendingList.filter((p) => p.order_number !== orderNo);
+      setPendingList(remaining);
+      saveStoredPendingTransfers(remaining);
+      setActiveRequest(remaining.length > 0 ? remaining[0] : null);
+
+      // 4. Xóa khỏi Database
+      removePendingTransferFromDb(orderNo).catch(console.error);
+
+      // 5. Phát sóng realtime
       const adminName = user?.name || 'Chủ Tiệm (Admin)';
       await broadcastTransferApprovalResolved({
-        order_number: req.order_number,
+        order_number: orderNo,
         action: 'rejected',
         amount: req.amount,
         reason: 'Chủ tiệm kiểm tra tài khoản chưa thấy nổi số dư',
         resolved_by: adminName,
         resolved_at: new Date().toISOString(),
       });
-
-      // Xóa khỏi danh sách chờ
-      const remaining = pendingList.filter((p) => p.order_number !== req.order_number);
-      setPendingList(remaining);
-      saveStoredPendingTransfers(remaining);
-      setActiveRequest(remaining.length > 0 ? remaining[0] : null);
     } catch (err) {
       console.error('Lỗi khi từ chối duyệt chuyển khoản:', err);
     } finally {
@@ -303,44 +395,63 @@ export default function AdminTransferApprovalWatcher() {
   if (!isAdmin) {
     if (activeRequest || pendingList.length > 0) {
       const req = activeRequest || pendingList[0];
-      return (
-        <div className="fixed top-18 left-1/2 -translate-x-1/2 z-[99999] w-[92%] max-w-md animate-in slide-in-from-top-4 duration-300">
-          <div
-            onClick={() => openLoginModal('admin')}
-            className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 text-white shadow-2xl flex items-center justify-between gap-3 border-2 border-amber-300 cursor-pointer hover:scale-[1.02] active:scale-95 transition"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                <ShieldCheck className="w-6 h-6 animate-pulse text-white" />
+      if (req && !resolvedOrderNumsRef.current.has(req.order_number) && !dismissedOrderNumsRef.current.has(req.order_number)) {
+        return (
+          <div className="fixed top-18 left-1/2 -translate-x-1/2 z-[99999] w-[92%] max-w-md animate-in slide-in-from-top-4 duration-300">
+            <div
+              onClick={() => openLoginModal('admin')}
+              className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 text-white shadow-2xl flex items-center justify-between gap-3 border-2 border-amber-300 cursor-pointer hover:scale-[1.02] active:scale-95 transition"
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                  <ShieldCheck className="w-6 h-6 animate-pulse text-white" />
+                </div>
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-wider text-amber-200 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Yêu Cầu Duyệt Tiền Về
+                  </div>
+                  <div className="text-xs font-black">
+                    Đơn #{req.order_number} • {(req.amount || 0).toLocaleString('vi-VN')}₫
+                  </div>
+                </div>
               </div>
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-wider text-amber-200 flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> Yêu Cầu Duyệt Tiền Về
-                </div>
-                <div className="text-xs font-black">
-                  Đơn #{req.order_number} • {(req.amount || 0).toLocaleString('vi-VN')}₫
-                </div>
+
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  className="px-3 py-1.5 rounded-xl bg-white text-amber-900 font-black text-xs flex items-center gap-1 shadow-md shrink-0"
+                >
+                  <KeyRound className="w-3.5 h-3.5 text-amber-700" />
+                  <span>Duyệt</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    dismissedOrderNumsRef.current.add(req.order_number);
+                    cleanUrlParams();
+                    setActiveRequest(null);
+                    setPendingList((prev) => prev.filter((p) => p.order_number !== req.order_number));
+                  }}
+                  className="p-1 text-white/80 hover:text-white rounded-lg"
+                  title="Ẩn thông báo này"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             </div>
-
-            <button
-              type="button"
-              className="px-3 py-1.5 rounded-xl bg-white text-amber-900 font-black text-xs flex items-center gap-1 shadow-md shrink-0"
-            >
-              <KeyRound className="w-3.5 h-3.5 text-amber-700" />
-              <span>Duyệt Ngay</span>
-            </button>
           </div>
-        </div>
-      );
+        );
+      }
     }
     return null;
   }
 
+  // GIAO DIỆN KHI ĐÃ ĐĂNG NHẬP ADMIN
   return (
     <>
       {/* ── 1. MODAL DUYỆT CHUYỂN KHOẢN NỔI BẬT DÀNH CHO ADMIN ── */}
-      {activeRequest && (
+      {activeRequest && !resolvedOrderNumsRef.current.has(activeRequest.order_number) && !dismissedOrderNumsRef.current.has(activeRequest.order_number) && (
         <div className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
           <div className="bg-white rounded-3xl border-2 border-amber-500 max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
             {/* Header */}
@@ -365,9 +476,17 @@ export default function AdminTransferApprovalWatcher() {
               </div>
               <button
                 type="button"
-                onClick={() => setActiveRequest(null)}
+                onClick={() => {
+                  if (activeRequest) {
+                    dismissedOrderNumsRef.current.add(activeRequest.order_number);
+                  }
+                  cleanUrlParams();
+                  const remaining = pendingList.filter((p) => p.order_number !== activeRequest?.order_number);
+                  setPendingList(remaining);
+                  setActiveRequest(null);
+                }}
                 className="p-1.5 text-zinc-400 hover:text-zinc-600 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
-                title="Đóng tạm thời"
+                title="Đóng cửa sổ này"
               >
                 <X className="w-5 h-5" />
               </button>
