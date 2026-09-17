@@ -1491,6 +1491,13 @@ export default function POSPage() {
   const remainingCOD = Math.max(0, grandTotal - dueNow);
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (cashGiven || dueNow) - dueNow) : 0;
 
+  // Tự động đồng bộ tiền khách đưa khi mở modal thanh toán hoặc thay đổi mức tiền cọc
+  useEffect(() => {
+    if (isCheckoutOpen) {
+      setCashGiven(dueNow);
+    }
+  }, [dueNow, isCheckoutOpen]);
+
   // Tính toán đơn Đặt Bánh Kem
   const preorderShippingFee = preorderForm.deliveryMethod === 'shipping' ? (Number(preorderForm.shippingFee) || 0) : 0;
   const cakePriceNum = Number(preorderForm.totalPrice) || 0;
@@ -1827,6 +1834,8 @@ export default function POSPage() {
         depositAmount: finalPrice,
         remainingAmount: 0,
         paymentMethod: 'cash',
+        cashGiven: finalPrice,
+        changeAmount: 0,
         cakeMessage: cakeOrderSpec?.cakeMessage || '',
         pickupDateTimeStr: pickupDateTime,
         customerName: customerName,
@@ -2081,6 +2090,8 @@ export default function POSPage() {
         total_amount: grandTotal,
         deposit_amount: dueNow,
         remaining_amount: remainingCOD,
+        cash_given: effectivePaymentMethod === 'cash' ? (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) : dueNow,
+        change_amount: effectivePaymentMethod === 'cash' ? Math.max(0, (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) - dueNow) : 0,
         shipping_fee: fulfillmentType === 'shipping' ? (posShippingFee || 0) : 0,
         shipping_address: fulfillmentType === 'shipping' ? posShippingAddress : undefined,
         customer_name: isPre ? (posCustomerName || 'Khách đặt') : undefined,
@@ -2285,8 +2296,8 @@ export default function POSPage() {
         pickupDateTimeStr: isPre ? `${posPickupTime} ngày ${posPickupDate}` : '',
         cakeMessage: isPre ? posCakeMessage : '',
         paymentMethod: effectivePaymentMethod,
-        cashGiven: effectivePaymentMethod === 'cash' ? (cashGiven || dueNow) : dueNow,
-        changeAmount: effectivePaymentMethod === 'cash' ? Math.max(0, (cashGiven || dueNow) - dueNow) : 0,
+        cashGiven: effectivePaymentMethod === 'cash' ? (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) : dueNow,
+        changeAmount: effectivePaymentMethod === 'cash' ? Math.max(0, (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) - dueNow) : 0,
         createdAt: now.toLocaleString('vi-VN'),
         cashier: user?.name || 'Thu Ngân',
       });
@@ -2757,6 +2768,8 @@ export default function POSPage() {
         depositAmount,
         remainingAmount,
         paymentMethod: preorderForm.paymentMethod,
+        cashGiven: depositAmount,
+        changeAmount: 0,
         cakeMessage: preorderForm.cakeMessage,
         pickupDateTimeStr,
         customerName: preorderForm.customerName,
@@ -3985,7 +3998,7 @@ export default function POSPage() {
               )
             }
             onClick={() => {
-              setCashGiven(grandTotal);
+              setCashGiven(dueNow);
               setPaymentMethod('cash');
               const syntax = vietqrConfig.transferSyntax || 'DH';
               const randSuffix = String(Math.floor(100000 + Math.random() * 900000));
@@ -5233,6 +5246,8 @@ export default function POSPage() {
                                 depositAmount: deposit > 0 ? deposit : undefined,
                                 remainingAmount: remaining,
                                 paymentMethod: po.payment_method || po.paymentMethod || 'cash',
+                                cashGiven: po.cash_given || (deposit > 0 ? deposit : total),
+                                changeAmount: po.change_amount || 0,
                                 cakeMessage: msg,
                                 pickupDateTimeStr: pickup,
                                 customerName: custName,
@@ -5642,7 +5657,7 @@ export default function POSPage() {
                                 depositAmount: deposit > 0 ? deposit : undefined,
                                 remainingAmount: remaining,
                                 paymentMethod: inv.payment_method || inv.paymentMethod || 'cash',
-                                cashGiven: inv.cash_given || total,
+                                cashGiven: inv.cash_given || (deposit > 0 ? deposit : total),
                                 changeAmount: inv.change_amount || 0,
                                 cakeMessage: inv.cake_message || inv.cakeMessage,
                                 pickupDateTimeStr: inv.preorder_pickup_at || inv.pickupDateTime,
@@ -6940,52 +6955,89 @@ export default function POSPage() {
               </div>
 
                 {/* Chi tiết phương thức thanh toán */}
-                <div className="border-t border-dashed border-zinc-300 pt-2 space-y-1">
-                  <div className="flex justify-between items-center text-zinc-700">
-                    <span>Hình thức thanh toán:</span>
-                    <span className="font-bold text-zinc-900">
-                      {completedOrder.paymentMethod === 'cash'
-                        ? '💵 Tiền mặt'
-                        : completedOrder.paymentMethod === 'momo'
-                        ? '📱 Ví MoMo'
-                        : '🏦 Chuyển khoản VietQR'}
-                    </span>
-                  </div>
+                {(() => {
+                  const isDepositOrder = completedOrder.depositAmount !== undefined && Number(completedOrder.remainingAmount || 0) > 0;
+                  const targetDue = isDepositOrder ? Number(completedOrder.depositAmount || 0) : Number(completedOrder.totalAmount || 0);
 
-                  {completedOrder.paymentMethod === 'cash' && (
-                    <>
-                      <div className="flex justify-between text-zinc-600">
-                        <span>Tiền khách đưa:</span>
-                        <span className="font-medium">
-                          {(Number(completedOrder.cashGiven ?? completedOrder.totalAmount ?? 0)).toLocaleString('vi-VN')}₫
+                  let displayCashGiven = targetDue;
+                  if (completedOrder.cashGiven !== undefined && completedOrder.cashGiven !== null) {
+                    const rawCash = Number(completedOrder.cashGiven);
+                    // Nếu đơn có cọc nhưng cashGiven lại bằng grandTotal (do lỗi cũ) và lớn hơn targetDue -> đưa về targetDue
+                    if (isDepositOrder && rawCash === Number(completedOrder.totalAmount || 0) && rawCash > targetDue) {
+                      displayCashGiven = targetDue;
+                    } else {
+                      displayCashGiven = rawCash;
+                    }
+                  }
+
+                  let displayChange = 0;
+                  if (completedOrder.changeAmount !== undefined && completedOrder.changeAmount !== null) {
+                    const rawChange = Number(completedOrder.changeAmount);
+                    // Nếu đơn có cọc và changeAmount lại bằng đúng remainingAmount (do lỗi cũ) -> sửa về đúng hiệu số
+                    if (isDepositOrder && rawChange === Number(completedOrder.remainingAmount || 0)) {
+                      displayChange = Math.max(0, displayCashGiven - targetDue);
+                    } else {
+                      displayChange = Math.max(0, rawChange);
+                    }
+                  } else {
+                    displayChange = Math.max(0, displayCashGiven - targetDue);
+                  }
+
+                  return (
+                    <div className="border-t border-dashed border-zinc-300 pt-2 space-y-1">
+                      <div className="flex justify-between items-center text-zinc-700">
+                        <span>Hình thức thanh toán:</span>
+                        <span className="font-bold text-zinc-900">
+                          {completedOrder.paymentMethod === 'cash'
+                            ? '💵 Tiền mặt'
+                            : completedOrder.paymentMethod === 'momo'
+                            ? '📱 Ví MoMo'
+                            : '🏦 Chuyển khoản VietQR'}
                         </span>
                       </div>
-                      {(completedOrder.changeAmount > 0 || (completedOrder.cashGiven && completedOrder.cashGiven > completedOrder.totalAmount)) && (
-                        <div className="flex justify-between text-emerald-700 font-bold">
-                          <span>Tiền thừa trả khách:</span>
-                          <span>
-                            {(Number(completedOrder.changeAmount ?? (Number(completedOrder.cashGiven || 0) - Number(completedOrder.totalAmount || 0))) || 0).toLocaleString('vi-VN')}₫
-                          </span>
+
+                      {completedOrder.paymentMethod === 'cash' && (
+                        <>
+                          <div className="flex justify-between text-zinc-600">
+                            <span>{isDepositOrder ? 'Tiền khách đưa (Cọc):' : 'Tiền khách đưa:'}</span>
+                            <span className="font-medium">
+                              {displayCashGiven.toLocaleString('vi-VN')}₫
+                            </span>
+                          </div>
+                          {displayChange > 0 && (
+                            <div className="flex justify-between text-emerald-700 font-bold">
+                              <span>Tiền thừa trả khách:</span>
+                              <span>
+                                {displayChange.toLocaleString('vi-VN')}₫
+                              </span>
+                            </div>
+                          )}
+                          <div className="text-center py-1.5 mt-2 bg-emerald-50 text-emerald-800 font-black text-[11px] rounded-xl border border-emerald-200/80">
+                            {isDepositOrder
+                              ? `✓ ĐÃ THANH TOÁN TIỀN CỌC (${targetDue.toLocaleString('vi-VN')}₫)`
+                              : '✓ ĐÃ THANH TOÁN TIỀN MẶT'}
+                          </div>
+                        </>
+                      )}
+
+                      {completedOrder.paymentMethod === 'momo' && (
+                        <div className="text-center py-1.5 mt-2 bg-pink-50 text-pink-800 font-black text-[11px] rounded-xl border border-pink-200/80">
+                          {isDepositOrder
+                            ? `✓ ĐÃ CỌC QUA VÍ MOMO (${targetDue.toLocaleString('vi-VN')}₫)`
+                            : '✓ ĐÃ THANH TOÁN QUA VÍ MOMO'}
                         </div>
                       )}
-                      <div className="text-center py-1.5 mt-2 bg-emerald-50 text-emerald-800 font-black text-[11px] rounded-xl border border-emerald-200/80">
-                        ✓ ĐÃ THANH TOÁN TIỀN MẶT
-                      </div>
-                    </>
-                  )}
 
-                  {completedOrder.paymentMethod === 'momo' && (
-                    <div className="text-center py-1.5 mt-2 bg-pink-50 text-pink-800 font-black text-[11px] rounded-xl border border-pink-200/80">
-                      ✓ ĐÃ THANH TOÁN QUA VÍ MOMO
+                      {completedOrder.paymentMethod === 'transfer' && (
+                        <div className="text-center py-1.5 mt-2 bg-blue-50 text-blue-800 font-black text-[11px] rounded-xl border border-blue-200/80">
+                          {isDepositOrder
+                            ? `✓ ĐÃ CỌC CHUYỂN KHOẢN (${targetDue.toLocaleString('vi-VN')}₫)`
+                            : '✓ ĐÃ THANH TOÁN CHUYỂN KHOẢN'}
+                        </div>
+                      )}
                     </div>
-                  )}
-
-                  {completedOrder.paymentMethod === 'transfer' && (!completedOrder.remainingAmount || completedOrder.remainingAmount <= 0) && (
-                    <div className="text-center py-1.5 mt-2 bg-blue-50 text-blue-800 font-black text-[11px] rounded-xl border border-blue-200/80">
-                      ✓ ĐÃ THANH TOÁN CHUYỂN KHOẢN
-                    </div>
-                  )}
-                </div>
+                  );
+                })()}
 
               {/* CHỈ HIỆN MÃ VIETQR KHI ĐƠN ĐẶT BÁNH KEM CÒN SỐ TIỀN CẦN THU KHI GIAO (COD) */}
               {completedOrder.remainingAmount !== undefined && completedOrder.remainingAmount > 0 && (
