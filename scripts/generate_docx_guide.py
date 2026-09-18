@@ -11,10 +11,10 @@ doc = docx.Document()
 
 # Thiết lập lề trang
 for section in doc.sections:
-    section.top_margin = Inches(0.8)
-    section.bottom_margin = Inches(0.8)
-    section.left_margin = Inches(0.9)
-    section.right_margin = Inches(0.9)
+    section.top_margin = Inches(0.75)
+    section.bottom_margin = Inches(0.75)
+    section.left_margin = Inches(0.85)
+    section.right_margin = Inches(0.85)
 
 # Màu sắc thương hiệu
 COLOR_PRIMARY = RGBColor(16, 110, 70)   # Emerald Dark
@@ -32,7 +32,7 @@ def add_callout(doc, text, title="LƯU Ý QUAN TRỌNG", fill_hex="FEF3C7", bord
     tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
     cell = tbl.cell(0, 0)
     set_cell_background(cell, fill_hex)
-    cell.width = Inches(6.7)
+    cell.width = Inches(6.8)
     
     tcPr = cell._tc.get_or_add_tcPr()
     borders = parse_xml(
@@ -56,106 +56,106 @@ def add_callout(doc, text, title="LƯU Ý QUAN TRỌNG", fill_hex="FEF3C7", bord
     run_body.font.color.rgb = RGBColor(60, 60, 60)
     doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
-# Header Title
+# ==================== TRANG BÌA & TIÊU ĐỀ ====================
 p_title = doc.add_paragraph()
 p_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-p_title.paragraph_format.space_before = Pt(12)
-p_title.paragraph_format.space_after = Pt(4)
-run_title = p_title.add_run('HƯỚNG DẪN CHI TIẾT TỪNG BƯỚC')
-run_title.font.size = Pt(13)
+p_title.paragraph_format.space_before = Pt(8)
+p_title.paragraph_format.space_after = Pt(3)
+run_title = p_title.add_run('CẨM NANG HƯỚNG DẪN KỸ THUẬT TOÀN DIỆN')
+run_title.font.size = Pt(12)
 run_title.font.color.rgb = COLOR_SECONDARY
 run_title.bold = True
 
 p_main_title = doc.add_paragraph()
 p_main_title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-p_main_title.paragraph_format.space_after = Pt(8)
-run_main = p_main_title.add_run('KHỞI TẠO CƠ SỞ DỮ LIỆU SQL MỚI\nTRÊN SUPABASE')
-run_main.font.size = Pt(20)
+p_main_title.paragraph_format.space_after = Pt(6)
+run_main = p_main_title.add_run('KHỞI TẠO CƠ SỞ DỮ LIỆU SQL & KHO LƯU TRỮ ẢNH\nTRÊN NỀN TẢNG SUPABASE')
+run_main.font.size = Pt(18)
 run_main.bold = True
 run_main.font.color.rgb = COLOR_PRIMARY
 
 p_sub = doc.add_paragraph()
 p_sub.alignment = WD_ALIGN_PARAGRAPH.CENTER
-p_sub.paragraph_format.space_after = Pt(18)
-run_sub = p_sub.add_run('Áp dụng: Cấu hình CSDL Chính (Vận Hành) & CSDL Thử Nghiệm (Test Sandbox)\nHệ Thống Quản Lý Tiệm Bánh Bakery ERP & POS Mini\nPhiên bản cập nhật: Tháng 09/2026')
+p_sub.paragraph_format.space_after = Pt(16)
+run_sub = p_sub.add_run('Hệ Thống Quản Lý Tiệm Bánh Bakery ERP & POS Mini\nCấu hình CSDL Vận Hành (Production) & CSDL Thử Nghiệm (Test Sandbox)\nPhiên bản cập nhật đầy đủ: Tháng 09/2026')
 run_sub.font.size = Pt(10)
 run_sub.font.color.rgb = COLOR_MUTED
 run_sub.italic = True
 
-# Thước kẻ phân cách
 p_hr = doc.add_paragraph()
-p_hr.paragraph_format.space_after = Pt(14)
+p_hr.paragraph_format.space_after = Pt(12)
 p_hr_border = parse_xml(f'<w:pBdr {nsdecls("w")}><w:bottom w:val="single" w:sz="12" w:space="1" w:color="10B981"/></w:pBdr>')
 p_hr._p.get_or_add_pPr().append(p_hr_border)
 
-# 1. MỤC TIÊU & CHUẨN BỊ
+# ==================== PHẦN 1: MỤC TIÊU ====================
 h1 = doc.add_heading(level=1)
-r_h1 = h1.add_run('1. Mục Tiêu & Chuẩn Bị')
+r_h1 = h1.add_run('1. Tổng Quan & Khi Nào Cần Tạo CSDL Mới?')
 r_h1.font.color.rgb = COLOR_PRIMARY
 
 p = doc.add_paragraph()
-p.add_run('Tài liệu này hướng dẫn quý anh/chị từng bước chi tiết để tự tạo một Cơ Sở Dữ Liệu PostgreSQL đám mây hoàn toàn mới trên nền tảng ').font.size = Pt(10.5)
-r_sb = p.add_run('Supabase (Miễn phí 100%)')
-r_sb.bold = True
-p.add_run('. CSDL mới này có thể sử dụng cho 2 mục đích:\n').font.size = Pt(10.5)
+p.add_run('Hệ thống tiệm bánh cần một cơ sở dữ liệu đám mây PostgreSQL và một kho lưu trữ hình ảnh (Supabase Storage). Anh/chị sẽ cần khởi tạo CSDL mới trong các trường hợp sau:\n').font.size = Pt(10.5)
 
 p_b1 = doc.add_paragraph(style='List Bullet')
-r1 = p_b1.add_run('CSDL Thử Nghiệm (Test & Fix Lỗi): ')
+r1 = p_b1.add_run('Tạo CSDL Thử Nghiệm (Testing / Sandbox): ')
 r1.bold = True
-p_b1.add_run('Tạo môi trường độc lập để thử công thức bánh, tạo đơn hàng ảo và kiểm tra lỗi mà không sợ ảnh hưởng đến số liệu bán hàng thật của tiệm.')
+p_b1.add_run('Dùng để nhân viên/quản lý tạo đơn hàng ảo, thử nghiệm công thức bánh mới, hoặc tái hiện và fix lỗi mà không làm ảnh hưởng hay sai lệch doanh thu của CSDL Chính.')
 
 p_b2 = doc.add_paragraph(style='List Bullet')
-r2 = p_b2.add_run('CSDL Chính Mới (Production): ')
+r2 = p_b2.add_run('Di chuyển sang CSDL Chính mới (Migration): ')
 r2.bold = True
-p_b2.add_run('Dùng khi muốn chuyển nhà sang tài khoản Supabase mới, mở thêm chi nhánh độc lập hoặc làm mới dữ liệu từ đầu.')
+p_b2.add_run('Dùng khi tài khoản Supabase cũ bị đầy gói cước Egress, hết hạn hoặc tiệm muốn làm mới dữ liệu từ đầu.')
 
-add_callout(doc, 
-    '• Gói Supabase Miễn Phí (Free Tier) cung cấp 500 MB Database và 1 GB Storage lưu trữ ảnh, hoàn toàn đủ cho tiệm bánh vận hành mượt mà nhiều năm.\n• Toàn bộ quá trình thao tác chỉ mất khoảng 3 đến 5 phút.',
-    'THÔNG TIN CHI PHÍ & THỜI GIAN', 'ECFDF5', '10B981')
+p_b3 = doc.add_paragraph(style='List Bullet')
+r3 = p_b3.add_run('Mở thêm chi nhánh mới: ')
+r3.bold = True
+p_b3.add_run('Mỗi chi nhánh có thể sở hữu một database riêng biệt, không bị lẫn lộn đơn hàng và kho.')
 
-# 2. BƯỚC 1: ĐĂNG KÝ / ĐĂNG NHẬP
+add_callout(doc,
+    '• Chi phí: Hoàn toàn MIỄN PHÍ ($0/tháng) với gói Free Tier của Supabase.\n• Dung lượng: Bao gồm 500 MB Database PostgreSQL và 1 GB Storage lưu ảnh (đủ chứa hơn 10.000 ảnh bánh & hóa đơn).\n• Thời gian thực hiện: Chỉ từ 3 đến 5 phút.',
+    'GÓI DỊCH VỤ MIỄN PHÍ CỦA SUPABASE', 'ECFDF5', '10B981')
+
+# ==================== PHẦN 2: BƯỚC 1 ĐĂNG KÝ ====================
 h1 = doc.add_heading(level=1)
 r_h1 = h1.add_run('2. Bước 1: Đăng Ký / Đăng Nhập Supabase')
 r_h1.font.color.rgb = COLOR_PRIMARY
 
 p = doc.add_paragraph()
-p.add_run('1. Mở trình duyệt web và truy cập địa chỉ: ').font.size = Pt(10.5)
+p.add_run('1. Truy cập vào trang chủ Supabase: ').font.size = Pt(10.5)
 r_url = p.add_run('https://supabase.com\n')
 r_url.bold = True
 r_url.font.color.rgb = RGBColor(37, 99, 235)
 p.add_run('2. Bấm vào nút ').font.size = Pt(10.5)
 p.add_run('"Sign In"').bold = True
-p.add_run(' hoặc ').font.size = Pt(10.5)
+p.add_run(' (Đăng nhập) hoặc ').font.size = Pt(10.5)
 p.add_run('"Start your project"').bold = True
-p.add_run(' ở góc trên bên phải màn hình.\n3. Đăng nhập bằng tài khoản ').font.size = Pt(10.5)
+p.add_run(' ở góc trên bên phải.\n3. Đăng nhập nhanh bằng tài khoản ').font.size = Pt(10.5)
 p.add_run('GitHub').bold = True
 p.add_run(' hoặc tài khoản ').font.size = Pt(10.5)
-p.add_run('Email / Google').bold = True
+p.add_run('Google / Email').bold = True
 p.add_run(' của anh/chị.')
 
-# 3. BƯỚC 2: TẠO DỰ ÁN MỚI
+# ==================== PHẦN 3: BƯỚC 2 TẠO DỰ ÁN ====================
 h1 = doc.add_heading(level=1)
 r_h1 = h1.add_run('3. Bước 2: Tạo Dự Án Mới (New Project)')
 r_h1.font.color.rgb = COLOR_PRIMARY
 
 p = doc.add_paragraph()
-p.add_run('Sau khi đăng nhập vào Dashboard của Supabase:\n').font.size = Pt(10.5)
-p.add_run('1. Bấm vào nút ').font.size = Pt(10.5)
+p.add_run('1. Tại màn hình Dashboard, bấm nút ').font.size = Pt(10.5)
 p.add_run('"New project"').bold = True
-p.add_run(' (nút màu xanh lá cây).\n2. Điền các trường thông tin cơ bản sau:\n').font.size = Pt(10.5)
+p.add_run(' (màu xanh lá).\n2. Điền thông tin dự án theo bảng hướng dẫn sau:\n').font.size = Pt(10.5)
 
 tbl = doc.add_table(rows=5, cols=2)
 tbl.alignment = WD_TABLE_ALIGNMENT.CENTER
-headers = ['Trường thông tin', 'Hướng dẫn nhập liệu']
+headers = ['Trường thông tin', 'Hướng dẫn chi tiết']
 for i, h in enumerate(headers):
     cell = tbl.cell(0, i)
     cell.paragraphs[0].add_run(h).bold = True
     set_cell_background(cell, 'E2E8F0')
 
 rows_data = [
-    ('Name (Tên dự án)', 'Đặt tên gợi nhớ, ví dụ: bakery-pos-test (nếu làm DB test) hoặc bakery-pos-main (nếu làm DB chính).'),
-    ('Database Password', 'Nhập mật khẩu quản trị DB (ít nhất 8 ký tự gồm chữ, số và ký tự đặc biệt). Hãy lưu lại mật khẩu này cẩn thận.'),
-    ('Region (Khu vực máy chủ)', 'QUAN TRỌNG: Chọn vùng "Singapore (ap-southeast-1)" để máy chủ đặt gần Việt Nam nhất, giúp tốc độ phản hồi cực nhanh (~30-50ms).'),
+    ('Name (Tên dự án)', 'Đặt tên gợi nhớ. Ví dụ: "bakery-pos-test" (nếu làm database test) hoặc "bakery-pos-main" (nếu làm database chính).'),
+    ('Database Password', 'Nhập mật khẩu quản trị DB (tối thiểu 8 ký tự, gồm chữ hoa, chữ thường, số). Hãy ghi lại mật khẩu này.'),
+    ('Region (Khu vực máy chủ)', 'CỰC KỲ QUAN TRỌNG: Chọn "Singapore (ap-southeast-1)" để máy chủ gần Việt Nam nhất, tốc độ phản hồi cực nhanh (~30-50ms).'),
     ('Pricing Plan', 'Chọn "Free" ($0/month - Miễn phí 100%).')
 ]
 
@@ -172,65 +172,167 @@ p_after = doc.add_paragraph()
 p_after.paragraph_format.space_before = Pt(6)
 p_after.add_run('3. Bấm nút ').font.size = Pt(10.5)
 p_after.add_run('"Create new project"').bold = True
-p_after.add_run(' ở góc dưới.\n4. Chờ khoảng 1 – 2 phút để hệ thống đám mây Supabase tự động thiết lập và khởi chạy máy chủ PostgreSQL.')
+p_after.add_run('. Chờ khoảng 1 – 2 phút để Supabase chuẩn bị máy chủ.')
 
-# 4. BƯỚC 3: LẤY THÔNG TIN KẾT NỐI
+# ==================== PHẦN 4: LẤY URL & KEY ====================
 h1 = doc.add_heading(level=1)
 r_h1 = h1.add_run('4. Bước 3: Lấy Thông Tin Kết Nối (Project URL & API Key)')
 r_h1.font.color.rgb = COLOR_PRIMARY
 
 p = doc.add_paragraph()
-p.add_run('Để phần mềm kết nối được với CSDL mới, anh/chị cần lấy 2 chìa khóa kết nối:\n').font.size = Pt(10.5)
-p.add_run('1. Trên thanh menu bên trái màn hình Supabase, bấm vào biểu tượng bánh răng ').font.size = Pt(10.5)
+p.add_run('1. Trên thanh menu bên trái của Supabase, bấm vào biểu tượng bánh răng ').font.size = Pt(10.5)
 p.add_run('"Project Settings"').bold = True
-p.add_run(' (nằm ở góc dưới cùng bên trái).\n2. Trong danh mục bên cạnh, chọn mục ').font.size = Pt(10.5)
+p.add_run(' ở góc dưới cùng bên trái.\n2. Chọn mục ').font.size = Pt(10.5)
 p.add_run('"API"').bold = True
-p.add_run(' (hoặc Data API).\n3. Sao chép 2 thông tin sau:\n').font.size = Pt(10.5)
-p.add_run('   a. Project URL: ').bold = True
-p.add_run('Có dạng như: https://abcdefghijklm.supabase.co  -> Bấm nút Copy.\n')
-p.add_run('   b. Project API Keys: ').bold = True
-p.add_run('Tìm đúng dòng có nhãn ').font.size = Pt(10.5)
+p.add_run(' trong danh sách cài đặt.\n3. Sao chép 2 chuỗi ký tự sau:\n').font.size = Pt(10.5)
+p.add_run('   • Project URL: ').bold = True
+p.add_run('Có dạng https://abcdefghijklm.supabase.co -> Bấm nút Copy.\n')
+p.add_run('   • Project API Keys: ').bold = True
+p.add_run('Tìm dòng có nhãn ').font.size = Pt(10.5)
 p.add_run('"anon" "public"').bold = True
-p.add_run(' (hoặc publishable key) -> Bấm nút Copy.\n')
+p.add_run(' -> Bấm nút Copy.\n')
 
 add_callout(doc,
-    'Tuyệt đối KHÔNG chia sẻ hoặc dùng nhầm khóa "service_role (secret)" cho ứng dụng bán hàng. Chỉ sao chép khóa "anon public" để đảm bảo an toàn tuyệt đối theo đúng chuẩn bảo mật Supabase.',
-    'CẢNH BÁO BẢO MẬT API KEY', 'FEE2E2', 'EF4444')
+    'Tuyệt đối KHÔNG chia sẻ hoặc copy nhầm khóa "service_role (secret)". Chỉ dùng duy nhất khóa "anon public" cho ứng dụng bán hàng POS để đảm bảo an toàn tuyệt đối.',
+    'BẢO MẬT API KEY', 'FEE2E2', 'EF4444')
 
-# 5. BƯỚC 4: KHỞI TẠO CẤU TRÚC BẢNG (SCRIPT MASTER)
+# ==================== PHẦN 5: DANH SÁCH CÁC FILE SQL CẦN CHẠY ====================
 h1 = doc.add_heading(level=1)
-r_h1 = h1.add_run('5. Bước 4: Khởi Tạo Cấu Trúc Bảng (Chạy Script SQL Master)')
+r_h1 = h1.add_run('5. Bước 4: Danh Sách Các File SQL Cần Chạy')
 r_h1.font.color.rgb = COLOR_PRIMARY
 
 p = doc.add_paragraph()
-p.add_run('Để CSDL mới có sẵn 100% bảng dữ liệu (Menu bánh, Kho nguyên liệu, Đơn hàng, Sổ quỹ, BOM bánh, Phân quyền bảo mật RLS):\n').font.size = Pt(10.5)
-p.add_run('1. Trên menu bên trái của Supabase, bấm vào biểu tượng ').font.size = Pt(10.5)
-p.add_run('SQL Editor').bold = True
-p.add_run(' (biểu tượng có hình dấu ').font.size = Pt(10.5)
-p.add_run('>_').bold = True
-p.add_run(').\n2. Bấm vào nút ').font.size = Pt(10.5)
-p.add_run('"+ New query"').bold = True
-p.add_run(' để mở khung soạn thảo SQL mới.\n3. Mở file mã nguồn tổng hợp ').font.size = Pt(10.5)
-p.add_run('supabase/schema_full_init.sql').bold = True
-p.add_run(' đã được tạo sẵn trong thư mục dự án.\n4. Nhấn ').font.size = Pt(10.5)
-p.add_run('Ctrl + A').bold = True
-p.add_run(' để sao chép toàn bộ nội dung file này, rồi ').font.size = Pt(10.5)
-p.add_run('Dán (Paste)').bold = True
-p.add_run(' vào ô SQL Editor trên Supabase.\n5. Bấm nút ').font.size = Pt(10.5)
-p.add_run('"Run"').bold = True
-p.add_run(' (nút màu xanh lá cây góc dưới bên phải) hoặc nhấn phím tắt ').font.size = Pt(10.5)
-p.add_run('Ctrl + Enter').bold = True
-p.add_run('.\n6. Chờ khoảng 3 – 5 giây cho đến khi hệ thống báo ').font.size = Pt(10.5)
-p.add_run('"Success. No rows returned"').bold = True
-p.add_run(' là cơ sở dữ liệu đã sẵn sàng 100%!')
+p.add_run('Hệ thống phần mềm tiệm bánh bao gồm tổng cộng ').font.size = Pt(10.5)
+p.add_run('16 file migration SQL').bold = True
+p.add_run(' (nằm trong thư mục ').font.size = Pt(10.5)
+p.add_run('supabase/migrations/').bold = True
+p.add_run('). Dưới đây là danh sách chi tiết và ý nghĩa của từng file:\n').font.size = Pt(10.5)
 
-# 6. BƯỚC 5: ĐIỀN VÀO BAKERY POS
+tbl_sql = doc.add_table(rows=17, cols=3)
+tbl_sql.alignment = WD_TABLE_ALIGNMENT.CENTER
+sql_headers = ['STT / Tên File Migration', 'Nội Dung & Chức Năng', 'Bắt Buộc?']
+for i, h in enumerate(sql_headers):
+    cell = tbl_sql.cell(0, i)
+    cell.paragraphs[0].add_run(h).bold = True
+    set_cell_background(cell, 'E2E8F0')
+
+sql_files_info = [
+    ('00001_create_profiles_roles.sql', 'Tạo bảng tài khoản người dùng, vai trò phân quyền (admin, kitchen, staff).', 'Có'),
+    ('00002_create_stores_settings.sql', 'Tạo bảng thông tin tiệm bánh, cài đặt in hóa đơn và thương hiệu cửa hàng.', 'Có'),
+    ('00003_create_ingredients.sql', 'Tạo bảng danh mục nguyên vật liệu làm bánh, tồn kho và mức cảnh báo sắp hết.', 'Có'),
+    ('00004_create_recipes.sql', 'Tạo bảng công thức sản xuất bánh (BOM), định mức nguyên liệu và tỷ lệ hao hụt.', 'Có'),
+    ('00005_create_products.sql', 'Tạo bảng danh mục sản phẩm/bánh bán lẻ tại quầy, phân loại nhóm bánh và giá bán.', 'Có'),
+    ('00006_create_shifts_orders.sql', 'Tạo bảng ca làm việc thu ngân, đơn hàng bán lẻ (POS) và đơn đặt bánh trước (Preorder).', 'Có'),
+    ('00007_create_expenses_cashflow.sql', 'Tạo bảng chi phí vận hành (OPEX), sổ thu chi tiền mặt (111) và ngân hàng VietQR (112).', 'Có'),
+    ('00008_create_accounting_summary.sql', 'Tạo bảng tổng hợp chốt sổ kế toán ngày, tháng và lịch sử kiểm kê định kỳ.', 'Có'),
+    ('00009_create_functions_triggers.sql', 'Tạo các hàm Trigger tự động trừ kho nguyên liệu khi bán bánh, tính giá vốn bình quân (WAC).', 'Có'),
+    ('00010_create_views.sql', 'Tạo các View hiển thị an toàn che giấu thông tin giá vốn (COGS) đối với nhân viên.', 'Có'),
+    ('00011_create_rls_policies.sql', 'Thiết lập chính sách bảo mật theo từng dòng dữ liệu (Row Level Security - RLS).', 'Có'),
+    ('00012_fix_cross_device_sync.sql', 'Bổ sung cơ chế đồng bộ Realtime tức thì đa thiết bị giữa máy POS và màn hình Bếp.', 'Có'),
+    ('00013_fix_products_sync.sql', 'Tối ưu hóa đồng bộ danh mục sản phẩm bánh nhanh chóng giữa các màn hình.', 'Có'),
+    ('00014_add_resale_goods_and_cake_costing.sql', 'Bổ sung tính năng định giá bánh kem thiết kế riêng và quản lý hàng thương mại bán kèm.', 'Có'),
+    ('00015_enable_rls_secure_policies.sql', 'Khóa bảo mật RLS toàn diện 100% các bảng và cố định search_path để triệt tiêu lỗi Advisor.', 'Có'),
+    ('00016_create_storage_buckets.sql', 'Tạo kho lưu trữ ảnh Supabase Storage (bakery-images & product-images) và cấp quyền upload.', 'CỰC KỲ QUAN TRỌNG')
+]
+
+for idx, item in enumerate(sql_files_info, start=1):
+    c0 = tbl_sql.cell(idx, 0)
+    c1 = tbl_sql.cell(idx, 1)
+    c2 = tbl_sql.cell(idx, 2)
+    c0.paragraphs[0].add_run(item[0]).bold = True
+    c0.paragraphs[0].runs[0].font.size = Pt(9.5)
+    c1.paragraphs[0].add_run(item[1]).font.size = Pt(9.5)
+    c2.paragraphs[0].add_run(item[2]).font.size = Pt(9.5)
+    if 'QUAN TRỌNG' in item[2]:
+        c2.paragraphs[0].runs[0].bold = True
+        c2.paragraphs[0].runs[0].font.color.rgb = RGBColor(220, 38, 38)
+    if idx % 2 == 1:
+        set_cell_background(c0, 'F8FAFC')
+        set_cell_background(c1, 'F8FAFC')
+        set_cell_background(c2, 'F8FAFC')
+
+# ==================== PHẦN 6: HƯỚNG DẪN CHẠY SQL ====================
 h1 = doc.add_heading(level=1)
-r_h1 = h1.add_run('6. Bước 5: Điền Thông Tin Kết Nối Vào Ứng Dụng Bakery POS')
+r_h1 = h1.add_run('6. Bước 5: Cách Thực Thi SQL Trên Supabase')
 r_h1.font.color.rgb = COLOR_PRIMARY
 
 p = doc.add_paragraph()
-p.add_run('1. Mở phần mềm Bakery POS trên trình duyệt, đăng nhập bằng tài khoản ').font.size = Pt(10.5)
+p.add_run('Anh/chị có thể lựa chọn 1 trong 2 cách sau để chạy SQL:\n').font.size = Pt(10.5)
+
+p_m1 = doc.add_paragraph()
+r_m1 = p_m1.add_run('CÁCH 1 (KHUYẾN NGHỊ - NHANH NHẤT 1-CLICK):\n')
+r_m1.bold = True
+r_m1.font.color.rgb = COLOR_PRIMARY
+p_m1.add_run('Hệ thống đã tự động gộp toàn bộ 16 file trên vào DUY NHẤT 1 FILE TỔNG HỢP: ').font.size = Pt(10.5)
+p_m1.add_run('supabase/schema_full_init.sql').bold = True
+p_m1.add_run(' (đã bao gồm toàn bộ bảng, hàm, view và tạo kho lưu trữ ảnh Storage!).\n').font.size = Pt(10.5)
+p_m1.add_run('• Bước 1: Mở Supabase, bấm vào menu ').font.size = Pt(10.5)
+p_m1.add_run('SQL Editor').bold = True
+p_m1.add_run(' (icon ').font.size = Pt(10.5)
+p_m1.add_run('>_').bold = True
+p_m1.add_run(') bên trái màn hình.\n• Bước 2: Bấm nút ').font.size = Pt(10.5)
+p_m1.add_run('"+ New query"').bold = True
+p_m1.add_run(' để mở trang soạn thảo mới.\n• Bước 3: Mở file ').font.size = Pt(10.5)
+p_m1.add_run('supabase/schema_full_init.sql').bold = True
+p_m1.add_run(', nhấn ').font.size = Pt(10.5)
+p_m1.add_run('Ctrl + A').bold = True
+p_m1.add_run(' copy toàn bộ và ').font.size = Pt(10.5)
+p_m1.add_run('Dán (Paste)').bold = True
+p_m1.add_run(' vào ô SQL Editor.\n• Bước 4: Bấm nút ').font.size = Pt(10.5)
+p_m1.add_run('\"Run\"').bold = True
+p_m1.add_run(' màu xanh lá (hoặc bấm phím ').font.size = Pt(10.5)
+p_m1.add_run('Ctrl + Enter').bold = True
+p_m1.add_run(').\n• Bước 5: Chờ khoảng 3 – 5 giây cho đến khi hiện thông báo ').font.size = Pt(10.5)
+p_m1.add_run('"Success. No rows returned"').bold = True
+p_m1.add_run(' là CSDL và Kho ảnh đã hoàn tất 100%!')
+
+p_m2 = doc.add_paragraph()
+r_m2 = p_m2.add_run('\nCÁCH 2 (CHẠY THỦ CÔNG TỪNG FILE):\n')
+r_m2.bold = True
+p_m2.add_run('Nếu muốn kiểm tra từng phần, anh/chị mở từng file trong thư mục ').font.size = Pt(10.5)
+p_m2.add_run('supabase/migrations/').bold = True
+p_m2.add_run(' và copy dán vào SQL Editor chạy lần lượt đúng theo thứ tự từ ').font.size = Pt(10.5)
+p_m2.add_run('00001 -> 00016').bold = True
+p_m2.add_run(' (tuyệt đối không chạy nhảy cóc vì các bảng có quan hệ khóa ngoại với nhau).')
+
+# ==================== PHẦN 7: TẠO KHO ẢNH STORAGE BẰNG GIAO DIỆN ====================
+h1 = doc.add_heading(level=1)
+r_h1 = h1.add_run('7. Chi Tiết: Kho Lưu Trữ Ảnh Supabase Storage')
+r_h1.font.color.rgb = COLOR_PRIMARY
+
+p = doc.add_paragraph()
+p.add_run('Trong file ').font.size = Pt(10.5)
+p.add_run('00016_create_storage_buckets.sql').bold = True
+p.add_run(' (hoặc file tổng hợp schema_full_init.sql), lệnh SQL đã tự động tạo sẵn 2 Bucket:\n').font.size = Pt(10.5)
+p.add_run('• bakery-images: ').bold = True
+p.add_run('Kho lưu trữ ảnh bánh, ảnh khách gửi đơn gấp, ảnh chứng từ chuyển khoản và logo tiệm.\n')
+p.add_run('• product-images: ').bold = True
+p.add_run('Kho phụ phòng ngừa sự cố.\n\n')
+p.add_run('Đồng thời SQL đã cấp sẵn chính sách ').font.size = Pt(10.5)
+p.add_run('Public Read & Upload').bold = True
+p.add_run(' để nhân viên thu ngân và khách hàng đều xem được ảnh mà không bị lỗi 403 Forbidden.\n')
+
+p_extra = doc.add_paragraph()
+p_extra.add_run('Nếu anh/chị muốn kiểm tra hoặc tạo kho ảnh bằng chuột trên giao diện Supabase:\n').font.size = Pt(10.5)
+p_extra.add_run('1. Trên menu bên trái của Supabase, bấm vào mục ').font.size = Pt(10.5)
+p_extra.add_run('Storage').bold = True
+p_extra.add_run(' (biểu tượng chiếc xô / thùng chứa).\n2. Nếu chưa thấy bucket, bấm nút ').font.size = Pt(10.5)
+p_extra.add_run('\"New bucket\"').bold = True
+p_extra.add_run('.\n3. Nhập tên bucket: ').font.size = Pt(10.5)
+p_extra.add_run('bakery-images').bold = True
+p_extra.add_run(' (chính xác từng chữ thường, có dấu gạch ngang).\n4. BẬT CÔNG TẮC: ').font.size = Pt(10.5)
+p_extra.add_run('\"Public bucket\"').bold = True
+p_extra.add_run(' (để ảnh có thể hiển thị trên màn hình POS và điện thoại).\n5. Bấm nút ').font.size = Pt(10.5)
+p_extra.add_run('\"Save\"').bold = True
+p_extra.add_run(' là hoàn thành!')
+
+# ==================== PHẦN 8: BƯỚC KẾT NỐI VÀO PHẦN MỀM ====================
+h1 = doc.add_heading(level=1)
+r_h1 = h1.add_run('8. Bước 6: Kết Nối Vào Ứng Dụng Bakery POS')
+r_h1.font.color.rgb = COLOR_PRIMARY
+
+p = doc.add_paragraph()
+p.add_run('1. Mở phần mềm Bakery POS trên trình duyệt, đăng nhập tài khoản ').font.size = Pt(10.5)
 p.add_run('Admin').bold = True
 p.add_run('.\n2. Chọn tab ').font.size = Pt(10.5)
 p.add_run('"CSDL & Sao Lưu SQL"').bold = True
@@ -238,43 +340,41 @@ p.add_run(' -> Chọn mục ').font.size = Pt(10.5)
 p.add_run('"2. Cài Đặt Cho Online (Cloud SQL)"').bold = True
 p.add_run('.\n3. Tại khối ').font.size = Pt(10.5)
 p.add_run('"Quản Trị Đa CSDL SQL: Chính & Thử Nghiệm"').bold = True
-p.add_run(':\n   • Bấm chọn thẻ ').font.size = Pt(10.5)
+p.add_run(':\n   • Chọn thẻ ').font.size = Pt(10.5)
 p.add_run('🟡 CSDL Thử Nghiệm (Test & Fix Lỗi)').bold = True
-p.add_run(' (hoặc thẻ CSDL Chính nếu anh/chị đang thay thế CSDL chính).\n')
+p.add_run(' (hoặc thẻ CSDL Chính nếu đang thay thế CSDL chính).\n')
 p.add_run('   • Ô số 1: Dán ').font.size = Pt(10.5)
 p.add_run('Project URL').bold = True
-p.add_run(' vừa copy ở Bước 3.\n')
+p.add_run(' vừa lấy ở Bước 3.\n')
 p.add_run('   • Ô số 2: Dán ').font.size = Pt(10.5)
 p.add_run('Anon API Key').bold = True
-p.add_run(' vừa copy ở Bước 3.\n')
+p.add_run(' vừa lấy ở Bước 3.\n')
 p.add_run('4. Bấm nút ').font.size = Pt(10.5)
 p.add_run('"🔍 Kiểm Tra Kết Nối (Ping)"').bold = True
-p.add_run(': Hệ thống sẽ đo độ trễ mạng thực tế (ví dụ: ').font.size = Pt(10.5)
-p.add_run('"Kết nối thành công! Ping: 42ms"').bold = True
-p.add_run(').\n5. Bấm nút ').font.size = Pt(10.5)
+p.add_run(': Hệ thống sẽ đo tốc độ kết nối (ví dụ: "Kết nối thành công! Ping: 42ms").\n5. Bấm nút ').font.size = Pt(10.5)
 p.add_run('"Lưu Thông Tin"').bold = True
 p.add_run('.\n6. Bấm nút ').font.size = Pt(10.5)
 p.add_run('"Kích Hoạt Ngay"').bold = True
 p.add_run(' -> Chọn ').font.size = Pt(10.5)
 p.add_run('"1. Tải dữ liệu từ CSDL này về máy (Khuyến nghị)"').bold = True
-p.add_run(' để tránh bị trộn lẫn dữ liệu cũ, rồi bấm xác nhận để hệ thống kết nối tức thì!')
+p.add_run(' để tránh trộn dữ liệu cũ, rồi bấm xác nhận để hệ thống kết nối tức thì!')
 
-# 7. TỔNG KẾT
+# ==================== PHẦN 9: TIỆN ÍCH CHẾ ĐỘ TEST ====================
 h1 = doc.add_heading(level=1)
-r_h1 = h1.add_run('7. Cách Thử Nghiệm An Toàn Khi Có CSDL Test')
+r_h1 = h1.add_run('9. Tiện Ích Thử Nghiệm An Toàn (Test Sandbox)')
 r_h1.font.color.rgb = COLOR_PRIMARY
 
 p = doc.add_paragraph()
 p.add_run('Khi đã kích hoạt CSDL Thử Nghiệm:\n').font.size = Pt(10.5)
-p.add_run('• Trên đỉnh màn hình POS, Bếp và Admin sẽ luôn có ').font.size = Pt(10.5)
-p.add_run('Thanh cảnh báo viền vàng: [CHẾ ĐỘ TEST SQL]').bold = True
-p.add_run(' để nhân viên không bị nhầm lẫn với bán hàng thật.\n')
-p.add_run('• Muốn có sẵn danh mục bánh và công thức hiện tại của tiệm để test? Chỉ cần bấm nút: ').font.size = Pt(10.5)
+p.add_run('• ').font.size = Pt(10.5)
+p.add_run('Thanh cảnh báo viền vàng [CHẾ ĐỘ TEST SQL]').bold = True
+p.add_run(' xuất hiện ở đầu tất cả màn hình (POS, Bếp, Admin) giúp nhân viên luôn biết rõ đang trong môi trường thử nghiệm.\n')
+p.add_run('• Nút ').font.size = Pt(10.5)
 p.add_run('"📋 1-Click Sao Chép Sang Test"').bold = True
-p.add_run('. Hệ thống tự động đổ toàn bộ menu sang CSDL Test trong 1 giây.\n')
-p.add_run('• Khi test xong, chỉ cần bấm nút ').font.size = Pt(10.5)
+p.add_run(': Giúp anh/chị lấy toàn bộ menu bánh và công thức BOM hiện có ở CSDL Chính đổ sang CSDL Test trong 1 giây để tha hồ thử nghiệm mà không mất công gõ lại.\n')
+p.add_run('• Nút ').font.size = Pt(10.5)
 p.add_run('"Về CSDL Chính (Vận Hành)"').bold = True
-p.add_run(' ngay trên thanh cảnh báo là hệ thống tự động quay về bán hàng thật 100% nguyên vẹn.\n')
+p.add_run(': Bấm 1 click là hệ thống tự động đưa ứng dụng quay về bán hàng thật 100% nguyên vẹn.\n')
 
 doc.save('HUONG_DAN_TAO_SQL_SUPABASE_MOI.docx')
-print('Successfully generated HUONG_DAN_TAO_SQL_SUPABASE_MOI.docx!')
+print('Successfully generated comprehensive HUONG_DAN_TAO_SQL_SUPABASE_MOI.docx!')
