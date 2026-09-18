@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
+import { clearProfileLocalData } from '@/lib/supabase/databaseProfileManager';
 import { exportToCSV } from '@/lib/utils/exportExcel';
 import { 
   broadcastNewOrder, 
@@ -470,6 +471,7 @@ export default function POSPage() {
 
   // ── ĐƠN CHỜ SHIP / CHỜ GIAO QUẦY (BƯỚC 3 BẾP SẴN SÀNG) ──
   const [isReadyShippingModalOpen, setIsReadyShippingModalOpen] = useState(false);
+  const [isPosSyncing, setIsPosSyncing] = useState(false);
 
   // ── LỊCH SỬ HÓA ĐƠN & LƯU TRỮ ĐƠN ĐÃ XUẤT STATE ──
   const [isInvoiceHistoryOpen, setIsInvoiceHistoryOpen] = useState(false);
@@ -3195,6 +3197,30 @@ export default function POSPage() {
           <Receipt className="w-3.5 h-3.5 text-amber-600" />
           <span>Lịch Sử ({invoicesList.length})</span>
         </button>
+
+        <button
+          type="button"
+          onClick={async () => {
+            setIsPosSyncing(true);
+            try {
+              clearProfileLocalData();
+              await syncOrdersFromSupabase();
+              await loadProducts();
+              reloadOrdersData();
+              alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL thành công!');
+            } catch (e: any) {
+              alert('Lỗi: ' + (e?.message || e));
+            } finally {
+              setIsPosSyncing(false);
+            }
+          }}
+          disabled={isPosSyncing}
+          className="py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition shrink-0 disabled:opacity-50"
+          title="Xóa cache và đồng bộ lại từ CSDL Cloud SQL"
+        >
+          <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isPosSyncing ? 'animate-spin' : ''}`} />
+          <span className="text-[11px]">{isPosSyncing ? 'Đang tải...' : 'Đồng Bộ'}</span>
+        </button>
       </div>
 
       {/* ── CỘT TRÁI: MENU SẢN PHẨM (Cuộn theo toàn trang tự nhiên) ── */}
@@ -3528,6 +3554,31 @@ export default function POSPage() {
               <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">
                 {invoicesList.length}
               </span>
+            </button>
+
+            {/* NÚT ĐỒNG BỘ CLOUD SQL TỨC THÌ TRÊN DESKTOP POS */}
+            <button
+              type="button"
+              onClick={async () => {
+                setIsPosSyncing(true);
+                try {
+                  clearProfileLocalData();
+                  await syncOrdersFromSupabase();
+                  await loadProducts();
+                  reloadOrdersData();
+                  alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL Cloud SQL thành công!');
+                } catch (err: any) {
+                  alert('Lỗi đồng bộ: ' + (err?.message || err));
+                } finally {
+                  setIsPosSyncing(false);
+                }
+              }}
+              disabled={isPosSyncing}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-300 hover:border-emerald-500 text-xs font-bold text-emerald-800 shadow-2xs hover:shadow-xs transition hover:bg-emerald-100/70 cursor-pointer disabled:opacity-50"
+              title="Xóa cache trình duyệt và kéo lại thực đơn, đơn hàng mới nhất từ Cloud SQL"
+            >
+              <RefreshCw className={`w-4 h-4 text-emerald-600 ${isPosSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden md:inline">{isPosSyncing ? 'Đang tải...' : 'Đồng Bộ SQL'}</span>
             </button>
 
             {/* Nút Cài Đặt & Kiểm Tra Máy In (Bluetooth, USB, iPhone, Android) */}
