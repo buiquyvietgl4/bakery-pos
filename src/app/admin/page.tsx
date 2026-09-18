@@ -83,6 +83,7 @@ import { CustomCakeCostingSettings } from '@/components/admin/CustomCakeCostingS
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSection';
 import CustomSqlConfigSection from '@/components/admin/CustomSqlConfigSection';
+import LocalSqlConfigSection from '@/components/admin/LocalSqlConfigSection';
 import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
@@ -5347,177 +5348,29 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* KHỐI 1: QUẢN LÝ THƯ MỤC CSDL TRÊN Ổ CỨNG MÁY TÍNH */}
-              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-100">
-                  <div>
-                    <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-                      <Folder className="w-4 h-4 text-amber-600" /> Thư Mục Lưu Trữ CSDL Trên Máy Tính
-                    </h3>
-                    <p className="text-xs text-zinc-500">
-                      Thư mục này lưu trữ trực tiếp các tệp SQL và JSON chứa toàn bộ dữ liệu tiệm bánh của bạn.
-                    </p>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-                    sqlModeConfig.localFolderName || sqlModeConfig.localFolderPath
-                      ? 'bg-emerald-100 text-emerald-800'
-                      : 'bg-zinc-200 text-zinc-700'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${
-                      sqlModeConfig.localFolderName || sqlModeConfig.localFolderPath ? 'bg-emerald-600' : 'bg-zinc-500'
-                    }`} />
-                    {sqlModeConfig.localFolderName ? `Thư mục: ${sqlModeConfig.localFolderName}` : (sqlModeConfig.localFolderPath ? 'Đã có đường dẫn' : 'Chưa chọn thư mục')}
-                  </span>
-                </div>
+              {/* KHỐI 1: QUẢN LÝ ĐA CSDL LOCAL SQL (CHÍNH & THỬ NGHIỆM) */}
+              <LocalSqlConfigSection />
 
-                {/* NÚT CHỌN THƯ MỤC & NHẬP ĐƯỜNG DẪN */}
-                <div className="space-y-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={handleChooseLocalFolder}
-                      disabled={isSyncingLocalSql}
-                      className="px-5 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-50"
-                    >
-                      <Folder className="w-4 h-4" />
-                      <span>{sqlModeConfig.localFolderName ? 'Đổi Thư Mục Khác...' : 'Chọn Thư Mục Trên Máy Tính...'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleSyncToLocalFolderNow}
-                      disabled={isSyncingLocalSql}
-                      className="px-4 py-2.5 rounded-2xl bg-white border border-amber-300 hover:bg-amber-50 text-amber-900 font-bold text-xs flex items-center gap-2 shadow-2xs transition cursor-pointer disabled:opacity-50"
-                    >
-                      <RefreshCw className={`w-4 h-4 ${isSyncingLocalSql ? 'animate-spin' : ''}`} />
-                      <span>Xuất & Cập Nhật CSDL Ngay</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleDownloadMasterSql}
-                      className="px-4 py-2.5 rounded-2xl bg-white border border-zinc-300 hover:bg-zinc-50 text-zinc-800 font-bold text-xs flex items-center gap-2 shadow-2xs transition cursor-pointer ml-auto"
-                      title="Tải tệp bakery_master.sql về máy"
-                    >
-                      <Download className="w-4 h-4 text-zinc-600" />
-                      <span>Tải File .SQL Về Máy</span>
-                    </button>
-                  </div>
-
-                  {/* NHẬP ĐƯỜNG DẪN Ổ ĐĨA WINDOWS */}
-                  <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-                    <span className="text-xs text-zinc-600 font-medium shrink-0">
-                      Hoặc nhập đường dẫn thư mục:
-                    </span>
-                    <input
-                      type="text"
-                      value={serverDirPathInput}
-                      onChange={(e) => setServerDirPathInput(e.target.value)}
-                      placeholder="VD: D:\CSDL_TiemBanh hoặc C:\BakerySQL"
-                      className="flex-1 px-3 py-1.5 text-xs bg-white border border-zinc-300 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-amber-500 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyServerPath}
-                      disabled={isSyncingLocalSql || !serverDirPathInput.trim()}
-                      className="px-4 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-900 text-white font-bold text-xs shrink-0 cursor-pointer disabled:opacity-40"
-                    >
-                      Áp Dụng & Tạo Thư Mục
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* KHỐI 2: DANH SÁCH 4 TỆP DỮ LIỆU CSDL LOCAL */}
+              {/* KHỐI 2: NẠP DỮ LIỆU BỔ SUNG CHO CHẾ ĐỘ LOCAL (FILE BACKUP & CLOUD CLONE) */}
               <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
                 <div className="pb-2 border-b border-zinc-100">
                   <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-                    <FileCode className="w-4 h-4 text-blue-600" /> Các Tệp Dữ Liệu Tạo Trong Thư Mục Máy Tính
+                    <Download className="w-4 h-4 text-blue-600" /> Nạp Dữ Liệu Bổ Sung Cho Chế Độ Local
                   </h3>
                   <p className="text-xs text-zinc-500">
-                    Hệ thống tự động đồng bộ đầy đủ các tệp sau để bạn có thể mở bằng SQLite, DBeaver hoặc nạp lại khi cần.
+                    Kéo dữ liệu từ Cloud SQL về máy tính hoặc nạp từ file sao lưu (.bakery.json) vào môi trường Local đang kích hoạt.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
-                    <div className="font-black text-zinc-900 flex items-center gap-1.5">
-                      <FileCode className="w-4 h-4 text-blue-600" /> bakery_master.sql
-                    </div>
-                    <p className="text-[11px] text-zinc-500 leading-snug">
-                      DDL tạo 12 bảng & câu lệnh INSERT chứa 100% dữ liệu thực tế. Tương thích SQLite, Postgres, MySQL.
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
-                    <div className="font-black text-zinc-900 flex items-center gap-1.5">
-                      <FileText className="w-4 h-4 text-emerald-600" /> bakery_local_db.json
-                    </div>
-                    <p className="text-[11px] text-zinc-500 leading-snug">
-                      Dữ liệu JSON đóng gói hoàn chỉnh để nạp và khôi phục tức thì mà không cần mạng.
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
-                    <div className="font-black text-zinc-900 flex items-center gap-1.5">
-                      <FileCode className="w-4 h-4 text-purple-600" /> bakery_schema.sql
-                    </div>
-                    <p className="text-[11px] text-zinc-500 leading-snug">
-                      Khung cấu trúc bảng chuẩn để lập trình viên hoặc kỹ thuật viên kiểm tra định dạng.
-                    </p>
-                  </div>
-
-                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1.5">
-                    <div className="font-black text-zinc-900 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-amber-600" /> Lần Xuất Gần Nhất
-                    </div>
-                    <p className="text-[11px] text-zinc-600 font-bold">
-                      {sqlModeConfig.lastLocalSyncAt ? new Date(sqlModeConfig.lastLocalSyncAt).toLocaleString('vi-VN') : 'Chưa có bản ghi'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* KHỐI 3: BỘ KHÔI PHỤC DỮ LIỆU CHO LOCAL (3 NGUỒN NẠP) */}
-              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
-                <div className="pb-2 border-b border-zinc-100">
-                  <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-                    <Download className="w-4 h-4 text-blue-600" /> Khôi Phục Dữ Liệu Cho Chế Độ Local
-                  </h3>
-                  <p className="text-xs text-zinc-500">
-                    Tùy chọn khôi phục độc lập dành riêng cho Local, không can thiệp hay ảnh hưởng tới dữ liệu Online Cloud.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {/* CÁCH 1: NẠP TỪ THƯ MỤC CSDL */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* CÁCH 1: NẠP TỪ FILE BACKUP ONLINE */}
                   <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
                     <div className="space-y-1.5">
                       <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
-                        <FolderCheck className="w-4 h-4 text-amber-600" /> 1. Từ Thư Mục CSDL
+                        <FileText className="w-4 h-4 text-blue-600" /> Nạp Từ File Sao Lưu (.bakery.json)
                       </div>
                       <p className="text-[11px] text-zinc-500 leading-snug">
-                        Đọc tệp `bakery_local_db.json` trong thư mục máy tính đã chọn để nạp lại vào phần mềm.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRestoreFromLocalFolder}
-                      disabled={isRestoringLocalSql}
-                      className="w-full py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 font-black text-xs border border-amber-200 transition cursor-pointer disabled:opacity-50"
-                    >
-                      {isRestoringLocalSql ? 'Đang đọc...' : 'Nạp Lại Từ Thư Mục'}
-                    </button>
-                  </div>
-
-                  {/* CÁCH 2: NẠP TỪ FILE BACKUP ONLINE */}
-                  <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
-                    <div className="space-y-1.5">
-                      <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
-                        <FileText className="w-4 h-4 text-blue-600" /> 2. Từ File Backup Online
-                      </div>
-                      <p className="text-[11px] text-zinc-500 leading-snug">
-                        Chọn bất kỳ file sao lưu (.bakery.json / .json) tải từ Online để nạp thẳng vào Local.
+                        Chọn bất kỳ file sao lưu đã tải về trước đó để nạp thẳng vào môi trường Local hiện hành.
                       </p>
                     </div>
                     <input
@@ -5533,15 +5386,15 @@ export default function AdminDashboard() {
                       disabled={isRestoringLocalSql}
                       className="w-full py-2.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 font-black text-xs border border-blue-200 transition cursor-pointer disabled:opacity-50"
                     >
-                      Chọn File Backup Online...
+                      Chọn File Sao Lưu...
                     </button>
                   </div>
 
-                  {/* CÁCH 3: 1-CLICK CLONE CLOUD VỀ LOCAL */}
+                  {/* CÁCH 2: 1-CLICK CLONE CLOUD VỀ LOCAL */}
                   <div className="p-4 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col justify-between space-y-3">
                     <div className="space-y-1.5">
                       <div className="font-black text-xs text-zinc-900 flex items-center gap-1.5">
-                        <Globe className="w-4 h-4 text-emerald-600" /> 3. 1-Click Clone Cloud
+                        <Globe className="w-4 h-4 text-emerald-600" /> 1-Click Clone Cloud Về Local
                       </div>
                       <p className="text-[11px] text-zinc-500 leading-snug">
                         Kéo 100% dữ liệu từ Supabase Cloud về máy làm CSDL Local (hoàn toàn không ảnh hưởng Cloud).

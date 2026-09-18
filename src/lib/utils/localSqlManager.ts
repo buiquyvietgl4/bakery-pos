@@ -7,7 +7,10 @@ import {
   getSqlModeConfig, 
   saveSqlModeConfig, 
   isLocalMode,
-  applyDataSnapshot
+  applyDataSnapshot,
+  LocalSqlEnvironmentId,
+  getActiveLocalEnv,
+  saveLocalEnvConfig,
 } from '@/lib/utils/sqlModeManager';
 import { supabase } from '@/lib/supabase/client';
 import { db } from '@/lib/db/dexie';
@@ -15,6 +18,11 @@ import { db } from '@/lib/db/dexie';
 const LOCAL_SQL_DB_NAME = 'bakery_local_sql_handle_db';
 const LOCAL_SQL_STORE = 'local_sql_handles';
 const HANDLE_KEY = 'local_sql_dir_handle';
+
+export function getLocalHandleKey(envId?: LocalSqlEnvironmentId): string {
+  const env = envId || getActiveLocalEnv();
+  return `local_sql_dir_handle_${env}`;
+}
 
 // ── 1. QUẢN LÝ DIRECTORY HANDLE TRÊN TRÌNH DUYỆT (INDEXEDDB) ──
 function openLocalSqlHandleDB(): Promise<IDBDatabase> {
@@ -34,13 +42,18 @@ function openLocalSqlHandleDB(): Promise<IDBDatabase> {
   });
 }
 
-export async function storeLocalSqlDirHandle(handle: any): Promise<void> {
+export async function storeLocalSqlDirHandle(handle: any, envId?: LocalSqlEnvironmentId): Promise<void> {
   try {
     const idb = await openLocalSqlHandleDB();
+    const key = getLocalHandleKey(envId);
     return new Promise((resolve, reject) => {
       const tx = idb.transaction(LOCAL_SQL_STORE, 'readwrite');
       const store = tx.objectStore(LOCAL_SQL_STORE);
-      const req = store.put(handle, HANDLE_KEY);
+      const req = store.put(handle, key);
+      // Đồng thời lưu vào HANDLE_KEY chung để tương thích ngược nếu là production
+      if (!envId || envId === 'production') {
+        store.put(handle, HANDLE_KEY);
+      }
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
     });
@@ -49,14 +62,25 @@ export async function storeLocalSqlDirHandle(handle: any): Promise<void> {
   }
 }
 
-export async function getStoredLocalSqlDirHandle(): Promise<any | null> {
+export async function getStoredLocalSqlDirHandle(envId?: LocalSqlEnvironmentId): Promise<any | null> {
   try {
     const idb = await openLocalSqlHandleDB();
+    const key = getLocalHandleKey(envId);
     return new Promise((resolve) => {
       const tx = idb.transaction(LOCAL_SQL_STORE, 'readonly');
       const store = tx.objectStore(LOCAL_SQL_STORE);
-      const req = store.get(HANDLE_KEY);
-      req.onsuccess = () => resolve(req.result || null);
+      const req = store.get(key);
+      req.onsuccess = () => {
+        if (req.result) return resolve(req.result);
+        // Fallback sang HANDLE_KEY cũ nếu là production
+        if (!envId || envId === 'production') {
+          const fallbackReq = store.get(HANDLE_KEY);
+          fallbackReq.onsuccess = () => resolve(fallbackReq.result || null);
+          fallbackReq.onerror = () => resolve(null);
+        } else {
+          resolve(null);
+        }
+      };
       req.onerror = () => resolve(null);
     });
   } catch {
@@ -64,10 +88,10 @@ export async function getStoredLocalSqlDirHandle(): Promise<any | null> {
   }
 }
 
-export async function checkLocalSqlDirPermission(dirHandle?: any): Promise<'granted' | 'prompt' | 'denied' | 'no_handle'> {
+export async function checkLocalSqlDirPermission(dirHandle?: any, envId?: LocalSqlEnvironmentId): Promise<'granted' | 'prompt' | 'denied' | 'no_handle'> {
   if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) return 'no_handle';
   try {
-    const handle = dirHandle || (await getStoredLocalSqlDirHandle());
+    const handle = dirHandle || (await getStoredLocalSqlDirHandle(envId));
     if (!handle) return 'no_handle';
     return await handle.queryPermission({ mode: 'readwrite' });
   } catch {
@@ -75,10 +99,10 @@ export async function checkLocalSqlDirPermission(dirHandle?: any): Promise<'gran
   }
 }
 
-export async function requestLocalSqlDirPermission(dirHandle?: any): Promise<boolean> {
+export async function requestLocalSqlDirPermission(dirHandle?: any, envId?: LocalSqlEnvironmentId): Promise<boolean> {
   if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) return false;
   try {
-    const handle = dirHandle || (await getStoredLocalSqlDirHandle());
+    const handle = dirHandle || (await getStoredLocalSqlDirHandle(envId));
     if (!handle) return false;
     const perm = await handle.requestPermission({ mode: 'readwrite' });
     return perm === 'granted';
@@ -90,7 +114,7 @@ export async function requestLocalSqlDirPermission(dirHandle?: any): Promise<boo
 /**
  * Chọn thư mục lưu CSDL Local trên máy tính (sử dụng File System Access API)
  */
-export async function selectLocalSqlDirectory(): Promise<{ success: boolean; folderName?: string; error?: string }> {
+export async function selectLocalSqlDirectory(envId?: LocalSqlEnvironmentId): Promise<{ success: boolean; folderName?: string; error?: string }> {
   if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) {
     return {
       success: false,
@@ -105,15 +129,16 @@ export async function selectLocalSqlDirectory(): Promise<{ success: boolean; fol
     });
 
     if (dirHandle) {
-      await storeLocalSqlDirHandle(dirHandle);
-      const folderName = dirHandle.name || 'Thư mục Local SQL';
-      saveSqlModeConfig({ localFolderName: folderName });
+      const targetEnv = envId || getActiveLocalEnv();
+      await storeLocalSqlDirHandle(dirHandle, targetEnv);
+      const folderName = dirHandle.name || `Thư mục Local SQL ${targetEnv === 'production' ? 'Chính' : 'Test'}`;
+      saveLocalEnvConfig(targetEnv, { folderName });
 
       // Lập tức xuất dữ liệu khởi tạo vào thư mục vừa chọn
       try {
         const fullData = await gatherFullBakeryData();
         await writeLocalSqlFiles(dirHandle, fullData);
-        saveSqlModeConfig({ lastLocalSyncAt: new Date().toISOString() });
+        saveLocalEnvConfig(targetEnv, { lastSyncAt: new Date().toISOString() });
       } catch (e) {
         console.warn('Lỗi ghi file SQL ban đầu vào thư mục:', e);
       }
@@ -768,13 +793,14 @@ CÁCH KHÔI PHỤC DỮ LIỆU TỪ THƯ MỤC NÀY VÀO PHẦN MỀM POS / ADMI
 export async function autoSyncToLocalSqlFolder(): Promise<boolean> {
   if (!isLocalMode()) return false;
   try {
-    const dirHandle = await getStoredLocalSqlDirHandle();
+    const activeEnv = getActiveLocalEnv();
+    const dirHandle = await getStoredLocalSqlDirHandle(activeEnv);
     if (dirHandle) {
       const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
       if (perm === 'granted') {
         const fullData = await gatherFullBakeryData();
         await writeLocalSqlFiles(dirHandle, fullData);
-        saveSqlModeConfig({ lastLocalSyncAt: new Date().toISOString() });
+        saveLocalEnvConfig(activeEnv, { lastSyncAt: new Date().toISOString() });
         return true;
       }
     }
