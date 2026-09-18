@@ -295,34 +295,85 @@ p_m2.add_run(' và copy dán vào SQL Editor chạy lần lượt đúng theo th
 p_m2.add_run('00001 -> 00016').bold = True
 p_m2.add_run(' (tuyệt đối không chạy nhảy cóc vì các bảng có quan hệ khóa ngoại với nhau).')
 
-# ==================== PHẦN 7: TẠO KHO ẢNH STORAGE BẰNG GIAO DIỆN ====================
+# ==================== PHẦN 7: TẠO KHO ẢNH STORAGE BẰNG GIAO DIỆN & SQL ====================
 h1 = doc.add_heading(level=1)
-r_h1 = h1.add_run('7. Chi Tiết: Kho Lưu Trữ Ảnh Supabase Storage')
+r_h1 = h1.add_run('7. Chi Tiết: Tạo Kho Lưu Trữ Ảnh Riêng 1 GB (Supabase Storage Bucket)')
 r_h1.font.color.rgb = COLOR_PRIMARY
 
 p = doc.add_paragraph()
-p.add_run('Trong file ').font.size = Pt(10.5)
-p.add_run('00016_create_storage_buckets.sql').bold = True
-p.add_run(' (hoặc file tổng hợp schema_full_init.sql), lệnh SQL đã tự động tạo sẵn 2 Bucket:\n').font.size = Pt(10.5)
-p.add_run('• bakery-images: ').bold = True
-p.add_run('Kho lưu trữ ảnh bánh, ảnh khách gửi đơn gấp, ảnh chứng từ chuyển khoản và logo tiệm.\n')
-p.add_run('• product-images: ').bold = True
-p.add_run('Kho phụ phòng ngừa sự cố.\n\n')
-p.add_run('Đồng thời SQL đã cấp sẵn chính sách ').font.size = Pt(10.5)
-p.add_run('Public Read & Upload').bold = True
-p.add_run(' để nhân viên thu ngân và khách hàng đều xem được ảnh mà không bị lỗi 403 Forbidden.\n')
+p.add_run('💡 TẠI SAO PHẢI LƯU ẢNH VÀO KHO STORAGE 1 GB MÀ KHÔNG LƯU VÀO BẢNG SQL?\n').bold = True
+p.add_run('Nền tảng Supabase gói Miễn phí (Free Tier) cung cấp 2 phân vùng bộ nhớ độc lập:\n').font.size = Pt(10.5)
+p.add_run('1. Phân vùng CSDL PostgreSQL (500 MB): ').bold = True
+p.add_run('Chuyên lưu dữ liệu chữ và số (đơn hàng, công thức bánh, tồn kho, khách hàng).\n').font.size = Pt(10.5)
+p.add_run('2. Phân vùng Kho Tệp Tin Storage (1.000 MB / 1 GB): ').bold = True
+p.add_run('Chuyên lưu trữ hình ảnh (ảnh chụp bánh kem thực tế, ảnh mẫu khách gửi, ảnh chứng từ bill chuyển khoản, logo tiệm).\n\n').font.size = Pt(10.5)
+
+add_callout(
+    doc,
+    'Tuyệt đối KHÔNG lưu ảnh trực tiếp dạng Base64 vào bảng SQL, vì mỗi ảnh nặng 1 - 2 MB sẽ làm CSDL 500MB bị đầy rất nhanh!\n'
+    'Bằng cách đưa ảnh vào Kho Storage 1 GB (chứa hơn 10.000 - 20.000 ảnh), bảng SQL chỉ cần lưu link URL ngắn (~100 bytes), giúp CSDL chạy siêu nhẹ và không bao giờ quá tải.',
+    title='QUY TẮC TIẾT KIỆM DUNG LƯỢNG CỐT LÕI',
+    fill_hex='ECFDF5',
+    border_hex='10B981'
+)
+
+p_sql_title = doc.add_paragraph()
+r_sql_t = p_sql_title.add_run('🌟 CÁCH 1: Chạy Bằng Lệnh SQL Tự Động (1-Click trong SQL Editor)\n')
+r_sql_t.bold = True
+r_sql_t.font.color.rgb = COLOR_PRIMARY
+p_sql_title.add_run('Đoạn lệnh SQL dưới đây sẽ tự động tạo Bucket "bakery-images", thiết lập giới hạn 5MB/ảnh và cấp quyền Public Read & Upload cho toàn bộ máy POS và Bếp:\n').font.size = Pt(10.5)
+
+# Bảng hiển thị code SQL tạo Storage
+sql_code_text = (
+    "-- 1. Kích hoạt tiện ích mở rộng uuid\n"
+    "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\";\n\n"
+    "-- 2. Tạo Bucket 'bakery-images' (Công khai, giới hạn 5MB/ảnh)\n"
+    "INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)\n"
+    "VALUES (\n"
+    "  'bakery-images', 'bakery-images', true, 5242880,\n"
+    "  ARRAY['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']\n"
+    ")\n"
+    "ON CONFLICT (id) DO UPDATE SET public = true, file_size_limit = 5242880;\n\n"
+    "-- 3. Cấp quyền XEM CÔNG KHAI và TẢI ẢNH LÊN cho mọi thiết bị\n"
+    "ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;\n\n"
+    "CREATE POLICY \"Public Access Bakery Images\" ON storage.objects\n"
+    "FOR SELECT USING (bucket_id IN ('bakery-images', 'product-images'));\n\n"
+    "CREATE POLICY \"Allow Upload Bakery Images\" ON storage.objects\n"
+    "FOR INSERT WITH CHECK (bucket_id IN ('bakery-images', 'product-images'));\n\n"
+    "CREATE POLICY \"Allow Delete Bakery Images\" ON storage.objects\n"
+    "FOR DELETE USING (bucket_id IN ('bakery-images', 'product-images'));"
+)
+
+tbl_sql = doc.add_table(rows=1, cols=1)
+tbl_sql.alignment = WD_TABLE_ALIGNMENT.CENTER
+c_sql = tbl_sql.cell(0, 0)
+set_cell_background(c_sql, 'F1F5F9')
+c_sql.width = Inches(6.8)
+p_code = c_sql.paragraphs[0]
+p_code.paragraph_format.space_before = Pt(4)
+p_code.paragraph_format.space_after = Pt(4)
+r_code = p_code.add_run(sql_code_text)
+r_code.font.name = 'Consolas'
+r_code.font.size = Pt(8.5)
+r_code.font.color.rgb = RGBColor(15, 23, 42)
+
+doc.add_paragraph().paragraph_format.space_after = Pt(4)
 
 p_extra = doc.add_paragraph()
-p_extra.add_run('Nếu anh/chị muốn kiểm tra hoặc tạo kho ảnh bằng chuột trên giao diện Supabase:\n').font.size = Pt(10.5)
+r_extra_t = p_extra.add_run('🖱️ CÁCH 2: Tạo Bằng Tay Trên Giao Diện Supabase (Thao Tác Chuột)\n')
+r_extra_t.bold = True
+r_extra_t.font.color.rgb = COLOR_SECONDARY
 p_extra.add_run('1. Trên menu bên trái của Supabase, bấm vào mục ').font.size = Pt(10.5)
 p_extra.add_run('Storage').bold = True
-p_extra.add_run(' (biểu tượng chiếc xô / thùng chứa).\n2. Nếu chưa thấy bucket, bấm nút ').font.size = Pt(10.5)
+p_extra.add_run(' (biểu tượng chiếc xô / thùng chứa).\n2. Bấm nút ').font.size = Pt(10.5)
 p_extra.add_run('\"New bucket\"').bold = True
-p_extra.add_run('.\n3. Nhập tên bucket: ').font.size = Pt(10.5)
+p_extra.add_run(' ở góc phải màn hình.\n3. Nhập chính xác tên bucket: ').font.size = Pt(10.5)
 p_extra.add_run('bakery-images').bold = True
-p_extra.add_run(' (chính xác từng chữ thường, có dấu gạch ngang).\n4. BẬT CÔNG TẮC: ').font.size = Pt(10.5)
-p_extra.add_run('\"Public bucket\"').bold = True
-p_extra.add_run(' (để ảnh có thể hiển thị trên màn hình POS và điện thoại).\n5. Bấm nút ').font.size = Pt(10.5)
+p_extra.add_run(' (chính xác từng chữ thường, có dấu gạch ngang).\n4. ').font.size = Pt(10.5)
+p_extra.add_run('BẬT CÔNG TẮC: \"Public bucket\"').bold = True
+p_extra.add_run(' sang màu xanh lá (bắt buộc bật để ảnh có thể hiển thị trên màn hình POS và điện thoại).\n5. Mục ').font.size = Pt(10.5)
+p_extra.add_run('File size limit:').bold = True
+p_extra.add_run(' Nhập 5MB. Bấm nút ').font.size = Pt(10.5)
 p_extra.add_run('\"Save\"').bold = True
 p_extra.add_run(' là hoàn thành!')
 

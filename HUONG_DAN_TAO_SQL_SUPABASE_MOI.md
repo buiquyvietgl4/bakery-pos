@@ -103,20 +103,100 @@ Nếu muốn kiểm tra từng phần, anh/chị mở từng file trong thư m�
 
 ---
 
-## 7. Chi Tiết: Kho Lưu Trữ Ảnh Supabase Storage (Bucket `bakery-images`)
+## 7. Chi Tiết: Tạo Kho Lưu Trữ Ảnh Riêng 1 GB (Supabase Storage Bucket)
 
-### Cơ chế tự động bằng SQL:
-Trong file **`00016_create_storage_buckets.sql`** (đã nằm sẵn trong file master `schema_full_init.sql`), lệnh SQL sẽ tự động tạo 2 Bucket:
-- **`bakery-images`**: Kho chính chứa ảnh menu bánh, ảnh khách gửi đơn gấp, ảnh chứng từ chuyển khoản và logo tiệm.
-- **`product-images`**: Kho dự phòng.
-- SQL cũng đã cấu hình tự động quyền **Public Read & Upload** để mọi thiết bị đều xem được ảnh mà không bị lỗi 403 Forbidden.
+### 💡 Tại sao cần tạo kho lưu trữ ảnh riêng 1 GB?
+Nền tảng Supabase gói Miễn phí (Free Tier) cung cấp **2 phân vùng bộ nhớ hoàn toàn độc lập**:
+1. **Phân vùng CSDL PostgreSQL (Database - 500 MB):** Chuyên dùng để lưu dữ liệu văn bản/số (đơn hàng, hóa đơn, tồn kho nguyên liệu, công thức bánh, thông tin khách hàng).
+2. **Phân vùng Kho Tệp Tin (Supabase Storage - 1.000 MB / 1 GB):** Chuyên dùng để lưu trữ hình ảnh (ảnh chụp bánh kem thực tế, ảnh mẫu bánh khách đặt, logo tiệm bánh, ảnh chứng từ bill chuyển khoản).
 
-### Cách kiểm tra hoặc tạo bằng chuột trên giao diện Supabase:
-1. Trên menu bên trái của Supabase, bấm vào mục **Storage** (biểu tượng chiếc xô / thùng chứa).
-2. Nếu chưa có bucket `bakery-images`, bấm nút **"New bucket"**.
-3. Nhập tên bucket: **`bakery-images`** *(chữ thường, có dấu gạch ngang)*.
-4. **BẬT CÔNG TẮC:** **"Public bucket"** *(bắt buộc bật để hiển thị được ảnh)*.
-5. Bấm nút **"Save"**.
+> [!IMPORTANT]
+> **Quy Tắc Tiết Kiệm Dung Lượng Cốt Lõi:**
+> Tuyệt đối **không lưu ảnh trực tiếp (dạng Base64) vào bảng SQL**, vì mỗi ảnh nặng 1 - 2 MB sẽ làm CSDL 500MB bị đầy rất nhanh!
+> Thay vào đó, toàn bộ file ảnh gốc được đưa vào **Kho Storage 1 GB** (đủ sức chứa **hơn 10.000 - 20.000 bức ảnh bánh**). Bảng SQL chỉ lưu một đường link URL ngắn (~100 bytes), giúp database chạy siêu mượt và không bao giờ lo quá tải.
+
+---
+
+### 🌟 CÁCH 1: Chạy Bằng Lệnh SQL Tự Động (Nhanh Nhất - Khuyên Dùng)
+
+Đoạn SQL này đã được tích hợp sẵn ở cuối file master **`supabase/schema_full_init.sql`** và file migration **`00016_create_storage_buckets.sql`**. Nếu anh/chị muốn chạy riêng lẻ cho kho ảnh, chỉ cần mở **SQL Editor** trên Supabase, copy đoạn code bên dưới và bấm **Run**:
+
+```sql
+-- ============================================================================
+-- LỆNH SQL TẠO KHO LƯU TRỮ ẢNH RIÊNG 1 GB TRÊN SUPABASE
+-- ============================================================================
+
+-- 1. Kích hoạt tiện ích mở rộng uuid
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+-- 2. Tạo Bucket chính "bakery-images" (Công khai, giới hạn 5MB/ảnh)
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'bakery-images',
+  'bakery-images',
+  true,
+  5242880, -- Giới hạn tối đa 5MB mỗi ảnh để khai thác tối ưu kho 1GB
+  ARRAY['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = true,
+  file_size_limit = 5242880,
+  allowed_mime_types = ARRAY['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+
+-- 3. Tạo Bucket dự phòng "product-images"
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'product-images',
+  'product-images',
+  true,
+  5242880,
+  ARRAY['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif']
+)
+ON CONFLICT (id) DO UPDATE SET
+  public = true,
+  file_size_limit = 5242880,
+  allowed_mime_types = ARRAY['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/gif'];
+
+-- 4. Bật bảo mật RLS cho bảng quản lý tệp tin storage.objects
+ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
+
+-- 5. Cấp quyền XEM ẢNH CÔNG KHAI (SELECT) cho máy POS, Bếp và điện thoại khách hàng
+DROP POLICY IF EXISTS "Public Access Bakery Images" ON storage.objects;
+CREATE POLICY "Public Access Bakery Images"
+ON storage.objects FOR SELECT
+USING (bucket_id IN ('bakery-images', 'product-images'));
+
+-- 6. Cấp quyền TẢI ẢNH LÊN (INSERT) từ giao diện thu ngân và thợ làm bánh
+DROP POLICY IF EXISTS "Allow Upload Bakery Images" ON storage.objects;
+CREATE POLICY "Allow Upload Bakery Images"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id IN ('bakery-images', 'product-images'));
+
+-- 7. Cấp quyền CẬP NHẬT (UPDATE) & XÓA ẢNH (DELETE) khi đổi mẫu bánh hoặc xóa đơn
+DROP POLICY IF EXISTS "Allow Update Bakery Images" ON storage.objects;
+CREATE POLICY "Allow Update Bakery Images"
+ON storage.objects FOR UPDATE
+USING (bucket_id IN ('bakery-images', 'product-images'));
+
+DROP POLICY IF EXISTS "Allow Delete Bakery Images" ON storage.objects;
+CREATE POLICY "Allow Delete Bakery Images"
+ON storage.objects FOR DELETE
+USING (bucket_id IN ('bakery-images', 'product-images'));
+```
+
+---
+
+### 🖱️ CÁCH 2: Tạo Bằng Tay Trên Giao Diện Supabase (Thao Tác Chuột)
+
+Nếu không dùng lệnh SQL, anh/chị có thể thao tác trực tiếp trên giao diện quản trị Supabase Dashboard:
+
+1. Trên thanh menu bên trái của Supabase, nhấp vào mục **Storage** (biểu tượng chiếc xô / thùng chứa).
+2. Bấm nút **"New bucket"** ở góc phải màn hình.
+3. Nhập chính xác tên bucket: **`bakery-images`** *(chữ thường, có dấu gạch ngang ở giữa)*.
+4. **BƯỚC QUAN TRỌNG:** Gạt bật công tắc **"Public bucket"** sang màu xanh lá *(bắt buộc bật để ảnh có thể hiển thị công khai trên màn hình POS, máy tính bảng Bếp và điện thoại)*.
+5. Mục **File size limit (Giới hạn kích thước file):** Nhập `5MB` (hoặc để trống mặc định).
+6. Mục **Allowed MIME types:** Có thể chọn các định dạng ảnh phổ biến `image/jpeg, image/png, image/webp`.
+7. Bấm nút **"Save"** để hoàn tất tạo kho lưu trữ.
 
 ---
 
