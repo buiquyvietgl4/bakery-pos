@@ -504,6 +504,7 @@ export default function POSPage() {
   } | null>(null);
 
   const prevUrgentCountRef = useRef<number>(0);
+  const recentlyCompletedOrdersRef = useRef<Map<string, number>>(new Map());
 
   // ── CAKE STICKER LABEL MODAL STATE ──
   const [isStickerModalOpen, setIsStickerModalOpen] = useState(false);
@@ -822,12 +823,14 @@ export default function POSPage() {
         };
       });
       const deletedIds = getDeletedProductIds();
-      DEFAULT_BAKERY_PRODUCTS.forEach((def) => {
-        const isDeleted = deletedIds.has(def.id) || (def.name && deletedIds.has(def.name.toLowerCase().trim()));
-        if (!isDeleted && !currentProducts.some((p) => p.id === def.id || (p.name && def.name && p.name.toLowerCase().trim() === def.name.toLowerCase().trim()))) {
-          currentProducts.push(def);
-        }
-      });
+      if (currentProducts.length === 0) {
+        DEFAULT_BAKERY_PRODUCTS.forEach((def) => {
+          const isDeleted = deletedIds.has(def.id) || (def.name && deletedIds.has(def.name.toLowerCase().trim()));
+          if (!isDeleted) {
+            currentProducts.push(def);
+          }
+        });
+      }
       currentProducts = filterActiveProducts(currentProducts);
 
       setProducts(currentProducts);
@@ -973,6 +976,12 @@ export default function POSPage() {
       return;
     }
 
+    // Khóa an toàn: Ngăn chặn polling ghi đè lại trạng thái trong 60 giây
+    const now = Date.now();
+    if (orderNum) recentlyCompletedOrdersRef.current.set(orderNum, now);
+    if (orderId) recentlyCompletedOrdersRef.current.set(String(orderId), now);
+    if (linkedBakeOrderNum) recentlyCompletedOrdersRef.current.set(linkedBakeOrderNum, now);
+
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('bakery_orders');
@@ -1087,6 +1096,55 @@ export default function POSPage() {
       })
     );
 
+    setInvoicesList((prev) =>
+      prev.map((inv: any) => {
+        if (
+          inv.id === orderId ||
+          inv.local_id === orderId ||
+          inv.order_number === orderId ||
+          inv.orderNumber === orderId ||
+          inv.order_number === orderNum ||
+          inv.orderNumber === orderNum ||
+          inv.order_number === linkedBakeOrderNum ||
+          inv.orderNumber === linkedBakeOrderNum
+        ) {
+          return {
+            ...inv,
+            ...updatedOrder,
+          };
+        }
+        return inv;
+      })
+    );
+
+    // Cập nhật trực tiếp lên Supabase SQL với các cột hợp lệ
+    if (orderId || orderNum) {
+      const matchFilter = orderNum ? { order_number: orderNum } : { id: orderId };
+      supabase
+        .from('orders')
+        .update({
+          status: 'completed',
+          notes: updatedOrder.notes,
+          updated_at: new Date().toISOString(),
+        })
+        .match(matchFilter)
+        .then(({ error }) => {
+          if (error) {
+            console.warn('Lỗi update status completed trên Supabase:', error);
+          }
+        });
+      if (linkedBakeOrderNum) {
+        supabase
+          .from('orders')
+          .update({
+            status: 'completed',
+            updated_at: new Date().toISOString(),
+          })
+          .match({ order_number: linkedBakeOrderNum })
+          .then(() => {});
+      }
+    }
+
     syncOrderToSupabase(updatedOrder, 'completed');
     broadcastOrderStatusUpdate(orderNum, 'completed', updatedOrder);
     sendTelegramDeliveredSuccessAlert(updatedOrder).catch(() => {});
@@ -1166,7 +1224,16 @@ export default function POSPage() {
                     const key = p.order_number || p.orderNumber || p.id;
                     if (key) {
                       const exist = poMap.get(key);
-                      poMap.set(key, { ...exist, ...p });
+                      const isCompleted = isOrderCompletedOrCancelled(exist) || isOrderCompletedOrCancelled(p);
+                      const mergedStatus = isCompleted ? 'completed' : (p.status || exist?.status);
+                      poMap.set(key, {
+                        ...exist,
+                        ...p,
+                        status: mergedStatus,
+                        remaining_amount: isCompleted ? 0 : (p.remaining_amount ?? exist?.remaining_amount ?? 0),
+                        remainingAmount: isCompleted ? 0 : (p.remainingAmount ?? exist?.remainingAmount ?? 0),
+                        payment_status: isCompleted ? 'paid' : (p.payment_status ?? exist?.payment_status ?? 'pending'),
+                      });
                     }
                   });
                   mergedPos = Array.from(poMap.values());
@@ -1189,63 +1256,46 @@ export default function POSPage() {
     if (typeof navigator === 'undefined' || !navigator.onLine) return;
     if (typeof document !== 'undefined' && document.hidden) return;
     try {
-      const [resCreated, resUpdated] = await Promise.all([
+      const orderFields = `
+        id,
+        order_number,
+        order_type,
+        status,
+        created_at,
+        updated_at,
+        preorder_pickup_at,
+        subtotal,
+        discount_amount,
+        total_amount,
+        notes,
+        customer_name,
+        customer_phone,
+        cake_message,
+        order_items (
+          id,
+          product_name_snapshot,
+          quantity,
+          unit_price,
+          line_total,
+          notes
+        )
+      `;
+      const [resCreated, resUpdated, resActive] = await Promise.all([
         supabase
           .from('orders')
-          .select(`
-            id,
-            order_number,
-            order_type,
-            status,
-            created_at,
-            updated_at,
-            preorder_pickup_at,
-            subtotal,
-            discount_amount,
-            total_amount,
-            notes,
-            customer_name,
-            customer_phone,
-            cake_message,
-            order_items (
-              id,
-              product_name_snapshot,
-              quantity,
-              unit_price,
-              line_total,
-              notes
-            )
-          `)
+          .select(orderFields)
           .order('created_at', { ascending: false })
           .limit(30),
         supabase
           .from('orders')
-          .select(`
-            id,
-            order_number,
-            order_type,
-            status,
-            created_at,
-            updated_at,
-            preorder_pickup_at,
-            subtotal,
-            discount_amount,
-            total_amount,
-            notes,
-            customer_name,
-            customer_phone,
-            cake_message,
-            order_items (
-              id,
-              product_name_snapshot,
-              quantity,
-              unit_price,
-              line_total,
-              notes
-            )
-          `)
+          .select(orderFields)
           .order('updated_at', { ascending: false })
           .limit(30),
+        supabase
+          .from('orders')
+          .select(orderFields)
+          .in('status', ['pending', 'preparing', 'ready'])
+          .limit(50),
       ]);
 
       const sbOrders = new Map<string, any>();
@@ -1253,6 +1303,9 @@ export default function POSPage() {
         if (o && o.order_number) sbOrders.set(o.order_number, o);
       });
       (resUpdated.data || []).forEach((o: any) => {
+        if (o && o.order_number) sbOrders.set(o.order_number, o);
+      });
+      (resActive.data || []).forEach((o: any) => {
         if (o && o.order_number) sbOrders.set(o.order_number, o);
       });
 
@@ -1275,7 +1328,13 @@ export default function POSPage() {
         const isSbParentCompleted = parentOrderNum && sbOrders.get(parentOrderNum) && isOrderCompletedOrCancelled(sbOrders.get(parentOrderNum));
         const finalStatus = (isSbCompleted || isSbParentCompleted) ? 'completed' : so.status;
 
+        const lockTime = recentlyCompletedOrdersRef.current.get(orderNum) || (exist ? recentlyCompletedOrdersRef.current.get(String(exist.id)) : undefined);
+        const isRecentlyCompleted = lockTime && (Date.now() - lockTime < 60000);
+
         if (!exist) {
+          if (isRecentlyCompleted && finalStatus !== 'completed') {
+            return;
+          }
           const newLocalOrder = {
             id: so.id,
             orderNumber: so.order_number,
@@ -1304,6 +1363,10 @@ export default function POSPage() {
           localMap.set(orderNum, newLocalOrder);
           hasChange = true;
         } else if (exist.status !== finalStatus) {
+          if (isRecentlyCompleted && finalStatus !== 'completed') {
+            // Đơn vừa được POS hoàn tất trong 60s, không để polling đè lại trạng thái cũ
+            return;
+          }
           exist.status = finalStatus;
           if (finalStatus === 'completed') {
             exist.remaining_amount = 0;
@@ -1473,6 +1536,29 @@ export default function POSPage() {
                     };
                   }
                   return p;
+                })
+              );
+
+              setInvoicesList((prev) =>
+                prev.map((inv: any) => {
+                  const isMatch =
+                    matchNumbers.has(inv.order_number) ||
+                    matchNumbers.has(inv.orderNumber) ||
+                    matchNumbers.has(inv.id) ||
+                    matchNumbers.has(String(inv.id));
+                  if (isMatch) {
+                    const isCompleted = payload.status === 'completed' || payload.status === 'delivered';
+                    return {
+                      ...inv,
+                      ...(payload.order_data || {}),
+                      status: payload.status,
+                      remaining_amount: isCompleted ? 0 : (payload.order_data?.remaining_amount ?? inv.remaining_amount ?? 0),
+                      remainingAmount: isCompleted ? 0 : (payload.order_data?.remainingAmount ?? inv.remainingAmount ?? 0),
+                      payment_status: isCompleted ? 'paid' : (payload.order_data?.payment_status || inv.payment_status),
+                      updated_at: payload.updated_at || new Date().toISOString(),
+                    };
+                  }
+                  return inv;
                 })
               );
             } catch {}
@@ -8040,6 +8126,7 @@ export default function POSPage() {
         onCompleteOrder={handleCompleteReadyOrder}
         onOpenSticker={handleOpenReadySticker}
         onOpenDetail={(o) => setPosViewingOrderDetail(o)}
+        onSyncCloud={syncOrdersFromSupabase}
       />
 
       {/* ── MODAL ĐẶT BÁNH SINH NHẬT THEO CƠ CHẾ FLOWCHART MỚI ── */}

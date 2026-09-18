@@ -237,18 +237,13 @@ export async function POST(req: NextRequest) {
           // Tìm theo order_number chính xác hoặc chứa mã đơn
           const { data: orders } = await supabase
             .from('orders')
-            .select('id, order_number, total_amount, deposit_amount, remaining_amount, payment_status, status, notes')
+            .select('id, order_number, total_amount, status, notes')
             .or(`order_number.eq.${cleanCode},order_number.ilike.%${cleanCode}%`)
             .limit(1);
 
           if (orders && orders.length > 0) {
             matchedOrder = orders[0];
             matchedOrderNumber = matchedOrder.order_number;
-
-            // Tính toán cập nhật trạng thái thanh toán
-            const total = Number(matchedOrder.total_amount || 0);
-            const remaining = Number(matchedOrder.remaining_amount || 0);
-            const isFullPayment = tx.amount >= (remaining > 0 ? remaining : total);
 
             const updatedNotes = matchedOrder.notes
               ? `${matchedOrder.notes}\n[AutoBank ${tx.gateway}]: Nhận ${tx.amount.toLocaleString('vi-VN')}₫ (GD: ${tx.transactionId || 'CK'})`
@@ -257,10 +252,6 @@ export async function POST(req: NextRequest) {
             await supabase
               .from('orders')
               .update({
-                payment_status: 'paid',
-                payment_method: 'transfer',
-                remaining_amount: isFullPayment ? 0 : Math.max(0, remaining - tx.amount),
-                deposit_amount: remaining > 0 ? Number(matchedOrder.deposit_amount || 0) + tx.amount : matchedOrder.deposit_amount,
                 notes: updatedNotes,
                 updated_at: new Date().toISOString(),
               })

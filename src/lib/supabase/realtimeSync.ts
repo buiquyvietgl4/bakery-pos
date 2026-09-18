@@ -1125,10 +1125,8 @@ export async function syncOrderToSupabase(
       status: nextStatus,
       updated_at: new Date().toISOString(),
     };
-    if (nextStatus === 'completed') {
-      updatePayload.remaining_amount = 0;
-      updatePayload.payment_status = 'paid';
-    }
+    // Lưu ý: Bảng orders trên Supabase PostgreSQL không có các cột remaining_amount / payment_status.
+    // Thông tin thanh toán được lưu trữ trong notes hoặc bảng payments.
     if (order.notes) {
       updatePayload.notes = order.notes;
     }
@@ -1138,6 +1136,10 @@ export async function syncOrderToSupabase(
       .update(updatePayload)
       .in('order_number', Array.from(targetNumbers))
       .select('id, order_number');
+
+    if (updateErr) {
+      console.warn('Lỗi update orders Supabase:', updateErr);
+    }
 
     if (order.id && isValidUUID(order.id)) {
       await supabase.from('orders').update(updatePayload).eq('id', order.id);
@@ -1503,8 +1505,8 @@ export function parseOrderBakeShortage(order: any): OrderBakeShortageInfo {
   );
 
   // 2. Trích xuất regex từ notes nếu có tag chờ làm bù
-  // Khớp với [⏳ CHỜ BẾP LÀM 3 CÁI (ĐÃ CÓ SẴN 7/10 CÁI)] hoặc [⏳ CHỜ BẾP LÀM 3 CÁI (ĐÃ CÓ SẴN 7 CÁI)] hoặc CHỜ BẾP LÀM 3 CÁI
-  const matchBake = isExplicitlyDone ? null : notes.match(/CHỜ BẾP LÀM\s*(\d+)\s*CÁI(?:\s*\(ĐÃ CÓ SẴN\s*(\d+)(?:\/(\d+))?\s*CÁI\))?/i);
+  // Khớp với [⏳ CHỜ BẾP LÀM 3 CÁI (ĐÃ CÓ SẴN 7/10 CÁI)] hoặc [⏳ CẦN BẾP LÀM 3 CÁI (ĐÃ CÓ SẴN 9 CÁI)] hoặc CHỜ/CẦN BẾP LÀM 3 CÁI
+  const matchBake = isExplicitlyDone ? null : notes.match(/(?:CHỜ|CẦN)\s+BẾP\s+LÀM\s*(\d+)\s*CÁI(?:\s*\(ĐÃ CÓ SẴN\s*(\d+)(?:\/(\d+))?\s*CÁI\))?/i);
 
   let needBakeQty = 0;
   if (!isExplicitlyDone) {

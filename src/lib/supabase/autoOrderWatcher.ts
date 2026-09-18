@@ -402,7 +402,7 @@ class AutoOrderWatcher {
               try {
                 const { data: sbCheck } = await supabase
                   .from('orders')
-                  .select('status, delivery_status')
+                  .select('status')
                   .eq('order_number', order.order_number)
                   .maybeSingle();
 

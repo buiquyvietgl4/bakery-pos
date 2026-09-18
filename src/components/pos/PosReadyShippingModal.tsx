@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { 
   X, Truck, MapPin, Phone, User, Clock, Cake, Package, 
   CheckCircle2, Banknote, Eye, Tag, AlertTriangle, Search,
-  Store, Copy, Check, Sparkles, ExternalLink
+  Store, Copy, Check, Sparkles, ExternalLink, RefreshCw
 } from 'lucide-react';
 import { formatPickupDateTime, parsePreorderFromNotes, parseOrderBakeShortage } from '@/lib/supabase/realtimeSync';
 import { getDeliveryUrgency, sortPreordersByUrgency } from '@/lib/utils/deliveryAlerts';
@@ -20,6 +20,7 @@ export interface PosReadyShippingModalProps {
   onCompleteOrder: (order: any, method: 'cash' | 'bank_transfer', proofImageBase64?: string) => void;
   onOpenSticker: (order: any) => void;
   onOpenDetail: (order: any) => void;
+  onSyncCloud?: () => Promise<void> | void;
 }
 
 export const PosReadyShippingModal: React.FC<PosReadyShippingModalProps> = ({
@@ -31,7 +32,9 @@ export const PosReadyShippingModal: React.FC<PosReadyShippingModalProps> = ({
   onCompleteOrder,
   onOpenSticker,
   onOpenDetail,
+  onSyncCloud,
 }) => {
+  const [isSyncing, setIsSyncing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'shipping' | 'pickup'>('all');
   const [deliveryPaymentOrder, setDeliveryPaymentOrder] = useState<any | null>(null);
@@ -127,6 +130,26 @@ export const PosReadyShippingModal: React.FC<PosReadyShippingModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2 self-end sm:self-auto">
+            {onSyncCloud && (
+              <button
+                type="button"
+                onClick={async () => {
+                  setIsSyncing(true);
+                  try {
+                    await onSyncCloud();
+                  } finally {
+                    setTimeout(() => setIsSyncing(false), 600);
+                  }
+                }}
+                disabled={isSyncing}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-950/80 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-700/60 text-xs font-bold transition cursor-pointer shadow-xs disabled:opacity-50"
+                title="Lấy dữ liệu mới nhất từ CSDL máy chủ/Cloud"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? 'Đang tải...' : 'Đồng bộ Cloud'}</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={onClose}

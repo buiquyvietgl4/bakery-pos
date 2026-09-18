@@ -471,10 +471,9 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
           import_price: decoded.import_price || existing.import_price,
           barcode: decoded.barcode || existing.barcode,
         });
-      } else {
-        // Giữ lại sản phẩm local và đẩy lên Supabase ngầm
+        // Giữ lại sản phẩm local trong bộ nhớ cache nếu cần, TUYỆT ĐỐI KHÔNG tự động đẩy lên Supabase SQL ngầm
+        // Chỉ lưu trên giao diện máy này; chỉ đẩy lên CSDL khi người dùng chủ động bấm Thêm/Sửa trong Admin
         productMap.set(key, decoded);
-        persistProductToSupabase(decoded).catch(console.error);
       }
     }
   }

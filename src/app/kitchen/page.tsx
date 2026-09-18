@@ -798,10 +798,8 @@ export default function KitchenPage() {
         const rawLocal = localStorage.getItem('bakery_orders');
 
         if (!rawLocal && !hasSeeded) {
-          // Lần đầu mở ứng dụng: Khởi tạo 2 đơn mẫu vào localStorage
-          localStorage.setItem('bakery_orders', JSON.stringify(INITIAL_DEMO_ORDERS));
           localStorage.setItem('bakery_kds_seeded', 'true');
-          localOrders = [...INITIAL_DEMO_ORDERS];
+          localOrders = [];
         } else if (rawLocal) {
           try {
             const parsed = JSON.parse(rawLocal);
@@ -927,23 +925,8 @@ export default function KitchenPage() {
               if (so.order_number) sbMap.set(so.order_number, so);
             });
 
-            // 🔄 TỰ ĐỘNG ĐẨY BÙ (AUTO-RECONCILE): Nếu máy này có đơn active trong localOrders mà Supabase chưa có, tự động đẩy bù lên Supabase!
-            const unsyncedActiveOrders = localOrders.filter((lo) =>
-              lo && lo.order_number &&
-              (lo.status === 'pending' || lo.status === 'preparing' || lo.status === 'ready') &&
-              !sbMap.has(lo.order_number) &&
-              !reconciledOrdersRef.current.has(lo.order_number)
-            );
-            if (!isReconcileLocked() && unsyncedActiveOrders.length > 0) {
-              unsyncedActiveOrders.forEach((lo) => {
-                reconciledOrdersRef.current.add(lo.order_number);
-                syncOrderToSupabase(lo, lo.status as any).catch((err) => console.warn('Lỗi auto-reconcile:', err));
-              });
-            }
-
-            // Gộp đơn: Trạng thái từ Supabase luôn được ưu tiên cao nhất
-            // Nếu một đơn đã được điện thoại bấm sang "preparing" hoặc "completed" trên Supabase,
-            // máy tính sẽ tự động cập nhật theo trạng thái mới nhất đó!
+            // TẤT CẢ MÁY DÙNG CHUNG CSDL CHỦ: Không tự ý quét đẩy đơn từ trình duyệt cục bộ lên CSDL.
+            // Đơn hàng chỉ được tạo khi có giao dịch mua thật tại POS.
             const mergedMap = new Map<string, KDSOrder>();
 
             // 1. Đưa các đơn cục bộ vào trước
