@@ -329,6 +329,19 @@ export function saveProductMetadata(id: string, name: string, meta: any): void {
   } catch {}
 }
 
+function toValidSupabaseUuid(id: string): string {
+  if (!id) return '00000000-0000-4000-8000-000000000001';
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(id)) return id;
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = ((hash << 5) - hash) + id.charCodeAt(i);
+    hash |= 0;
+  }
+  const hex = Math.abs(hash).toString(16).padStart(12, '0').slice(-12);
+  return `00000000-0000-4000-8000-${hex}`;
+}
+
 /**
  * Lưu sản phẩm lên Supabase một cách an toàn và chống lỗi schema.
  */
@@ -339,6 +352,7 @@ export async function persistProductToSupabase(product: any): Promise<{ success:
   const isImported = isImportedProduct(product);
   const baseCost = Number(product.base_cost_price ?? product.import_price ?? 0);
   const sellPrice = Number(product.selling_price ?? 0);
+  const supabaseUuid = toValidSupabaseUuid(product.id);
 
   const metaData = {
     product_type: product.product_type || (isImported ? 'imported' : 'produced'),
@@ -357,7 +371,7 @@ export async function persistProductToSupabase(product: any): Promise<{ success:
 
   // 1. Thử insert/upsert với đầy đủ các cột (nếu DB đã có schema mới)
   const fullPayload: any = {
-    id: product.id,
+    id: supabaseUuid,
     name: product.name,
     category: product.category || (isImported ? 'Bánh nhập về bán' : 'Bánh tiệm làm'),
     selling_price: sellPrice,
@@ -386,7 +400,7 @@ export async function persistProductToSupabase(product: any): Promise<{ success:
   // 2. Fallback: Lưu các cột tiêu chuẩn của Supabase, đóng gói metadata vào image_url
   const encodedImageUrl = encodeProductImageUrl(product.image_url, metaData);
   const standardPayload: any = {
-    id: product.id,
+    id: supabaseUuid,
     name: product.name,
     category: product.category || (isImported ? 'Bánh nhập về bán' : 'Bánh tiệm làm'),
     selling_price: sellPrice,

@@ -92,6 +92,18 @@ export default function LocalSqlConfigSection() {
   }, []);
 
   // Đồng bộ ô input đường dẫn khi chọn tab môi trường khác
+  const [networkInfo, setNetworkInfo] = useState<{ ip: string; port: number; posUrl: string } | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/system/network-info')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setNetworkInfo(d);
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const envConfig = config.localEnvs[selectedEnvId];
     if (envConfig) {
@@ -658,6 +670,37 @@ export default function LocalSqlConfigSection() {
           <Wifi className="w-4 h-4 text-blue-700" />
           <span>Cơ Chế Phân Bố Dữ Liệu Khi Chạy Mạng LAN (Các Máy Con Kết Nối Qua Port 3000)</span>
         </div>
+
+        {/* THẺ HIỂN THỊ ĐỊA CHỈ TRUY CẬP ĐIỆN THOẠI TRỰC TIẾP */}
+        {networkInfo && networkInfo.ip !== '127.0.0.1' && (
+          <div className="p-3 bg-white rounded-2xl border border-blue-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in">
+            <div className="flex items-center gap-3">
+              <span className="w-9 h-9 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Smartphone className="w-5 h-5" />
+              </span>
+              <div>
+                <div className="text-[10px] font-black uppercase text-blue-600 tracking-wider">ĐỊA CHỈ KẾT NỐI CHO ĐIỆN THOẠI / IPAD (CÙNG WIFI):</div>
+                <div className="text-sm sm:text-base font-black text-zinc-900 font-mono tracking-tight flex items-center gap-2">
+                  <span>{networkInfo.posUrl}</span>
+                </div>
+                <div className="text-[11px] text-zinc-500 font-medium">Mở Safari hoặc Chrome trên điện thoại và nhập đúng địa chỉ này để bán hàng.</div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(networkInfo.posUrl);
+                setCopiedUrl(true);
+                setTimeout(() => setCopiedUrl(false), 2500);
+              }}
+              className="px-4 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 font-black text-xs flex items-center justify-center gap-1.5 transition cursor-pointer shrink-0 active:scale-95"
+            >
+              {copiedUrl ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4 text-blue-600" />}
+              <span>{copiedUrl ? 'Đã Sao Chép Link!' : 'Sao Chép Địa Chỉ'}</span>
+            </button>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-[11px] leading-relaxed text-zinc-700">
           <div className="p-3 bg-white/80 rounded-2xl border border-blue-100 space-y-1">
             <div className="font-bold text-blue-900 flex items-center gap-1">
