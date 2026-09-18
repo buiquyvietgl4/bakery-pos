@@ -92,6 +92,35 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
     canvasHeight: number;
   } | null>(null);
 
+  // Tỉ lệ scale canvas trên màn hình điện thoại (chuẩn thiết kế 360px)
+  const [canvasScale, setCanvasScale] = useState(1);
+
+  // Tự động tính toán tỉ lệ canvas trên mobile để font chữ & các phần tử luôn vừa khít
+  useEffect(() => {
+    if (!isOpen) return;
+    const updateScale = () => {
+      if (canvasRef.current) {
+        const rect = canvasRef.current.getBoundingClientRect();
+        if (rect.width > 0) {
+          // 360px là chiều rộng chuẩn thiết kế của canvas tem
+          setCanvasScale(Math.min(1, rect.width / 360));
+        }
+      }
+    };
+    updateScale();
+    const timer = setTimeout(updateScale, 60);
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(updateScale) : null;
+    if (ro && canvasRef.current) {
+      ro.observe(canvasRef.current);
+    }
+    window.addEventListener('resize', updateScale);
+    return () => {
+      clearTimeout(timer);
+      if (ro) ro.disconnect();
+      window.removeEventListener('resize', updateScale);
+    };
+  }, [isOpen, stickerLabelSize, activeTab]);
+
   const branding = getStoreBranding();
 
   // Load config khi mở modal hoặc đổi size
@@ -583,55 +612,55 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-[10000020] bg-black/70 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-      <div className="bg-white rounded-3xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl space-y-4 max-h-[96dvh] flex flex-col border border-zinc-200 text-zinc-900 overflow-hidden">
+      <div className="bg-white rounded-2xl sm:rounded-3xl max-w-5xl w-full p-2.5 sm:p-6 shadow-2xl space-y-3 sm:space-y-4 max-h-[96dvh] flex flex-col border border-zinc-200 text-zinc-900 overflow-hidden">
         
         {/* ── HEADER MODAL ── */}
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-100 shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-amber-200">
-              <Sparkles className="w-5 h-5" />
+        <div className="flex items-center justify-between pb-2.5 sm:pb-3 border-b border-zinc-100 shrink-0">
+          <div className="flex items-center gap-2 sm:gap-2.5">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 text-white flex items-center justify-center shadow-md shadow-amber-200 shrink-0">
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
             </div>
             <div>
-              <h3 className="font-black text-base sm:text-xl text-zinc-900 flex items-center gap-2">
+              <h3 className="font-black text-sm sm:text-xl text-zinc-900 flex items-center gap-2">
                 Trình Thiết Kế Mẫu In Kéo Thả
               </h3>
-              <p className="text-xs text-zinc-500 font-medium">Tự chọn nội dung hiển thị & kéo thả vị trí chữ theo ý bạn</p>
+              <p className="text-[11px] sm:text-xs text-zinc-500 font-medium">Tự chọn nội dung hiển thị & kéo thả vị trí chữ theo ý bạn</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-zinc-400 hover:text-zinc-700 p-2 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
+            className="text-zinc-400 hover:text-zinc-700 p-1.5 sm:p-2 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* ── TABS CHUYỂN ĐỔI: TEM DÁN HOẶC HÓA ĐƠN ── */}
-        <div className="flex items-center justify-between bg-zinc-100/80 p-1.5 rounded-2xl border border-zinc-200 shrink-0">
-          <div className="flex gap-1">
+        <div className="flex items-center justify-between bg-zinc-100/80 p-1 sm:p-1.5 rounded-2xl border border-zinc-200 shrink-0">
+          <div className="flex gap-1 w-full sm:w-auto">
             <button
               type="button"
               onClick={() => setActiveTab('sticker')}
-              className={`px-4 py-2 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer ${
+              className={`flex-1 sm:flex-initial px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer ${
                 activeTab === 'sticker'
                   ? 'bg-amber-600 text-white shadow-sm'
                   : 'text-zinc-600 hover:bg-white/60'
               }`}
             >
-              <Tag className="w-4 h-4" />
-              <span>Tem Dán Hộp Bánh (Sticker)</span>
+              <Tag className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">Tem Dán (Sticker)</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('receipt')}
-              className={`px-4 py-2 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition cursor-pointer ${
+              className={`flex-1 sm:flex-initial px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 transition cursor-pointer ${
                 activeTab === 'receipt'
                   ? 'bg-amber-600 text-white shadow-sm'
                   : 'text-zinc-600 hover:bg-white/60'
               }`}
             >
-              <Receipt className="w-4 h-4" />
-              <span>Hóa Đơn In Nhiệt (Bill POS)</span>
+              <Receipt className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
+              <span className="truncate">Hóa Đơn (Bill POS)</span>
             </button>
           </div>
 
@@ -982,8 +1011,8 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
                 </div>
 
                 {/* ── CỘT PHẢI: KHUNG XEM TRƯỚC KÉO THẢ TRỰC TIẾP (7 CỘT) ── */}
-                <div className="lg:col-span-7 flex flex-col items-center justify-center p-4 sm:p-6 bg-zinc-100/90 rounded-3xl border border-dashed border-zinc-300 select-none">
-                  <div className="text-xs font-bold text-zinc-500 mb-2 flex items-center gap-1.5">
+                <div className="lg:col-span-7 flex flex-col items-center justify-center p-2.5 sm:p-6 bg-zinc-100/90 rounded-2xl sm:rounded-3xl border border-dashed border-zinc-300 select-none w-full">
+                  <div className="text-xs font-bold text-zinc-500 mb-2 flex items-center justify-center gap-1.5 text-center flex-wrap">
                     <Sparkles className="w-4 h-4 text-amber-500" />
                     <span>Mô phỏng mặt tem ({stickerLabelSize}mm) - Bấm giữ chuột để kéo thả vị trí</span>
                   </div>
@@ -991,16 +1020,16 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
                   {/* Cảnh báo dính dòng hoặc tràn đáy tem */}
                   {isStickerOverflowRisk && (
                     <div className="w-full max-w-[360px] mb-2.5 p-2 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between gap-2 text-rose-800 text-xs animate-in fade-in">
-                      <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                        <span className="text-[11px] leading-tight truncate">
-                          <b>Cảnh báo:</b> Dòng ở đáy tem đang sát mép/dính nhau!
+                        <span className="text-[11px] leading-tight font-medium">
+                          <b>Cảnh báo:</b> Dòng ở đáy tem sát mép!
                         </span>
                       </div>
                       <button
                         type="button"
                         onClick={handleAutoFitSticker}
-                        className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] shrink-0 cursor-pointer shadow-xs"
+                        className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[10px] sm:text-xs shrink-0 cursor-pointer shadow-xs active:scale-95 transition"
                       >
                         ⚡ Tự co khít ngay
                       </button>
@@ -1008,17 +1037,16 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
                   )}
 
                   {/* VÙNG CON TEM KÉO THẢ (CANVAS) */}
-                  <div className="w-full max-w-full overflow-x-auto flex justify-center py-1">
+                  <div className="w-full max-w-full overflow-hidden flex justify-center py-1">
                     <div
                       ref={canvasRef}
                       onPointerMove={handlePointerMoveCanvas}
                       onPointerUp={handlePointerUpCanvas}
-                      className={`relative bg-white rounded-xl shadow-xl border-2 border-zinc-400 overflow-hidden cursor-crosshair touch-none transition-all shrink-0 ${
+                      style={{
+                        aspectRatio: stickerLabelSize === '50x30' ? '5 / 3' : '5 / 4',
+                      }}
+                      className={`relative bg-white rounded-xl shadow-xl border-2 border-zinc-400 overflow-hidden cursor-crosshair touch-none transition-all w-full max-w-[360px] mx-auto ${
                         showGrid ? 'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:12px_12px]' : ''
-                      } ${
-                        stickerLabelSize === '50x30'
-                          ? 'w-[360px] h-[216px]' // Tỉ lệ 5:3
-                          : 'w-[360px] h-[288px]' // Tỉ lệ 5:4
                       }`}
                     >
                     {/* ── ĐƯỜNG CĂN GIÓNG TRỤC LỀ TRÁI & NGANG (ALIGNMENT GUIDELINES) ── */}
@@ -1104,7 +1132,7 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
                               left: `${el.x}%`,
                               top: `${el.y}%`,
                               width: el.width ? `${el.width}%` : 'auto',
-                              fontSize: `${el.fontSize * 1.3}px`, // Tỉ lệ hiển thị trên canvas màn hình
+                              fontSize: `${Math.max(6.5, Math.round(el.fontSize * 1.3 * canvasScale * 10) / 10)}px`, // Tỉ lệ hiển thị tự co dãn trên mobile
                               fontWeight: el.fontWeight === 'black' ? 900 : el.fontWeight === 'bold' ? 700 : 400,
                               fontStyle: el.fontStyle || 'normal',
                               textAlign: el.align,
@@ -1118,7 +1146,10 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
                             title={`Kéo thả: ${el.label} (X: ${el.x}%, Y: ${el.y}%)`}
                           >
                             {el.id === 'barcode' ? (
-                              <div className="w-full h-5 flex items-center justify-center">
+                              <div
+                                className="w-full flex items-center justify-center"
+                                style={{ height: `${Math.max(12, Math.round(20 * canvasScale))}px` }}
+                              >
                                 <svg className="w-28 h-full" viewBox="0 0 160 20" preserveAspectRatio="none">
                                   <rect x="0" y="0" width="2" height="20" fill="black" />
                                   <rect x="4" y="0" width="1" height="20" fill="black" />
@@ -1507,18 +1538,18 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
                 </div>
 
                 {/* ── CỘT PHẢI: XEM TRƯỚC HÓA ĐƠN CUỘN THỰC TẾ (6 CỘT) ── */}
-                <div className="lg:col-span-6 flex flex-col items-center bg-zinc-100/90 rounded-3xl p-4 border border-dashed border-zinc-300">
-                  <div className="text-xs font-bold text-zinc-500 mb-2 flex items-center gap-1.5">
+                <div className="lg:col-span-6 flex flex-col items-center bg-zinc-100/90 rounded-2xl sm:rounded-3xl p-2.5 sm:p-4 border border-dashed border-zinc-300 w-full">
+                  <div className="text-xs font-bold text-zinc-500 mb-2 flex items-center justify-center gap-1.5 text-center">
                     <Sparkles className="w-4 h-4 text-amber-500" />
                     <span>Xem trước hóa đơn cuộn {receiptPaperSize}</span>
                   </div>
 
                   {/* KHUNG BILL CUỘN THỰC TẾ */}
-                  <div className="w-full max-w-full overflow-x-auto flex justify-center py-1">
+                  <div className="w-full max-w-full overflow-hidden flex justify-center py-1">
                     <div
                       id="designer-preview-receipt"
-                      className={`bg-white rounded-xl shadow-xl border border-zinc-300 text-black font-mono text-xs p-4 space-y-3 shrink-0 ${
-                        receiptPaperSize === '58mm' ? 'w-[260px]' : 'w-[320px]'
+                      className={`bg-white rounded-xl shadow-xl border border-zinc-300 text-black font-mono text-xs p-3 sm:p-4 space-y-3 w-full mx-auto ${
+                        receiptPaperSize === '58mm' ? 'max-w-[260px]' : 'max-w-[320px]'
                       }`}
                     >
                     {/* Render các khối theo thứ tự sắp xếp */}
@@ -1687,14 +1718,14 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
         </div>
 
         {/* ── FOOTER MODAL ── */}
-        <div className="flex items-center justify-between pt-3 border-t border-zinc-100 shrink-0">
-          <div className="text-xs text-zinc-500">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-2.5 sm:pt-3 border-t border-zinc-100 shrink-0">
+          <div className="text-[11px] sm:text-xs text-zinc-500 text-center sm:text-left leading-tight">
             Cấu hình được lưu tự động trên thiết bị này và áp dụng tức thì cho mọi đơn hàng.
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-900 text-white font-black text-xs sm:text-sm transition cursor-pointer shadow-sm"
+            className="px-5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-900 text-white font-black text-xs sm:text-sm transition cursor-pointer shadow-sm shrink-0 text-center active:scale-95"
           >
             Đóng Trình Thiết Kế
           </button>
