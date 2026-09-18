@@ -23,10 +23,10 @@ export const TAX_POLICY_KEY = 'bakery_tax_policy_config';
 export const TAX_POLICY_UPDATED_EVENT = 'bakery_tax_policy_updated';
 export const TAX_AUTO_SYNC_EVENT = 'bakery_tax_auto_synced';
 
-export const DB_ROW_TAX_ID = '00000000-0000-0000-0000-000000000008';
+export const DB_ROW_TAX_ID = '00000000-0000-0000-0000-00000000000c';
 export const DB_ROW_TAX_NAME = 'SYS_CONFIG_TAX_HOUSEHOLD';
 
-export const DB_ROW_TAX_POLICY_ID = '00000000-0000-0000-0000-000000000009';
+export const DB_ROW_TAX_POLICY_ID = '00000000-0000-0000-0000-00000000000e';
 export const DB_ROW_TAX_POLICY_NAME = 'SYS_CONFIG_TAX_POLICY';
 
 export const DEFAULT_HOUSEHOLD_INFO: HouseholdBusinessInfo = {
@@ -495,17 +495,16 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
 
       if (!error && Array.isArray(dbOrders) && dbOrders.length > 0) {
         const orderMap = new Map<string, any>();
-
-        // 1. Cho local orders vào trước
+        const localByNumber = new Map<string, any>();
         localOrders.forEach((lo) => {
-          const key = String(lo.order_number || lo.id || Math.random());
-          orderMap.set(key, lo);
+          const key = String(lo.order_number || lo.id || '');
+          if (key) localByNumber.set(key, lo);
         });
 
-        // 2. Phủ dữ liệu Supabase lên (dữ liệu SQL có đầy đủ order_items)
+        // 1. Nguồn chân lý từ Supabase SQL (đầy đủ order_items chuẩn)
         dbOrders.forEach((so) => {
           const key = String(so.order_number || so.id);
-          const existing = orderMap.get(key);
+          const existing = localByNumber.get(key);
           const items = Array.isArray(so.order_items) && so.order_items.length > 0
             ? so.order_items
             : (existing?.items || []);
@@ -515,6 +514,15 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
             ...so,
             items,
           });
+        });
+
+        // 2. Chỉ bổ sung các đơn hàng POS tạo offline đang chờ đẩy lên Supabase
+        localOrders.forEach((lo) => {
+          if (!lo || !lo.order_number) return;
+          const key = String(lo.order_number || lo.id);
+          if (!orderMap.has(key) && (lo.sync_status === 'pending' || lo.is_offline === true)) {
+            orderMap.set(key, lo);
+          }
         });
 
         const merged = Array.from(orderMap.values());

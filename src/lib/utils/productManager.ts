@@ -6,6 +6,7 @@ import { db } from '@/lib/db/dexie';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { broadcastProductChange } from '@/lib/supabase/realtimeSync';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { DEFAULT_BAKERY_PRODUCTS } from '@/lib/constants/bakeryData';
 
 export const BAKERY_DELETED_PRODUCT_IDS_KEY = 'bakery_deleted_product_ids';
 export const BAKERY_PRODUCTS_KEY = 'bakery_products';
@@ -349,6 +350,17 @@ export async function persistProductToSupabase(product: any): Promise<{ success:
   const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
   if (!isOnline || isLocalMode()) return { success: true };
 
+  // Khóa bảo vệ tối cao: Tuyệt đối không bao giờ đẩy các sản phẩm mẫu default (prod-*, 00000000-0000-4000-8000-*) lên Supabase
+  if (
+    product.id &&
+    (String(product.id).startsWith('prod-') ||
+      String(product.id).startsWith('00000000-0000-4000-8000-') ||
+      DEFAULT_BAKERY_PRODUCTS.some((d) => d.id === product.id || d.name.toLowerCase().trim() === String(product.name || '').toLowerCase().trim()))
+  ) {
+    console.warn('Đã chặn đẩy sản phẩm mẫu mặc định lên Supabase SQL:', product.name);
+    return { success: true };
+  }
+
   const isImported = isImportedProduct(product);
   const baseCost = Number(product.base_cost_price ?? product.import_price ?? 0);
   const sellPrice = Number(product.selling_price ?? 0);
@@ -461,19 +473,17 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
       const key = decoded.id || nameKey;
       if (productMap.has(key)) {
         const existing = productMap.get(key);
+        // CSDL Supabase là nguồn chân lý: giữ nguyên giá trị từ Supabase (existing), chỉ giữ ảnh nếu local có ảnh
         productMap.set(key, {
-          ...existing,
           ...decoded,
-          stock_qty: decoded.stock_qty !== undefined ? decoded.stock_qty : existing.stock_qty,
-          image_url: decoded.image_url || existing.image_url,
-          product_type: decoded.product_type || existing.product_type,
-          supplier_name: decoded.supplier_name || existing.supplier_name,
-          import_price: decoded.import_price || existing.import_price,
-          barcode: decoded.barcode || existing.barcode,
+          ...existing,
+          stock_qty: existing.stock_qty !== undefined ? existing.stock_qty : (decoded.stock_qty ?? 10),
+          image_url: existing.image_url || decoded.image_url,
+          product_type: existing.product_type || decoded.product_type,
+          supplier_name: existing.supplier_name || decoded.supplier_name,
+          import_price: existing.import_price || decoded.import_price,
+          barcode: existing.barcode || decoded.barcode,
         });
-        // Giữ lại sản phẩm local trong bộ nhớ cache nếu cần, TUYỆT ĐỐI KHÔNG tự động đẩy lên Supabase SQL ngầm
-        // Chỉ lưu trên giao diện máy này; chỉ đẩy lên CSDL khi người dùng chủ động bấm Thêm/Sửa trong Admin
-        productMap.set(key, decoded);
       }
     }
   }

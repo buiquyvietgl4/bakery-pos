@@ -22,6 +22,7 @@ import { db } from '@/lib/db/dexie';
 import { generateUUID } from '@/lib/utils/uuid';
 import { exportToCSV, exportMultiSheetExcel } from '@/lib/utils/exportExcel';
 import { broadcastProductChange, broadcastRecipeChange, subscribeCrossDeviceSync } from '@/lib/supabase/realtimeSync';
+import { clearProfileLocalData } from '@/lib/supabase/databaseProfileManager';
 import {
   deleteProductEverywhere,
   filterActiveProducts,
@@ -195,6 +196,7 @@ export default function AdminDashboard() {
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isAdminSyncing, setIsAdminSyncing] = useState(false);
 
   // Khởi động watcher Auto Backup khi Admin đăng nhập
   useEffect(() => {
@@ -493,7 +495,7 @@ export default function AdminDashboard() {
         }
       } catch {}
     }
-    return filterActiveProducts(DEFAULT_BAKERY_PRODUCTS).map((p: any) => ({ ...p, stock_qty: p.stock_qty ?? 10 }));
+    return [];
   });
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
@@ -1220,7 +1222,7 @@ export default function AdminDashboard() {
   const loadData = async () => {
     try {
       // 1. Load Products with offline cache priority & strict deletion filtering
-      let currentProds: any[] = filterActiveProducts(DEFAULT_BAKERY_PRODUCTS);
+      let currentProds: any[] = [];
       let localProds: any[] = [];
       const deletedIds = getDeletedProductIds();
 
@@ -1229,7 +1231,7 @@ export default function AdminDashboard() {
         if (saved) {
           try {
             const parsed = JSON.parse(saved);
-            if (Array.isArray(parsed)) {
+            if (Array.isArray(parsed) && parsed.length > 0) {
               localProds = filterActiveProducts(parsed);
               currentProds = localProds;
             }
@@ -1269,10 +1271,14 @@ export default function AdminDashboard() {
 
           if (!sbErr && prodData && prodData.length > 0) {
             currentProds = mergeProductLists(currentProds, prodData);
+          } else if (currentProds.length === 0) {
+            currentProds = filterActiveProducts(DEFAULT_BAKERY_PRODUCTS);
           }
         } catch (e) {
           console.warn('Lỗi tải sản phẩm từ Supabase:', e);
         }
+      } else if (currentProds.length === 0) {
+        currentProds = filterActiveProducts(DEFAULT_BAKERY_PRODUCTS);
       }
 
       currentProds = filterActiveProducts(currentProds);
@@ -2933,6 +2939,30 @@ export default function AdminDashboard() {
             >
               <Printer className="w-4 h-4 text-blue-600" />
               <span className="hidden sm:inline">Máy In POS</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={async () => {
+                setIsAdminSyncing(true);
+                try {
+                  clearProfileLocalData();
+                  await loadData();
+                  reloadAdminOrders(true);
+                  window.dispatchEvent(new Event('bakery_orders_updated'));
+                  alert('Đã xóa cache cục bộ và đồng bộ dữ liệu chuẩn 100% từ CSDL Supabase SQL!');
+                } catch (e: any) {
+                  alert('Lỗi đồng bộ: ' + (e?.message || e));
+                } finally {
+                  setIsAdminSyncing(false);
+                }
+              }}
+              disabled={isAdminSyncing}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-300 hover:border-emerald-500 text-xs font-bold text-emerald-800 shadow-2xs hover:shadow-xs transition hover:bg-emerald-100/60 cursor-pointer disabled:opacity-50"
+              title="Xóa cache trình duyệt và tải lại toàn bộ dữ liệu chuẩn từ Cloud SQL"
+            >
+              <RefreshCw className={`w-4 h-4 text-emerald-600 ${isAdminSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">{isAdminSyncing ? 'Đang tải...' : 'Đồng Bộ SQL'}</span>
             </button>
           </div>
         </div>
