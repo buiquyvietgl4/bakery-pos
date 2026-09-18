@@ -57,10 +57,10 @@ class AutoOrderWatcher {
     // 3. Lắng nghe sự kiện cập nhật đơn nội bộ
     window.addEventListener('bakery_orders_updated', this.handleLocalOrdersUpdated);
 
-    // 4. Vòng quét đồng bộ Supabase tự động mỗi 4 giây (Bắt trọn mọi đơn từ máy khác/khách đặt)
+    // 4. Vòng quét đồng bộ Supabase định kỳ (WebSocket Realtime đã bắn tức thì ~50ms, polling làm chốt an toàn)
     this.pollTimer = setInterval(() => {
       this.checkNewOrdersFromSupabase();
-    }, 4000);
+    }, 15000);
 
     // 5. Vòng quét cảnh báo giao gấp tự động mỗi 15 giây
     this.urgentTimer = setInterval(() => {
@@ -233,6 +233,7 @@ class AutoOrderWatcher {
    */
   public async checkNewOrdersFromSupabase() {
     if (typeof navigator === 'undefined' || !navigator.onLine) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
 
     try {
       // Quét song song cả đơn mới nhất (created_at DESC) lẫn đơn vừa đổi trạng thái (updated_at DESC)
@@ -241,12 +242,12 @@ class AutoOrderWatcher {
           .from('orders')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(40),
+          .limit(25),
         supabase
           .from('orders')
           .select('*')
           .order('updated_at', { ascending: false })
-          .limit(40),
+          .limit(25),
       ]);
 
       const orderMap = new Map<string, any>();

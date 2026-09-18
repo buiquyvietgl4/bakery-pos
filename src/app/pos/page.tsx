@@ -1187,6 +1187,7 @@ export default function POSPage() {
   // Đồng bộ toàn diện đơn hàng từ CSDL Supabase SQL xuống Quầy POS
   const syncOrdersFromSupabase = useCallback(async () => {
     if (typeof navigator === 'undefined' || !navigator.onLine) return;
+    if (typeof document !== 'undefined' && document.hidden) return;
     try {
       const [resCreated, resUpdated] = await Promise.all([
         supabase
@@ -1216,7 +1217,7 @@ export default function POSPage() {
             )
           `)
           .order('created_at', { ascending: false })
-          .limit(60),
+          .limit(30),
         supabase
           .from('orders')
           .select(`
@@ -1244,7 +1245,7 @@ export default function POSPage() {
             )
           `)
           .order('updated_at', { ascending: false })
-          .limit(40),
+          .limit(30),
       ]);
 
       const sbOrders = new Map<string, any>();
@@ -1329,7 +1330,7 @@ export default function POSPage() {
   useEffect(() => {
     reloadOrdersData();
     syncOrdersFromSupabase();
-    const syncInterval = setInterval(syncOrdersFromSupabase, 8000);
+    const syncInterval = setInterval(syncOrdersFromSupabase, 15000);
 
     const handleSync = () => reloadOrdersData();
     const handleStorage = (e: StorageEvent) => {
@@ -1344,10 +1345,16 @@ export default function POSPage() {
       }
     };
     const handleOnline = () => syncOrdersFromSupabase();
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncOrdersFromSupabase();
+      }
+    };
 
     window.addEventListener('bakery_orders_updated', handleSync);
     window.addEventListener('storage', handleStorage);
     window.addEventListener('online', handleOnline);
+    document.addEventListener('visibilitychange', handleVisibility);
 
     // Kênh đồng bộ đa thiết bị tức thì (Điện thoại bếp bấm đổi trạng thái -> Quầy POS cập nhật ngay)
     const unsubscribeSync = subscribeCrossDeviceSync({
@@ -1616,6 +1623,7 @@ export default function POSPage() {
     return () => {
       clearInterval(syncInterval);
       window.removeEventListener('online', handleOnline);
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('bakery_orders_updated', handleSync);
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('bakery_payment_received', handleLocalPayment);

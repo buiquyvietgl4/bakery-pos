@@ -888,8 +888,8 @@ export default function KitchenPage() {
         }
       }
 
-      // 2. Đồng bộ từ Supabase nếu có kết nối mạng
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      // 2. Đồng bộ từ Supabase nếu có kết nối mạng và tab đang hiển thị
+      if (typeof navigator !== 'undefined' && navigator.onLine && (typeof document === 'undefined' || !document.hidden)) {
         try {
           const { data, error } = await supabase
             .from('orders')
@@ -917,7 +917,7 @@ export default function KitchenPage() {
               )
             `)
             .order('created_at', { ascending: false })
-            .limit(100);
+            .limit(50);
 
           if (!error && data && data.length > 0) {
             // Map từ Supabase
