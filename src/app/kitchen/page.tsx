@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '@/lib/supabase/client';
+import { isReconcileLocked } from '@/lib/supabase/databaseProfileManager';
 import { 
   broadcastOrderStatusUpdate, 
   broadcastClearDemoOrders, 
@@ -933,7 +934,7 @@ export default function KitchenPage() {
               !sbMap.has(lo.order_number) &&
               !reconciledOrdersRef.current.has(lo.order_number)
             );
-            if (unsyncedActiveOrders.length > 0) {
+            if (!isReconcileLocked() && unsyncedActiveOrders.length > 0) {
               unsyncedActiveOrders.forEach((lo) => {
                 reconciledOrdersRef.current.add(lo.order_number);
                 syncOrderToSupabase(lo, lo.status as any).catch((err) => console.warn('Lỗi auto-reconcile:', err));

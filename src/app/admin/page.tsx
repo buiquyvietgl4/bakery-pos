@@ -82,6 +82,7 @@ import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings'
 import { CustomCakeCostingSettings } from '@/components/admin/CustomCakeCostingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
 import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSection';
+import CustomSqlConfigSection from '@/components/admin/CustomSqlConfigSection';
 import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
@@ -5229,41 +5230,8 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* KHỐI 1: TRẠNG THÁI KẾT NỐI MÁY CHỦ CLOUD */}
-              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-zinc-100">
-                  <div>
-                    <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-                      <Globe className="w-4 h-4 text-emerald-600" /> Kết Nối Máy Chủ Supabase Cloud
-                    </h3>
-                    <p className="text-xs text-zinc-500">
-                      Hệ quản trị cơ sở dữ liệu PostgreSQL đám mây với đồng bộ thời gian thực Realtime.
-                    </p>
-                  </div>
-                  <span className="px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 text-xs font-bold flex items-center gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-emerald-600 animate-pulse" />
-                    Máy Chủ Online Đang Sẵn Sàng
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1">
-                    <div className="text-zinc-500 font-bold">Giao Thức Đồng Bộ</div>
-                    <div className="font-black text-zinc-900">PostgreSQL WebSocket Realtime</div>
-                    <div className="text-[11px] text-zinc-500">Độ trễ trung bình ~50ms</div>
-                  </div>
-                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1">
-                    <div className="text-zinc-500 font-bold">Số Bảng Đồng Bộ</div>
-                    <div className="font-black text-zinc-900">12 Bảng Hoạt Động</div>
-                    <div className="text-[11px] text-zinc-500">Menu bánh, kho, BOM, đơn, sổ quỹ</div>
-                  </div>
-                  <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-1">
-                    <div className="text-zinc-500 font-bold">Bảo Mật & Phân Quyền</div>
-                    <div className="font-black text-emerald-700">Row Level Security (RLS)</div>
-                    <div className="text-[11px] text-zinc-500">Mã hóa kết nối SSL / HTTPS</div>
-                  </div>
-                </div>
-              </div>
+              {/* KHỐI 1: QUẢN TRỊ ĐA CSDL SQL (CHÍNH & THỬ NGHIỆM) - TÙY BIẾN KẾT NỐI */}
+              <CustomSqlConfigSection />
 
               {/* KHỐI 2: THEO DÕI DUNG LƯỢNG CLOUD (DATABASE & KHO ẢNH) */}
               <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-5">

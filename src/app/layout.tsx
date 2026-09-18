@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import Header from '@/components/Header';
 import PhoneNotificationBanner from '@/components/PhoneNotificationBanner';
+import TestModeGlobalBanner from '@/components/TestModeGlobalBanner';
 import AdminBakeApprovalWatcher from '@/components/admin/AdminBakeApprovalWatcher';
 import AdminTransferApprovalWatcher from '@/components/admin/AdminTransferApprovalWatcher';
 import { AuthProvider } from '@/lib/auth/AuthContext';
@@ -46,6 +47,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-full flex flex-col font-sans text-[#2d241e] bg-[#f3eae0] selection:bg-amber-200 selection:text-amber-950">
         <AuthProvider>
+          <TestModeGlobalBanner />
           <Header />
           <PhoneNotificationBanner />
           <AdminBakeApprovalWatcher />
