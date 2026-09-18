@@ -13,6 +13,27 @@ export interface PrintHtmlOptions {
   title?: string;
   pageSize?: '50x30' | '50x40' | '80mm' | 'auto';
   customCss?: string;
+  scale?: number; // Độ thu phóng % (70 - 120, mặc định 92% cho tem, 100% cho hóa đơn)
+}
+
+/**
+ * Đọc độ thu phóng an toàn từ cấu hình máy in không gây vòng lặp import
+ */
+function getSavedPrintScale(pageSize: string): number {
+  if (typeof window === 'undefined') return 100;
+  try {
+    const raw = localStorage.getItem('bakery_printer_config');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (pageSize.startsWith('50x') && typeof parsed.stickerScale === 'number') {
+        return parsed.stickerScale;
+      }
+      if (!pageSize.startsWith('50x') && typeof parsed.receiptScale === 'number') {
+        return parsed.receiptScale;
+      }
+    }
+  } catch {}
+  return pageSize.startsWith('50x') ? 92 : 100;
 }
 
 export function printHtml(htmlContent: string, options: PrintHtmlOptions = {}) {
@@ -20,6 +41,10 @@ export function printHtml(htmlContent: string, options: PrintHtmlOptions = {}) {
 
   const title = options.title || 'In tài liệu';
   const pageSize = options.pageSize || 'auto';
+
+  // Xác định tỉ lệ thu phóng (ưu tiên options.scale truyền vào, sau đó đến cấu hình đã lưu)
+  let scale = typeof options.scale === 'number' ? options.scale : getSavedPrintScale(pageSize);
+  scale = Math.max(70, Math.min(120, scale));
 
   // Thiết lập quy tắc @page chuẩn xác theo từng loại máy in nhiệt
   let pageRule = '@page { margin: 0; }';
@@ -35,6 +60,9 @@ export function printHtml(htmlContent: string, options: PrintHtmlOptions = {}) {
       margin: 0 !important;
       padding: 0 !important;
       overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
     `;
   } else if (pageSize === '50x40') {
     pageRule = '@page { size: 50mm 40mm; margin: 0; }';
@@ -46,6 +74,9 @@ export function printHtml(htmlContent: string, options: PrintHtmlOptions = {}) {
       margin: 0 !important;
       padding: 0 !important;
       overflow: hidden !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
     `;
   } else if (pageSize === '80mm') {
     pageRule = '@page { size: 80mm auto; margin: 0; }';
@@ -121,6 +152,13 @@ export function printHtml(htmlContent: string, options: PrintHtmlOptions = {}) {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
+          /* Thu phóng nội dung chống tràn mép giấy */
+          ${scale !== 100 ? `
+            body > * {
+              transform: scale(${scale / 100}) !important;
+              transform-origin: ${pageSize.startsWith('50x') ? 'center center' : 'top center'} !important;
+            }
+          ` : ''}
           ${options.customCss || ''}
         </style>
       </head>

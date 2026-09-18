@@ -39,6 +39,7 @@ export interface StickerTemplateConfig {
   canvasSize: LabelPaperSize;
   elements: StickerElementConfig[];
   showBorder?: boolean;
+  scale?: number;       // Tỉ lệ thu phóng con tem % (70 - 120, mặc định 92)
   updatedAt?: string;
 }
 
@@ -80,5 +81,7 @@ export interface ReceiptBlockConfig {
 export interface ReceiptTemplateConfig {
   paperSize: ReceiptPaperSize;
   blocks: ReceiptBlockConfig[];
+  scale?: number;        // Tỉ lệ thu phóng hóa đơn bill % (70 - 120, mặc định 100)
   updatedAt?: string;
 }
+

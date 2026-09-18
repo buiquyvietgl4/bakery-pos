@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { X, Printer, Tag, Check, Copy, Sparkles, Clock, MapPin, Phone, User, Settings } from 'lucide-react';
+import { X, Printer, Tag, Check, Copy, Sparkles, Clock, MapPin, Phone, User, Settings, ZoomIn } from 'lucide-react';
 import { printHtml } from '@/lib/utils/printHelper';
 import { formatPickupDateTime } from '@/lib/supabase/realtimeSync';
 import { PrinterSettingsModal } from './PrinterSettingsModal';
@@ -10,6 +10,7 @@ import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, Sto
 import { StickerTemplateConfig, StickerElementConfig } from '@/lib/types/printTemplate';
 import { getStickerTemplate, PRINT_TEMPLATE_UPDATED_EVENT } from '@/lib/utils/printTemplateManager';
 import { cleanCakeNameAndSize } from '@/lib/utils/customCakeCosting';
+import { getPrinterConfig, savePrinterConfig, PRINTER_CONFIG_EVENT } from '@/lib/utils/printerManager';
 
 export interface CakeStickerData {
   orderNumber?: string;
@@ -50,10 +51,24 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
   const [isDesignerOpen, setIsDesignerOpen] = useState(false);
   const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
   const [stickerConfig, setStickerConfig] = useState<StickerTemplateConfig>(() => getStickerTemplate('50x30'));
+  const [zoomScale, setZoomScale] = useState<number>(() => getPrinterConfig().stickerScale ?? 92);
 
   useEffect(() => {
     setStickerConfig(getStickerTemplate(labelSize));
   }, [labelSize]);
+
+  useEffect(() => {
+    const pCfg = getPrinterConfig();
+    if (typeof pCfg.stickerScale === 'number') {
+      setZoomScale(pCfg.stickerScale);
+    }
+  }, [isOpen]);
+
+  const handleZoomChange = (newScale: number) => {
+    const clamped = Math.max(70, Math.min(120, newScale));
+    setZoomScale(clamped);
+    savePrinterConfig({ stickerScale: clamped });
+  };
 
   useEffect(() => {
     setBranding(getStoreBranding());
@@ -247,6 +262,7 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
     printHtml(el.outerHTML, {
       title: `Tem_${orderNum}`,
       pageSize: labelSize,
+      scale: zoomScale,
       customCss: `
         @page {
           size: 50mm ${is30 ? '30mm' : '40mm'};
@@ -267,6 +283,9 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
           padding: 0 !important;
           background: #ffffff !important;
           color: #000000 !important;
+          display: flex !important;
+          align-items: center !important;
+          justify-content: center !important;
         }
         #printable-cake-sticker {
           position: relative !important;
@@ -288,6 +307,8 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
           break-after: avoid !important;
           page-break-inside: avoid !important;
           break-inside: avoid !important;
+          transform: scale(${zoomScale / 100}) !important;
+          transform-origin: center center !important;
         }
         #printable-cake-sticker * {
           box-sizing: border-box !important;
@@ -358,22 +379,71 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
             </div>
           </div>
 
+          {/* Cụm điều chỉnh nhanh độ thu phóng (Chống tràn mép giấy) */}
+          <div className="flex items-center justify-between bg-zinc-50 p-2 rounded-2xl border border-zinc-200/80 text-xs">
+            <div className="flex items-center gap-1.5 font-bold text-zinc-700 pl-1">
+              <ZoomIn className="w-4 h-4 text-amber-600" />
+              <span>Thu phóng (Chống tràn):</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => handleZoomChange(Math.max(70, zoomScale - 2))}
+                className="w-7 h-7 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 font-black text-sm flex items-center justify-center transition cursor-pointer active:scale-95 shadow-2xs"
+                title="Thu nhỏ 2%"
+              >
+                -
+              </button>
+              <span className="font-mono font-black text-amber-700 w-11 text-center text-xs bg-amber-50 py-1 rounded-md border border-amber-200/80">
+                {zoomScale}%
+              </span>
+              <button
+                type="button"
+                onClick={() => handleZoomChange(Math.min(120, zoomScale + 2))}
+                className="w-7 h-7 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 font-black text-sm flex items-center justify-center transition cursor-pointer active:scale-95 shadow-2xs"
+                title="Phóng to 2%"
+              >
+                +
+              </button>
+              <div className="flex gap-1 pl-0.5">
+                {[85, 90, 92, 100].map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => handleZoomChange(s)}
+                    className={`px-1.5 py-1 rounded-md text-[10px] font-bold cursor-pointer transition ${
+                      zoomScale === s
+                        ? 'bg-amber-600 text-white shadow-2xs'
+                        : 'bg-zinc-200/80 text-zinc-700 hover:bg-zinc-300'
+                    }`}
+                  >
+                    {s}%
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
           {/* Khung Xem Trước Tem Nhãn Thực Tế (Preview Container) */}
           <div className="p-4 bg-zinc-100/80 rounded-2xl border border-dashed border-zinc-300 flex flex-col items-center justify-center">
             <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-1">
               <Sparkles className="w-3 h-3 text-amber-500" />
-              Bản xem trước tem dán ({labelSize}mm)
+              <span>Bản xem trước tem dán ({labelSize}mm - Thu phóng {zoomScale}%)</span>
             </div>
 
             {/* CHÍNH THỨC CON TEM CÓ ID PRINTABLE */}
             <div
               id="printable-cake-sticker"
-              className={`relative bg-white rounded-xl border border-zinc-400/80 shadow-md text-black font-sans select-none overflow-hidden ${
+              style={{
+                transform: `scale(${zoomScale / 100})`,
+                transformOrigin: 'center center',
+              }}
+              className={`relative bg-white rounded-xl border border-zinc-400/80 shadow-md text-black font-sans select-none overflow-hidden transition-transform duration-150 ${
                 labelSize === '50x30' ? 'w-72 h-[173px]' : 'w-72 h-[230px]'
               }`}
             >
-              {stickerConfig.elements
-                .filter((el) => el.visible)
+              {(stickerConfig.elements || [])
+                .filter((el) => el && el.visible)
                 .map((el) => renderStickerElement(el))}
             </div>
           </div>

@@ -44,6 +44,7 @@ import {
   getReceiptTemplate,
   saveReceiptTemplate,
   resetReceiptTemplate,
+  clearAllPrintTemplates,
 } from '@/lib/utils/printTemplateManager';
 import { printHtml } from '@/lib/utils/printHelper';
 import { getStoreBranding } from '@/lib/utils/storeBranding';
@@ -55,7 +56,7 @@ interface PrintTemplateDesignerModalProps {
   initialTab?: 'sticker' | 'receipt';
 }
 
-export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProps> = ({
+const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
   isOpen,
   onClose,
   initialTab = 'sticker',
@@ -200,7 +201,11 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
       canvasHeight: canvasRect.height,
     };
 
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {
+      // Ignored for mobile / unsupported touch devices
+    }
   };
 
   const handlePointerMoveCanvas = (e: React.PointerEvent) => {
@@ -233,8 +238,8 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
       }
 
       // 2. Căn theo các dòng khác đang hiển thị trên tem
-      const otherVisibleElements = stickerConfig.elements.filter(
-        (item) => item.visible && item.id !== elementId
+      const otherVisibleElements = (stickerConfig.elements || []).filter(
+        (item) => item && item.visible && item.id !== elementId
       );
 
       for (const other of otherVisibleElements) {
@@ -261,11 +266,16 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
 
     setStickerConfig((prev) => ({
       ...prev,
-      elements: prev.elements.map((item) => (item.id === elementId ? { ...item, x: newX, y: newY } : item)),
+      elements: (prev.elements || []).map((item) => (item.id === elementId ? { ...item, x: newX, y: newY } : item)),
     }));
   };
 
   const handlePointerUpCanvas = (e: React.PointerEvent) => {
+    try {
+      if ((e.target as HTMLElement)?.hasPointerCapture?.(e.pointerId)) {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      }
+    } catch (_) {}
     if (dragInfoRef.current) {
       dragInfoRef.current = null;
     }
@@ -998,18 +1008,19 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                   )}
 
                   {/* VÙNG CON TEM KÉO THẢ (CANVAS) */}
-                  <div
-                    ref={canvasRef}
-                    onPointerMove={handlePointerMoveCanvas}
-                    onPointerUp={handlePointerUpCanvas}
-                    className={`relative bg-white rounded-xl shadow-xl border-2 border-zinc-400 overflow-hidden cursor-crosshair touch-none transition-all ${
-                      showGrid ? 'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:12px_12px]' : ''
-                    } ${
-                      stickerLabelSize === '50x30'
-                        ? 'w-[360px] h-[216px]' // Tỉ lệ 5:3
-                        : 'w-[360px] h-[288px]' // Tỉ lệ 5:4
-                    }`}
-                  >
+                  <div className="w-full max-w-full overflow-x-auto flex justify-center py-1">
+                    <div
+                      ref={canvasRef}
+                      onPointerMove={handlePointerMoveCanvas}
+                      onPointerUp={handlePointerUpCanvas}
+                      className={`relative bg-white rounded-xl shadow-xl border-2 border-zinc-400 overflow-hidden cursor-crosshair touch-none transition-all shrink-0 ${
+                        showGrid ? 'bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:12px_12px]' : ''
+                      } ${
+                        stickerLabelSize === '50x30'
+                          ? 'w-[360px] h-[216px]' // Tỉ lệ 5:3
+                          : 'w-[360px] h-[288px]' // Tỉ lệ 5:4
+                      }`}
+                    >
                     {/* ── ĐƯỜNG CĂN GIÓNG TRỤC LỀ TRÁI & NGANG (ALIGNMENT GUIDELINES) ── */}
                     {showGuides && (
                       <>
@@ -1133,6 +1144,7 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                           </div>
                         );
                       })}
+                    </div>
                   </div>
 
                   {/* Thẻ in ẩn dành cho việc in thử tem dán */}
@@ -1502,12 +1514,13 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                   </div>
 
                   {/* KHUNG BILL CUỘN THỰC TẾ */}
-                  <div
-                    id="designer-preview-receipt"
-                    className={`bg-white rounded-xl shadow-xl border border-zinc-300 text-black font-mono text-xs p-4 space-y-3 ${
-                      receiptPaperSize === '58mm' ? 'w-[260px]' : 'w-[320px]'
-                    }`}
-                  >
+                  <div className="w-full max-w-full overflow-x-auto flex justify-center py-1">
+                    <div
+                      id="designer-preview-receipt"
+                      className={`bg-white rounded-xl shadow-xl border border-zinc-300 text-black font-mono text-xs p-4 space-y-3 shrink-0 ${
+                        receiptPaperSize === '58mm' ? 'w-[260px]' : 'w-[320px]'
+                      }`}
+                    >
                     {/* Render các khối theo thứ tự sắp xếp */}
                     {receiptConfig.blocks
                       .filter((b) => b.visible)
@@ -1658,8 +1671,9 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
                           );
                         }
 
-                        return null;
-                      })}
+                          return null;
+                        })}
+                    </div>
                   </div>
 
                   <p className="text-[11px] text-zinc-500 mt-3 text-center">
@@ -1690,3 +1704,103 @@ export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProp
     </div>
   );
 };
+
+// ============================================================================
+// ERROR BOUNDARY AN TOÀN CHỐNG SẬP TRÊN MOBILE KHI CÓ DỮ LIỆU CŨ LỖI
+// ============================================================================
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  onClose: () => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class PrintTemplateDesignerErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('[PrintDesigner ErrorBoundary] Phát hiện lỗi giao diện:', error, errorInfo);
+  }
+
+  handleResetToDefaults = () => {
+    clearAllPrintTemplates();
+    this.setState({ hasError: false, error: null });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-[10000020] bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border border-zinc-200 text-zinc-900 animate-in zoom-in duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-black text-base text-zinc-900">
+                  Lỗi Tải Mẫu In Thiết Kế
+                </h3>
+                <p className="text-xs text-zinc-500 font-medium">
+                  Dữ liệu mẫu in lưu trên thiết bị của bạn có định dạng cũ hoặc xung đột.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-zinc-50 rounded-xl text-xs text-zinc-600 leading-relaxed border border-zinc-200">
+              💡 Bấm nút <b>&quot;Khôi Phục Mẫu Mặc Định&quot;</b> bên dưới để làm sạch bộ nhớ tạm và nạp lại mẫu in chuẩn nhất của hệ thống.
+            </div>
+
+            {this.state.error?.message && (
+              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-[11px] font-mono text-rose-800 overflow-x-auto max-h-20">
+                Chi tiết: {this.state.error.message}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={this.handleResetToDefaults}
+                className="w-full py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-amber-600/20 transition cursor-pointer active:scale-95"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>Khôi Phục Mẫu Mặc Định (1-Click)</span>
+              </button>
+              <button
+                type="button"
+                onClick={this.props.onClose}
+                className="w-full py-2.5 rounded-xl border border-zinc-200 hover:bg-zinc-100 text-zinc-700 font-bold text-xs transition cursor-pointer"
+              >
+                Đóng Hộp Thoại
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+/**
+ * Component xuất khẩu bọc Error Boundary bảo vệ ứng dụng an toàn 100% trên điện thoại
+ */
+export const PrintTemplateDesignerModal: React.FC<PrintTemplateDesignerModalProps> = (props) => {
+  if (!props.isOpen) return null;
+  return (
+    <PrintTemplateDesignerErrorBoundary onClose={props.onClose}>
+      <PrintTemplateDesignerInner {...props} />
+    </PrintTemplateDesignerErrorBoundary>
+  );
+};
+

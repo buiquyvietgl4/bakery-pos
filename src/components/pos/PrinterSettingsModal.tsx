@@ -19,6 +19,9 @@ import {
   ExternalLink,
   Save,
   Info,
+  Receipt,
+  ZoomIn,
+  Sliders,
 } from 'lucide-react';
 import {
   PrinterConfig,
@@ -84,6 +87,16 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
 
   const handleLabelSizeChange = (labelSize: LabelPaperSize) => {
     const updated = savePrinterConfig({ labelSize });
+    setConfig(updated);
+  };
+
+  const handleStickerScaleChange = (stickerScale: number) => {
+    const updated = savePrinterConfig({ stickerScale });
+    setConfig(updated);
+  };
+
+  const handleReceiptScaleChange = (receiptScale: number) => {
+    const updated = savePrinterConfig({ receiptScale });
     setConfig(updated);
   };
 
@@ -476,6 +489,111 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
                       Thêm nhiều diện tích cho địa chỉ giao hàng dài
                     </div>
                   </button>
+                </div>
+              </div>
+
+              {/* TÙY CHỈNH ĐỘ THU PHÓNG BẢN IN (CHỐNG TRÀN MÉP MÁY IN) */}
+              <div className="p-4 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                      <ZoomIn className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-xs sm:text-sm text-zinc-900 flex items-center gap-1.5">
+                        <span>Tùy Chỉnh Độ Thu Phóng Bản In (Chống Tràn Mép)</span>
+                      </h4>
+                      <p className="text-[11px] text-zinc-500 font-medium">
+                        Tự động co giãn nội dung vừa khít lề máy in nhiệt, không bị lẹm viền
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Slider thu phóng Tem Dán Hộp Bánh */}
+                <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-zinc-800 flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-amber-600" />
+                      Độ thu phóng Tem Dán Hộp Bánh:
+                    </span>
+                    <span className="font-mono font-black text-amber-700 text-sm bg-amber-100 px-2 py-0.5 rounded-lg">
+                      {config.stickerScale ?? 92}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={70}
+                      max={120}
+                      step={1}
+                      value={config.stickerScale ?? 92}
+                      onChange={(e) => handleStickerScaleChange(Number(e.target.value))}
+                      className="flex-1 accent-amber-600 cursor-pointer h-2 bg-zinc-200 rounded-lg"
+                    />
+                    <div className="flex gap-1 shrink-0">
+                      {[85, 90, 92, 100].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => handleStickerScaleChange(val)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition ${
+                            (config.stickerScale ?? 92) === val
+                              ? 'bg-amber-600 text-white shadow-xs'
+                              : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                          }`}
+                        >
+                          {val}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-snug">
+                    💡 <b>Khuyên dùng 90% - 92%:</b> Giúp tạo lề an toàn ~2mm xung quanh con tem, ngăn chặn hoàn toàn việc đầu in nhiệt cắt mất chữ hoặc lẹm mép trên/trái.
+                  </p>
+                </div>
+
+                {/* Slider thu phóng Hóa Đơn Bill */}
+                <div className="p-3 bg-white rounded-xl border border-amber-200/80 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-xs text-zinc-800 flex items-center gap-1.5">
+                      <Receipt className="w-3.5 h-3.5 text-blue-600" />
+                      Độ thu phóng Hóa Đơn In Nhiệt (Bill POS):
+                    </span>
+                    <span className="font-mono font-black text-blue-700 text-sm bg-blue-100 px-2 py-0.5 rounded-lg">
+                      {config.receiptScale ?? 100}%
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range"
+                      min={70}
+                      max={120}
+                      step={1}
+                      value={config.receiptScale ?? 100}
+                      onChange={(e) => handleReceiptScaleChange(Number(e.target.value))}
+                      className="flex-1 accent-blue-600 cursor-pointer h-2 bg-zinc-200 rounded-lg"
+                    />
+                    <div className="flex gap-1 shrink-0">
+                      {[85, 90, 95, 100].map((val) => (
+                        <button
+                          key={val}
+                          type="button"
+                          onClick={() => handleReceiptScaleChange(val)}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition ${
+                            (config.receiptScale ?? 100) === val
+                              ? 'bg-blue-600 text-white shadow-xs'
+                              : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'
+                          }`}
+                        >
+                          {val}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-zinc-500 leading-snug">
+                    💡 Mặc định 100%. Nếu hóa đơn bị tràn lề 2 bên hoặc chữ quá to, hãy hạ xuống 90% - 95%.
+                  </p>
                 </div>
               </div>
 

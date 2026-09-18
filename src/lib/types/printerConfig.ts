@@ -15,6 +15,8 @@ export interface PrinterConfig {
   autoCut?: boolean;
   printDeliveryAddress: boolean;
   copies: number;
+  stickerScale?: number; // Tỉ lệ thu phóng tem dán % (70 - 120, mặc định 92)
+  receiptScale?: number; // Tỉ lệ thu phóng hóa đơn bill % (70 - 120, mặc định 100)
 }
 
 export interface DeviceDiagnostics {
@@ -39,4 +41,7 @@ export const DEFAULT_PRINTER_CONFIG: PrinterConfig = {
   autoCut: true,
   printDeliveryAddress: true,
   copies: 1,
+  stickerScale: 92, // Mặc định 92% để chống tràn mép máy in
+  receiptScale: 100,
 };
+

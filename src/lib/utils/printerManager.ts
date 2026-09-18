@@ -71,7 +71,13 @@ export function getPrinterConfig(): PrinterConfig {
   try {
     const raw = localStorage.getItem(PRINTER_STORAGE_KEY);
     if (!raw) return DEFAULT_PRINTER_CONFIG;
-    return { ...DEFAULT_PRINTER_CONFIG, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    return {
+      ...DEFAULT_PRINTER_CONFIG,
+      ...parsed,
+      stickerScale: typeof parsed.stickerScale === 'number' ? parsed.stickerScale : (DEFAULT_PRINTER_CONFIG.stickerScale ?? 92),
+      receiptScale: typeof parsed.receiptScale === 'number' ? parsed.receiptScale : (DEFAULT_PRINTER_CONFIG.receiptScale ?? 100),
+    };
   } catch (e) {
     console.error('Lỗi đọc cấu hình máy in:', e);
     return DEFAULT_PRINTER_CONFIG;
@@ -256,6 +262,7 @@ export function printTestReceipt(size: ReceiptPaperSize = '80mm') {
   printHtml(testReceiptHtml, {
     title: `In_Test_${size}`,
     pageSize: size === '58mm' ? 'auto' : '80mm',
+    scale: config.receiptScale,
     customCss: `
       html, body {
         width: ${widthMm} !important;
@@ -345,6 +352,7 @@ export function printTestSticker(size: LabelPaperSize = '50x30') {
   printHtml(testStickerHtml, {
     title: `In_Tem_Test_${size}`,
     pageSize: size,
+    scale: config.stickerScale,
     customCss: `
       html, body {
         width: 50mm !important;

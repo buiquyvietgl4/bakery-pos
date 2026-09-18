@@ -538,38 +538,48 @@ export const DEFAULT_RECEIPT_TEMPLATE_58MM: ReceiptTemplateConfig = {
 // ============================================================================
 
 /**
- * Lấy cấu hình mẫu tem dán hộp bánh đã lưu
+ * Lấy cấu hình mẫu tem dán hộp bánh đã lưu (Phòng thủ 100% lỗi null/undefined từ localStorage)
  */
 export function getStickerTemplate(size: LabelPaperSize = '50x30'): StickerTemplateConfig {
+  const defaultTmpl = size === '50x40' ? DEFAULT_STICKER_TEMPLATE_50X40 : DEFAULT_STICKER_TEMPLATE_50X30;
   if (typeof window === 'undefined') {
-    return size === '50x40' ? DEFAULT_STICKER_TEMPLATE_50X40 : DEFAULT_STICKER_TEMPLATE_50X30;
+    return defaultTmpl;
   }
   try {
     const key = `bakery_print_sticker_template_${size}`;
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.elements)) {
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.elements)) {
+        // Vệ sinh phòng thủ: Lọc bỏ triệt để các phần tử null, undefined hoặc không phải object
+        const validParsedElements: StickerElementConfig[] = parsed.elements.filter(
+          (el: any) => el && typeof el === 'object' && typeof el.id === 'string'
+        );
+
         // Hợp nhất các field mặc định mới nếu trong storage thiếu
-        const defaultTmpl = size === '50x40' ? DEFAULT_STICKER_TEMPLATE_50X40 : DEFAULT_STICKER_TEMPLATE_50X30;
         const mergedElements = defaultTmpl.elements.map((defEl) => {
-          const found = parsed.elements.find((el: StickerElementConfig) => el.id === defEl.id);
+          const found = validParsedElements.find((el) => el.id === defEl.id);
           return found ? { ...defEl, ...found } : defEl;
         });
+
         // Bổ sung thêm các custom element do người dùng tự tạo nếu có
-        const customElements = parsed.elements.filter((el: StickerElementConfig) => !defaultTmpl.elements.some((d) => d.id === el.id));
+        const customElements = validParsedElements.filter(
+          (el) => !defaultTmpl.elements.some((d) => d.id === el.id)
+        );
+
         return {
           canvasSize: size,
           showBorder: parsed.showBorder ?? defaultTmpl.showBorder,
+          scale: typeof parsed.scale === 'number' ? parsed.scale : 92,
           elements: [...mergedElements, ...customElements],
           updatedAt: parsed.updatedAt,
         };
       }
     }
   } catch (err) {
-    console.warn('Lỗi đọc template tem dán:', err);
+    console.warn('Lỗi đọc template tem dán, sử dụng mẫu mặc định:', err);
   }
-  return size === '50x40' ? DEFAULT_STICKER_TEMPLATE_50X40 : DEFAULT_STICKER_TEMPLATE_50X30;
+  return defaultTmpl;
 }
 
 /**
@@ -581,6 +591,7 @@ export function saveStickerTemplate(config: StickerTemplateConfig): void {
     const key = `bakery_print_sticker_template_${config.canvasSize}`;
     const toSave = {
       ...config,
+      scale: typeof config.scale === 'number' ? config.scale : 92,
       updatedAt: new Date().toISOString(),
     };
     localStorage.setItem(key, JSON.stringify(toSave));
@@ -600,44 +611,51 @@ export function resetStickerTemplate(size: LabelPaperSize): StickerTemplateConfi
 }
 
 /**
- * Lấy cấu hình mẫu hóa đơn in nhiệt đã lưu
+ * Lấy cấu hình mẫu hóa đơn in nhiệt đã lưu (Phòng thủ 100% lỗi null/undefined từ localStorage)
  */
 export function getReceiptTemplate(size: ReceiptPaperSize = '80mm'): ReceiptTemplateConfig {
+  const defaultTmpl = size === '58mm' ? DEFAULT_RECEIPT_TEMPLATE_58MM : DEFAULT_RECEIPT_TEMPLATE_80MM;
   if (typeof window === 'undefined') {
-    return size === '58mm' ? DEFAULT_RECEIPT_TEMPLATE_58MM : DEFAULT_RECEIPT_TEMPLATE_80MM;
+    return defaultTmpl;
   }
   try {
     const key = `bakery_print_receipt_template_${size}`;
     const raw = localStorage.getItem(key);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (parsed && Array.isArray(parsed.blocks)) {
-        const defaultTmpl = size === '58mm' ? DEFAULT_RECEIPT_TEMPLATE_58MM : DEFAULT_RECEIPT_TEMPLATE_80MM;
+      if (parsed && typeof parsed === 'object' && Array.isArray(parsed.blocks)) {
+        // Vệ sinh phòng thủ: Lọc bỏ triệt để các phần tử null, undefined hoặc không phải object
+        const validParsedBlocks: ReceiptBlockConfig[] = parsed.blocks.filter(
+          (b: any) => b && typeof b === 'object' && typeof b.id === 'string'
+        );
+
         // Sắp xếp các block theo thứ tự order đã lưu
-        const blockMap = new Map(parsed.blocks.map((b: ReceiptBlockConfig) => [b.id, b]));
+        const blockMap = new Map(validParsedBlocks.map((b) => [b.id, b]));
         const mergedBlocks = defaultTmpl.blocks.map((defB) => {
-          const found = blockMap.get(defB.id) as ReceiptBlockConfig | undefined;
+          const found = blockMap.get(defB.id);
           if (found) {
             return {
               ...defB,
               ...found,
-              options: { ...defB.options, ...found.options },
+              options: { ...defB.options, ...(found.options || {}) },
             };
           }
           return defB;
         });
-        mergedBlocks.sort((a, b) => a.order - b.order);
+        mergedBlocks.sort((a, b) => (a.order || 0) - (b.order || 0));
+
         return {
           paperSize: size,
+          scale: typeof parsed.scale === 'number' ? parsed.scale : 100,
           blocks: mergedBlocks,
           updatedAt: parsed.updatedAt,
         };
       }
     }
   } catch (err) {
-    console.warn('Lỗi đọc template hóa đơn:', err);
+    console.warn('Lỗi đọc template hóa đơn, sử dụng mẫu mặc định:', err);
   }
-  return size === '58mm' ? DEFAULT_RECEIPT_TEMPLATE_58MM : DEFAULT_RECEIPT_TEMPLATE_80MM;
+  return defaultTmpl;
 }
 
 /**
@@ -649,6 +667,7 @@ export function saveReceiptTemplate(config: ReceiptTemplateConfig): void {
     const key = `bakery_print_receipt_template_${config.paperSize}`;
     const toSave = {
       ...config,
+      scale: typeof config.scale === 'number' ? config.scale : 100,
       updatedAt: new Date().toISOString(),
     };
     localStorage.setItem(key, JSON.stringify(toSave));
@@ -666,3 +685,20 @@ export function resetReceiptTemplate(size: ReceiptPaperSize): ReceiptTemplateCon
   saveReceiptTemplate(defaultTmpl);
   return defaultTmpl;
 }
+
+/**
+ * Xóa sạch toàn bộ cấu hình mẫu in bị lỗi trên thiết bị và đưa về mặc định ban đầu
+ */
+export function clearAllPrintTemplates(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem('bakery_print_sticker_template_50x30');
+    localStorage.removeItem('bakery_print_sticker_template_50x40');
+    localStorage.removeItem('bakery_print_receipt_template_80mm');
+    localStorage.removeItem('bakery_print_receipt_template_58mm');
+    window.dispatchEvent(new CustomEvent(PRINT_TEMPLATE_UPDATED_EVENT, { detail: { type: 'reset_all' } }));
+  } catch (err) {
+    console.error('Lỗi xóa toàn bộ mẫu in:', err);
+  }
+}
+
