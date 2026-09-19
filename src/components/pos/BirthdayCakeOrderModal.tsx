@@ -17,6 +17,7 @@ import {
 } from '@/lib/types/bakery-bom';
 import {
   getFullCakeBomConfig,
+  CAKE_BOM_UPDATED_EVENT,
 } from '@/lib/utils/cakeBomManager';
 import { isImportedProduct } from '@/lib/utils/productManager';
 import {
@@ -38,6 +39,8 @@ import {
   Plus,
   Minus,
   Check,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
@@ -82,6 +85,7 @@ export function BirthdayCakeOrderModal({
   const [selectedPackagingId, setSelectedPackagingId] = useState<string>('');
   const [selectedFreeAccessoryIds, setSelectedFreeAccessoryIds] = useState<string[]>([]);
   const [selectedDecorAddonIds, setSelectedDecorAddonIds] = useState<string[]>([]);
+  const [isDecorAccordionOpen, setIsDecorAccordionOpen] = useState(false);
 
   // Tỷ lệ markup và giá bán
   const [customMarkupPct, setCustomMarkupPct] = useState<number>(36.5);
@@ -104,10 +108,21 @@ export function BirthdayCakeOrderModal({
   const [decorNotes, setDecorNotes] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
 
+  // Lắng nghe sự kiện khi Định Mức Bánh Sinh Nhật thay đổi trong Admin
+  useEffect(() => {
+    const handleBomUpdated = (e: any) => {
+      if (e.detail) setConfig(e.detail);
+      else setConfig(getFullCakeBomConfig());
+    };
+    window.addEventListener(CAKE_BOM_UPDATED_EVENT, handleBomUpdated);
+    return () => window.removeEventListener(CAKE_BOM_UPDATED_EVENT, handleBomUpdated);
+  }, []);
+
   // Khởi tạo và đồng bộ khi mở modal
   useEffect(() => {
     if (!isOpen) return;
     setValidationError(null);
+    setIsDecorAccordionOpen(false);
     const currentConfig = getFullCakeBomConfig();
     setConfig(currentConfig);
     setCustomMarkupPct(currentConfig.targetFoodCostPct || 36.5);
@@ -165,14 +180,16 @@ export function BirthdayCakeOrderModal({
 
     setSelectedPackagingId(currentConfig.packagings[0]?.id || '');
     setSelectedFreeAccessoryIds(currentConfig.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id));
+    // Mặc định KHÔNG chọn bất kỳ phụ kiện decor nào khi mở modal
     setSelectedDecorAddonIds([]);
   }, [product, isOpen]);
 
   const applyPreset = (preset: BirthdayCakeBomPreset, currentConfig: FullCakeBomConfig) => {
     setSelectedPresetId(preset.id);
     setSelectedPackagingId(preset.packagingId || currentConfig.packagings[0]?.id || '');
-    setSelectedFreeAccessoryIds(preset.freeAccessoryIds || []);
-    setSelectedDecorAddonIds(preset.decorAddonIds || []);
+    setSelectedFreeAccessoryIds(preset.freeAccessoryIds || currentConfig.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id));
+    // Mặc định KHÔNG chọn bất kỳ phụ kiện decor nào theo yêu cầu
+    setSelectedDecorAddonIds([]);
 
     // Gán vào tầng 1
     setTiers((prev) => [
@@ -324,6 +341,16 @@ export function BirthdayCakeOrderModal({
       markupPct: customMarkupPct,
     };
   }, [tierCostBreakdown, selectedPackagingId, selectedFreeAccessoryIds, selectedDecorAddonIds, customMarkupPct, config]);
+
+  // Tổng giá bán niêm yết của các phụ kiện decor được chọn thêm
+  const selectedDecorSellingTotal = useMemo(() => {
+    let sum = 0;
+    for (const dId of selectedDecorAddonIds) {
+      const d = config.decorAddons.find((item) => item.id === dId);
+      if (d) sum += d.sellingPrice || d.costPrice || 0;
+    }
+    return sum;
+  }, [selectedDecorAddonIds, config.decorAddons]);
 
   // Tự động điền giá gợi ý khi thay đổi cấu hình
   useEffect(() => {
@@ -807,79 +834,173 @@ export function BirthdayCakeOrderModal({
           <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-3 text-xs">
             <span className="font-black text-zinc-900 flex items-center gap-1.5 text-xs sm:text-sm">
               <Package className="w-4 h-4 text-pink-600" />
-              <span>Hộp Đóng Gói & Quà Tặng Kèm:</span>
+              <span>Hộp Đóng Gói & Phụ Kiện Decor:</span>
             </span>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="font-bold text-zinc-700 block mb-1">Loại Hộp Đựng Bánh:</label>
-                <select
-                  value={selectedPackagingId}
-                  onChange={(e) => setSelectedPackagingId(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-white border border-zinc-200 font-bold text-zinc-900 text-xs"
-                >
-                  {config.packagings.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} {p.costPrice > 0 ? `(~${p.costPrice.toLocaleString('vi-VN')}₫)` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            {/* Loại Hộp Đựng Bánh */}
+            <div>
+              <label className="font-bold text-zinc-700 block mb-1">Loại Hộp Đựng Bánh:</label>
+              <select
+                value={selectedPackagingId}
+                onChange={(e) => setSelectedPackagingId(e.target.value)}
+                className="w-full p-2.5 rounded-xl bg-white border border-zinc-200 font-bold text-zinc-900 text-xs shadow-2xs focus:border-pink-500 focus:outline-none"
+              >
+                {config.packagings.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name} {p.costPrice > 0 ? `(~${p.costPrice.toLocaleString('vi-VN')}₫)` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-              <div>
-                <label className="font-bold text-zinc-700 block mb-1">Vật tư tặng kèm (Miễn phí):</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {config.freeAccessories.map((acc) => {
-                    const isSel = selectedFreeAccessoryIds.includes(acc.id);
+            {/* Phụ kiện decor tính thêm (Dạng cửa sổ thu gọn theo yêu cầu) */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/40 overflow-hidden">
+              {/* Header thu gọn / mở rộng */}
+              <button
+                type="button"
+                onClick={() => setIsDecorAccordionOpen((prev) => !prev)}
+                className="w-full p-3 flex items-center justify-between gap-2 text-left hover:bg-amber-100/50 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-800 flex items-center justify-center shrink-0">
+                    <Sparkles className="w-4 h-4 text-amber-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-zinc-900 text-xs truncate">
+                      Phụ kiện & Decor đặt thêm (nếu có):
+                    </div>
+                    <div className="text-[11px] text-zinc-500 truncate mt-0.5">
+                      {selectedDecorAddonIds.length === 0 ? (
+                        'Mặc định không chọn • Nhấn để chọn thêm nến, vương miện, đèn LED...'
+                      ) : (
+                        <span className="text-amber-800 font-bold">
+                          Đã chọn {selectedDecorAddonIds.length} món (+{selectedDecorSellingTotal.toLocaleString('vi-VN')}₫)
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {selectedDecorAddonIds.length > 0 ? (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold text-[10px]">
+                      {selectedDecorAddonIds.length} món
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-zinc-400 font-medium">Bấm để chọn</span>
+                  )}
+                  {isDecorAccordionOpen ? (
+                    <ChevronUp className="w-4 h-4 text-amber-700" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-amber-700" />
+                  )}
+                </div>
+              </button>
+
+              {/* Danh sách chip các món đã chọn khi đang thu gọn */}
+              {!isDecorAccordionOpen && selectedDecorAddonIds.length > 0 && (
+                <div className="px-3 pb-3 pt-0 flex flex-wrap gap-1.5">
+                  {selectedDecorAddonIds.map((id) => {
+                    const addon = config.decorAddons.find((a) => a.id === id);
+                    if (!addon) return null;
                     return (
-                      <button
-                        key={acc.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedFreeAccessoryIds((prev) =>
-                            isSel ? prev.filter((x) => x !== acc.id) : [...prev, acc.id]
-                          );
-                        }}
-                        className={`px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition cursor-pointer border ${
-                          isSel
-                            ? 'bg-pink-100 text-pink-800 border-pink-300'
-                            : 'bg-white text-zinc-500 border-zinc-200 hover:bg-zinc-100'
-                        }`}
+                      <span
+                        key={id}
+                        className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 px-2 py-1 rounded-lg text-[11px] font-bold"
                       >
-                        {isSel ? '✓ ' : '+ '} {acc.name}
-                      </button>
+                        ✓ {addon.name} (+{(addon.sellingPrice || addon.costPrice).toLocaleString('vi-VN')}₫)
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedDecorAddonIds((prev) => prev.filter((x) => x !== id));
+                          }}
+                          className="hover:text-rose-600 ml-0.5 cursor-pointer"
+                          title="Bỏ chọn"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </span>
                     );
                   })}
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Phụ kiện decor tính thêm */}
-            <div>
-              <label className="font-bold text-zinc-700 block mb-1">Phụ kiện & Decor đặt thêm (nếu có):</label>
-              <div className="flex flex-wrap gap-1.5">
-                {config.decorAddons.map((addon) => {
-                  const isSel = selectedDecorAddonIds.includes(addon.id);
-                  return (
-                    <button
-                      key={addon.id}
-                      type="button"
-                      onClick={() => {
-                        setSelectedDecorAddonIds((prev) =>
-                          isSel ? prev.filter((x) => x !== addon.id) : [...prev, addon.id]
+              {/* Cửa sổ / List mở rộng để tích chọn */}
+              {isDecorAccordionOpen && (
+                <div className="p-3 border-t border-amber-200 bg-white space-y-2.5 animate-fade-in">
+                  <div className="flex items-center justify-between text-[11px] pb-1 border-b border-zinc-100">
+                    <span className="text-zinc-500 font-medium">
+                      Tích chọn phụ kiện từ danh mục Định Mức Bánh Sinh Nhật:
+                    </span>
+                    {selectedDecorAddonIds.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedDecorAddonIds([])}
+                        className="text-rose-600 hover:text-rose-800 font-bold cursor-pointer"
+                      >
+                        Bỏ chọn tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  {config.decorAddons.length === 0 ? (
+                    <div className="text-center py-3 text-zinc-400 text-xs">
+                      Chưa có phụ kiện decor nào được cài đặt trong định mức bánh sinh nhật.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                      {config.decorAddons.map((addon) => {
+                        const isSel = selectedDecorAddonIds.includes(addon.id);
+                        return (
+                          <div
+                            key={addon.id}
+                            onClick={() => {
+                              setSelectedDecorAddonIds((prev) =>
+                                isSel ? prev.filter((x) => x !== addon.id) : [...prev, addon.id]
+                              );
+                            }}
+                            className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition select-none ${
+                              isSel
+                                ? 'bg-amber-50 border-amber-400 text-amber-950 ring-1 ring-amber-300'
+                                : 'bg-zinc-50/70 border-zinc-200 text-zinc-700 hover:bg-zinc-100/70'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                className={`w-4 h-4 rounded-md border flex items-center justify-center shrink-0 ${
+                                  isSel
+                                    ? 'bg-amber-600 border-amber-600 text-white'
+                                    : 'border-zinc-300 bg-white'
+                                }`}
+                              >
+                                {isSel && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <span className="text-xs font-bold truncate">{addon.name}</span>
+                            </div>
+                            <span className={`text-[11px] font-black shrink-0 ${isSel ? 'text-amber-800' : 'text-zinc-500'}`}>
+                              +{(addon.sellingPrice || addon.costPrice).toLocaleString('vi-VN')}₫
+                            </span>
+                          </div>
                         );
-                      }}
-                      className={`px-2.5 py-1.5 rounded-lg font-bold text-[11px] transition cursor-pointer border ${
-                        isSel
-                          ? 'bg-amber-100 text-amber-900 border-amber-300 font-black'
-                          : 'bg-white text-zinc-600 border-zinc-200 hover:bg-zinc-100'
-                      }`}
+                      })}
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">
+                      Tổng tiền phụ kiện: <strong className="text-amber-800 font-black">+{selectedDecorSellingTotal.toLocaleString('vi-VN')}₫</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsDecorAccordionOpen(false)}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs cursor-pointer shadow-xs transition"
                     >
-                      {isSel ? '✓ ' : '+ '} {addon.name} (+{(addon.sellingPrice || addon.costPrice).toLocaleString('vi-VN')}₫)
+                      Đóng danh sách
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Ghi chữ & Dặn dò tạo hình */}
@@ -996,24 +1117,30 @@ export function BirthdayCakeOrderModal({
               </div>
             )}
 
-            {/* Ngày giờ hẹn */}
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
-                <label className="font-bold text-zinc-700 block mb-1">Ngày hẹn:</label>
+            {/* Ngày giờ hẹn (trên mobile xếp 1 cột, trên tablet/desktop 2 cột tránh bị chồng chéo) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="min-w-0">
+                <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1.5">
+                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Ngày hẹn nhận bánh:</span>
+                </label>
                 <input
                   type="date"
                   value={pickupDate}
                   onChange={(e) => setPickupDate(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
+                  className="w-full min-w-0 p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
-              <div>
-                <label className="font-bold text-zinc-700 block mb-1">Giờ hẹn:</label>
+              <div className="min-w-0">
+                <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Giờ hẹn nhận bánh:</span>
+                </label>
                 <input
                   type="time"
                   value={pickupTime}
                   onChange={(e) => setPickupTime(e.target.value)}
-                  className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
+                  className="w-full min-w-0 p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
                 />
               </div>
             </div>
