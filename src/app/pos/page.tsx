@@ -65,6 +65,7 @@ import { broadcastProductChange } from '@/lib/supabase/realtimeSync';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
+import NotificationSettingsModal from '@/components/NotificationSettingsModal';
 import { PrintTemplateDesignerModal } from '@/components/pos/PrintTemplateDesignerModal';
 import { ReceiptTemplateConfig } from '@/lib/types/printTemplate';
 import { getReceiptTemplate, PRINT_TEMPLATE_UPDATED_EVENT } from '@/lib/utils/printTemplateManager';
@@ -597,6 +598,23 @@ export default function POSPage() {
 
   // ── PRINTER SETTINGS MODAL STATE ──
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
+
+  // ── NOTIFICATION SETTINGS MODAL STATE ──
+  const [isNotifSettingsOpen, setIsNotifSettingsOpen] = useState(false);
+  const [notifModalTab, setNotifModalTab] = useState<'sound' | 'history' | 'pwa' | 'telegram' | 'kiosk'>('sound');
+
+  // Đồng bộ trạng thái loa chuông toàn cục khi có thay đổi
+  useEffect(() => {
+    const handleSoundToggle = (e: any) => {
+      if (e.detail && typeof e.detail.enabled === 'boolean') {
+        setSoundEnabled(e.detail.enabled);
+      } else {
+        setSoundEnabled(soundManager.isEnabled());
+      }
+    };
+    window.addEventListener('bakery_sound_toggle', handleSoundToggle);
+    return () => window.removeEventListener('bakery_sound_toggle', handleSoundToggle);
+  }, []);
 
   // ── MOBILE UTILITIES MENU STATE ──
   const [isMobileUtilityMenuOpen, setIsMobileUtilityMenuOpen] = useState(false);
@@ -3382,52 +3400,31 @@ export default function POSPage() {
                         <span>🎂 Đặt Bánh Sinh Nhật (BOM)</span>
                       </button>
 
-                      {/* Bật/Tắt Âm Thanh */}
+                      {/* Cài Đặt & Thử Thông Báo */}
                       <button
                         type="button"
                         onClick={() => {
-                          const next = !soundEnabled;
-                          setSoundEnabled(next);
-                          soundManager.setEnabled(next);
-                          if (next) soundManager.playNewOrderChime();
+                          setNotifModalTab('sound');
+                          setIsNotifSettingsOpen(true);
                           setIsMobileUtilityMenuOpen(false);
                         }}
                         className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 hover:bg-amber-50 transition cursor-pointer"
                       >
                         <div className="flex items-center gap-2">
-                          {soundEnabled ? <Volume2 className="w-4 h-4 text-amber-600" /> : <VolumeX className="w-4 h-4 text-zinc-400" />}
-                          <span>Âm Báo Đơn</span>
+                          <Bell className="w-4 h-4 text-amber-600" />
+                          <span>Cài Đặt & Thử Thông Báo</span>
                         </div>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
-                          soundEnabled ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-100 text-zinc-500'
-                        }`}>
-                          {soundEnabled ? 'BẬT' : 'TẮT'}
-                        </span>
-                      </button>
-
-                      {/* Thử Thông Báo PWA */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          phoneNotificationService.triggerOrderNotification({
-                            id: 'pos-test-' + Date.now(),
-                            type: 'new_order',
-                            appTitle: 'TIỆM BÁNH HẠNH PHÚC (POS)',
-                            title: '🎂 Đơn Đặt Bánh Mới #DH-8868',
-                            sender: 'Chị Lan (0987.654.321)',
-                            message: 'Đặt 1 Bánh Kem Bắp Phô Mai 20cm — Giao lúc 16:30 hôm nay',
-                            extraDetails: 'Ghi chữ: "Chúc mừng sinh nhật bé Bắp"',
-                            orderNumber: 'DH-8868',
-                            pickupTime: '16:30 Hôm nay',
-                            actionLabel: 'Xem Chi Tiết',
-                            onAction: () => setIsPreorderListOpen(true),
-                          });
-                          setIsMobileUtilityMenuOpen(false);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 hover:bg-amber-50 transition cursor-pointer text-left"
-                      >
-                        <Bell className="w-4 h-4 text-amber-600" />
-                        <span>Thử Chuông PWA Mobile</span>
+                        <div className="flex items-center gap-1.5">
+                          {soundEnabled ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-100 text-emerald-700 flex items-center gap-1">
+                              <Volume2 className="w-3 h-3 text-emerald-600" /> BẬT
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-zinc-100 text-zinc-500 flex items-center gap-1">
+                              <VolumeX className="w-3 h-3 text-zinc-400" /> TẮT
+                            </span>
+                          )}
+                        </div>
                       </button>
 
                       {/* Quản Lý Kho Bánh Sẵn */}
@@ -3657,52 +3654,30 @@ export default function POSPage() {
               <span className="hidden sm:inline">Máy In</span>
             </button>
 
-            {/* Nút Bật/Tắt Âm Thanh Thông Báo */}
-            <button
-              onClick={() => {
-                const next = !soundEnabled;
-                setSoundEnabled(next);
-                soundManager.setEnabled(next);
-                if (next) soundManager.playNewOrderChime();
-              }}
-              className={`flex items-center gap-1.5 px-3 py-2.5 rounded-2xl border text-xs font-bold transition cursor-pointer ${
-                soundEnabled
-                  ? 'bg-amber-50 border-amber-300 text-amber-800 hover:bg-amber-100 shadow-2xs'
-                  : 'bg-zinc-100 border-zinc-200 text-zinc-500 hover:bg-zinc-200'
-              }`}
-              title={soundEnabled ? 'Âm thanh thông báo: ĐANG BẬT (click để Tắt)' : 'Âm thanh thông báo: ĐANG TẮT (click để Bật)'}
-            >
-              {soundEnabled ? (
-                <Volume2 className="w-4 h-4 text-amber-600 animate-pulse" />
-              ) : (
-                <VolumeX className="w-4 h-4 text-zinc-400" />
-              )}
-              <span className="hidden md:inline">{soundEnabled ? 'Âm Báo' : 'Tắt Chuông'}</span>
-            </button>
-
-            {/* Nút Thử Thông Báo Nổi Desktop & Mobile POS */}
+            {/* Nút Cài Đặt & Kiểm Tra Thông Báo Gọn Gàng */}
             <button
               type="button"
               onClick={() => {
-                phoneNotificationService.triggerOrderNotification({
-                  id: 'pos-test-' + Date.now(),
-                  type: 'new_order',
-                  appTitle: 'TIỆM BÁNH HẠNH PHÚC (POS)',
-                  title: '🎂 Đơn Đặt Bánh Mới #DH-8868',
-                  sender: 'Chị Lan (0987.654.321)',
-                  message: 'Đặt 1 Bánh Kem Bắp Phô Mai 20cm — Giao lúc 16:30 hôm nay',
-                  extraDetails: 'Ghi chữ: "Chúc mừng sinh nhật bé Bắp"',
-                  orderNumber: 'DH-8868',
-                  pickupTime: '16:30 Hôm nay',
-                  actionLabel: 'Xem Chi Tiết',
-                  onAction: () => setIsPreorderListOpen(true),
-                });
+                setNotifModalTab('sound');
+                setIsNotifSettingsOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-2.5 rounded-2xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-xs font-bold text-amber-900 shadow-2xs transition cursor-pointer"
-              title="Bấm để kích hoạt thử thông báo nổi trên máy tính & điện thoại"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-amber-400 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-amber-50/50 cursor-pointer"
+              title="Cài đặt thông báo: Âm báo chuông, PWA Web Push, Bot Telegram & Thử thông báo"
             >
-              <Bell className="w-4 h-4 text-amber-600 animate-bounce" />
-              <span className="hidden lg:inline">Thử Thông Báo</span>
+              <div className="relative">
+                <Bell className="w-4 h-4 text-amber-600" />
+                <span
+                  className={`absolute -top-1 -right-1 w-2 h-2 rounded-full ring-1 ring-white ${
+                    soundEnabled ? 'bg-emerald-500' : 'bg-zinc-400'
+                  }`}
+                />
+              </div>
+              <span className="hidden sm:inline">Cài Đặt Báo</span>
+              {soundEnabled ? (
+                <Volume2 className="w-3.5 h-3.5 text-emerald-600 hidden md:inline" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 text-zinc-400 hidden md:inline" />
+              )}
             </button>
 
             {/* Shift Trigger Button */}
@@ -8240,6 +8215,16 @@ export default function POSPage() {
       <PrinterSettingsModal
         isOpen={isPrinterSettingsOpen}
         onClose={() => setIsPrinterSettingsOpen(false)}
+      />
+
+      {/* ── MODAL CÀI ĐẶT THÔNG BÁO, ÂM BÁO & KIỂM TRA PWA/TELEGRAM ── */}
+      <NotificationSettingsModal
+        isOpen={isNotifSettingsOpen}
+        defaultTab={notifModalTab}
+        onClose={() => {
+          setIsNotifSettingsOpen(false);
+          setSoundEnabled(soundManager.isEnabled());
+        }}
       />
 
       {/* ── MODAL TRÌNH THIẾT KẾ MẪU IN KÉO THẢ (HÓA ĐƠN & TEM DÁN) ── */}

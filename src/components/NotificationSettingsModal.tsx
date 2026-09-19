@@ -5,7 +5,7 @@ import {
   X, Bell, Send, CheckCircle2, AlertCircle, Smartphone, HelpCircle,
   Sparkles, Database, Trash2, RefreshCw, Radio, Check, ShieldCheck,
   History, Clock, CheckCheck, ExternalLink, Cake, Flame, Inbox, Package,
-  AlertTriangle, MessageSquare, Settings, ArrowLeft, Eye
+  AlertTriangle, MessageSquare, Settings, ArrowLeft, Eye, Volume2, VolumeX
 } from 'lucide-react';
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerModal';
@@ -38,16 +38,19 @@ import {
   formatRelativeNotificationTime,
   NotificationLogItem,
 } from '@/lib/utils/notificationHistory';
+import { soundManager } from '@/lib/utils/audioAlert';
+import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  defaultTab?: 'history' | 'pwa' | 'telegram' | 'kiosk';
+  defaultTab?: 'history' | 'sound' | 'pwa' | 'telegram' | 'kiosk';
 }
 
 export default function NotificationSettingsModal({ isOpen, onClose, defaultTab }: Props) {
-  // Tab: 'history' (Mới: Lịch sử xem lại) | 'pwa' | 'telegram' | 'kiosk'
-  const [activeTab, setActiveTab] = useState<'history' | 'pwa' | 'telegram' | 'kiosk'>(defaultTab || 'history');
+  // Tab: 'history' (Lịch sử xem lại) | 'sound' (Âm báo & Thử) | 'pwa' | 'telegram' | 'kiosk'
+  const [activeTab, setActiveTab] = useState<'history' | 'sound' | 'pwa' | 'telegram' | 'kiosk'>(defaultTab || 'history');
+  const [soundEnabled, setSoundEnabled] = useState<boolean>(() => soundManager.isEnabled());
 
   // Lịch sử thông báo states
   const [historyList, setHistoryList] = useState<NotificationLogItem[]>([]);
@@ -88,6 +91,7 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
       if (defaultTab) {
         setActiveTab(defaultTab);
       }
+      setSoundEnabled(soundManager.isEnabled());
 
       // 1. Tải Lịch Sử Thông Báo
       const refreshHistory = () => {
@@ -96,6 +100,16 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
       };
       refreshHistory();
       const unsubNotif = subscribeNotificationHistory(refreshHistory);
+
+      // Lắng nghe sự kiện bật/tắt âm thanh
+      const handleSoundToggle = (e: any) => {
+        if (e.detail && typeof e.detail.enabled === 'boolean') {
+          setSoundEnabled(e.detail.enabled);
+        } else {
+          setSoundEnabled(soundManager.isEnabled());
+        }
+      };
+      window.addEventListener('bakery_sound_toggle', handleSoundToggle);
 
       // 2. Tải Telegram
       setConfig(getTelegramConfig());
@@ -113,6 +127,7 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
 
       return () => {
         unsubNotif();
+        window.removeEventListener('bakery_sound_toggle', handleSoundToggle);
       };
     }
   }, [isOpen, defaultTab]);
@@ -429,7 +444,7 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
               <p className="text-[11px] text-amber-100 font-medium line-clamp-1 hidden sm:block">
                 {activeTab === 'history'
                   ? 'Tra cứu toàn bộ thông báo đơn hàng, nướng mẻ & xuất xưởng'
-                  : 'Cấu hình Bot Telegram, PWA Web Push & Giữ sáng màn hình'}
+                  : 'Cấu hình Âm báo chuông, Bot Telegram, PWA Web Push & Giữ sáng màn hình'}
               </p>
             </div>
           </div>
@@ -439,9 +454,9 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
             {activeTab === 'history' ? (
               <button
                 type="button"
-                onClick={() => setActiveTab('telegram')}
+                onClick={() => setActiveTab('sound')}
                 className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/20 hover:bg-white/30 active:scale-95 text-white text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-xs border border-white/25"
-                title="Cài đặt kênh nhận thông báo (Telegram Bot, PWA, Âm báo)"
+                title="Cài đặt kênh nhận thông báo (Âm báo chuông, Telegram Bot, PWA Push)"
               >
                 <Settings className="w-3.5 h-3.5" />
                 <span>Cài Đặt Báo</span>
@@ -470,50 +485,71 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
 
         {/* Thanh chọn kênh cài đặt: CHỈ HIỆN KHI Ở CHẾ ĐỘ CÀI ĐẶT (Tiết kiệm 100% không gian khi đang xem Lịch sử) */}
         {activeTab !== 'history' && (
-          <div className="grid grid-cols-3 gap-1.5 p-2 bg-amber-100/70 border-b border-amber-200/80 shrink-0">
-            {/* Kênh 1: Telegram */}
+          <div className="grid grid-cols-4 gap-1.5 p-2 bg-amber-100/70 border-b border-amber-200/80 shrink-0">
+            {/* Kênh 1: Âm Báo & Thử */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('sound')}
+              className={`py-2 px-1 sm:px-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer ${
+                activeTab === 'sound'
+                  ? 'bg-amber-600 text-white shadow-xs font-black'
+                  : 'text-zinc-700 hover:bg-amber-200/60 bg-white/50 border border-amber-200/50'
+              }`}
+            >
+              {soundEnabled ? (
+                <Volume2 className="w-3.5 h-3.5 shrink-0" />
+              ) : (
+                <VolumeX className="w-3.5 h-3.5 shrink-0 text-zinc-400" />
+              )}
+              <span className="truncate">Âm Báo</span>
+              {soundEnabled && (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 ring-1 ring-white" />
+              )}
+            </button>
+
+            {/* Kênh 2: Telegram */}
             <button
               type="button"
               onClick={() => setActiveTab('telegram')}
-              className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`py-2 px-1 sm:px-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer ${
                 activeTab === 'telegram'
                   ? 'bg-sky-600 text-white shadow-xs font-black'
                   : 'text-sky-950 hover:bg-sky-100/60 bg-white/50 border border-sky-200/60'
               }`}
             >
               <Send className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Telegram Bot</span>
+              <span className="truncate">Telegram</span>
               {config.enabled && (
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 shrink-0 ring-1 ring-white" />
               )}
             </button>
 
-            {/* Kênh 2: PWA */}
+            {/* Kênh 3: PWA */}
             <button
               type="button"
               onClick={() => setActiveTab('pwa')}
-              className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`py-2 px-1 sm:px-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer ${
                 activeTab === 'pwa'
                   ? 'bg-amber-700 text-white shadow-xs font-black'
                   : 'text-zinc-700 hover:bg-amber-200/60 bg-white/50 border border-amber-200/50'
               }`}
             >
               <Smartphone className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">PWA Trực Tiếp</span>
+              <span className="truncate">PWA Push</span>
             </button>
 
-            {/* Kênh 3: Kiosk Sáng */}
+            {/* Kênh 4: Kiosk Sáng */}
             <button
               type="button"
               onClick={() => setActiveTab('kiosk')}
-              className={`py-2 px-1.5 sm:px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+              className={`py-2 px-1 sm:px-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer ${
                 activeTab === 'kiosk'
                   ? 'bg-amber-800 text-white shadow-xs font-black'
                   : 'text-zinc-700 hover:bg-amber-200/60 bg-white/50 border border-amber-200/50'
               }`}
             >
               <Sparkles className="w-3.5 h-3.5 shrink-0" />
-              <span className="truncate">Màn Hình Sáng</span>
+              <span className="truncate">Giữ Sáng</span>
             </button>
           </div>
         )}
@@ -836,6 +872,198 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
                     );
                   })
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* ════════ TAB ÂM BÁO & KIỂM TRA THÔNG BÁO ════════ */}
+          {activeTab === 'sound' && (
+            <div className="space-y-4">
+              {/* Thẻ Bật/Tắt Âm Thanh Chuông Báo Hệ Thống */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-amber-200 shadow-xs space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black shadow-xs transition ${
+                        soundEnabled ? 'bg-amber-500 text-white' : 'bg-zinc-200 text-zinc-500'
+                      }`}
+                    >
+                      {soundEnabled ? (
+                        <Volume2 className="w-5 h-5 animate-pulse" />
+                      ) : (
+                        <VolumeX className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-zinc-950 text-sm sm:text-base">
+                          Âm Chuông Thông Báo POS & Bếp
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500">
+                        Phát chuông đing-đoong khi có đơn hàng mới, đơn đặt bánh sinh nhật hoặc báo mẻ nướng
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Nút bật tắt Switch */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !soundEnabled;
+                      setSoundEnabled(next);
+                      soundManager.setEnabled(next);
+                      if (next) soundManager.playNewOrderChime();
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-black shrink-0 flex items-center gap-1.5 transition cursor-pointer active:scale-95 ${
+                      soundEnabled
+                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
+                        : 'bg-zinc-100 text-zinc-600 border border-zinc-300 hover:bg-zinc-200'
+                    }`}
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full ${
+                        soundEnabled ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-400'
+                      }`}
+                    />
+                    <span>{soundEnabled ? 'Đang Bật Chuông' : 'Đang Tắt Chuông'}</span>
+                  </button>
+                </div>
+
+                {/* Trạng thái chi tiết & nghe thử các loại chuông */}
+                <div className="bg-amber-50/60 p-3.5 rounded-xl border border-amber-200/80 space-y-3">
+                  <div className="text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Bấm nghe thử các loại âm thanh trong tiệm bánh:</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {/* Chuông đơn mới */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundManager.playNewOrderChime();
+                      }}
+                      className="p-2.5 rounded-xl bg-white hover:bg-amber-100/70 border border-amber-200 text-left transition flex items-center gap-2.5 cursor-pointer shadow-2xs group"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                        <Bell className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-zinc-900 leading-tight">Đơn Hàng Mới</div>
+                        <div className="text-[10px] text-zinc-500">Chuông Đing-Đoong</div>
+                      </div>
+                    </button>
+
+                    {/* Chuông nhận tiền */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundManager.playPaymentSuccessChime();
+                      }}
+                      className="p-2.5 rounded-xl bg-white hover:bg-emerald-100/70 border border-emerald-200 text-left transition flex items-center gap-2.5 cursor-pointer shadow-2xs group"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                        <CheckCircle2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-zinc-900 leading-tight">Nhận Tiền VietQR</div>
+                        <div className="text-[10px] text-zinc-500">Hợp âm Ting Ting Ting</div>
+                      </div>
+                    </button>
+
+                    {/* Chuông khẩn cấp / giao gấp */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundManager.playUrgentAlert();
+                      }}
+                      className="p-2.5 rounded-xl bg-white hover:bg-rose-100/70 border border-rose-200 text-left transition flex items-center gap-2.5 cursor-pointer shadow-2xs group"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 group-hover:scale-110 transition">
+                        <AlertTriangle className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-zinc-900 leading-tight">Cảnh Báo Gấp</div>
+                        <div className="text-[10px] text-zinc-500">Bíp bíp bíp nhắc giờ</div>
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Thử giọng đọc AI tiếng Việt */}
+                  <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                    <span className="text-[11px] text-zinc-500">Thử giọng đọc trợ lý tiếng Việt:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        soundManager.speakPaymentSuccess(150000, 'DH-8868');
+                      }}
+                      className="text-xs font-bold text-amber-700 hover:text-amber-900 underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <span>Nghe đọc &quot;Đã nhận 150.000đ đơn DH-8868&quot;</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Thẻ Thử Hiển Thị Thông Báo Nổi Đơn Hàng Mẫu */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-amber-200 shadow-xs space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 text-white flex items-center justify-center font-black shadow-xs">
+                      <Bell className="w-5 h-5 animate-bounce" />
+                    </div>
+                    <div>
+                      <div className="font-black text-zinc-950 text-sm sm:text-base">
+                        Thử Thông Báo Nổi (Banner Notification)
+                      </div>
+                      <p className="text-[11px] text-zinc-500">
+                        Kích hoạt thông báo pop-up nổi xuất hiện ở góc màn hình POS / Điện thoại
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-zinc-600 bg-amber-50/50 p-2.5 rounded-xl border border-amber-200/60 leading-relaxed">
+                  Bấm nút bên dưới để phát sinh thông báo nổi đơn đặt bánh sinh nhật mẫu. Cửa sổ thông báo sẽ bay ra kèm chuông báo và lưu ngay vào mục <strong>Lịch Sử Thông Báo</strong>.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      phoneNotificationService.triggerOrderNotification({
+                        id: 'pos-test-' + Date.now(),
+                        type: 'new_order',
+                        appTitle: 'TIỆM BÁNH HẠNH PHÚC (POS)',
+                        title: '🎂 Đơn Đặt Bánh Mới #DH-8868',
+                        sender: 'Chị Lan (0987.654.321)',
+                        message: 'Đặt 1 Bánh Kem Bắp Phô Mai 20cm — Giao lúc 16:30 hôm nay',
+                        extraDetails: 'Ghi chữ: "Chúc mừng sinh nhật bé Bắp"',
+                        orderNumber: 'DH-8868',
+                        pickupTime: '16:30 Hôm nay',
+                      });
+                      if (soundEnabled) {
+                        soundManager.playNewOrderChime();
+                      }
+                    }}
+                    className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white text-xs font-black shadow-md flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
+                  >
+                    <Bell className="w-4 h-4 animate-bounce" />
+                    <span>🔔 Bấm Thử Bật Thông Báo Đơn Mẫu #DH-8868</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleTestPWAPush}
+                    disabled={isPushTesting}
+                    className="py-3 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-300 text-sky-900 text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer active:scale-95 disabled:opacity-50"
+                    title="Phát sóng thử nghiệm qua PWA Web Push ra màn hình khóa"
+                  >
+                    <Radio className={`w-4 h-4 text-sky-600 ${isPushTesting ? 'animate-spin' : ''}`} />
+                    <span>{isPushTesting ? 'Đang gửi...' : 'Phát Thử Ra MH Khóa PWA'}</span>
+                  </button>
+                </div>
               </div>
             </div>
           )}
