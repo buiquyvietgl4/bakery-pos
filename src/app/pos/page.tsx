@@ -462,6 +462,7 @@ export default function POSPage() {
 
   // Preorder List View Modal
   const [isPreorderListOpen, setIsPreorderListOpen] = useState(false);
+  const [preorderFilterTab, setPreorderFilterTab] = useState<'undelivered' | 'all' | 'completed'>('undelivered');
   const [preordersList, setPreordersList] = useState<any[]>(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -817,6 +818,11 @@ export default function POSPage() {
   const urgentPreorders = useMemo(() => {
     return getUrgentPreorders(preordersList, currentTime);
   }, [preordersList, currentTime]);
+
+  // Lọc các đơn đặt bánh CHƯA GIAO (loại bỏ đơn đã hoàn thành hoặc đã hủy)
+  const undeliveredPreorders = useMemo(() => {
+    return preordersList.filter((o) => !isOrderCompletedOrCancelled(o));
+  }, [preordersList]);
 
   // Cảnh báo âm thanh & thông báo tin nhắn khi có đơn mới rơi vào trạng thái khẩn cấp
   useEffect(() => {
@@ -3563,7 +3569,7 @@ export default function POSPage() {
                   <div className="truncate">
                     <div className="text-[10px] font-bold text-zinc-500 leading-none">Lịch Hẹn Giao</div>
                     <div className="text-xs font-black text-zinc-900 mt-1">
-                      {preordersList.length} đơn
+                      {undeliveredPreorders.length} đơn chưa giao
                     </div>
                   </div>
                 </div>
@@ -3651,7 +3657,7 @@ export default function POSPage() {
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 urgentPreorders.length > 0 ? 'bg-rose-600 text-white animate-pulse' : 'bg-pink-100 text-pink-700'
               }`}>
-                {preordersList.length}
+                {undeliveredPreorders.length}
               </span>
               {urgentPreorders.length > 0 && (
                 <span className="hidden xl:inline-flex items-center text-[10px] font-black text-rose-700 bg-rose-200/80 px-1.5 py-0.5 rounded-md">
@@ -5455,7 +5461,9 @@ export default function POSPage() {
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-pink-600" />
-                <h3 className="font-black text-lg text-zinc-900">Lịch Giao Bánh Kem Đặt Trước ({preordersList.length})</h3>
+                <h3 className="font-black text-base sm:text-lg text-zinc-900">
+                  Lịch Giao Bánh Đặt Trước ({undeliveredPreorders.length} đơn chưa giao)
+                </h3>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -5474,23 +5482,94 @@ export default function POSPage() {
               </div>
             </div>
 
+            {/* BỘ LỌC TRẠNG THÁI: Chưa giao (mặc định) | Đã giao | Tất cả */}
+            <div className="flex items-center gap-1.5 p-1 bg-zinc-100 rounded-2xl text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setPreorderFilterTab('undelivered')}
+                className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  preorderFilterTab === 'undelivered'
+                    ? 'bg-white text-pink-700 shadow-xs font-black'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <span>Chưa giao</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  preorderFilterTab === 'undelivered' ? 'bg-pink-100 text-pink-700' : 'bg-zinc-200 text-zinc-600'
+                }`}>
+                  {undeliveredPreorders.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreorderFilterTab('completed')}
+                className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  preorderFilterTab === 'completed'
+                    ? 'bg-white text-emerald-700 shadow-xs font-black'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <span>Đã giao</span>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                  preorderFilterTab === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-200 text-zinc-600'
+                }`}>
+                  {preordersList.length - undeliveredPreorders.length}
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPreorderFilterTab('all')}
+                className={`flex-1 py-2 px-3 rounded-xl transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                  preorderFilterTab === 'all'
+                    ? 'bg-white text-zinc-900 shadow-xs font-black'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <span>Tất cả</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-zinc-200 text-zinc-600">
+                  {preordersList.length}
+                </span>
+              </button>
+            </div>
+
             <div className="space-y-3">
-              {preordersList.length === 0 ? (
-                <div className="text-center py-10 space-y-2 text-zinc-400">
-                  <Cake className="w-10 h-10 mx-auto text-zinc-300" />
-                  <p className="text-xs">Chưa có đơn đặt bánh kem nào trong hệ thống</p>
-                  <button
-                    onClick={() => {
-                      setIsPreorderListOpen(false);
-                      setIsPreorderModalOpen(true);
-                    }}
-                    className="text-xs font-bold text-pink-600 hover:underline"
-                  >
-                    + Tạo đơn đặt bánh đầu tiên
-                  </button>
-                </div>
-              ) : (
-                sortPreordersByUrgency(preordersList, currentTime).map((po) => {
+              {(() => {
+                const currentFilteredList =
+                  preorderFilterTab === 'undelivered'
+                    ? undeliveredPreorders
+                    : preorderFilterTab === 'completed'
+                    ? preordersList.filter((o) => isOrderCompletedOrCancelled(o))
+                    : preordersList;
+
+                if (currentFilteredList.length === 0) {
+                  return (
+                    <div className="text-center py-10 space-y-2 text-zinc-400">
+                      {preorderFilterTab === 'undelivered' ? (
+                        <>
+                          <CheckCircle2 className="w-10 h-10 mx-auto text-emerald-500" />
+                          <p className="text-xs font-bold text-zinc-700">Hiện không có đơn bánh nào đang chờ giao</p>
+                          <p className="text-[11px] text-zinc-500">Tất cả các đơn đặt bánh trước đã được giao hoàn tất!</p>
+                          {preordersList.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setPreorderFilterTab('all')}
+                              className="text-xs font-bold text-pink-600 hover:underline cursor-pointer mt-2 inline-block"
+                            >
+                              Xem lại lịch sử tất cả ({preordersList.length} đơn)
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <Cake className="w-10 h-10 mx-auto text-zinc-300" />
+                          <p className="text-xs">Chưa có đơn đặt bánh phù hợp trong danh mục này</p>
+                        </>
+                      )}
+                    </div>
+                  );
+                }
+
+                return sortPreordersByUrgency(currentFilteredList, currentTime).map((po) => {
                   const orderNum = po.order_number || po.orderNumber;
                   const custName = po.customer_name || po.customerName;
                   const custPhone = po.customer_phone || po.customerPhone;
@@ -5838,8 +5917,8 @@ export default function POSPage() {
                       </div>
                     </div>
                   );
-                })
-              )}
+                });
+              })()}
             </div>
           </div>
         </div>
