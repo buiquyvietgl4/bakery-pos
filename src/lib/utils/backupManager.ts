@@ -388,9 +388,6 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawP) products = JSON.parse(rawP);
     } catch {}
   }
-  if (!products || products.length === 0) {
-    products = [...DEFAULT_BAKERY_PRODUCTS];
-  }
 
   // Lấy thêm từ Supabase nếu online
   // Lấy thêm từ Supabase nếu online
@@ -427,9 +424,6 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       const rawR = localStorage.getItem('bakery_recipes');
       if (rawR) recipes = JSON.parse(rawR);
     } catch {}
-  }
-  if (!recipes || recipes.length === 0) {
-    recipes = [...DEFAULT_BAKERY_RECIPES];
   }
 
   // 3. Nguyên vật liệu kho

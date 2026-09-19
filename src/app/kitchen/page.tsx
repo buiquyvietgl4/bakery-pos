@@ -264,7 +264,7 @@ export default function KitchenPage() {
         }
       } catch {}
     }
-    return DEFAULT_BAKERY_RECIPES.map(normalizeRecipe);
+    return [];
   });
 
   const [selectedRecipe, setSelectedRecipe] = useState<BakeryRecipe | null>(null);
@@ -447,7 +447,7 @@ export default function KitchenPage() {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('bakery_products');
-        const list = raw ? JSON.parse(raw) : DEFAULT_BAKERY_PRODUCTS;
+        const list = raw ? JSON.parse(raw) : [];
         const map: Record<string, number> = {};
         if (Array.isArray(list)) {
           list.forEach((p: any) => {
@@ -645,7 +645,7 @@ export default function KitchenPage() {
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('bakery_products');
-        let products = raw ? JSON.parse(raw) : [...DEFAULT_BAKERY_PRODUCTS];
+        let products = raw ? JSON.parse(raw) : [];
         let found = false;
 
         const updatedProducts = products.map((p: any) => {

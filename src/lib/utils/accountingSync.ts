@@ -36,18 +36,9 @@ const DB_ROW_EXPENSES_NAME = 'SYS_CONFIG_EXPENSES';
 const DB_ROW_CASHFLOW_ID = '00000000-0000-0000-0000-000000000011';
 const DB_ROW_CASHFLOW_NAME = 'SYS_CONFIG_CASHFLOW';
 
-export const DEFAULT_EXPENSES: ExpenseItem[] = [
-  { id: 'exp-1', category: 'Tiền mặt bằng', amount: 8000000, description: 'Tiền thuê mặt bằng tháng này', date: '2026-09-01' },
-  { id: 'exp-2', category: 'Tiền điện & Nước', amount: 2500000, description: 'Điện lò nướng & tủ bảo quản', date: '2026-09-03' },
-  { id: 'exp-3', category: 'Lương nhân viên', amount: 12000000, description: 'Lương nhân viên quầy & thợ bánh', date: '2026-09-05' },
-  { id: 'exp-4', category: 'Khấu hao thiết bị', amount: 1000000, description: 'Trích khấu hao lò nướng đối lưu', date: '2026-09-05' },
-];
+export const DEFAULT_EXPENSES: ExpenseItem[] = [];
 
-export const DEFAULT_CASHFLOW: CashflowTransaction[] = [
-  { id: 'cf-1', type: 'income', category: 'sales', amount: 45000000, desc: 'Tổng thu bán hàng từ quầy POS', date: '2026-09-07' },
-  { id: 'cf-2', type: 'expense', category: 'purchase', amount: 14300000, desc: 'Chi nhập nguyên vật liệu bột, bơ, trứng', date: '2026-09-06' },
-  { id: 'cf-3', type: 'expense', category: 'opex', amount: 23500000, desc: 'Chi trả tiền nhà, điện nước, lương', date: '2026-09-05' },
-];
+export const DEFAULT_CASHFLOW: CashflowTransaction[] = [];
 
 // ── EXPENSES HELPERS ──
 export function getExpenses(): ExpenseItem[] {

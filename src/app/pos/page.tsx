@@ -171,7 +171,7 @@ export default function POSPage() {
         }
       } catch {}
     }
-    return DEFAULT_BAKERY_PRODUCTS;
+    return [];
   });
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('Tất cả');
@@ -773,7 +773,7 @@ export default function POSPage() {
   // 1. Fetch Products with offline-first persistence
   const loadProducts = async () => {
     try {
-      let currentProducts: CachedProduct[] = DEFAULT_BAKERY_PRODUCTS;
+      let currentProducts: CachedProduct[] = [];
       let localProducts: CachedProduct[] = [];
       if (typeof window !== 'undefined') {
         const saved = localStorage.getItem('bakery_products');
@@ -804,29 +804,14 @@ export default function POSPage() {
         console.warn('Dexie DB warning:', dbErr);
       }
 
-      // Đảm bảo tất cả sản phẩm đều có số lượng tồn kho và nạp thêm bán thành phẩm nếu thiếu
-      const defMap = new Map(DEFAULT_BAKERY_PRODUCTS.map((d) => [d.id, d]));
-      currentProducts = currentProducts.map((p: any) => {
-        const def = defMap.get(p.id);
-        const price = Number(p.selling_price ?? p.price ?? def?.selling_price ?? 0);
-        return {
-          ...p,
-          selling_price: price,
-          stock_qty: p.stock_qty !== undefined ? p.stock_qty : (def?.stock_qty ?? 10),
-          min_stock_alert: p.min_stock_alert !== undefined ? p.min_stock_alert : (def?.min_stock_alert ?? 3),
-          unit: p.unit || def?.unit || 'cái',
-          is_semi_finished: p.is_semi_finished !== undefined ? p.is_semi_finished : (def?.is_semi_finished ?? false),
-        };
-      });
-      const deletedIds = getDeletedProductIds();
-      if (currentProducts.length === 0) {
-        DEFAULT_BAKERY_PRODUCTS.forEach((def) => {
-          const isDeleted = deletedIds.has(def.id) || (def.name && deletedIds.has(def.name.toLowerCase().trim()));
-          if (!isDeleted) {
-            currentProducts.push(def);
-          }
-        });
-      }
+      currentProducts = currentProducts.map((p: any) => ({
+        ...p,
+        selling_price: Number(p.selling_price ?? p.price ?? 0),
+        stock_qty: p.stock_qty !== undefined ? p.stock_qty : 0,
+        min_stock_alert: p.min_stock_alert !== undefined ? p.min_stock_alert : 3,
+        unit: p.unit || 'cái',
+        is_semi_finished: p.is_semi_finished !== undefined ? p.is_semi_finished : false,
+      }));
       currentProducts = filterActiveProducts(currentProducts);
 
       setProducts(currentProducts);

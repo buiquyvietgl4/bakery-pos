@@ -331,16 +331,7 @@ export default function AdminDashboard() {
   const [testWebhookCode, setTestWebhookCode] = useState<string>('DH' + Math.floor(100000 + Math.random() * 900000));
 
   // ── INVENTORY STATE ──
-  const [ingredients, setIngredients] = useState<Ingredient[]>([
-    { id: '1', name: 'Bột mì số 11 (Bake)', unit: 'g', category: 'Bột & Ngũ cốc', stock_qty: 25000, reorder_level: 5000, avg_cost: 25, wastage_pct: 5.0 },
-    { id: '2', name: 'Bơ lạt Anchor', unit: 'g', category: 'Bơ sữa', stock_qty: 10000, reorder_level: 2000, avg_cost: 120, wastage_pct: 0.0 },
-    { id: '3', name: 'Trứng gà ta', unit: 'quả', category: 'Trứng', stock_qty: 200, reorder_level: 50, avg_cost: 3500, wastage_pct: 2.0 },
-    { id: '4', name: 'Đường cát trắng', unit: 'g', category: 'Gia vị', stock_qty: 15000, reorder_level: 3000, avg_cost: 18, wastage_pct: 0.0 },
-    { id: '5', name: 'Sữa tươi không đường', unit: 'ml', category: 'Bơ sữa', stock_qty: 12000, reorder_level: 3000, avg_cost: 35, wastage_pct: 2.0 },
-    { id: '6', name: 'Trứng muối nướng', unit: 'quả', category: 'Nhân bánh', stock_qty: 150, reorder_level: 30, avg_cost: 7000, wastage_pct: 5.0 },
-    { id: '7', name: 'Hộp bánh kem Kraft 20cm', unit: 'cái', category: 'Bao bì & Phụ kiện', stock_qty: 100, reorder_level: 20, avg_cost: 15000, wastage_pct: 0.0 },
-    { id: '8', name: 'Bộ dao nĩa + Nến sinh nhật', unit: 'cái', category: 'Bao bì & Phụ kiện', stock_qty: 200, reorder_level: 50, avg_cost: 3000, wastage_pct: 0.0 },
-  ]);
+  const [ingredients, setIngredients] = useState<Ingredient[]>([]);
 
   const visibleIngredients: Ingredient[] = useMemo(
     () => ingredients.filter((i: Ingredient) => i.name !== 'SYS_CONFIG_TELEGRAM' && i.category !== 'system_config' && !String(i.id).startsWith('SYS_')),
@@ -1271,14 +1262,10 @@ export default function AdminDashboard() {
 
           if (!sbErr && prodData && prodData.length > 0) {
             currentProds = mergeProductLists(currentProds, prodData);
-          } else if (currentProds.length === 0) {
-            currentProds = filterActiveProducts(DEFAULT_BAKERY_PRODUCTS);
           }
         } catch (e) {
           console.warn('Lỗi tải sản phẩm từ Supabase:', e);
         }
-      } else if (currentProds.length === 0) {
-        currentProds = filterActiveProducts(DEFAULT_BAKERY_PRODUCTS);
       }
 
       currentProds = filterActiveProducts(currentProds);

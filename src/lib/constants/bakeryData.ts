@@ -8,440 +8,46 @@ export interface BakeryProduct {
   selling_price: number;
   price?: number;
   base_cost_price?: number;
-  import_price?: number; // Giá vốn nhập hàng từ NCC (dành cho hàng nhập về bán)
-  supplier_name?: string; // Tên nhà cung cấp / Nơi nhập sỉ
-  barcode?: string; // Mã vạch sản phẩm (EAN / Barcode)
-  product_type?: ProductType; // 'produced' (bánh tiệm tự làm) | 'imported' (hàng nhập về bán) | 'custom_cake'
+  import_price?: number;
+  supplier_name?: string;
+  barcode?: string;
+  product_type?: ProductType;
   food_cost_pct?: number;
   is_active: boolean;
   is_preorder_only?: boolean;
-  cake_type_label?: 'standard' | 'pre_order' | 'birthday'; // Nhãn bánh: thường, đặt trước, sinh nhật
-  show_on_menu?: boolean; // Tùy chọn đưa ra menu POS hay không
-  bom_preset_id?: string; // ID mẫu BOM liên kết nếu là bánh sinh nhật
-  menu_display_qty?: number; // Số lượng bánh hiển thị ngoài menu (đồng bộ kho)
-  stock_qty?: number; // Số lượng tồn kho hiện có
-  min_stock_alert?: number; // Mức cảnh báo sắp hết (mặc định 3-5)
-  unit?: string; // cái, hộp, ổ, cốt
-  is_semi_finished?: boolean; // Bán thành phẩm (cốt bánh, kem, sốt)
+  cake_type_label?: 'standard' | 'pre_order' | 'birthday';
+  show_on_menu?: boolean;
+  bom_preset_id?: string;
+  menu_display_qty?: number;
+  stock_qty?: number;
+  min_stock_alert?: number;
+  unit?: string;
+  is_semi_finished?: boolean;
 }
 
 export interface RecipeIngredientItem {
   name: string;
-  qty: number; // Định lượng nguyên liệu cho 1 mẻ chuẩn
-  quantity?: number; // Alias tương thích
-  unit: string; // g, ml, quả, cái, thìa
+  qty: number;
+  quantity?: number;
+  unit: string;
   cost?: number;
 }
 
 export interface BakeryRecipe {
   id: string;
-  product_id?: string; // Liên kết tới sản phẩm trong danh mục bán
+  product_id?: string;
   name: string;
   category: string;
-  yield_qty: number; // Số lượng bánh ra lò trong 1 mẻ chuẩn (VD: 10 chiếc)
-  yield_unit: string; // cái, ổ, hộp, cốt
-  bake_time_minutes: number; // Thời gian nướng chuẩn (phút)
-  bake_temp_celsius: number; // Nhiệt độ lò nướng (°C)
+  yield_qty: number;
+  yield_unit: string;
+  bake_time_minutes: number;
+  bake_temp_celsius: number;
   description?: string;
   notes?: string;
   items: RecipeIngredientItem[];
 }
 
-export const DEFAULT_BAKERY_PRODUCTS: BakeryProduct[] = [
-  {
-    id: 'prod-1',
-    name: 'Bánh Bông Lan Trứng Muối 18cm',
-    category: 'Bánh kem & Bánh đặt',
-    image_url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop',
-    selling_price: 365000,
-    base_cost_price: 127495,
-    food_cost_pct: 34.9,
-    is_active: true,
-    is_preorder_only: true,
-    stock_qty: 4,
-    min_stock_alert: 2,
-    unit: 'cái',
-  },
-  {
-    id: 'prod-2',
-    name: 'Bánh Kem Bắp Phô Mai 20cm',
-    category: 'Bánh kem & Bánh đặt',
-    image_url: 'https://images.unsplash.com/photo-1588195538326-c5b1e9f80a1b?w=600&auto=format&fit=crop',
-    selling_price: 420000,
-    base_cost_price: 145000,
-    food_cost_pct: 34.5,
-    is_active: true,
-    is_preorder_only: true,
-    stock_qty: 3,
-    min_stock_alert: 2,
-    unit: 'cái',
-  },
-  {
-    id: 'prod-3',
-    name: 'Bánh Croissant Bơ Pháp',
-    category: 'Bánh mì & Bánh tươi',
-    image_url: 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=600&auto=format&fit=crop',
-    selling_price: 35000,
-    base_cost_price: 11200,
-    food_cost_pct: 32.0,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 18,
-    min_stock_alert: 5,
-    unit: 'cái',
-  },
-  {
-    id: 'prod-4',
-    name: 'Bánh Mì Bơ Tỏi Phô Mai',
-    category: 'Bánh mì & Bánh tươi',
-    image_url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600&auto=format&fit=crop',
-    selling_price: 45000,
-    base_cost_price: 15400,
-    food_cost_pct: 34.2,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 12,
-    min_stock_alert: 4,
-    unit: 'ổ',
-  },
-  {
-    id: 'prod-5',
-    name: 'Bánh Mì Hoa Cúc Brioche Pháp',
-    category: 'Bánh mì & Bánh tươi',
-    image_url: 'https://images.unsplash.com/photo-1608198093002-ad4e005484ec?w=600&auto=format&fit=crop',
-    selling_price: 75000,
-    base_cost_price: 26000,
-    food_cost_pct: 34.6,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 8,
-    min_stock_alert: 3,
-    unit: 'ổ',
-  },
-  {
-    id: 'prod-6',
-    name: 'Bánh Tiramisu Ý Hộp Vuông',
-    category: 'Bánh ngọt & Tráng miệng',
-    image_url: 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=600&auto=format&fit=crop',
-    selling_price: 85000,
-    base_cost_price: 28000,
-    food_cost_pct: 32.9,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 10,
-    min_stock_alert: 3,
-    unit: 'hộp',
-  },
-  {
-    id: 'prod-7',
-    name: 'Bánh Su Kem Chewy (Hộp 6 cái)',
-    category: 'Bánh ngọt & Tráng miệng',
-    image_url: 'https://images.unsplash.com/photo-1587314168485-3236d6710814?w=600&auto=format&fit=crop',
-    selling_price: 60000,
-    base_cost_price: 19000,
-    food_cost_pct: 31.6,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 15,
-    min_stock_alert: 4,
-    unit: 'hộp',
-  },
-  {
-    id: 'prod-8',
-    name: 'Bánh Tart Trứng Bồ Đào Nha',
-    category: 'Bánh ngọt & Tráng miệng',
-    image_url: 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=600&auto=format&fit=crop',
-    selling_price: 25000,
-    base_cost_price: 8000,
-    food_cost_pct: 32.0,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 24,
-    min_stock_alert: 6,
-    unit: 'cái',
-  },
-  {
-    id: 'prod-9',
-    name: 'Bánh Red Velvet Trái Tim 16cm',
-    category: 'Bánh kem & Bánh đặt',
-    image_url: 'https://images.unsplash.com/photo-1586788680434-30d324b2d46f?w=600&auto=format&fit=crop',
-    selling_price: 390000,
-    base_cost_price: 132000,
-    food_cost_pct: 33.8,
-    is_active: true,
-    is_preorder_only: true,
-    stock_qty: 3,
-    min_stock_alert: 2,
-    unit: 'cái',
-  },
-  {
-    id: 'prod-10',
-    name: 'Bánh Donut Socola Hạnh Nhân',
-    category: 'Bánh ngọt & Tráng miệng',
-    image_url: 'https://images.unsplash.com/photo-1527515637462-cff94eecc1ac?w=600&auto=format&fit=crop',
-    selling_price: 28000,
-    base_cost_price: 9000,
-    food_cost_pct: 32.1,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 20,
-    min_stock_alert: 5,
-    unit: 'cái',
-  },
-  // ── BÁN THÀNH PHẨM (SEMI-FINISHED GOODS FOR KITCHEN) ──
-  {
-    id: 'prod-btp-1',
-    name: 'Cốt Bánh Bông Lan Vani 18cm',
-    category: 'Bán thành phẩm & Cốt bánh',
-    image_url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop',
-    selling_price: 65000,
-    base_cost_price: 25000,
-    food_cost_pct: 38.5,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 6,
-    min_stock_alert: 3,
-    unit: 'cốt',
-    is_semi_finished: true,
-  },
-  {
-    id: 'prod-btp-2',
-    name: 'Cốt Bánh Bắp Phô Mai 20cm',
-    category: 'Bán thành phẩm & Cốt bánh',
-    image_url: 'https://images.unsplash.com/photo-1588195538326-c5b1e9f80a1b?w=600&auto=format&fit=crop',
-    selling_price: 85000,
-    base_cost_price: 32000,
-    food_cost_pct: 37.6,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 4,
-    min_stock_alert: 2,
-    unit: 'cốt',
-    is_semi_finished: true,
-  },
-  {
-    id: 'prod-btp-3',
-    name: 'Sốt Phô Mai Trứng Muối Nấu Sẵn',
-    category: 'Bán thành phẩm & Cốt bánh',
-    image_url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600&auto=format&fit=crop',
-    selling_price: 45000,
-    base_cost_price: 18000,
-    food_cost_pct: 40.0,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 8,
-    min_stock_alert: 3,
-    unit: 'hộp 500g',
-    is_semi_finished: true,
-  },
-  {
-    id: 'prod-imp-1',
-    name: 'Bánh Mì Hoa Cúc Harrys Nhập Khẩu 515g',
-    category: 'Bánh mì & Bánh tươi',
-    image_url: 'https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=600&auto=format&fit=crop',
-    selling_price: 135000,
-    base_cost_price: 95000,
-    import_price: 95000,
-    product_type: 'imported',
-    supplier_name: 'An Nam Fine Food',
-    barcode: '3256540001234',
-    food_cost_pct: 70.4,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 15,
-    min_stock_alert: 5,
-    unit: 'ổ',
-  },
-  {
-    id: 'prod-imp-2',
-    name: 'Bánh Quy Bơ Danisa Hộp Thiếc 454g',
-    category: 'Cookie & Bánh khô',
-    image_url: 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&auto=format&fit=crop',
-    selling_price: 145000,
-    base_cost_price: 110000,
-    import_price: 110000,
-    product_type: 'imported',
-    supplier_name: 'NPP Bánh Kẹo Hữu Nghị',
-    barcode: '8992775112233',
-    food_cost_pct: 75.9,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 20,
-    min_stock_alert: 5,
-    unit: 'hộp',
-  },
-  {
-    id: 'prod-imp-3',
-    name: 'Hộp Nến Số Sinh Nhật Nghệ Thuật (Gold)',
-    category: 'Phụ kiện sinh nhật',
-    image_url: 'https://images.unsplash.com/photo-1530103862676-de8c9debad1d?w=600&auto=format&fit=crop',
-    selling_price: 25000,
-    base_cost_price: 8000,
-    import_price: 8000,
-    product_type: 'imported',
-    supplier_name: 'Xưởng Phụ Kiện Tiệc Sài Gòn',
-    barcode: '8936001234567',
-    food_cost_pct: 32.0,
-    is_active: true,
-    is_preorder_only: false,
-    stock_qty: 50,
-    min_stock_alert: 10,
-    unit: 'hộp',
-  },
-];
+// TOÀN BỘ DỮ LIỆU MẪU ĐÃ ĐƯỢC LOẠI BỎ TRIỆT ĐỂ: CHỈ DÙNG DỮ LIỆU THỰC TẾ
+export const DEFAULT_BAKERY_PRODUCTS: BakeryProduct[] = [];
 
-export const DEFAULT_BAKERY_RECIPES: BakeryRecipe[] = [
-  {
-    id: 'rec-croissant',
-    product_id: 'prod-3',
-    name: 'Bánh Croissant Bơ Pháp',
-    category: 'Bánh mì & Bánh tươi',
-    yield_qty: 10,
-    yield_unit: 'cái',
-    bake_time_minutes: 22,
-    bake_temp_celsius: 195,
-    description: 'Bánh sừng bò ngàn lớp thơm lừng bơ Pháp giòn xốp.',
-    items: [
-      { name: 'Bột mì số 11 (Bake flour)', qty: 500, unit: 'g' },
-      { name: 'Bơ lạt Anchor cán lớp', qty: 250, unit: 'g' },
-      { name: 'Sữa tươi không đường', qty: 200, unit: 'ml' },
-      { name: 'Đường cát trắng', qty: 60, unit: 'g' },
-      { name: 'Men khô Instant (Yeast)', qty: 8, unit: 'g' },
-      { name: 'Muối tinh', qty: 7, unit: 'g' },
-    ],
-  },
-  {
-    id: 'rec-garlic-bread',
-    product_id: 'prod-4',
-    name: 'Bánh Mì Bơ Tỏi Phô Mai',
-    category: 'Bánh mì & Bánh tươi',
-    yield_qty: 6,
-    yield_unit: 'ổ',
-    bake_time_minutes: 18,
-    bake_temp_celsius: 180,
-    description: 'Bánh mì tròn giòn vỏ sốt bơ tỏi thơm ngậy phô mai chảy.',
-    items: [
-      { name: 'Ổ bánh mì mộc nướng sơ', qty: 6, unit: 'ổ' },
-      { name: 'Bơ lạt Anchor', qty: 150, unit: 'g' },
-      { name: 'Tỏi tươi xay nhuyễn', qty: 50, unit: 'g' },
-      { name: 'Phô mai Mozzarella / Creamcheese', qty: 200, unit: 'g' },
-      { name: 'Sữa đặc Ông Thọ', qty: 40, unit: 'g' },
-      { name: 'Lá mùi tây Parsley sấy khô', qty: 5, unit: 'g' },
-    ],
-  },
-  {
-    id: 'rec-hoa-cuc',
-    product_id: 'prod-5',
-    name: 'Bánh Mì Hoa Cúc Brioche Pháp',
-    category: 'Bánh mì & Bánh tươi',
-    yield_qty: 4,
-    yield_unit: 'ổ',
-    bake_time_minutes: 28,
-    bake_temp_celsius: 175,
-    description: 'Brioche xé thớ mềm mại thoang thoảng hương hoa cam Pháp.',
-    items: [
-      { name: 'Bột mì số 11', qty: 400, unit: 'g' },
-      { name: 'Bơ lạt mềm', qty: 160, unit: 'g' },
-      { name: 'Trứng gà ta', qty: 4, unit: 'quả' },
-      { name: 'Đường cát trắng', qty: 80, unit: 'g' },
-      { name: 'Nước hoa cam Pháp nguyên chất', qty: 10, unit: 'ml' },
-      { name: 'Men khô Instant', qty: 7, unit: 'g' },
-      { name: 'Hạnh nhân lát rắc mặt bánh', qty: 30, unit: 'g' },
-    ],
-  },
-  {
-    id: 'rec-egg-tart',
-    product_id: 'prod-8',
-    name: 'Bánh Tart Trứng Bồ Đào Nha',
-    category: 'Bánh ngọt & Tráng miệng',
-    yield_qty: 12,
-    yield_unit: 'cái',
-    bake_time_minutes: 25,
-    bake_temp_celsius: 200,
-    description: 'Vỏ ngàn lớp giòn rụm nhân kem trứng béo ngậy caramel.',
-    items: [
-      { name: 'Đế vỏ bánh Tart ngàn lớp', qty: 12, unit: 'cái' },
-      { name: 'Lòng đỏ trứng gà', qty: 4, unit: 'quả' },
-      { name: 'Kem tươi Whipping Cream', qty: 200, unit: 'ml' },
-      { name: 'Sữa tươi không đường', qty: 150, unit: 'ml' },
-      { name: 'Đường cát trắng', qty: 60, unit: 'g' },
-      { name: 'Bột bắp (Corn starch)', qty: 15, unit: 'g' },
-    ],
-  },
-  {
-    id: 'rec-sponge-18',
-    product_id: 'prod-btp-1',
-    name: 'Cốt Bánh Bông Lan Vani 18cm (Bán thành phẩm)',
-    category: 'Bán thành phẩm & Cốt bánh',
-    yield_qty: 2,
-    yield_unit: 'cốt',
-    bake_time_minutes: 35,
-    bake_temp_celsius: 165,
-    description: 'Cốt bánh bông lan Chiffon nở xốp mềm mại làm đế bánh kem & trứng muối.',
-    items: [
-      { name: 'Bột mì số 8 (Cake flour)', qty: 200, unit: 'g' },
-      { name: 'Bột bắp', qty: 40, unit: 'g' },
-      { name: 'Trứng gà ta', qty: 8, unit: 'quả' },
-      { name: 'Đường cát trắng', qty: 160, unit: 'g' },
-      { name: 'Dầu ăn hoa cải / bơ lạt đun chảy', qty: 60, unit: 'ml' },
-      { name: 'Sữa tươi không đường', qty: 60, unit: 'ml' },
-      { name: 'Vani chiết xuất tự nhiên', qty: 5, unit: 'ml' },
-    ],
-  },
-  {
-    id: 'rec-sponge-corn',
-    product_id: 'prod-btp-2',
-    name: 'Cốt Bánh Bắp Phô Mai 20cm (Bán thành phẩm)',
-    category: 'Bán thành phẩm & Cốt bánh',
-    yield_qty: 2,
-    yield_unit: 'cốt',
-    bake_time_minutes: 35,
-    bake_temp_celsius: 165,
-    description: 'Cốt bánh bắp ngọt xay thơm béo dùng trang trí bánh kem bắp 20cm.',
-    items: [
-      { name: 'Bột mì số 8', qty: 220, unit: 'g' },
-      { name: 'Bắp ngọt Mỹ hấp chín xay nhuyễn', qty: 150, unit: 'g' },
-      { name: 'Trứng gà ta', qty: 8, unit: 'quả' },
-      { name: 'Đường cát trắng', qty: 170, unit: 'g' },
-      { name: 'Sữa tươi vị bắp', qty: 60, unit: 'ml' },
-      { name: 'Bơ lạt đun chảy', qty: 60, unit: 'g' },
-    ],
-  },
-  {
-    id: 'rec-choux',
-    product_id: 'prod-7',
-    name: 'Bánh Su Kem Chewy (Hộp 6 cái)',
-    category: 'Bánh ngọt & Tráng miệng',
-    yield_qty: 4,
-    yield_unit: 'hộp',
-    bake_time_minutes: 25,
-    bake_temp_celsius: 190,
-    description: 'Vỏ bánh su dai giòn nhân kem Custard tươi mát (4 hộp = 24 cái).',
-    items: [
-      { name: 'Bột mì số 11', qty: 150, unit: 'g' },
-      { name: 'Bơ lạt Anchor', qty: 100, unit: 'g' },
-      { name: 'Nước lọc', qty: 200, unit: 'ml' },
-      { name: 'Trứng gà', qty: 4, unit: 'quả' },
-      { name: 'Nhân kem Custard sữa tươi', qty: 400, unit: 'g' },
-    ],
-  },
-  {
-    id: 'rec-donut',
-    product_id: 'prod-10',
-    name: 'Bánh Donut Socola Hạnh Nhân',
-    category: 'Bánh ngọt & Tráng miệng',
-    yield_qty: 12,
-    yield_unit: 'cái',
-    bake_time_minutes: 15,
-    bake_temp_celsius: 175,
-    description: 'Bánh Donut nướng vàng nhúng socola đen Bỉ rắc hạnh nhân giòn.',
-    items: [
-      { name: 'Bột mì số 11', qty: 350, unit: 'g' },
-      { name: 'Men nở dry yeast', qty: 6, unit: 'g' },
-      { name: 'Bơ lạt mềm', qty: 50, unit: 'g' },
-      { name: 'Sữa tươi', qty: 160, unit: 'ml' },
-      { name: 'Socola compound đen Bỉ', qty: 150, unit: 'g' },
-      { name: 'Hạnh nhân rang lát', qty: 50, unit: 'g' },
-    ],
-  },
-];
+export const DEFAULT_BAKERY_RECIPES: BakeryRecipe[] = [];

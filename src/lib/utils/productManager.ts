@@ -6,7 +6,6 @@ import { db } from '@/lib/db/dexie';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { broadcastProductChange } from '@/lib/supabase/realtimeSync';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
-import { DEFAULT_BAKERY_PRODUCTS } from '@/lib/constants/bakeryData';
 
 export const BAKERY_DELETED_PRODUCT_IDS_KEY = 'bakery_deleted_product_ids';
 export const BAKERY_PRODUCTS_KEY = 'bakery_products';
