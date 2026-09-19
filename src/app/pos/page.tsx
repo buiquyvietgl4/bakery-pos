@@ -2666,7 +2666,8 @@ export default function POSPage() {
         soundManager.playPaymentSuccessChime();
       }
       if (cfg.speechAlert) {
-        soundManager.speakPaymentSuccess(payload.amount, currentCode);
+        const spokenCode = activeCheckoutOrderNumberRef.current || payload.order_number || payload.order_code || currentCode;
+        soundManager.speakPaymentSuccess(payload.amount, spokenCode);
       }
 
       if (cfg.autoConfirmOrder) {
@@ -2680,7 +2681,7 @@ export default function POSPage() {
         soundManager.playPaymentSuccessChime();
       }
       if (cfg.speechAlert) {
-        soundManager.speakPaymentSuccess(payload.amount, payload.order_code || payload.order_number);
+        soundManager.speakPaymentSuccess(payload.amount, payload.order_number || payload.order_code);
       }
 
       setToastPaymentNotice({

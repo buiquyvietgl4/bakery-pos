@@ -1006,35 +1006,41 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
                       <button
                         type="button"
                         onClick={() => {
-                          soundManager.speakPaymentSuccess(150000, 'DH-888');
+                          soundManager.speakPaymentSuccess(110000, '#BK-20260919-653');
                         }}
-                        className="py-2 px-3 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 text-left transition flex items-center justify-between cursor-pointer shadow-2xs group"
+                        className="py-2.5 px-3 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 text-left transition flex items-center justify-between cursor-pointer shadow-2xs group"
                       >
                         <div className="flex items-center gap-2">
-                          <Volume2 className="w-4 h-4 text-amber-600 group-hover:scale-110 transition" />
+                          <Volume2 className="w-4 h-4 text-amber-600 group-hover:scale-110 transition shrink-0" />
                           <div>
-                            <div className="text-xs font-bold text-zinc-900">Mẫu Đơn DH-888</div>
-                            <div className="text-[10px] text-zinc-500">Đã nhận 150 nghìn đồng, đơn hàng 888</div>
+                            <div className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+                              <span>Hóa đơn #BK-20260919-653</span>
+                              <span className="text-[10px] text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded font-black">110.000₫</span>
+                            </div>
+                            <div className="text-[10px] text-zinc-500">Đã nhận 110 nghìn đồng, đơn hàng 653</div>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">Bấm Nghe</span>
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-md shrink-0">Bấm Nghe</span>
                       </button>
 
                       <button
                         type="button"
                         onClick={() => {
-                          soundManager.speakPaymentSuccess(50000, 'DH-8868');
+                          soundManager.speakPaymentSuccess(150000, 'DH-888');
                         }}
-                        className="py-2 px-3 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 text-left transition flex items-center justify-between cursor-pointer shadow-2xs group"
+                        className="py-2.5 px-3 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 text-left transition flex items-center justify-between cursor-pointer shadow-2xs group"
                       >
                         <div className="flex items-center gap-2">
-                          <Volume2 className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition" />
+                          <Volume2 className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition shrink-0" />
                           <div>
-                            <div className="text-xs font-bold text-zinc-900">Mẫu Đơn DH-8868</div>
-                            <div className="text-[10px] text-zinc-500">Đã nhận 50 nghìn đồng, đơn hàng 8868</div>
+                            <div className="text-xs font-bold text-zinc-900 flex items-center gap-1.5">
+                              <span>Mẫu Đơn DH-888</span>
+                              <span className="text-[10px] text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded font-black">150.000₫</span>
+                            </div>
+                            <div className="text-[10px] text-zinc-500">Đã nhận 150 nghìn đồng, đơn hàng 888</div>
                           </div>
                         </div>
-                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">Bấm Nghe</span>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-md shrink-0">Bấm Nghe</span>
                       </button>
                     </div>
                   </div>

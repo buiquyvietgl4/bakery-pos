@@ -371,19 +371,29 @@ export function formatAmountForSpeech(amount: number): string {
 }
 
 /**
- * Chuẩn hóa mã đơn hàng để giọng đọc phát âm chuẩn tiếng Việt,
- * tuyệt đối loại bỏ dấu gạch nối và các ký hiệu để không bao giờ bị đọc nhầm thành số "âm".
- * Ví dụ: "DH-888" -> "888", "DH-8868" -> "8868"
+ * Chuẩn hóa mã đơn hàng để giọng đọc phát âm chuẩn tiếng Việt:
+ * - Với mã đơn có chuỗi ngày tháng như #BK-20260919-653: tự động bóc tách lấy 3-4 số đuôi "653" để đọc ngắn gọn, rõ ràng
+ * - Tuyệt đối loại bỏ dấu gạch nối để không bao giờ bị đọc nhầm thành số "âm"
+ * - Ví dụ: "#BK-20260919-653" -> "653", "DH-888" -> "888"
  */
 export function cleanOrderCodeForSpeech(orderCode?: string): string {
   if (!orderCode) return '';
-  // 1. Loại bỏ các tiền tố kèm dấu gạch: DH-, BK-SHIP-, BK-PRE-, BK-, POS-, ORD-, HD-, #
-  let clean = String(orderCode)
-    .replace(/^(DH|BK-SHIP-|BK-PRE-|BK|POS|ORD|HD|ĐH|DON|ĐƠN|#)[-_ ]*/i, '')
+  let str = String(orderCode).trim().replace(/^#+/, '').trim();
+
+  // 1. Định dạng mã đơn tiệm bánh kèm ngày tháng: BK-20260919-653, BK-SHIP-20260919-653, DH-20260919-888
+  // Bóc tách lấy đúng số thứ tự đơn trong ngày (ví dụ: '653') để loa quầy gọi đúng số trên hóa đơn
+  const dateSuffixMatch = str.match(/(?:20\d{2}[-_]?\d{2}[-_]?\d{2})[-_]+([A-Za-z0-9]+)$/i);
+  if (dateSuffixMatch && dateSuffixMatch[1]) {
+    return dateSuffixMatch[1];
+  }
+
+  // 2. Loại bỏ các tiền tố thông dụng kèm gạch nối: DH-, BK-SHIP-, BK-PRE-, BK-, POS-, ORD-, HD-, ĐH-, DON-
+  let clean = str
+    .replace(/^(DH|BK-SHIP-|BK-PRE-|BK|POS|ORD|HD|ĐH|DON|ĐƠN)[-_ ]*/i, '')
     .trim();
 
-  // 2. Thay thế toàn bộ dấu gạch ngang (-), gạch dưới (_), chấm (.) bằng khoảng trắng
-  // để TTS không bao giờ nhận diện "-888" thành "âm tám trăm tám mươi tám"
+  // 3. Thay thế toàn bộ dấu gạch ngang (-), gạch dưới (_), chấm (.) bằng khoảng trắng
+  // để TTS tuyệt đối không bao giờ nhận diện thành số âm
   clean = clean.replace(/[-_./\\]+/g, ' ').trim();
 
   return clean;
