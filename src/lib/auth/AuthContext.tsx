@@ -14,6 +14,54 @@ export interface CurrentUser {
   email?: string;
 }
 
+export interface RolePermissions {
+  pos: boolean; // Quầy Thu Ngân Bán Hàng (POS)
+  cakeOrder: boolean; // Đặt Bánh Kem / Bánh Sinh Nhật Trước
+  kitchenKds: boolean; // Màn Hình Bếp Làm Bánh (Kitchen KDS)
+  adminAccess: boolean; // Trang Quản Trị Hệ Thống (/admin)
+  reports: boolean; // Báo Cáo Doanh Thu & Lãi Lỗ (P&L)
+  bomCost: boolean; // Công Thức Bánh BOM & Giá Vốn COGS
+  paymentSettings: boolean; // Cài Đặt VietQR & Ví Điện Tử (MoMo)
+}
+
+export type PermissionKey = keyof RolePermissions;
+
+export interface RolePermissionsConfig {
+  admin: RolePermissions;
+  kitchen: RolePermissions;
+  staff: RolePermissions;
+}
+
+export const DEFAULT_PERMISSIONS: RolePermissionsConfig = {
+  admin: {
+    pos: true,
+    cakeOrder: true,
+    kitchenKds: true,
+    adminAccess: true,
+    reports: true,
+    bomCost: true,
+    paymentSettings: true,
+  },
+  kitchen: {
+    pos: true,
+    cakeOrder: true,
+    kitchenKds: true,
+    adminAccess: false,
+    reports: false,
+    bomCost: false,
+    paymentSettings: false,
+  },
+  staff: {
+    pos: true,
+    cakeOrder: true,
+    kitchenKds: false,
+    adminAccess: false,
+    reports: false,
+    bomCost: false,
+    paymentSettings: false,
+  },
+};
+
 export interface SecurityConfig {
   adminUsername: string;
   adminPasswordHash: string;
@@ -25,6 +73,7 @@ export interface SecurityConfig {
   staffPasswordHash: string; // Mật khẩu Bán hàng
   staffName: string; // Tên Thu ngân
   staffUsername?: string;
+  permissions?: RolePermissionsConfig;
 }
 
 const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
@@ -38,6 +87,7 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   staffPasswordHash: '123456',
   staffName: 'Thu Ngân / Bán Hàng',
   staffUsername: 'nhanvien',
+  permissions: DEFAULT_PERMISSIONS,
 };
 
 const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
@@ -62,6 +112,11 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig | null
         const merged: SecurityConfig = {
           ...DEFAULT_SECURITY_CONFIG,
           ...parsed,
+          permissions: {
+            admin: { ...DEFAULT_PERMISSIONS.admin, ...(parsed.permissions?.admin || {}) },
+            kitchen: { ...DEFAULT_PERMISSIONS.kitchen, ...(parsed.permissions?.kitchen || {}) },
+            staff: { ...DEFAULT_PERMISSIONS.staff, ...(parsed.permissions?.staff || {}) },
+          },
         };
         if (typeof window !== 'undefined') {
           try {
@@ -138,6 +193,11 @@ interface AuthContextType {
   updateStaffCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
   securityConfig: SecurityConfig;
   resetSecurityDefaults: () => void;
+  permissions: RolePermissionsConfig;
+  hasPermission: (permission: PermissionKey) => boolean;
+  updateRolePermission: (role: 'admin' | 'kitchen' | 'staff', perm: PermissionKey, value: boolean) => void;
+  setAllPermissionsForRole: (role: 'kitchen' | 'staff', grantAll: boolean) => void;
+  resetPermissionsToDefault: () => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -164,6 +224,11 @@ const AuthContext = createContext<AuthContextType>({
   updateStaffCredentials: () => ({ success: false }),
   securityConfig: DEFAULT_SECURITY_CONFIG,
   resetSecurityDefaults: () => {},
+  permissions: DEFAULT_PERMISSIONS,
+  hasPermission: () => false,
+  updateRolePermission: () => {},
+  setAllPermissionsForRole: () => {},
+  resetPermissionsToDefault: () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -368,8 +433,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
+  const permissions: RolePermissionsConfig = {
+    admin: { ...DEFAULT_PERMISSIONS.admin, ...(securityConfig.permissions?.admin || {}) },
+    kitchen: { ...DEFAULT_PERMISSIONS.kitchen, ...(securityConfig.permissions?.kitchen || {}) },
+    staff: { ...DEFAULT_PERMISSIONS.staff, ...(securityConfig.permissions?.staff || {}) },
+  };
+
+  const hasPermission = (permission: PermissionKey): boolean => {
+    if (!user) return false;
+    if (user.role === 'admin') {
+      return permissions.admin[permission] ?? true;
+    }
+    if (user.role === 'kitchen') {
+      return permissions.kitchen[permission] ?? false;
+    }
+    return permissions.staff[permission] ?? false;
+  };
+
+  const updateRolePermission = (role: 'admin' | 'kitchen' | 'staff', perm: PermissionKey, value: boolean) => {
+    // Admin access for admin role must always stay true for system security
+    if (role === 'admin' && perm === 'adminAccess') return;
+
+    const newPermissions: RolePermissionsConfig = {
+      admin: { ...permissions.admin },
+      kitchen: { ...permissions.kitchen },
+      staff: { ...permissions.staff },
+      [role]: {
+        ...permissions[role],
+        [perm]: value,
+      },
+    };
+    const updatedCfg: SecurityConfig = {
+      ...securityConfig,
+      permissions: newPermissions,
+    };
+    saveSecurityConfig(updatedCfg);
+  };
+
+  const setAllPermissionsForRole = (role: 'kitchen' | 'staff', grantAll: boolean) => {
+    const targetPerms: RolePermissions = {
+      pos: grantAll,
+      cakeOrder: grantAll,
+      kitchenKds: grantAll,
+      adminAccess: grantAll,
+      reports: grantAll,
+      bomCost: grantAll,
+      paymentSettings: grantAll,
+    };
+    const newPermissions: RolePermissionsConfig = {
+      admin: { ...permissions.admin },
+      kitchen: { ...permissions.kitchen },
+      staff: { ...permissions.staff },
+      [role]: targetPerms,
+    };
+    const updatedCfg: SecurityConfig = {
+      ...securityConfig,
+      permissions: newPermissions,
+    };
+    saveSecurityConfig(updatedCfg);
+  };
+
+  const resetPermissionsToDefault = () => {
+    const updatedCfg: SecurityConfig = {
+      ...securityConfig,
+      permissions: DEFAULT_PERMISSIONS,
+    };
+    saveSecurityConfig(updatedCfg);
+  };
+
   const resetSecurityDefaults = () => {
-    saveSecurityConfig(DEFAULT_SECURITY_CONFIG);
+    saveSecurityConfig({ ...DEFAULT_SECURITY_CONFIG, permissions: DEFAULT_PERMISSIONS });
   };
 
   const isAdmin = user?.role === 'admin';
@@ -378,13 +511,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isStaff = isCashier || isKitchen;
   const isAuthenticated = user !== null;
 
-  // QUY TẮC PHÂN QUYỀN TRUY CẬP:
-  // - POS: Cả Bán hàng, Bếp và Admin đều được vào
-  // - Bếp: Chỉ Bếp và Admin được vào (Bán hàng bị chặn)
-  // - Quản trị: Chỉ Admin được vào
-  const canAccessPos = isAuthenticated;
-  const canAccessKitchen = Boolean(user && (user.role === 'kitchen' || user.role === 'admin'));
-  const canAccessAdmin = isAdmin;
+  // QUY TẮC PHÂN QUYỀN TRUY CẬP ĐỘNG:
+  // Admin luôn có quyền truy cập, các tài khoản khác dựa theo ma trận phân quyền đã được cấu hình
+  const canAccessPos = user ? (
+    user.role === 'admin' ? permissions.admin.pos :
+    user.role === 'kitchen' ? permissions.kitchen.pos :
+    permissions.staff.pos
+  ) : false;
+
+  const canAccessKitchen = user ? (
+    user.role === 'admin' ? permissions.admin.kitchenKds :
+    user.role === 'kitchen' ? permissions.kitchen.kitchenKds :
+    permissions.staff.kitchenKds
+  ) : false;
+
+  const canAccessAdmin = user ? (
+    user.role === 'admin' ? true :
+    user.role === 'kitchen' ? permissions.kitchen.adminAccess :
+    permissions.staff.adminAccess
+  ) : false;
 
   return (
     <AuthContext.Provider
@@ -412,6 +557,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateStaffCredentials,
         securityConfig,
         resetSecurityDefaults,
+        permissions,
+        hasPermission,
+        updateRolePermission,
+        setAllPermissionsForRole,
+        resetPermissionsToDefault,
       }}
     >
       {children}

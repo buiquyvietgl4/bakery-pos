@@ -68,7 +68,8 @@ export function BirthdayCakeOrderModal({
   availableProducts,
   onConfirmOrder,
 }: BirthdayCakeOrderModalProps) {
-  const { isAdmin } = useAuth();
+  const { isAdmin, hasPermission } = useAuth();
+  const canViewCost = isAdmin || (hasPermission && hasPermission('bomCost'));
   const [config, setConfig] = useState<FullCakeBomConfig>(() => getFullCakeBomConfig());
 
   // 2 Chế độ theo yêu cầu: 1. Bánh có sẵn (Preset) | 2. Bánh tùy chọn (Custom)
@@ -354,10 +355,10 @@ export function BirthdayCakeOrderModal({
     let sum = 0;
     for (const dId of selectedDecorAddonIds) {
       const d = config.decorAddons.find((item) => item.id === dId);
-      if (d) sum += d.sellingPrice || (isAdmin ? (d.costPrice || 0) : 0);
+      if (d) sum += d.sellingPrice || (canViewCost ? (d.costPrice || 0) : 0);
     }
     return sum;
-  }, [selectedDecorAddonIds, config.decorAddons, isAdmin]);
+  }, [selectedDecorAddonIds, config.decorAddons, canViewCost]);
 
   // Thông tin loại hộp đựng bánh đang được chọn (ưu tiên hộp mặc định của quán)
   const selectedPackagingBox = useMemo(() => {
@@ -748,7 +749,7 @@ export function BirthdayCakeOrderModal({
                         </span>
                         <span>{tierInfo.tierName}</span>
                       </span>
-                      {isAdmin && (
+                      {canViewCost && (
                         <span className="text-xs font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
                           Vốn: {tierInfo.tierCost.toLocaleString('vi-VN')}₫
                         </span>
@@ -782,7 +783,7 @@ export function BirthdayCakeOrderModal({
                               }`}
                             >
                               <div className="text-xs font-black">{s.diameterCm}cm</div>
-                              {isAdmin && (
+                              {canViewCost && (
                                 <div className="text-[10px] opacity-80 mt-0.5">~{s.baseCost.toLocaleString('vi-VN')}₫</div>
                               )}
                             </button>
@@ -846,7 +847,7 @@ export function BirthdayCakeOrderModal({
                         >
                           {config.fillings.map((f) => (
                             <option key={f.id} value={f.id}>
-                              {f.name} {isAdmin && f.costPrice > 0 ? `(+${f.costPrice.toLocaleString('vi-VN')}₫)` : ''}
+                              {f.name} {canViewCost && f.costPrice > 0 ? `(+${f.costPrice.toLocaleString('vi-VN')}₫)` : ''}
                             </option>
                           ))}
                         </select>
@@ -890,7 +891,7 @@ export function BirthdayCakeOrderModal({
                       {selectedPackagingBox ? (
                         <span className="text-pink-900 font-bold">
                           {selectedPackagingBox.name}
-                          {isAdmin && selectedPackagingBox.costPrice > 0 ? (
+                          {canViewCost && selectedPackagingBox.costPrice > 0 ? (
                             <span className="text-zinc-500 font-normal ml-1">
                               (Vốn: {selectedPackagingBox.costPrice.toLocaleString('vi-VN')}₫)
                             </span>
@@ -920,7 +921,7 @@ export function BirthdayCakeOrderModal({
                 <div className="px-3 pb-3 pt-0 flex flex-wrap gap-1.5">
                   <span className="inline-flex items-center gap-1.5 bg-pink-100 text-pink-950 border border-pink-300 px-2.5 py-1 rounded-lg text-[11px] font-bold">
                     <span>📦 {selectedPackagingBox.name}</span>
-                    {isAdmin && selectedPackagingBox.costPrice > 0 && (
+                    {canViewCost && selectedPackagingBox.costPrice > 0 && (
                       <span className="text-pink-700 font-normal text-[10px]">
                         (Vốn: {selectedPackagingBox.costPrice.toLocaleString('vi-VN')}₫)
                       </span>
@@ -939,7 +940,7 @@ export function BirthdayCakeOrderModal({
                 <div className="p-3 border-t border-pink-200 bg-white space-y-2.5 animate-fade-in">
                   <div className="flex items-center justify-between text-[11px] pb-1 border-b border-zinc-100">
                     <span className="text-zinc-500 font-medium">
-                      {isAdmin ? 'Chọn 1 loại hộp đựng (Cài đặt hộp mặc định trong tab Hộp & Bao Bì):' : 'Chọn loại hộp đựng bánh:'}
+                      {canViewCost ? 'Chọn 1 loại hộp đựng (Cài đặt hộp mặc định trong tab Hộp & Bao Bì):' : 'Chọn loại hộp đựng bánh:'}
                     </span>
                   </div>
 
@@ -950,14 +951,14 @@ export function BirthdayCakeOrderModal({
                   ) : (
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
                       {config.packagings.map((pkg) => {
-                        const isSel = selectedPackagingId === pkg.id;
+                        const isSel = selectedPackagingBox?.id === pkg.id;
                         return (
                           <div
                             key={pkg.id}
                             onClick={() => setSelectedPackagingId(pkg.id)}
                             className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition select-none ${
                               isSel
-                                ? 'bg-pink-50 border-pink-500 text-pink-950 ring-1 ring-pink-300'
+                                ? 'bg-pink-50 border-pink-500 text-pink-950 ring-1 ring-pink-400'
                                 : 'bg-zinc-50/70 border-zinc-200 text-zinc-700 hover:bg-zinc-100/70'
                             }`}
                           >
@@ -973,16 +974,16 @@ export function BirthdayCakeOrderModal({
                               </div>
                               <div className="min-w-0">
                                 <div className="text-xs font-bold truncate flex items-center gap-1.5">
-                                  <span className="truncate">{pkg.name}</span>
+                                  <span>{pkg.name}</span>
                                   {pkg.isDefault && (
-                                    <span className="text-[9px] bg-pink-100 text-pink-700 px-1.5 py-0.2 rounded font-bold shrink-0">
+                                    <span className="text-[9px] bg-pink-100 text-pink-700 font-bold px-1 rounded">
                                       Mặc định
                                     </span>
                                   )}
                                 </div>
                               </div>
                             </div>
-                            {isAdmin && pkg.costPrice > 0 ? (
+                            {canViewCost && pkg.costPrice > 0 ? (
                               <span className="text-[11px] font-medium text-zinc-500 shrink-0">
                                 Vốn: {pkg.costPrice.toLocaleString('vi-VN')}₫
                               </span>
@@ -1031,7 +1032,7 @@ export function BirthdayCakeOrderModal({
                       ) : (
                         <span className="text-amber-800 font-bold">
                           Đã chọn {selectedDecorAddonIds.length} món
-                          {isAdmin && selectedDecorSellingTotal > 0 ? ` (+${selectedDecorSellingTotal.toLocaleString('vi-VN')}₫)` : ''}
+                          {canViewCost && selectedDecorSellingTotal > 0 ? ` (+${selectedDecorSellingTotal.toLocaleString('vi-VN')}₫)` : ''}
                         </span>
                       )}
                     </div>
@@ -1066,7 +1067,7 @@ export function BirthdayCakeOrderModal({
                         className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 px-2 py-1 rounded-lg text-[11px] font-bold"
                       >
                         <span>✓ {addon.name}</span>
-                        {isAdmin && (addon.sellingPrice || addon.costPrice) ? (
+                        {canViewCost && (addon.sellingPrice || addon.costPrice) ? (
                           <span className="text-amber-700 font-normal text-[10px]">
                             (+{(addon.sellingPrice || addon.costPrice).toLocaleString('vi-VN')}₫)
                           </span>
@@ -1140,7 +1141,7 @@ export function BirthdayCakeOrderModal({
                               </div>
                               <span className="text-xs font-bold truncate">{addon.name}</span>
                             </div>
-                            {isAdmin && (addon.sellingPrice || addon.costPrice) ? (
+                            {canViewCost && (addon.sellingPrice || addon.costPrice) ? (
                               <span className={`text-[11px] font-black shrink-0 ${isSel ? 'text-amber-800' : 'text-zinc-500'}`}>
                                 +{(addon.sellingPrice || addon.costPrice).toLocaleString('vi-VN')}₫
                               </span>
@@ -1153,7 +1154,7 @@ export function BirthdayCakeOrderModal({
 
                   <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
                     <span className="text-xs text-zinc-500">
-                      {isAdmin ? (
+                      {canViewCost ? (
                         <>
                           Tổng tiền phụ kiện: <strong className="text-amber-800 font-black">+{selectedDecorSellingTotal.toLocaleString('vi-VN')}₫</strong>
                         </>
@@ -1386,7 +1387,7 @@ export function BirthdayCakeOrderModal({
         {/* ══════════════ PHẦN CHỐT GIÁ VÀ ĐẶT ĐƠN ══════════════ */}
         <div className="pt-3 border-t-2 border-zinc-200 space-y-3 bg-white">
           {/* Tóm tắt chi phí BOM & Giá gợi ý bán */}
-          {isAdmin ? (
+          {canViewCost ? (
             <div className="flex items-center justify-between text-xs bg-pink-50/60 p-2.5 rounded-xl border border-pink-200">
               <div>
                 <span className="text-[10px] text-zinc-500 block">Tổng Vốn BOM ({mode === 'custom' ? `${tierCount} tầng` : '1 tầng'}):</span>

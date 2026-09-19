@@ -12,10 +12,10 @@ import {
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
   Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff,
-  Zap, Link2, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale
+  Zap, Link2, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale, RotateCcw, ShoppingCart
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
-import { useAuth } from '@/lib/auth/AuthContext';
+import { useAuth, PermissionKey } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
 import { db } from '@/lib/db/dexie';
 import { generateUUID } from '@/lib/utils/uuid';
@@ -190,6 +190,10 @@ export default function AdminDashboard() {
     updateStaffCredentials,
     securityConfig,
     resetSecurityDefaults,
+    permissions,
+    updateRolePermission,
+    setAllPermissionsForRole,
+    resetPermissionsToDefault,
   } = useAuth();
   const [activeTab, setActiveTab] = useState<'overview' | 'tax_accounting' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'transfer_verification' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
 
@@ -8926,64 +8930,278 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          {/* BẢNG MA TRẬN PHÂN QUYỀN HỆ THỐNG */}
-          <div className="bg-white p-5 rounded-3xl border border-zinc-200 shadow-xs space-y-3">
-            <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-              <UserCheck className="w-4 h-4 text-emerald-600" /> Bảng Ma Trận Phân Quyền 2 Loại Tài Khoản
-            </h3>
+          {/* BẢNG MA TRẬN PHÂN QUYỀN HỆ THỐNG ĐA VAI TRÒ */}
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-zinc-200 shadow-xs space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-zinc-100">
+              <div>
+                <h3 className="font-black text-base sm:text-lg text-zinc-900 flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-emerald-600" /> Bảng Ma Trận Phân Quyền 3 Loại Tài Khoản
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Chủ tiệm có thể trực tiếp nhấn vào từng ô để <b>Cho phép</b> hoặc <b>Chặn</b> từng tính năng cho từng loại tài khoản (Bếp, Thu Ngân). Dữ liệu được lưu và đồng bộ tức thì trên toàn hệ thống.
+                </p>
+              </div>
+
+              {/* Cụm nút hành động nhanh */}
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (confirm('Bạn có chắc muốn khôi phục ma trận phân quyền về chuẩn mặc định ban đầu?')) {
+                      resetPermissionsToDefault();
+                      setSecurityMsg({ type: 'success', text: 'Đã khôi phục ma trận phân quyền về mặc định thành công!' });
+                      setTimeout(() => setSecurityMsg(null), 3000);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                  title="Khôi phục phân quyền gốc"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-zinc-500" />
+                  <span>Khôi phục mặc định</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAllPermissionsForRole('kitchen', true);
+                    setSecurityMsg({ type: 'success', text: 'Đã cấp toàn bộ quyền truy cập cho Thợ Bếp!' });
+                    setTimeout(() => setSecurityMsg(null), 3000);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <span>🍳 Cấp full quyền Bếp</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAllPermissionsForRole('staff', true);
+                    setSecurityMsg({ type: 'success', text: 'Đã cấp toàn bộ quyền truy cập cho Thu Ngân!' });
+                    setTimeout(() => setSecurityMsg(null), 3000);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <span>🛒 Cấp full quyền Thu Ngân</span>
+                </button>
+              </div>
+            </div>
+
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
                 <thead>
-                  <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-700 font-bold">
-                    <th className="p-3">Tính Năng / Phân Hệ</th>
-                    <th className="p-3 text-center text-amber-700">👑 Chủ Tiệm (Admin)</th>
-                    <th className="p-3 text-center text-orange-700">👤 Nhân Viên (Staff)</th>
-                    <th className="p-3">Ghi chú nghiệp vụ</th>
+                  <tr className="bg-zinc-50/80 border-b border-zinc-200 text-zinc-700 font-bold">
+                    <th className="p-3.5 min-w-[220px]">Tính Năng / Phân Hệ</th>
+                    <th className="p-3.5 text-center text-rose-700 min-w-[135px]">👑 Chủ Tiệm (Admin)</th>
+                    <th className="p-3.5 text-center text-orange-700 min-w-[135px]">🍳 Thợ Bếp (Kitchen)</th>
+                    <th className="p-3.5 text-center text-amber-700 min-w-[135px]">🛒 Thu Ngân (Staff)</th>
+                    <th className="p-3.5 min-w-[260px]">Ghi chú nghiệp vụ & Hành vi</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-zinc-100 text-zinc-800 font-medium">
-                  <tr>
-                    <td className="p-3 font-bold">Quầy Thu Ngân Bán Hàng (POS)</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-zinc-500">Tạo đơn, nhận thanh toán, in bill, mở/đóng ca két tiền.</td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 font-bold">Đặt Bánh Kem / Bánh Sinh Nhật Trước</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-zinc-500">Lưu chữ viết lên bánh, hẹn giờ lấy bánh, nhận cọc.</td>
-                  </tr>
-                  <tr>
-                    <td className="p-3 font-bold">Màn Hình Bếp Làm Bánh (Kitchen KDS)</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-zinc-500">Xem danh sách bánh cần làm theo thời gian thực.</td>
-                  </tr>
-                  <tr className="bg-rose-50/40">
-                    <td className="p-3 font-bold text-rose-900">Trang Quản Trị Hệ Thống (/admin)</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-center text-rose-600 font-black">❌ Bị Khóa 100%</td>
-                    <td className="p-3 text-rose-600 font-semibold">Tự động hiện màn hình khóa yêu cầu mật khẩu Admin.</td>
-                  </tr>
-                  <tr className="bg-rose-50/40">
-                    <td className="p-3 font-bold text-rose-900">Báo Cáo Doanh Thu & Lãi Lỗ (P&L)</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-center text-rose-600 font-black">❌ Ẩn tuyệt đối</td>
-                    <td className="p-3 text-rose-600 font-semibold">Nhân viên không xem được lợi nhuận của tiệm.</td>
-                  </tr>
-                  <tr className="bg-rose-50/40">
-                    <td className="p-3 font-bold text-rose-900">Công Thức Bánh BOM & Giá Vốn COGS</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-center text-rose-600 font-black">❌ Ẩn tuyệt đối</td>
-                    <td className="p-3 text-rose-600 font-semibold">Bảo mật công thức cốt bánh và giá nguyên liệu đầu vào.</td>
-                  </tr>
-                  <tr className="bg-rose-50/40">
-                    <td className="p-3 font-bold text-rose-900">Cài Đặt VietQR & Ví Điện Tử (MoMo)</td>
-                    <td className="p-3 text-center text-emerald-600 font-black">✅ Cho phép</td>
-                    <td className="p-3 text-center text-rose-600 font-black">❌ Không được sửa</td>
-                    <td className="p-3 text-rose-600 font-semibold">Chỉ chủ tiệm được đổi số tài khoản nhận tiền.</td>
-                  </tr>
+                  {[
+                    {
+                      key: 'pos' as PermissionKey,
+                      title: 'Quầy Thu Ngân Bán Hàng (POS)',
+                      icon: ShoppingCart,
+                      iconColor: 'text-emerald-600 bg-emerald-100',
+                      note: 'Tạo đơn, nhận thanh toán, in bill, mở/đóng ca két tiền.',
+                      adminFixed: false,
+                    },
+                    {
+                      key: 'cakeOrder' as PermissionKey,
+                      title: 'Đặt Bánh Kem / Bánh Sinh Nhật Trước',
+                      icon: Cake,
+                      iconColor: 'text-pink-600 bg-pink-100',
+                      note: 'Lưu chữ viết lên bánh, hẹn giờ lấy bánh, nhận cọc.',
+                      adminFixed: false,
+                    },
+                    {
+                      key: 'kitchenKds' as PermissionKey,
+                      title: 'Màn Hình Bếp Làm Bánh (Kitchen KDS)',
+                      icon: Flame,
+                      iconColor: 'text-orange-600 bg-orange-100',
+                      note: 'Xem danh sách bánh cần làm theo thời gian thực, cập nhật tiến độ ra lò.',
+                      adminFixed: false,
+                    },
+                    {
+                      key: 'adminAccess' as PermissionKey,
+                      title: 'Trang Quản Trị Hệ Thống (/admin)',
+                      icon: ShieldAlert,
+                      iconColor: 'text-rose-600 bg-rose-100',
+                      note: 'Tự động hiện màn hình khóa yêu cầu mật khẩu Admin nếu bị chặn.',
+                      adminFixed: true,
+                    },
+                    {
+                      key: 'reports' as PermissionKey,
+                      title: 'Báo Cáo Doanh Thu & Lãi Lỗ (P&L)',
+                      icon: BarChart3,
+                      iconColor: 'text-purple-600 bg-purple-100',
+                      note: 'Nhân viên không xem được doanh thu và lợi nhuận của tiệm nếu bị ẩn.',
+                      adminFixed: false,
+                    },
+                    {
+                      key: 'bomCost' as PermissionKey,
+                      title: 'Công Thức Bánh BOM & Giá Vốn COGS',
+                      icon: FileText,
+                      iconColor: 'text-amber-600 bg-amber-100',
+                      note: 'Bảo mật công thức cốt bánh và ẩn giá nguyên liệu đầu vào.',
+                      adminFixed: false,
+                    },
+                    {
+                      key: 'paymentSettings' as PermissionKey,
+                      title: 'Cài Đặt VietQR & Ví Điện Tử (MoMo)',
+                      icon: QrCode,
+                      iconColor: 'text-blue-600 bg-blue-100',
+                      note: 'Chỉ tài khoản được phân quyền mới được đổi số tài khoản nhận tiền.',
+                      adminFixed: false,
+                    },
+                  ].map((row) => {
+                    const IconComp = row.icon;
+                    const adminAllowed = permissions.admin[row.key];
+                    const kitchenAllowed = permissions.kitchen[row.key];
+                    const staffAllowed = permissions.staff[row.key];
+
+                    return (
+                      <tr key={row.key} className="hover:bg-zinc-50/50 transition">
+                        <td className="p-3.5 font-bold">
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 ${row.iconColor}`}>
+                              <IconComp className="w-4 h-4" />
+                            </div>
+                            <span className="font-bold text-zinc-900">{row.title}</span>
+                          </div>
+                        </td>
+
+                        {/* CỘT CHỦ TIỆM (ADMIN) */}
+                        <td className="p-3.5 text-center">
+                          {row.adminFixed ? (
+                            <span
+                              title="Chủ tiệm luôn có quyền truy cập trang quản trị để bảo vệ hệ thống"
+                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl font-bold text-[11px] bg-zinc-100 text-zinc-600 border border-zinc-300 cursor-not-allowed select-none"
+                            >
+                              <Lock className="w-3.5 h-3.5 text-zinc-500" /> Cố định (Bảo vệ)
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextVal = !adminAllowed;
+                                updateRolePermission('admin', row.key, nextVal);
+                                setSecurityMsg({
+                                  type: 'success',
+                                  text: `Đã ${nextVal ? 'cấp quyền' : 'tắt quyền'} "${row.title}" cho Chủ Tiệm!`,
+                                });
+                                setTimeout(() => setSecurityMsg(null), 3000);
+                              }}
+                              className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition shadow-2xs cursor-pointer active:scale-95 group ${
+                                adminAllowed
+                                  ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                                  : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'
+                              }`}
+                              title="Nhấp để thay đổi quyền"
+                            >
+                              {adminAllowed ? (
+                                <>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600 group-hover:hidden" />
+                                  <span className="group-hover:hidden">Cho phép</span>
+                                  <X className="w-3.5 h-3.5 text-rose-600 hidden group-hover:inline" />
+                                  <span className="hidden group-hover:inline">Khóa quyền</span>
+                                </>
+                              ) : (
+                                <>
+                                  <X className="w-3.5 h-3.5 text-rose-500 group-hover:hidden" />
+                                  <span className="group-hover:hidden">Bị Khóa</span>
+                                  <Check className="w-3.5 h-3.5 text-emerald-600 hidden group-hover:inline" />
+                                  <span className="hidden group-hover:inline">Cho phép</span>
+                                </>
+                              )}
+                            </button>
+                          )}
+                        </td>
+
+                        {/* CỘT THỢ BẾP (KITCHEN) */}
+                        <td className="p-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextVal = !kitchenAllowed;
+                              updateRolePermission('kitchen', row.key, nextVal);
+                              setSecurityMsg({
+                                type: 'success',
+                                text: `Đã ${nextVal ? 'cấp quyền' : 'tắt quyền'} "${row.title}" cho Thợ Bếp!`,
+                              });
+                              setTimeout(() => setSecurityMsg(null), 3000);
+                            }}
+                            className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition shadow-2xs cursor-pointer active:scale-95 group ${
+                              kitchenAllowed
+                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'
+                            }`}
+                            title="Nhấp để thay đổi quyền cho Thợ Bếp"
+                          >
+                            {kitchenAllowed ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600 group-hover:hidden" />
+                                <span className="group-hover:hidden">Cho phép</span>
+                                <X className="w-3.5 h-3.5 text-rose-600 hidden group-hover:inline" />
+                                <span className="hidden group-hover:inline">Khóa quyền</span>
+                              </>
+                            ) : (
+                              <>
+                                <X className="w-3.5 h-3.5 text-rose-500 group-hover:hidden" />
+                                <span className="group-hover:hidden">Bị Khóa</span>
+                                <Check className="w-3.5 h-3.5 text-emerald-600 hidden group-hover:inline" />
+                                <span className="hidden group-hover:inline">Cho phép</span>
+                              </>
+                            )}
+                          </button>
+                        </td>
+
+                        {/* CỘT THU NGÂN (STAFF) */}
+                        <td className="p-3.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const nextVal = !staffAllowed;
+                              updateRolePermission('staff', row.key, nextVal);
+                              setSecurityMsg({
+                                type: 'success',
+                                text: `Đã ${nextVal ? 'cấp quyền' : 'tắt quyền'} "${row.title}" cho Thu Ngân!`,
+                              });
+                              setTimeout(() => setSecurityMsg(null), 3000);
+                            }}
+                            className={`inline-flex items-center justify-center gap-1 px-3 py-1.5 rounded-xl font-bold text-xs transition shadow-2xs cursor-pointer active:scale-95 group ${
+                              staffAllowed
+                                ? 'bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-300'
+                            }`}
+                            title="Nhấp để thay đổi quyền cho Thu Ngân"
+                          >
+                            {staffAllowed ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-600 group-hover:hidden" />
+                                <span className="group-hover:hidden">Cho phép</span>
+                                <X className="w-3.5 h-3.5 text-rose-600 hidden group-hover:inline" />
+                                <span className="hidden group-hover:inline">Khóa quyền</span>
+                              </>
+                            ) : (
+                              <>
+                                <X className="w-3.5 h-3.5 text-rose-500 group-hover:hidden" />
+                                <span className="group-hover:hidden">Bị Khóa</span>
+                                <Check className="w-3.5 h-3.5 text-emerald-600 hidden group-hover:inline" />
+                                <span className="hidden group-hover:inline">Cho phép</span>
+                              </>
+                            )}
+                          </button>
+                        </td>
+
+                        {/* GHI CHÚ */}
+                        <td className="p-3.5 text-zinc-500 leading-relaxed">
+                          {row.note}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
