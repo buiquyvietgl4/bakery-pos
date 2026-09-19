@@ -198,6 +198,8 @@ CREATE TABLE IF NOT EXISTS ingredients (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     unit TEXT DEFAULT 'g',
+    packaging_unit TEXT DEFAULT 'Túi 1kg',
+    conversion_rate NUMERIC DEFAULT 1000,
     category TEXT,
     stock_qty NUMERIC DEFAULT 0,
     reorder_level NUMERIC DEFAULT 0,
@@ -587,7 +589,7 @@ ${generateSchemaSql()}
   if (Array.isArray(data?.ingredients) && data.ingredients.length > 0) {
     for (const ing of data.ingredients) {
       const isAct = ing.is_active !== undefined ? Boolean(ing.is_active) : true;
-      sql += `INSERT INTO ingredients (id, name, unit, category, stock_qty, reorder_level, avg_cost, wastage_pct, is_active, created_at, updated_at) VALUES (${sqlEscape(ing.id)}, ${sqlEscape(ing.name)}, ${sqlEscape(ing.unit || 'g')}, ${sqlEscape(ing.category)}, ${sqlEscape(ing.stock_qty || 0)}, ${sqlEscape(ing.reorder_level || 0)}, ${sqlEscape(ing.avg_cost || 0)}, ${sqlEscape(ing.wastage_pct || 0)}, ${sqlEscape(isAct)}, ${sqlEscape(ing.created_at || new Date().toISOString())}, ${sqlEscape(ing.updated_at || new Date().toISOString())});
+      sql += `INSERT INTO ingredients (id, name, unit, packaging_unit, conversion_rate, category, stock_qty, reorder_level, avg_cost, wastage_pct, is_active, created_at, updated_at) VALUES (${sqlEscape(ing.id)}, ${sqlEscape(ing.name)}, ${sqlEscape(ing.unit || 'g')}, ${sqlEscape(ing.packaging_unit || 'Túi 1kg')}, ${sqlEscape(ing.conversion_rate || 1000)}, ${sqlEscape(ing.category)}, ${sqlEscape(ing.stock_qty || 0)}, ${sqlEscape(ing.reorder_level || 0)}, ${sqlEscape(ing.avg_cost || 0)}, ${sqlEscape(ing.wastage_pct || 0)}, ${sqlEscape(isAct)}, ${sqlEscape(ing.created_at || new Date().toISOString())}, ${sqlEscape(ing.updated_at || new Date().toISOString())});
 `;
     }
   }

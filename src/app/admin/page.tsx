@@ -165,6 +165,8 @@ interface Ingredient {
   reorder_level: number;
   avg_cost: number;
   wastage_pct: number;
+  packaging_unit?: string;
+  conversion_rate?: number;
 }
 
 // ExpenseItem & CashflowTransaction are imported from accountingSync
@@ -397,12 +399,28 @@ export default function AdminDashboard() {
   const [isAddIngredientModalOpen, setIsAddIngredientModalOpen] = useState(false);
   const [newIngName, setNewIngName] = useState('');
   const [newIngUnit, setNewIngUnit] = useState('g');
+  const [newIngPackagingUnit, setNewIngPackagingUnit] = useState('Túi 1kg');
+  const [newIngConversionRate, setNewIngConversionRate] = useState<number>(1000);
   const [newIngCategory, setNewIngCategory] = useState('Bột & Ngũ cốc');
   const [newIngStockQty, setNewIngStockQty] = useState<number>(5000);
   const [newIngAvgCost, setNewIngAvgCost] = useState<number>(30);
   const [newIngReorderLevel, setNewIngReorderLevel] = useState<number>(1000);
   const [newIngWastagePct, setNewIngWastagePct] = useState<number>(3);
   const [creatingIngredient, setCreatingIngredient] = useState(false);
+
+  // Modal Chỉnh Sửa Loại Vật Tư (Edit Ingredient Modal)
+  const [editingIngredient, setEditingIngredient] = useState<Ingredient | null>(null);
+  const [isEditIngredientModalOpen, setIsEditIngredientModalOpen] = useState(false);
+  const [editIngName, setEditIngName] = useState('');
+  const [editIngUnit, setEditIngUnit] = useState('g');
+  const [editIngPackagingUnit, setEditIngPackagingUnit] = useState('Túi 1kg');
+  const [editIngConversionRate, setEditIngConversionRate] = useState<number>(1000);
+  const [editIngCategory, setEditIngCategory] = useState('Bột & Ngũ cốc');
+  const [editIngStockQty, setEditIngStockQty] = useState<number>(0);
+  const [editIngAvgCost, setEditIngAvgCost] = useState<number>(0);
+  const [editIngReorderLevel, setEditIngReorderLevel] = useState<number>(1000);
+  const [editIngWastagePct, setEditIngWastagePct] = useState<number>(3);
+  const [savingIngredient, setSavingIngredient] = useState(false);
 
   // ── RECIPES & BOM STATE ──
   const [recipes, setRecipes] = useState<any[]>(() => getStoredRecipes());
@@ -1308,27 +1326,53 @@ export default function AdminDashboard() {
         await db.products.bulkPut(currentProds);
       } catch {}
 
-      // 2. Load Ingredients from Supabase
-      const { data: ingData } = await supabase
-        .from('ingredients')
-        .select('id, name, unit, category, stock_qty, reorder_level, avg_cost, wastage_pct')
-        .order('name');
-
-      // Tự động dọn dẹp hàng cấu hình nếu trước đây từng bị lưu nhầm vào bảng nguyên liệu
+      // 2. Load Ingredients from Supabase (kèm packaging_unit & conversion_rate)
+      let cleanIngs: Ingredient[] = [];
       try {
-        await supabase.from('ingredients').delete().eq('name', 'SYS_CONFIG_TELEGRAM');
-      } catch {}
+        const { data: ingData } = await supabase
+          .from('ingredients')
+          .select('*')
+          .order('name');
 
-      if (ingData && ingData.length > 0) {
-        const cleanIngs = ingData.filter(
-          (i) => i.name !== 'SYS_CONFIG_TELEGRAM' && i.category !== 'system_config' && !String(i.id).startsWith('SYS_')
-        );
+        if (ingData && ingData.length > 0) {
+          cleanIngs = ingData.filter(
+            (i) => i.name !== 'SYS_CONFIG_TELEGRAM' && i.category !== 'system_config' && !String(i.id).startsWith('SYS_')
+          );
+        }
+      } catch (e) {
+        console.warn('Không tải được ingredients từ Supabase, chuyển qua local:', e);
+      }
+
+      // Fallback local storage nếu offline / local mode
+      if (cleanIngs.length === 0 && typeof window !== 'undefined') {
+        try {
+          const localRaw = localStorage.getItem('bakery_ingredients');
+          if (localRaw) {
+            const parsed = JSON.parse(localRaw);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              cleanIngs = parsed;
+            }
+          }
+        } catch {}
+      }
+
+      if (cleanIngs.length > 0) {
         setIngredients(cleanIngs);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bakery_ingredients', JSON.stringify(cleanIngs));
+        }
         setPoIngredientId((prev) => (cleanIngs.some((i) => i.id === prev) ? prev : cleanIngs[0]?.id || ''));
         setSoIngredientId((prev) => (cleanIngs.some((i) => i.id === prev) ? prev : cleanIngs[0]?.id || ''));
         const currentIng = cleanIngs.find((i) => i.id === poIngredientId) || cleanIngs[0];
-        if (currentIng && currentIng.avg_cost) {
-          setPoUnitPrice(currentIng.avg_cost);
+        if (currentIng) {
+          if (currentIng.avg_cost) setPoUnitPrice(currentIng.avg_cost);
+          if (currentIng.packaging_unit) setPoPackageUnitName(currentIng.packaging_unit);
+          if (currentIng.conversion_rate && currentIng.conversion_rate > 1) {
+            setPoConversionRate(currentIng.conversion_rate);
+            if (currentIng.avg_cost) {
+              setPoPackageUnitPrice(Math.round(currentIng.avg_cost * currentIng.conversion_rate));
+            }
+          }
         }
       }
     } catch (err) {
@@ -1945,29 +1989,40 @@ export default function AdminDashboard() {
     const newId = generateUUID();
     const newIngObj: Ingredient = {
       id: newId,
-      name: newIngName,
-      unit: newIngUnit,
+      name: newIngName.trim(),
+      unit: newIngUnit.trim() || 'g',
       category: newIngCategory,
-      stock_qty: newIngStockQty,
-      reorder_level: newIngReorderLevel,
-      avg_cost: newIngAvgCost,
-      wastage_pct: newIngWastagePct,
+      stock_qty: Number(newIngStockQty) || 0,
+      reorder_level: Number(newIngReorderLevel) || 0,
+      avg_cost: Number(newIngAvgCost) || 0,
+      wastage_pct: Number(newIngWastagePct) || 0,
+      packaging_unit: newIngPackagingUnit.trim() || 'Túi 1kg',
+      conversion_rate: Number(newIngConversionRate) || 1,
     };
 
     try {
-      if (navigator.onLine) {
+      if (navigator.onLine && !isLocalMode()) {
         await supabase.from('ingredients').insert({
-          name: newIngName,
-          unit: newIngUnit,
-          category: newIngCategory,
-          stock_qty: newIngStockQty,
-          reorder_level: newIngReorderLevel,
-          avg_cost: newIngAvgCost,
-          wastage_pct: newIngWastagePct,
+          id: newId,
+          name: newIngObj.name,
+          unit: newIngObj.unit,
+          category: newIngObj.category,
+          stock_qty: newIngObj.stock_qty,
+          reorder_level: newIngObj.reorder_level,
+          avg_cost: newIngObj.avg_cost,
+          wastage_pct: newIngObj.wastage_pct,
+          packaging_unit: newIngObj.packaging_unit,
+          conversion_rate: newIngObj.conversion_rate,
         });
       }
 
-      setIngredients((prev) => [...prev, newIngObj]);
+      const nextIngs = [...ingredients, newIngObj];
+      setIngredients(nextIngs);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_ingredients', JSON.stringify(nextIngs));
+      }
+      autoSyncToLocalSqlFolder();
+
       setPoSuccess(`Đã thêm vật tư mới "${newIngName}" vào kho thành công!`);
       setTimeout(() => setPoSuccess(null), 5000);
       setIsAddIngredientModalOpen(false);
@@ -1976,20 +2031,117 @@ export default function AdminDashboard() {
       setNewIngName('');
       setNewIngStockQty(5000);
       setNewIngAvgCost(30);
+      setNewIngUnit('g');
+      setNewIngPackagingUnit('Túi 1kg');
+      setNewIngConversionRate(1000);
     } catch (err) {
       console.error('Lỗi thêm vật tư:', err);
-      setIngredients((prev) => [...prev, newIngObj]);
+      const nextIngs = [...ingredients, newIngObj];
+      setIngredients(nextIngs);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_ingredients', JSON.stringify(nextIngs));
+      }
       setIsAddIngredientModalOpen(false);
     } finally {
       setCreatingIngredient(false);
     }
   };
 
+  // ── MỞ MODAL CHỈNH SỬA VẬT TƯ (EDIT INGREDIENT) ──
+  const handleOpenEditIngredient = (ing: Ingredient) => {
+    setEditingIngredient(ing);
+    setEditIngName(ing.name || '');
+    setEditIngUnit(ing.unit || 'g');
+    setEditIngPackagingUnit(ing.packaging_unit || (ing.unit === 'g' ? 'Túi 1kg' : ing.unit === 'ml' ? 'Hộp 1L' : 'Túi'));
+    setEditIngConversionRate(ing.conversion_rate && ing.conversion_rate > 0 ? ing.conversion_rate : (ing.unit === 'g' || ing.unit === 'ml' ? 1000 : 1));
+    setEditIngCategory(ing.category || 'Bột & Ngũ cốc');
+    setEditIngStockQty(ing.stock_qty || 0);
+    setEditIngAvgCost(ing.avg_cost || 0);
+    setEditIngReorderLevel(ing.reorder_level || 1000);
+    setEditIngWastagePct(ing.wastage_pct || 3);
+    setIsEditIngredientModalOpen(true);
+  };
+
+  // ── LƯU CẬP NHẬT VẬT TƯ (SAVE EDIT INGREDIENT) ──
+  const handleSaveEditIngredient = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingIngredient) return;
+
+    setSavingIngredient(true);
+    const updatedIng: Ingredient = {
+      ...editingIngredient,
+      name: editIngName.trim(),
+      unit: editIngUnit.trim() || 'g',
+      category: editIngCategory,
+      stock_qty: Number(editIngStockQty) || 0,
+      reorder_level: Number(editIngReorderLevel) || 0,
+      avg_cost: Number(editIngAvgCost) || 0,
+      wastage_pct: Number(editIngWastagePct) || 0,
+      packaging_unit: editIngPackagingUnit.trim() || 'Túi 1kg',
+      conversion_rate: Number(editIngConversionRate) || 1,
+    };
+
+    try {
+      if (navigator.onLine && !isLocalMode()) {
+        await supabase.from('ingredients').update({
+          name: updatedIng.name,
+          unit: updatedIng.unit,
+          category: updatedIng.category,
+          stock_qty: updatedIng.stock_qty,
+          reorder_level: updatedIng.reorder_level,
+          avg_cost: updatedIng.avg_cost,
+          wastage_pct: updatedIng.wastage_pct,
+          packaging_unit: updatedIng.packaging_unit,
+          conversion_rate: updatedIng.conversion_rate,
+          updated_at: new Date().toISOString(),
+        }).eq('id', editingIngredient.id);
+      }
+
+      const nextIngs = ingredients.map((i) => (i.id === editingIngredient.id ? updatedIng : i));
+      setIngredients(nextIngs);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_ingredients', JSON.stringify(nextIngs));
+      }
+      autoSyncToLocalSqlFolder();
+
+      // Đồng bộ ngay sang form PO nếu đang chọn vật tư này
+      if (poIngredientId === editingIngredient.id) {
+        setPoUnitPrice(updatedIng.avg_cost);
+        if (updatedIng.packaging_unit) setPoPackageUnitName(updatedIng.packaging_unit);
+        if (updatedIng.conversion_rate && updatedIng.conversion_rate > 1) {
+          setPoConversionRate(updatedIng.conversion_rate);
+          setPoPackageUnitPrice(Math.round(updatedIng.avg_cost * updatedIng.conversion_rate));
+        }
+      }
+
+      setPoSuccess(`Đã cập nhật đơn vị kho & đơn vị nhập cho "${editIngName}" thành công!`);
+      setTimeout(() => setPoSuccess(null), 4000);
+      setIsEditIngredientModalOpen(false);
+      setEditingIngredient(null);
+    } catch (err) {
+      console.error('Lỗi lưu cập nhật vật tư:', err);
+      const nextIngs = ingredients.map((i) => (i.id === editingIngredient.id ? updatedIng : i));
+      setIngredients(nextIngs);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_ingredients', JSON.stringify(nextIngs));
+      }
+      setIsEditIngredientModalOpen(false);
+      setEditingIngredient(null);
+    } finally {
+      setSavingIngredient(false);
+    }
+  };
+
   // ── XỬ LÝ XÓA VẬT TƯ (DELETE INGREDIENT) ──
   const handleDeleteIngredient = async (id: string, name: string) => {
     if (confirm(`Xác nhận xóa vật tư "${name}" khỏi kho? Lưu ý: Nếu công thức đang dùng vật tư này thì hãy cập nhật lại công thức trước.`)) {
-      setIngredients((prev) => prev.filter((i) => i.id !== id));
-      if (navigator.onLine) {
+      const nextIngs = ingredients.filter((i) => i.id !== id);
+      setIngredients(nextIngs);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_ingredients', JSON.stringify(nextIngs));
+      }
+      autoSyncToLocalSqlFolder();
+      if (navigator.onLine && !isLocalMode()) {
         await supabase.from('ingredients').delete().eq('id', id);
       }
       setPoSuccess(`Đã xóa vật tư "${name}" khỏi danh mục kho!`);
@@ -4181,22 +4333,54 @@ export default function AdminDashboard() {
                 {poCategory === 'ingredient' ? (
                   <>
                     <div>
-                      <label className="font-bold text-zinc-700">Chọn nguyên vật liệu nhập:</label>
+                      <div className="flex items-center justify-between">
+                        <label className="font-bold text-zinc-700">Chọn nguyên vật liệu nhập:</label>
+                        {(() => {
+                          const cur = visibleIngredients.find((i) => i.id === poIngredientId) || visibleIngredients[0];
+                          if (!cur) return null;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditIngredient(cur)}
+                              className="text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition"
+                              title="Cài đặt đơn vị kho & đơn vị nhập cho vật tư này"
+                            >
+                              <Settings2 className="w-3 h-3" /> Cài đơn vị kho/nhập
+                            </button>
+                          );
+                        })()}
+                      </div>
                       <select
                         value={poIngredientId || (visibleIngredients[0]?.id ?? '')}
                         onChange={(e) => {
                           const newId = e.target.value;
                           setPoIngredientId(newId);
                           const ing = visibleIngredients.find((i: Ingredient) => i.id === newId);
-                          if (ing && ing.avg_cost !== undefined) {
-                            setPoUnitPrice(ing.avg_cost);
+                          if (ing) {
+                            if (ing.avg_cost !== undefined) {
+                              setPoUnitPrice(ing.avg_cost);
+                            }
+                            if (ing.packaging_unit) {
+                              setPoPackageUnitName(ing.packaging_unit);
+                              setPoUnitMode(ing.packaging_unit);
+                            }
+                            if (ing.conversion_rate && ing.conversion_rate > 1) {
+                              setPoConversionRate(ing.conversion_rate);
+                              if (ing.avg_cost) {
+                                setPoPackageUnitPrice(Math.round(ing.avg_cost * ing.conversion_rate));
+                              }
+                            } else {
+                              setPoUnitMode('base');
+                              setPoConversionRate(1);
+                              setPoPackageUnitName(ing.unit || 'g');
+                            }
                           }
                         }}
                         className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
                       >
                         {visibleIngredients.map((ing: Ingredient) => (
                           <option key={ing.id} value={ing.id}>
-                            {ing.name} ({ing.unit}) — Tồn: {ing.stock_qty.toLocaleString()}
+                            {ing.name} (Kho: {ing.unit} | Nhập: {ing.packaging_unit || ing.unit}) — Tồn: {ing.stock_qty.toLocaleString()} {ing.unit}
                           </option>
                         ))}
                       </select>
@@ -4619,28 +4803,54 @@ export default function AdminDashboard() {
                   <thead>
                     <tr className="border-b border-zinc-100 text-zinc-400 font-bold">
                       <th className="py-2.5">Tên vật tư</th>
-                      <th className="py-2.5">Đơn vị</th>
+                      <th className="py-2.5">Đơn vị kho</th>
+                      <th className="py-2.5">Đơn vị nhập (Quy đổi)</th>
                       <th className="py-2.5 text-right">Tồn kho</th>
                       <th className="py-2.5 text-right">Giá bình quân WAC</th>
                       <th className="py-2.5 text-right">Trạng thái</th>
-                      <th className="py-2.5 text-center">Xóa</th>
+                      <th className="py-2.5 text-center">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100">
                     {visibleIngredients.map((ing: Ingredient) => {
                       const isLow = ing.stock_qty <= ing.reorder_level;
+                      const pkgUnit = ing.packaging_unit || 'Túi';
+                      const convRate = ing.conversion_rate || 1;
+                      const pkgStock = convRate > 1 ? Math.round((ing.stock_qty / convRate) * 10) / 10 : null;
+                      const pkgCost = convRate > 1 ? Math.round(ing.avg_cost * convRate) : null;
+
                       return (
-                        <tr key={ing.id} className="hover:bg-zinc-50 group">
+                        <tr key={ing.id} className="hover:bg-zinc-50 group transition">
                           <td className="py-2.5">
                             <span className="font-bold text-zinc-900 block">{ing.name}</span>
                             <span className="text-[10px] text-zinc-400">{ing.category}</span>
                           </td>
-                          <td className="py-2.5 text-zinc-500">{ing.unit}</td>
+                          <td className="py-2.5">
+                            <span className="px-2 py-0.5 rounded-lg bg-zinc-100 text-zinc-800 font-bold text-[11px]">
+                              {ing.unit}
+                            </span>
+                          </td>
+                          <td className="py-2.5">
+                            {convRate > 1 ? (
+                              <span className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px] inline-flex items-center gap-1">
+                                <span>📦 {pkgUnit}</span>
+                                <span className="text-amber-600 font-normal">(= {convRate.toLocaleString()} {ing.unit})</span>
+                              </span>
+                            ) : (
+                              <span className="text-zinc-400 text-[11px]">Cùng đơn vị kho</span>
+                            )}
+                          </td>
                           <td className={`py-2.5 text-right font-bold ${isLow ? 'text-rose-600' : 'text-zinc-800'}`}>
-                            {ing.stock_qty.toLocaleString()}
+                            <div>{ing.stock_qty.toLocaleString()} {ing.unit}</div>
+                            {pkgStock !== null && (
+                              <div className="text-[10px] text-zinc-400 font-normal">~ {pkgStock.toLocaleString()} {pkgUnit}</div>
+                            )}
                           </td>
                           <td className="py-2.5 text-right font-black text-amber-700">
-                            {ing.avg_cost.toLocaleString('vi-VN')}₫/{ing.unit}
+                            <div>{ing.avg_cost.toLocaleString('vi-VN')}₫/{ing.unit}</div>
+                            {pkgCost !== null && (
+                              <div className="text-[10px] text-zinc-500 font-normal">~ {pkgCost.toLocaleString('vi-VN')}₫/{pkgUnit}</div>
+                            )}
                           </td>
                           <td className="py-2.5 text-right">
                             {isLow ? (
@@ -4654,13 +4864,24 @@ export default function AdminDashboard() {
                             )}
                           </td>
                           <td className="py-2.5 text-center">
-                            <button
-                              onClick={() => handleDeleteIngredient(ing.id, ing.name)}
-                              className="p-1 rounded-lg text-zinc-300 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                              title="Xóa vật tư này khỏi kho"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditIngredient(ing)}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
+                                title="Chỉnh sửa đơn vị kho, đơn vị nhập & thông tin vật tư"
+                              >
+                                <Edit className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteIngredient(ing.id, ing.name)}
+                                className="p-1.5 rounded-lg text-zinc-300 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                                title="Xóa vật tư này khỏi kho"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -4856,7 +5077,7 @@ export default function AdminDashboard() {
       {/* ── MODAL: THÊM MỚI VẬT TƯ / NGUYÊN LIỆU ── */}
       {isAddIngredientModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
                 <Package className="w-5 h-5 text-amber-600" />
@@ -4867,7 +5088,7 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            <form onSubmit={handleCreateIngredient} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateIngredient} className="space-y-4 text-xs">
               <div>
                 <label className="font-bold text-zinc-700">Tên vật tư / nguyên liệu *</label>
                 <input
@@ -4875,23 +5096,139 @@ export default function AdminDashboard() {
                   required
                   value={newIngName}
                   onChange={(e) => setNewIngName(e.target.value)}
-                  placeholder="Ví dụ: Phô mai Mascarpone, Men nở, Cacao..."
+                  placeholder="Ví dụ: Bột mì đa dụng Số 11, Bơ lạt Anchor..."
                   className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-zinc-900"
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="font-bold text-zinc-700">Đơn vị tính (g, ml, quả...) *</label>
-                  <input
-                    type="text"
-                    required
-                    value={newIngUnit}
-                    onChange={(e) => setNewIngUnit(e.target.value)}
-                    placeholder="g, ml, quả, cái, hộp..."
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
-                  />
+              {/* ── KHUNG CÀI ĐẶT ĐƠN VỊ KHO & ĐƠN VỊ NHẬP QUY ĐỔI ── */}
+              <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-amber-950 text-xs flex items-center gap-1.5">
+                    <span>⚖️ Cài Đặt Đơn Vị Kho & Đơn Vị Nhập Hàng</span>
+                  </span>
+                  <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                    Quy đổi tự động
+                  </span>
                 </div>
+
+                {/* Chọn nhanh cấu hình mẫu */}
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewIngUnit('g');
+                      setNewIngPackagingUnit('Túi 1kg');
+                      setNewIngConversionRate(1000);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    🌾 Túi 1kg (1.000g)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewIngUnit('g');
+                      setNewIngPackagingUnit('Bao 25kg');
+                      setNewIngConversionRate(25000);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    📦 Bao 25kg (25.000g)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewIngUnit('ml');
+                      setNewIngPackagingUnit('Hộp 1L');
+                      setNewIngConversionRate(1000);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    🥛 Hộp 1L (1.000ml)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewIngUnit('quả');
+                      setNewIngPackagingUnit('Khay 30 quả');
+                      setNewIngConversionRate(30);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    🥚 Khay 30 quả
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNewIngUnit('cái');
+                      setNewIngPackagingUnit('Cái');
+                      setNewIngConversionRate(1);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    🔄 Đơn vị gốc (1:1)
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="font-bold text-zinc-700 block">
+                      1. Đơn vị lưu kho cơ sở *
+                      <span className="text-[10px] text-zinc-400 font-normal block">Dùng để làm bánh & trừ kho (g, ml, quả...)</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={newIngUnit}
+                      onChange={(e) => setNewIngUnit(e.target.value)}
+                      placeholder="g, ml, quả, cái..."
+                      className="w-full mt-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-zinc-700 block">
+                      2. Đơn vị khi nhập hàng (PO)
+                      <span className="text-[10px] text-zinc-400 font-normal block">Quy cách mua từ NCC (Túi, Bao, Thùng...)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={newIngPackagingUnit}
+                      onChange={(e) => setNewIngPackagingUnit(e.target.value)}
+                      placeholder="Túi 1kg, Bao 25kg, Can 5L..."
+                      className="w-full mt-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-amber-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-zinc-700 block">
+                    3. Hệ số quy đổi (1 Đơn vị nhập = ? Đơn vị kho):
+                  </label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs font-bold text-zinc-500 whitespace-nowrap">1 {newIngPackagingUnit || 'Gói'} =</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={newIngConversionRate || ''}
+                      onChange={(e) => setNewIngConversionRate(Math.max(1, Number(e.target.value)))}
+                      className="flex-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-amber-900"
+                    />
+                    <span className="text-xs font-bold text-zinc-600 whitespace-nowrap">{newIngUnit || 'đơn vị kho'}</span>
+                  </div>
+                </div>
+
+                {/* Hộp xem trước quy đổi */}
+                <div className="p-2.5 bg-amber-100/70 rounded-xl border border-amber-300 text-xs text-amber-950 font-bold flex items-center justify-between">
+                  <span>💡 Xem trước quy đổi:</span>
+                  <span className="text-emerald-800 font-black">
+                    1 {newIngPackagingUnit || 'Đơn vị nhập'} = {(newIngConversionRate || 1).toLocaleString()} {newIngUnit || 'đơn vị kho'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-zinc-700">Nhóm vật tư:</label>
                   <select
@@ -4908,11 +5245,8 @@ export default function AdminDashboard() {
                     <option value="Khác">Khác</option>
                   </select>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-bold text-zinc-700">Tồn kho ban đầu:</label>
+                  <label className="font-bold text-zinc-700">Tồn kho ban đầu ({newIngUnit}):</label>
                   <input
                     type="number"
                     value={newIngStockQty || ''}
@@ -4920,22 +5254,27 @@ export default function AdminDashboard() {
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-bold text-zinc-700">Đơn giá vốn ban đầu (VND):</label>
+                  <label className="font-bold text-zinc-700">Đơn giá vốn ban đầu (VND/{newIngUnit}):</label>
                   <input
                     type="text"
                     inputMode="numeric"
                     value={formatCurrencyInput(newIngAvgCost)}
                     onChange={(e) => setNewIngAvgCost(parseCurrencyInput(e.target.value))}
-                    placeholder="VD: 30.000"
+                    placeholder="VD: 30"
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
                   />
+                  {newIngConversionRate > 1 && newIngAvgCost > 0 && (
+                    <div className="text-[10px] text-zinc-400 mt-0.5">
+                      ~ {Math.round(newIngAvgCost * newIngConversionRate).toLocaleString('vi-VN')}₫ / {newIngPackagingUnit}
+                    </div>
+                  )}
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
-                  <label className="font-bold text-zinc-700">Mức báo động sắp hết:</label>
+                  <label className="font-bold text-zinc-700">Mức báo động sắp hết ({newIngUnit}):</label>
                   <input
                     type="number"
                     value={newIngReorderLevel || ''}
@@ -4943,15 +5282,16 @@ export default function AdminDashboard() {
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
                   />
                 </div>
-                <div>
-                  <label className="font-bold text-zinc-700">Hao hụt chế biến (%):</label>
-                  <input
-                    type="number"
-                    value={newIngWastagePct || ''}
-                    onChange={(e) => setNewIngWastagePct(Number(e.target.value))}
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
-                  />
-                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700">Hao hụt chế biến (%):</label>
+                <input
+                  type="number"
+                  value={newIngWastagePct || ''}
+                  onChange={(e) => setNewIngWastagePct(Number(e.target.value))}
+                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
+                />
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -4969,6 +5309,254 @@ export default function AdminDashboard() {
                 >
                   <Plus className="w-4 h-4" />
                   {creatingIngredient ? 'Đang lưu...' : 'Lưu Vật Tư Vào Kho'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: CHỈNH SỬA VẬT TƯ / CÀI ĐẶT ĐƠN VỊ KHO & ĐƠN VỊ NHẬP ── */}
+      {isEditIngredientModalOpen && editingIngredient && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <Settings2 className="w-5 h-5 text-amber-600" />
+                <div>
+                  <h3 className="font-black text-lg text-zinc-900">Chỉnh Sửa Vật Tư & Cài Đơn Vị</h3>
+                  <p className="text-[11px] text-zinc-400 font-medium">Thay đổi đơn vị kho, đơn vị nhập hàng và quy cách đóng gói</p>
+                </div>
+              </div>
+              <button onClick={() => setIsEditIngredientModalOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditIngredient} className="space-y-4 text-xs">
+              <div>
+                <label className="font-bold text-zinc-700">Tên vật tư / nguyên liệu *</label>
+                <input
+                  type="text"
+                  required
+                  value={editIngName}
+                  onChange={(e) => setEditIngName(e.target.value)}
+                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-zinc-900"
+                />
+              </div>
+
+              {/* ── KHUNG CÀI ĐẶT ĐƠN VỊ KHO & ĐƠN VỊ NHẬP QUY ĐỔI ── */}
+              <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-amber-950 text-xs flex items-center gap-1.5">
+                    <span>⚖️ Đơn Vị Kho Cơ Sở & Đơn Vị Nhập Hàng (PO)</span>
+                  </span>
+                  <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                    Khớp 100% tự động
+                  </span>
+                </div>
+
+                {/* Chọn nhanh cấu hình mẫu */}
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditIngUnit('g');
+                      setEditIngPackagingUnit('Túi 1kg');
+                      setEditIngConversionRate(1000);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    🌾 Túi 1kg (1.000g)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditIngUnit('g');
+                      setEditIngPackagingUnit('Bao 25kg');
+                      setEditIngConversionRate(25000);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    📦 Bao 25kg (25.000g)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditIngUnit('ml');
+                      setEditIngPackagingUnit('Hộp 1L');
+                      setEditIngConversionRate(1000);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    🥛 Hộp 1L (1.000ml)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditIngUnit('quả');
+                      setEditIngPackagingUnit('Khay 30 quả');
+                      setEditIngConversionRate(30);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    🥚 Khay 30 quả
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditIngUnit('cái');
+                      setEditIngPackagingUnit('Cái');
+                      setEditIngConversionRate(1);
+                    }}
+                    className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
+                  >
+                    🔄 Đơn vị gốc (1:1)
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="font-bold text-zinc-700 block">
+                      1. Đơn vị lưu kho cơ sở *
+                      <span className="text-[10px] text-zinc-400 font-normal block">Dùng để làm bánh & trừ kho (g, ml, quả...)</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editIngUnit}
+                      onChange={(e) => setEditIngUnit(e.target.value)}
+                      placeholder="g, ml, quả, cái..."
+                      className="w-full mt-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-zinc-900"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-zinc-700 block">
+                      2. Đơn vị khi nhập hàng (PO)
+                      <span className="text-[10px] text-zinc-400 font-normal block">Quy cách mua từ NCC (Túi, Bao, Thùng...)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={editIngPackagingUnit}
+                      onChange={(e) => setEditIngPackagingUnit(e.target.value)}
+                      placeholder="Túi 1kg, Bao 25kg, Can 5L..."
+                      className="w-full mt-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-amber-900"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="font-bold text-zinc-700 block">
+                    3. Hệ số quy đổi (1 Đơn vị nhập = ? Đơn vị kho):
+                  </label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className="text-xs font-bold text-zinc-500 whitespace-nowrap">1 {editIngPackagingUnit || 'Gói'} =</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={editIngConversionRate || ''}
+                      onChange={(e) => setEditIngConversionRate(Math.max(1, Number(e.target.value)))}
+                      className="flex-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-amber-900"
+                    />
+                    <span className="text-xs font-bold text-zinc-600 whitespace-nowrap">{editIngUnit || 'đơn vị kho'}</span>
+                  </div>
+                </div>
+
+                {/* Hộp xem trước quy đổi */}
+                <div className="p-2.5 bg-amber-100/70 rounded-xl border border-amber-300 text-xs text-amber-950 font-bold flex items-center justify-between">
+                  <span>💡 Xem trước quy đổi:</span>
+                  <span className="text-emerald-800 font-black">
+                    1 {editIngPackagingUnit || 'Đơn vị nhập'} = {(editIngConversionRate || 1).toLocaleString()} {editIngUnit || 'đơn vị kho'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="font-bold text-zinc-700">Nhóm vật tư:</label>
+                  <select
+                    value={editIngCategory}
+                    onChange={(e) => setEditIngCategory(e.target.value)}
+                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
+                  >
+                    <option value="Bột & Ngũ cốc">Bột & Ngũ cốc</option>
+                    <option value="Bơ sữa">Bơ sữa & Phô mai</option>
+                    <option value="Trứng">Trứng</option>
+                    <option value="Gia vị">Gia vị & Đường</option>
+                    <option value="Nhân bánh">Nhân bánh & Trái cây</option>
+                    <option value="Bao bì & Phụ kiện">Bao bì & Phụ kiện</option>
+                    <option value="Khác">Khác</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700">Tồn kho hiện tại ({editIngUnit}):</label>
+                  <input
+                    type="number"
+                    value={editIngStockQty}
+                    onChange={(e) => setEditIngStockQty(Number(e.target.value))}
+                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-zinc-900"
+                  />
+                  {editIngConversionRate > 1 && (
+                    <div className="text-[10px] text-zinc-400 mt-0.5">
+                      ~ {(Math.round((editIngStockQty / editIngConversionRate) * 10) / 10).toLocaleString()} {editIngPackagingUnit}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div>
+                  <label className="font-bold text-zinc-700">Đơn giá vốn WAC (VND/{editIngUnit}):</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formatCurrencyInput(editIngAvgCost)}
+                    onChange={(e) => setEditIngAvgCost(parseCurrencyInput(e.target.value))}
+                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
+                  />
+                  {editIngConversionRate > 1 && editIngAvgCost > 0 && (
+                    <div className="text-[10px] text-zinc-400 mt-0.5">
+                      ~ {Math.round(editIngAvgCost * editIngConversionRate).toLocaleString('vi-VN')}₫ / {editIngPackagingUnit}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="font-bold text-zinc-700">Mức báo động sắp hết ({editIngUnit}):</label>
+                  <input
+                    type="number"
+                    value={editIngReorderLevel || ''}
+                    onChange={(e) => setEditIngReorderLevel(Number(e.target.value))}
+                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="font-bold text-zinc-700">Hao hụt chế biến (%):</label>
+                <input
+                  type="number"
+                  value={editIngWastagePct || ''}
+                  onChange={(e) => setEditIngWastagePct(Number(e.target.value))}
+                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsEditIngredientModalOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-zinc-200 font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingIngredient}
+                  className="flex-2 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Save className="w-4 h-4" />
+                  {savingIngredient ? 'Đang cập nhật...' : 'Lưu Thay Đổi'}
                 </button>
               </div>
             </form>

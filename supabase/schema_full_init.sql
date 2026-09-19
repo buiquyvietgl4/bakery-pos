@@ -123,7 +123,9 @@ INSERT INTO app_settings (key, value, category, label, description, input_type, 
 CREATE TABLE ingredients (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
-    unit            TEXT NOT NULL,              -- g, ml, quả, cái, hộp...
+    unit            TEXT NOT NULL,              -- g, ml, quả, cái, hộp... (đơn vị kho cơ sở)
+    packaging_unit  TEXT DEFAULT 'Túi 1kg',      -- Đơn vị nhập hàng (Túi, Bao, Thùng...)
+    conversion_rate NUMERIC(12,3) DEFAULT 1000, -- Hệ số quy đổi (1 ĐV nhập = ? ĐV kho)
     category        TEXT NOT NULL DEFAULT 'other',
     stock_qty       NUMERIC(12,3) NOT NULL DEFAULT 0,
     reorder_level   NUMERIC(12,3) NOT NULL DEFAULT 0,  -- Ngưỡng tồn tối thiểu cảnh báo

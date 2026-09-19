@@ -34,6 +34,10 @@ ALTER TABLE recipes ADD COLUMN IF NOT EXISTS suggested_price NUMERIC(12,2) DEFAU
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS bake_time_minutes NUMERIC(6,2) DEFAULT 25;
 ALTER TABLE recipes ADD COLUMN IF NOT EXISTS bake_temp_celsius NUMERIC(6,2) DEFAULT 190;
 
+-- 3.1 BẢNG NGUYÊN VẬT LIỆU (ingredients): Bổ sung đơn vị nhập & hệ số quy đổi
+ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS packaging_unit TEXT DEFAULT 'Túi 1kg';
+ALTER TABLE ingredients ADD COLUMN IF NOT EXISTS conversion_rate NUMERIC(12,3) DEFAULT 1000;
+
 -- 4. BẢNG LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ (material_transactions)
 CREATE TABLE IF NOT EXISTS material_transactions (
     id TEXT PRIMARY KEY,
