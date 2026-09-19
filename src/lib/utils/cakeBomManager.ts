@@ -152,9 +152,9 @@ export async function fetchFullCakeBomConfigFromDb(): Promise<FullCakeBomConfig 
 // ── TÍNH TOÁN CHI PHÍ & GIÁ BÁN GỢI Ý CHO 1 CẤU HÌNH BÁNH SINH NHẬT ──
 export interface CakeCostCalculationParams {
   cakeBaseId: string;
-  cakeBaseSizeId: string;
+  cakeBaseSizeId?: string;
   creamCoatingId: string;
-  creamCoatingSizeId: string;
+  creamCoatingSizeId?: string;
   fillingId?: string;
   packagingId?: string;
   freeAccessoryIds?: string[];
@@ -185,12 +185,18 @@ export function calculateCakeCostDetails(
 
   // 1. Cốt bánh
   const base = config.cakeBases.find((b) => b.id === params.cakeBaseId) || config.cakeBases[0];
-  const baseSize = base?.sizes.find((s) => s.id === params.cakeBaseSizeId) || base?.sizes[0];
+  const baseSize =
+    (params.cakeBaseSizeId ? base?.sizes.find((s) => s.id === params.cakeBaseSizeId) : null) ||
+    base?.sizes[2] ||
+    base?.sizes[0];
   const baseCost = baseSize?.baseCost ?? 0;
 
-  // 2. Kem phủ
+  // 2. Kem phủ (tự động link size theo đường kính cm của cốt bánh nếu không truyền)
   const cream = config.creamCoatings.find((c) => c.id === params.creamCoatingId) || config.creamCoatings[0];
-  const creamSize = cream?.sizes.find((s) => s.id === params.creamCoatingSizeId) || cream?.sizes[0];
+  const creamSize =
+    (params.creamCoatingSizeId ? cream?.sizes.find((s) => s.id === params.creamCoatingSizeId) : null) ||
+    cream?.sizes.find((s) => s.diameterCm === baseSize?.diameterCm) ||
+    cream?.sizes[0];
   const creamCost = creamSize?.baseCost ?? 0;
 
   // 3. Nhân bánh
@@ -274,10 +280,16 @@ export function buildCakeOrderSpec(
   const calc = calculateCakeCostDetails(params, config);
 
   const base = config.cakeBases.find((b) => b.id === params.cakeBaseId) || config.cakeBases[0];
-  const baseSize = base?.sizes.find((s) => s.id === params.cakeBaseSizeId) || base?.sizes[0];
+  const baseSize =
+    (params.cakeBaseSizeId ? base?.sizes.find((s) => s.id === params.cakeBaseSizeId) : null) ||
+    base?.sizes[2] ||
+    base?.sizes[0];
 
   const cream = config.creamCoatings.find((c) => c.id === params.creamCoatingId) || config.creamCoatings[0];
-  const creamSize = cream?.sizes.find((s) => s.id === params.creamCoatingSizeId) || cream?.sizes[0];
+  const creamSize =
+    (params.creamCoatingSizeId ? cream?.sizes.find((s) => s.id === params.creamCoatingSizeId) : null) ||
+    cream?.sizes.find((s) => s.diameterCm === baseSize?.diameterCm) ||
+    cream?.sizes[0];
 
   const filling = config.fillings.find((f) => f.id === params.fillingId);
   const pkg =

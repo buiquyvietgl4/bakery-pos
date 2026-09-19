@@ -41,6 +41,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Ruler,
 } from 'lucide-react';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -83,6 +84,10 @@ export function BirthdayCakeOrderModal({
     { cakeBaseId: '', cakeBaseSizeId: '', creamCoatingId: '', creamCoatingSizeId: '', fillingId: '' },
     { cakeBaseId: '', cakeBaseSizeId: '', creamCoatingId: '', creamCoatingSizeId: '', fillingId: '' },
   ]);
+
+  // Hộp & bao bì: chọn linh hoạt từ danh sách, mặc định lấy theo cài đặt Mục 4
+  const [selectedPackagingId, setSelectedPackagingId] = useState<string>('');
+  const [isPackagingAccordionOpen, setIsPackagingAccordionOpen] = useState<boolean>(false);
 
   // Phụ kiện & quà tặng dùng chung cho cả chiếc bánh
   const [selectedFreeAccessoryIds, setSelectedFreeAccessoryIds] = useState<string[]>([]);
@@ -183,6 +188,10 @@ export function BirthdayCakeOrderModal({
     ]);
 
     // Tự động sử dụng hộp mặc định từ Mục 4 (Định Mức Bánh Sinh Nhật)
+    const defaultPkg = currentConfig.packagings.find((p) => p.isDefault) || currentConfig.packagings[0];
+    setSelectedPackagingId(defaultPkg?.id || '');
+    setIsPackagingAccordionOpen(false);
+
     setSelectedFreeAccessoryIds(currentConfig.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id));
     // Mặc định KHÔNG chọn bất kỳ phụ kiện decor nào khi mở modal
     setSelectedDecorAddonIds([]);
@@ -194,13 +203,21 @@ export function BirthdayCakeOrderModal({
     // Mặc định KHÔNG chọn bất kỳ phụ kiện decor nào theo yêu cầu
     setSelectedDecorAddonIds([]);
 
+    const base = currentConfig.cakeBases.find((b) => b.id === preset.cakeBaseId) || currentConfig.cakeBases[0];
+    const currentSizeId = tiers[0]?.cakeBaseSizeId;
+    const existingSize = base?.sizes.find((s) => s.id === currentSizeId);
+    const chosenSize = existingSize || base?.sizes.find((s) => s.diameterCm === 18) || base?.sizes[0];
+
+    const cream = currentConfig.creamCoatings.find((c) => c.id === preset.creamCoatingId) || currentConfig.creamCoatings[0];
+    const matchingCreamSize = cream?.sizes.find((s) => s.diameterCm === chosenSize?.diameterCm) || cream?.sizes[0];
+
     // Gán vào tầng 1
     setTiers((prev) => [
       {
         cakeBaseId: preset.cakeBaseId,
-        cakeBaseSizeId: preset.cakeBaseSizeId,
+        cakeBaseSizeId: chosenSize?.id || '',
         creamCoatingId: preset.creamCoatingId,
-        creamCoatingSizeId: preset.creamCoatingSizeId,
+        creamCoatingSizeId: matchingCreamSize?.id || '',
         fillingId: preset.fillingId || currentConfig.fillings[0]?.id || '',
       },
       prev[1],
@@ -221,14 +238,21 @@ export function BirthdayCakeOrderModal({
     if (mode === 'preset') {
       const preset = config.birthdayBomPresets.find((p) => p.id === selectedPresetId) || config.birthdayBomPresets[0];
       const base = config.cakeBases.find((b) => b.id === preset?.cakeBaseId) || config.cakeBases[0];
-      const baseSize = base?.sizes.find((s) => s.id === preset?.cakeBaseSizeId) || base?.sizes[0];
+      const currentTier = tiers[0];
+      const baseSize =
+        base?.sizes.find((s) => s.id === currentTier?.cakeBaseSizeId) ||
+        base?.sizes.find((s) => s.diameterCm === 18) ||
+        base?.sizes[0];
       const baseCost = baseSize?.baseCost ?? 0;
 
       const cream = config.creamCoatings.find((c) => c.id === preset?.creamCoatingId) || config.creamCoatings[0];
-      const creamSize = cream?.sizes.find((s) => s.id === preset?.creamCoatingSizeId) || cream?.sizes[0];
+      const creamSize =
+        cream?.sizes.find((s) => s.id === currentTier?.creamCoatingSizeId) ||
+        cream?.sizes.find((s) => s.diameterCm === baseSize?.diameterCm) ||
+        cream?.sizes[0];
       const creamCost = creamSize?.baseCost ?? 0;
 
-      const filling = config.fillings.find((f) => f.id === preset?.fillingId);
+      const filling = config.fillings.find((f) => f.id === (currentTier?.fillingId || preset?.fillingId));
       const fillingCost = filling?.costPrice ?? 0;
 
       return [
@@ -315,10 +339,14 @@ export function BirthdayCakeOrderModal({
     );
   }, [config.birthdayBomPresets, selectedPresetId]);
 
-  // Thông tin loại hộp đựng bánh mặc định chung theo Mục 4 (không chọn tay khi đặt bánh)
+  // Hộp đóng gói: theo loại đã chọn hoặc mặc định theo Mục 4
   const selectedPackagingBox = useMemo(() => {
-    return config.packagings.find((p) => p.isDefault) || config.packagings[0];
-  }, [config.packagings]);
+    return (
+      (selectedPackagingId && config.packagings.find((p) => p.id === selectedPackagingId)) ||
+      config.packagings.find((p) => p.isDefault) ||
+      config.packagings[0]
+    );
+  }, [config.packagings, selectedPackagingId]);
 
   // ── TỔNG HỢP TOÀN BỘ CHI PHÍ & GIÁ GỢI Ý ──
   const totalCalculation = useMemo(() => {
@@ -657,183 +685,247 @@ export function BirthdayCakeOrderModal({
           
           {/* ══════════════ MỤC 1: BÁNH CÓ SẴN (PRESET BOM) - DẠNG CỬA SỔ CHỌN LIST NỔI BẬT & GỌN GÀNG ══════════════ */}
           {mode === 'preset' && (
-            <div className="rounded-2xl sm:rounded-3xl border-2 border-pink-400/90 bg-gradient-to-r from-pink-50/90 via-white to-pink-50/70 shadow-sm overflow-hidden transition-all duration-200">
-              {/* Header thu gọn / mở rộng - Kích thước to hơn các mục khác để nổi bật */}
-              <button
-                type="button"
-                onClick={() => setIsPresetListOpen((prev) => !prev)}
-                className="w-full p-3 sm:p-4 flex items-center justify-between gap-2.5 text-left hover:bg-pink-100/40 transition cursor-pointer group"
-              >
-                <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
-                  <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shadow-md shadow-pink-500/25 shrink-0 group-hover:scale-105 transition">
-                    <Boxes className="w-4.5 h-4.5 sm:w-6 sm:h-6" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                      <span className="text-[11px] sm:text-sm font-black text-pink-900 uppercase tracking-wide">
-                        Mẫu Bánh Định Mức (BOM):
-                      </span>
-                      {selectedPreset && (
-                        <span className="text-[9px] sm:text-[11px] bg-pink-600 text-white font-black px-1.5 sm:px-2 py-0.2 sm:py-0.5 rounded-md sm:rounded-lg shadow-2xs">
-                          Đang chọn
+            <div className="space-y-3">
+              <div className="rounded-2xl sm:rounded-3xl border-2 border-pink-400/90 bg-gradient-to-r from-pink-50/90 via-white to-pink-50/70 shadow-sm overflow-hidden transition-all duration-200">
+                {/* Header thu gọn / mở rộng - Kích thước to hơn các mục khác để nổi bật */}
+                <button
+                  type="button"
+                  onClick={() => setIsPresetListOpen((prev) => !prev)}
+                  className="w-full p-3 sm:p-4 flex items-center justify-between gap-2.5 text-left hover:bg-pink-100/40 transition cursor-pointer group"
+                >
+                  <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
+                    <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shadow-md shadow-pink-500/25 shrink-0 group-hover:scale-105 transition">
+                      <Boxes className="w-4.5 h-4.5 sm:w-6 sm:h-6" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                        <span className="text-[11px] sm:text-sm font-black text-pink-900 uppercase tracking-wide">
+                          Mẫu Bánh Định Mức (BOM):
                         </span>
+                        {selectedPreset && (
+                          <span className="text-[9px] sm:text-[11px] bg-pink-600 text-white font-black px-1.5 sm:px-2 py-0.2 sm:py-0.5 rounded-md sm:rounded-lg shadow-2xs">
+                            Đang chọn
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs sm:text-base font-extrabold text-zinc-900 mt-0.5 truncate group-hover:text-pink-700 transition">
+                        {selectedPreset?.name || 'Chọn mẫu bánh sinh nhật có sẵn...'}
+                      </div>
+                      {selectedPreset && (
+                        <div className="text-[10px] sm:text-xs text-zinc-600 truncate mt-0.5 flex items-center gap-1.5 flex-wrap">
+                          {(() => {
+                            const base = config.cakeBases.find((b) => b.id === selectedPreset.cakeBaseId);
+                            const cream = config.creamCoatings.find((c) => c.id === selectedPreset.creamCoatingId);
+                            const curBaseSize = base?.sizes.find((s) => s.id === tiers[0]?.cakeBaseSizeId) || base?.sizes[0];
+                            return (
+                              <>
+                                {curBaseSize?.sizeName && (
+                                  <span className="font-bold text-pink-700 bg-pink-100/70 px-1.5 py-0.2 rounded">
+                                    📏 Size {curBaseSize.sizeName} ({curBaseSize.diameterCm}cm)
+                                  </span>
+                                )}
+                                {base?.name && (
+                                  <span className="font-semibold text-zinc-700">
+                                    • Cốt: {base.name}
+                                  </span>
+                                )}
+                                {cream?.name && (
+                                  <span className="font-semibold text-zinc-700">
+                                    • Kem: {cream.name}
+                                  </span>
+                                )}
+                                {selectedPreset.notes && (
+                                  <span className="text-zinc-500 hidden md:inline">
+                                    ({selectedPreset.notes})
+                                  </span>
+                                )}
+                              </>
+                            );
+                          })()}
+                        </div>
                       )}
                     </div>
-                    <div className="text-xs sm:text-base font-extrabold text-zinc-900 mt-0.5 truncate group-hover:text-pink-700 transition">
-                      {selectedPreset?.name || 'Chọn mẫu bánh sinh nhật có sẵn...'}
+                  </div>
+
+                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                    <span className="px-2 py-0.5 rounded-lg bg-pink-100 text-pink-800 font-extrabold text-[11px] hidden md:inline-flex items-center gap-1 border border-pink-200">
+                      {config.birthdayBomPresets.length} mẫu có sẵn
+                    </span>
+                    <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-pink-700 bg-pink-100/80 border border-pink-200 px-2 sm:px-2.5 py-1.5 rounded-xl group-hover:bg-pink-600 group-hover:text-white transition">
+                      <span className="hidden xs:inline">{isPresetListOpen ? 'Thu gọn' : 'Đổi mẫu'}</span>
+                      {isPresetListOpen ? (
+                        <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      ) : (
+                        <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      )}
                     </div>
-                    {selectedPreset && (
-                      <div className="text-[10px] sm:text-xs text-zinc-600 truncate mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        {(() => {
-                          const base = config.cakeBases.find((b) => b.id === selectedPreset.cakeBaseId);
-                          const cream = config.creamCoatings.find((c) => c.id === selectedPreset.creamCoatingId);
-                          const baseSize = base?.sizes.find((s) => s.id === selectedPreset.cakeBaseSizeId);
-                          return (
-                            <>
-                              {baseSize?.sizeName && (
-                                <span className="font-bold text-pink-700">
-                                  📏 {baseSize.sizeName}
-                                </span>
-                              )}
-                              {base?.name && (
-                                <span className="font-semibold text-zinc-700">
-                                  • Cốt: {base.name}
-                                </span>
-                              )}
-                              {cream?.name && (
-                                <span className="font-semibold text-zinc-700">
-                                  • Kem: {cream.name}
-                                </span>
-                              )}
-                              {selectedPreset.notes && (
-                                <span className="text-zinc-500 hidden md:inline">
-                                  ({selectedPreset.notes})
-                                </span>
-                              )}
-                            </>
-                          );
-                        })()}
-                      </div>
-                    )}
                   </div>
+                </button>
+
+                {/* Cửa sổ List mở rộng để chọn mẫu bánh */}
+                {isPresetListOpen && (
+                  <div className="p-3 sm:p-4 border-t-2 border-pink-200 bg-white space-y-2.5 animate-fade-in">
+                    <div className="flex items-center justify-between text-xs pb-1.5 border-b border-zinc-100">
+                      <span className="text-zinc-600 font-bold flex items-center gap-1.5 text-[11px] sm:text-xs">
+                        <Sparkles className="w-3.5 h-3.5 text-pink-600 shrink-0" />
+                        <span>Chọn 1 mẫu bánh từ danh sách (chạm để áp dụng ngay):</span>
+                      </span>
+                      <span className="text-[10px] text-zinc-400 font-medium hidden sm:inline">
+                        ({config.birthdayBomPresets.length} mẫu có sẵn)
+                      </span>
+                    </div>
+
+                    {/* DANH SÁCH DẠNG LIST DỄ CHỌN VÀ THAO TÁC CẢ TRÊN MOBILE & DESKTOP */}
+                    <div className="border border-zinc-200 rounded-2xl overflow-hidden divide-y divide-zinc-100 max-h-56 sm:max-h-64 overflow-y-auto bg-white shadow-2xs">
+                      {config.birthdayBomPresets.map((preset) => {
+                        const isSel = selectedPreset?.id === preset.id;
+                        const base = config.cakeBases.find((b) => b.id === preset.cakeBaseId);
+                        const cream = config.creamCoatings.find((c) => c.id === preset.creamCoatingId);
+                        const filling = config.fillings.find((f) => f.id === preset.fillingId);
+
+                        return (
+                          <div
+                            key={preset.id}
+                            onClick={() => {
+                              applyPreset(preset, config);
+                              setIsPresetListOpen(false);
+                            }}
+                            className={`p-2.5 sm:p-3 flex items-center justify-between gap-2.5 cursor-pointer transition select-none active:bg-pink-100/60 ${
+                              isSel
+                                ? 'bg-pink-50/90 text-pink-950 font-bold'
+                                : 'hover:bg-zinc-50 text-zinc-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                              <div
+                                className={`w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full border flex items-center justify-center shrink-0 ${
+                                  isSel
+                                    ? 'border-pink-600 bg-pink-600 text-white'
+                                    : 'border-zinc-300 bg-white'
+                                }`}
+                              >
+                                {isSel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-xs sm:text-sm truncate ${isSel ? 'font-black text-pink-950' : 'font-bold text-zinc-800'}`}>
+                                    {preset.name}
+                                  </span>
+                                  {isSel && (
+                                    <span className="text-[9px] bg-pink-200 text-pink-800 font-bold px-1.5 py-0.2 rounded-md shrink-0">
+                                      Đang chọn
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="text-[11px] text-zinc-500 truncate mt-0.5 flex items-center gap-1.5">
+                                  {base?.name && (
+                                    <span className="font-semibold text-zinc-700">
+                                      Cốt: {base.name}
+                                    </span>
+                                  )}
+                                  {cream?.name && <span className="truncate">• Kem: {cream.name}</span>}
+                                  {filling?.name && <span className="truncate">• Nhân: {filling.name}</span>}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="shrink-0 flex items-center gap-1.5 text-right">
+                              {isSel ? (
+                                <span className="w-6 h-6 rounded-lg bg-pink-600 text-white flex items-center justify-center">
+                                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                </span>
+                              ) : (
+                                <span className="text-[11px] text-zinc-400 font-semibold px-2 py-1 rounded-lg hover:bg-pink-100 hover:text-pink-700">
+                                  Chọn
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
+                      <span className="text-xs text-zinc-600 truncate max-w-[60%]">
+                        Đang chọn: <strong className="text-pink-700 font-bold">{selectedPreset?.name}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsPresetListOpen(false)}
+                        className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs cursor-pointer shadow-xs transition shrink-0"
+                      >
+                        Đóng danh sách
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* TÙY CHỌN SIZE CHO MẪU BÁNH ĐANG CHỌN (TỰ ĐỘNG LINK GIÁ VỐN & BOM THEO SIZE) */}
+              <div className="p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-white border border-pink-200 shadow-xs space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-black text-xs sm:text-sm text-pink-950">
+                    <Ruler className="w-4 h-4 text-pink-600" />
+                    <span>Tùy Chọn Kích Thước Bánh (Size):</span>
+                  </div>
+                  {(() => {
+                    const base = config.cakeBases.find((b) => b.id === selectedPreset?.cakeBaseId) || config.cakeBases[0];
+                    const curSize = base?.sizes.find((s) => s.id === tiers[0]?.cakeBaseSizeId) || base?.sizes[0];
+                    return (
+                      <span className="text-[11px] font-extrabold text-pink-700 bg-pink-50 px-2.5 py-0.5 rounded-full border border-pink-200">
+                        Đang chọn: {curSize?.sizeName || `${curSize?.diameterCm || 18}cm`}
+                      </span>
+                    );
+                  })()}
                 </div>
 
-                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-                  <span className="px-2 py-0.5 rounded-lg bg-pink-100 text-pink-800 font-extrabold text-[11px] hidden md:inline-flex items-center gap-1 border border-pink-200">
-                    {config.birthdayBomPresets.length} mẫu có sẵn
-                  </span>
-                  <div className="flex items-center gap-1 text-[11px] sm:text-xs font-bold text-pink-700 bg-pink-100/80 border border-pink-200 px-2 sm:px-2.5 py-1.5 rounded-xl group-hover:bg-pink-600 group-hover:text-white transition">
-                    <span className="hidden xs:inline">{isPresetListOpen ? 'Thu gọn' : 'Đổi mẫu'}</span>
-                    {isPresetListOpen ? (
-                      <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    ) : (
-                      <ChevronDown className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                    )}
-                  </div>
-                </div>
-              </button>
+                {/* Các nút bấm chọn Size dạng chip gọn nhẹ, hiển thị đường kính cm và giá vốn */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                  {(() => {
+                    const base = config.cakeBases.find((b) => b.id === selectedPreset?.cakeBaseId) || config.cakeBases[0];
+                    const cream = config.creamCoatings.find((c) => c.id === selectedPreset?.creamCoatingId) || config.creamCoatings[0];
+                    const activeSizeId = tiers[0]?.cakeBaseSizeId || base?.sizes[0]?.id;
 
-              {/* Cửa sổ List mở rộng để chọn mẫu bánh */}
-              {isPresetListOpen && (
-                <div className="p-3 sm:p-4 border-t-2 border-pink-200 bg-white space-y-2.5 animate-fade-in">
-                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-zinc-100">
-                    <span className="text-zinc-600 font-bold flex items-center gap-1.5 text-[11px] sm:text-xs">
-                      <Sparkles className="w-3.5 h-3.5 text-pink-600 shrink-0" />
-                      <span>Chọn 1 mẫu bánh từ danh sách (chạm để áp dụng ngay):</span>
-                    </span>
-                    <span className="text-[10px] text-zinc-400 font-medium hidden sm:inline">
-                      ({config.birthdayBomPresets.length} mẫu có sẵn)
-                    </span>
-                  </div>
-
-                  {/* DANH SÁCH DẠNG LIST DỄ CHỌN VÀ THAO TÁC CẢ TRÊN MOBILE & DESKTOP */}
-                  <div className="border border-zinc-200 rounded-2xl overflow-hidden divide-y divide-zinc-100 max-h-56 sm:max-h-64 overflow-y-auto bg-white shadow-2xs">
-                    {config.birthdayBomPresets.map((preset) => {
-                      const isSel = selectedPreset?.id === preset.id;
-                      const base = config.cakeBases.find((b) => b.id === preset.cakeBaseId);
-                      const baseSize = base?.sizes.find((s) => s.id === preset.cakeBaseSizeId);
-                      const cream = config.creamCoatings.find((c) => c.id === preset.creamCoatingId);
-                      const filling = config.fillings.find((f) => f.id === preset.fillingId);
-
+                    return base?.sizes.map((s) => {
+                      const isSel = activeSizeId === s.id;
                       return (
-                        <div
-                          key={preset.id}
+                        <button
+                          key={s.id}
+                          type="button"
                           onClick={() => {
-                            applyPreset(preset, config);
-                            setIsPresetListOpen(false);
+                            updateTier(0, { cakeBaseSizeId: s.id });
+                            const matchingCream = cream?.sizes.find((cs) => cs.diameterCm === s.diameterCm) || cream?.sizes[0];
+                            if (matchingCream) {
+                              updateTier(0, { creamCoatingSizeId: matchingCream.id });
+                            }
                           }}
-                          className={`p-2.5 sm:p-3 flex items-center justify-between gap-2.5 cursor-pointer transition select-none active:bg-pink-100/60 ${
+                          className={`p-2 sm:p-2.5 rounded-xl sm:rounded-2xl text-center border text-xs font-bold transition cursor-pointer active:scale-95 flex flex-col items-center justify-center ${
                             isSel
-                              ? 'bg-pink-50/90 text-pink-950 font-bold'
-                              : 'hover:bg-zinc-50 text-zinc-800'
+                              ? 'bg-pink-600 text-white border-pink-600 shadow-md shadow-pink-600/20'
+                              : 'bg-zinc-50 border-zinc-200 text-zinc-700 hover:bg-pink-50 hover:border-pink-300'
                           }`}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                            <div
-                              className={`w-4 h-4 sm:w-4.5 sm:h-4.5 rounded-full border flex items-center justify-center shrink-0 ${
-                                isSel
-                                  ? 'border-pink-600 bg-pink-600 text-white'
-                                  : 'border-zinc-300 bg-white'
-                              }`}
-                            >
-                              {isSel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-1.5">
-                                <span className={`text-xs sm:text-sm truncate ${isSel ? 'font-black text-pink-950' : 'font-bold text-zinc-800'}`}>
-                                  {preset.name}
-                                </span>
-                                {isSel && (
-                                  <span className="text-[9px] bg-pink-200 text-pink-800 font-bold px-1.5 py-0.2 rounded-md shrink-0">
-                                    Đang chọn
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="text-[11px] text-zinc-500 truncate mt-0.5 flex items-center gap-1.5">
-                                {baseSize?.sizeName && (
-                                  <span className="font-semibold text-pink-700 shrink-0">
-                                    {baseSize.sizeName}
-                                  </span>
-                                )}
-                                {base?.name && <span className="truncate">• {base.name}</span>}
-                                {cream?.name && <span className="truncate">• {cream.name}</span>}
-                                {filling?.name && <span className="truncate">• {filling.name}</span>}
-                              </div>
-                            </div>
+                          <div className="text-xs sm:text-sm font-black">{s.diameterCm}cm</div>
+                          <div className={`text-[10px] mt-0.5 truncate max-w-full ${isSel ? 'text-pink-100' : 'text-zinc-500'}`}>
+                            {s.sizeName}
                           </div>
-
-                          <div className="shrink-0 flex items-center gap-1.5 text-right">
-                            {isSel ? (
-                              <span className="w-6 h-6 rounded-lg bg-pink-600 text-white flex items-center justify-center">
-                                <Check className="w-3.5 h-3.5 stroke-[3]" />
-                              </span>
-                            ) : (
-                              <span className="text-[11px] text-zinc-400 font-semibold px-2 py-1 rounded-lg hover:bg-pink-100 hover:text-pink-700">
-                                Chọn
-                              </span>
-                            )}
-                          </div>
-                        </div>
+                          {canViewCost && (
+                            <div className={`text-[10px] mt-0.5 font-bold ${isSel ? 'text-pink-200' : 'text-rose-600'}`}>
+                              ~{s.baseCost.toLocaleString('vi-VN')}₫
+                            </div>
+                          )}
+                        </button>
                       );
-                    })}
-                  </div>
-
-                  <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
-                    <span className="text-xs text-zinc-600 truncate max-w-[60%]">
-                      Đang chọn: <strong className="text-pink-700 font-bold">{selectedPreset?.name}</strong>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setIsPresetListOpen(false)}
-                      className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs cursor-pointer shadow-xs transition shrink-0"
-                    >
-                      Đóng danh sách
-                    </button>
-                  </div>
+                    });
+                  })()}
                 </div>
-              )}
+
+                <p className="text-[11px] text-zinc-500 italic">
+                  * Khi chọn kích thước, hệ thống tự động liên kết định mức BOM cốt bánh & kem phủ chuẩn xác cho KDS Bếp.
+                </p>
+              </div>
             </div>
           )}
 
@@ -1013,35 +1105,103 @@ export function BirthdayCakeOrderModal({
               <span>Hộp Đóng Gói & Phụ Kiện Decor:</span>
             </span>
 
-            {/* Loại Hộp Đựng Bánh (Tự động theo hộp mặc định chung cấu hình trong Mục 4) */}
-            <div className="rounded-2xl border border-pink-200 bg-pink-50/50 p-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-7 h-7 rounded-xl bg-pink-500/15 text-pink-700 flex items-center justify-center shrink-0">
-                  <Package className="w-4 h-4 text-pink-600" />
-                </div>
-                <div className="min-w-0">
-                  <div className="font-bold text-zinc-900 text-xs truncate flex items-center gap-2">
-                    <span>Hộp Đựng & Bao Bì:</span>
-                    <span className="text-[9px] bg-pink-200 text-pink-800 font-bold px-1.5 py-0.5 rounded-md border border-pink-300">
-                      Mặc định Mục 4
-                    </span>
+            {/* Hộp Đóng Gói & Bao Bì: Mặc định chọn theo Mục 4, cho phép chọn loại khác từ danh sách */}
+            <div className="rounded-2xl border border-pink-200 bg-pink-50/50 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setIsPackagingAccordionOpen((prev) => !prev)}
+                className="w-full p-3 flex items-center justify-between gap-2.5 text-left hover:bg-pink-100/40 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                  <div className="w-7 h-7 rounded-xl bg-pink-500/15 text-pink-700 flex items-center justify-center shrink-0">
+                    <Package className="w-4 h-4 text-pink-600" />
                   </div>
-                  <div className="text-[11px] text-pink-950 font-bold truncate mt-0.5 flex items-center gap-1.5">
-                    <span>{selectedPackagingBox?.name || 'Hộp tiêu chuẩn'}</span>
-                    {canViewCost && selectedPackagingBox && selectedPackagingBox.costPrice > 0 ? (
-                      <span className="text-zinc-500 font-normal">
-                        (Vốn: {selectedPackagingBox.costPrice.toLocaleString('vi-VN')}₫)
-                      </span>
-                    ) : null}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-zinc-900 text-xs">Hộp Đựng & Bao Bì:</span>
+                      {selectedPackagingBox?.isDefault ? (
+                        <span className="text-[9px] bg-emerald-100 text-emerald-800 font-bold px-1.5 py-0.2 rounded-md border border-emerald-300">
+                          Mặc định Mục 4
+                        </span>
+                      ) : (
+                        <span className="text-[9px] bg-pink-100 text-pink-800 font-bold px-1.5 py-0.2 rounded-md border border-pink-300">
+                          Tùy chọn
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-pink-950 font-bold truncate mt-0.5 flex items-center gap-1.5">
+                      <span>{selectedPackagingBox?.name || 'Hộp tiêu chuẩn'}</span>
+                      {canViewCost && selectedPackagingBox && selectedPackagingBox.costPrice > 0 ? (
+                        <span className="text-zinc-500 font-normal">
+                          (Vốn: {selectedPackagingBox.costPrice.toLocaleString('vi-VN')}₫)
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="shrink-0 text-right">
-                <span className="text-[10px] text-pink-700 bg-pink-100 font-medium px-2 py-1 rounded-lg">
-                  Tự động áp dụng
-                </span>
-              </div>
+                <div className="flex items-center gap-1 text-[11px] font-bold text-pink-700 bg-pink-100/80 px-2.5 py-1 rounded-xl shrink-0">
+                  <span>{isPackagingAccordionOpen ? 'Thu gọn' : 'Đổi hộp'}</span>
+                  {isPackagingAccordionOpen ? (
+                    <ChevronUp className="w-3.5 h-3.5" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5" />
+                  )}
+                </div>
+              </button>
+
+              {/* Danh sách các loại hộp bao bì */}
+              {isPackagingAccordionOpen && (
+                <div className="p-3 border-t border-pink-200 bg-white space-y-2 animate-fade-in">
+                  <div className="text-[11px] text-zinc-500 font-medium">
+                    Chọn loại hộp đóng gói (mặc định đã chọn theo cài đặt Mục 4):
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto">
+                    {config.packagings.map((pkg) => {
+                      const isSel = selectedPackagingBox?.id === pkg.id;
+                      return (
+                        <div
+                          key={pkg.id}
+                          onClick={() => {
+                            setSelectedPackagingId(pkg.id);
+                            setIsPackagingAccordionOpen(false);
+                          }}
+                          className={`p-2.5 rounded-xl border text-xs cursor-pointer transition flex items-center justify-between gap-2 select-none active:scale-[0.99] ${
+                            isSel
+                              ? 'bg-pink-50 border-pink-500 text-pink-950 font-bold shadow-2xs'
+                              : 'bg-zinc-50 border-zinc-200 text-zinc-700 hover:bg-zinc-100'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="truncate">{pkg.name}</span>
+                              {pkg.isDefault && (
+                                <span className="text-[8px] bg-emerald-100 text-emerald-800 font-black px-1 py-0.2 rounded shrink-0">
+                                  Mặc định
+                                </span>
+                              )}
+                            </div>
+                            {canViewCost && (
+                              <div className="text-[10px] text-zinc-500 font-normal">
+                                Vốn: {(pkg.costPrice || 0).toLocaleString('vi-VN')}₫
+                              </div>
+                            )}
+                          </div>
+                          <div className="shrink-0">
+                            <div
+                              className={`w-4 h-4 rounded-full border flex items-center justify-center ${
+                                isSel ? 'border-pink-600 bg-pink-600 text-white' : 'border-zinc-300 bg-white'
+                              }`}
+                            >
+                              {isSel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Phụ kiện decor tính thêm (Dạng cửa sổ thu gọn theo yêu cầu) */}

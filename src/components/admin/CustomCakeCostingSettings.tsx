@@ -473,16 +473,13 @@ export function CustomCakeCostingSettings() {
       id: 'bom-preset-' + Date.now(),
       name: 'BOM Mẫu Bánh Sinh Nhật Mới',
       cakeBaseId: defaultBase?.id || '',
-      cakeBaseSizeId: defaultBase?.sizes[0]?.id || '',
       creamCoatingId: defaultCream?.id || '',
-      creamCoatingSizeId: defaultCream?.sizes[0]?.id || '',
       fillingId: config.fillings[0]?.id,
-      packagingId: config.packagings[0]?.id,
       freeAccessoryIds: config.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id),
       decorAddonIds: [],
       targetFoodCostPct: config.targetFoodCostPct || 36.5,
       suggestedSellingPrice: 350000,
-      notes: 'Mẫu bánh sinh nhật định mức chuẩn',
+      notes: 'Mẫu bánh sinh nhật định mức chuẩn (chọn size khi đặt bánh)',
     };
     setConfig({ ...config, birthdayBomPresets: [...config.birthdayBomPresets, newPreset] });
   };
@@ -1294,7 +1291,7 @@ export function CustomCakeCostingSettings() {
                 <span>7. Cấu Hình BOM Bánh Sinh Nhật Chuẩn (Presets)</span>
               </h3>
               <p className="text-xs text-zinc-500">
-                Tạo mẫu BOM bánh sinh nhật tổng hợp từ: Cốt bánh + Kem phủ + Nhân + Hộp + Quà tặng kèm + Decor.
+                Tạo mẫu BOM bánh sinh nhật chuẩn gồm: Cốt bánh + Kem phủ + Nhân + Quà tặng kèm + Decor. Size bánh và Hộp đựng sẽ do nhân viên chọn khi tạo đơn tại POS.
               </p>
             </div>
             <button
@@ -1308,23 +1305,22 @@ export function CustomCakeCostingSettings() {
 
           <div className="space-y-4">
             {config.birthdayBomPresets.map((preset, pIdx) => {
+              const currentBase = config.cakeBases.find((b) => b.id === preset.cakeBaseId);
+              const currentCream = config.creamCoatings.find((c) => c.id === preset.creamCoatingId);
+              // Lấy size mẫu (18cm hoặc size đầu tiên) để tính giá tham khảo trong Admin
+              const sampleSize = currentBase?.sizes.find((s) => s.diameterCm === 18) || currentBase?.sizes[0];
               const calc = calculateCakeCostDetails(
                 {
                   cakeBaseId: preset.cakeBaseId,
-                  cakeBaseSizeId: preset.cakeBaseSizeId,
+                  cakeBaseSizeId: sampleSize?.id,
                   creamCoatingId: preset.creamCoatingId,
-                  creamCoatingSizeId: preset.creamCoatingSizeId,
                   fillingId: preset.fillingId,
-                  packagingId: preset.packagingId,
                   freeAccessoryIds: preset.freeAccessoryIds,
                   decorAddonIds: preset.decorAddonIds,
                   customMarkupPct: preset.targetFoodCostPct || config.targetFoodCostPct,
                 },
                 config
               );
-
-              const currentBase = config.cakeBases.find((b) => b.id === preset.cakeBaseId);
-              const currentCream = config.creamCoatings.find((c) => c.id === preset.creamCoatingId);
 
               return (
                 <div
@@ -1354,20 +1350,14 @@ export function CustomCakeCostingSettings() {
                     </button>
                   </div>
 
-                  {/* CÁC THÀNH PHẦN CỦA BOM BÁNH SINH NHẬT */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                  {/* CÁC THÀNH PHẦN CỦA BOM BÁNH SINH NHẬT - 3 CỘT (CỐT, KEM, NHÂN) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                     <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
-                      <span className="font-bold text-pink-800 flex items-center gap-1">🍰 Cốt Bánh & Size:</span>
+                      <span className="font-bold text-pink-800 flex items-center gap-1">🍰 Cốt Bánh:</span>
                       <select
                         value={preset.cakeBaseId}
-                        onChange={(e) => {
-                          const base = config.cakeBases.find((b) => b.id === e.target.value);
-                          handleUpdateBomPreset(pIdx, 'cakeBaseId', e.target.value);
-                          if (base && base.sizes[0]) {
-                            handleUpdateBomPreset(pIdx, 'cakeBaseSizeId', base.sizes[0].id);
-                          }
-                        }}
-                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 font-bold"
+                        onChange={(e) => handleUpdateBomPreset(pIdx, 'cakeBaseId', e.target.value)}
+                        className="w-full p-2 rounded-lg bg-white border border-zinc-200 font-bold text-xs"
                       >
                         {config.cakeBases.map((b) => (
                           <option key={b.id} value={b.id}>
@@ -1375,32 +1365,15 @@ export function CustomCakeCostingSettings() {
                           </option>
                         ))}
                       </select>
-
-                      <select
-                        value={preset.cakeBaseSizeId}
-                        onChange={(e) => handleUpdateBomPreset(pIdx, 'cakeBaseSizeId', e.target.value)}
-                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 text-[11px]"
-                      >
-                        {currentBase?.sizes.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.sizeName} ({s.baseCost.toLocaleString('vi-VN')}₫)
-                          </option>
-                        ))}
-                      </select>
+                      <p className="text-[10px] text-zinc-500 italic">* Size và BOM cốt bánh tự nhận theo size khi đặt bánh</p>
                     </div>
 
                     <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
-                      <span className="font-bold text-pink-800 flex items-center gap-1">🍦 Kem Phủ & Size:</span>
+                      <span className="font-bold text-pink-800 flex items-center gap-1">🍦 Kem Phủ:</span>
                       <select
                         value={preset.creamCoatingId}
-                        onChange={(e) => {
-                          const cream = config.creamCoatings.find((c) => c.id === e.target.value);
-                          handleUpdateBomPreset(pIdx, 'creamCoatingId', e.target.value);
-                          if (cream && cream.sizes[0]) {
-                            handleUpdateBomPreset(pIdx, 'creamCoatingSizeId', cream.sizes[0].id);
-                          }
-                        }}
-                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 font-bold"
+                        onChange={(e) => handleUpdateBomPreset(pIdx, 'creamCoatingId', e.target.value)}
+                        className="w-full p-2 rounded-lg bg-white border border-zinc-200 font-bold text-xs"
                       >
                         {config.creamCoatings.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -1408,18 +1381,7 @@ export function CustomCakeCostingSettings() {
                           </option>
                         ))}
                       </select>
-
-                      <select
-                        value={preset.creamCoatingSizeId}
-                        onChange={(e) => handleUpdateBomPreset(pIdx, 'creamCoatingSizeId', e.target.value)}
-                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 text-[11px]"
-                      >
-                        {currentCream?.sizes.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.sizeName} ({s.baseCost.toLocaleString('vi-VN')}₫)
-                          </option>
-                        ))}
-                      </select>
+                      <p className="text-[10px] text-zinc-500 italic">* BOM kem phủ tự động khớp theo size cốt bánh</p>
                     </div>
 
                     <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
@@ -1427,7 +1389,7 @@ export function CustomCakeCostingSettings() {
                       <select
                         value={preset.fillingId || ''}
                         onChange={(e) => handleUpdateBomPreset(pIdx, 'fillingId', e.target.value)}
-                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 font-bold"
+                        className="w-full p-2 rounded-lg bg-white border border-zinc-200 font-bold text-xs"
                       >
                         {config.fillings.map((f) => (
                           <option key={f.id} value={f.id}>
@@ -1435,30 +1397,16 @@ export function CustomCakeCostingSettings() {
                           </option>
                         ))}
                       </select>
-                    </div>
-
-                    <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-pink-800 flex items-center gap-1">📦 Hộp & Bao Bì:</span>
-                        <span className="text-[10px] bg-pink-200 text-pink-800 font-bold px-1.5 py-0.5 rounded">Mặc định chung (Mục 4)</span>
-                      </div>
-                      {(() => {
-                        const defaultBox = config.packagings.find((p) => p.isDefault) || config.packagings[0];
-                        return (
-                          <div className="w-full p-2 rounded-lg bg-white border border-pink-200 text-xs font-bold text-pink-950 flex items-center justify-between">
-                            <span className="truncate">{defaultBox?.name || 'Hộp tiêu chuẩn'}</span>
-                            <span className="text-zinc-500 font-medium shrink-0 ml-1">
-                              ({(defaultBox?.costPrice || 0).toLocaleString('vi-VN')}₫)
-                            </span>
-                          </div>
-                        );
-                      })()}
+                      <p className="text-[10px] text-zinc-500 italic">* Nhân mứt/hoa quả theo công thức</p>
                     </div>
                   </div>
 
-                  {/* THỐNG KÊ CHI TIẾT VỐN & GIÁ BÁN GỢI Ý */}
+                  {/* THỐNG KÊ CHI TIẾT VỐN & GIÁ BÁN GỢI Ý THAM KHẢO */}
                   <div className="p-3 rounded-2xl bg-zinc-50 border border-zinc-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div className="flex flex-wrap items-center gap-4 text-zinc-600">
+                    <div className="flex flex-wrap items-center gap-3 text-zinc-600">
+                      <span className="text-[10px] bg-pink-100 text-pink-800 font-bold px-2 py-0.5 rounded-full border border-pink-200">
+                        Ước tính mẫu size {sampleSize?.diameterCm || 18}cm:
+                      </span>
                       <div>
                         Cốt: <b className="text-zinc-900">{calc.baseCost.toLocaleString('vi-VN')}₫</b>
                       </div>
@@ -1469,16 +1417,13 @@ export function CustomCakeCostingSettings() {
                         Nhân: <b className="text-zinc-900">{calc.fillingCost.toLocaleString('vi-VN')}₫</b>
                       </div>
                       <div>
-                        Hộp: <b className="text-zinc-900">{calc.packagingCost.toLocaleString('vi-VN')}₫</b>
-                      </div>
-                      <div>
                         Quà tặng: <b className="text-zinc-900">{calc.freeAccessoriesCost.toLocaleString('vi-VN')}₫</b>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-4">
                       <div>
-                        <span className="text-[10px] text-zinc-500 block">Tổng Cost BOM:</span>
+                        <span className="text-[10px] text-zinc-500 block">Cost BOM tham khảo:</span>
                         <span className="font-black text-rose-600 text-sm">
                           {calc.totalCost.toLocaleString('vi-VN')}₫
                         </span>

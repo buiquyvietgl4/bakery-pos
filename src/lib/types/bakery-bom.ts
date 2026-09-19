@@ -98,11 +98,11 @@ export interface BirthdayCakeBomPreset {
   id: string;
   name: string; // Tên mẫu BOM chuẩn: "BOM Bánh Sinh Nhật Kem Bơ 18cm Chuẩn", "BOM Bánh Dâu Tây Quý Tộc 16cm"...
   cakeBaseId: string; // ID Cốt bánh
-  cakeBaseSizeId: string; // ID Size cốt bánh
+  cakeBaseSizeId?: string; // ID Size cốt bánh (tùy chọn, nhân viên chọn khi đặt bánh)
   creamCoatingId: string; // ID Kem phủ
-  creamCoatingSizeId: string; // ID Size kem phủ
+  creamCoatingSizeId?: string; // ID Size kem phủ (tự động link theo size cốt bánh khi đặt)
   fillingId?: string; // ID Nhân bánh
-  packagingId?: string; // ID Hộp bao bì
+  packagingId?: string; // ID Hộp bao bì (tùy chọn, mặc định lấy Mục 4)
   freeAccessoryIds: string[]; // Danh sách vật tư tặng kèm mặc định
   decorAddonIds?: string[]; // Danh sách phụ kiện decor mặc định
   targetFoodCostPct?: number; // Tỷ lệ biên lợi nhuận mong muốn (mặc định 36.5%)
