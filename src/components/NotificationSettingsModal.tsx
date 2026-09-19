@@ -990,18 +990,53 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
                     </button>
                   </div>
 
-                  {/* Thử giọng đọc AI tiếng Việt */}
-                  <div className="pt-1 flex flex-col sm:flex-row sm:items-center justify-between gap-1">
-                    <span className="text-[11px] text-zinc-500">Thử giọng đọc trợ lý tiếng Việt:</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        soundManager.speakPaymentSuccess(150000, 'DH-8868');
-                      }}
-                      className="text-xs font-bold text-amber-700 hover:text-amber-900 underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Nghe đọc &quot;Đã nhận 150.000đ đơn DH-8868&quot;</span>
-                    </button>
+                  {/* Thử giọng đọc AI tiếng Việt mượt mà & tự nhiên */}
+                  <div className="pt-2 border-t border-amber-200/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-amber-950 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Giọng Đọc AI Trợ Lý Tiếng Việt (Tự nhiên, không đọc &quot;âm&quot; mã đơn):</span>
+                      </span>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        Google AI / Natural Neural
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundManager.speakPaymentSuccess(150000, 'DH-888');
+                        }}
+                        className="py-2 px-3 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 text-left transition flex items-center justify-between cursor-pointer shadow-2xs group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Volume2 className="w-4 h-4 text-amber-600 group-hover:scale-110 transition" />
+                          <div>
+                            <div className="text-xs font-bold text-zinc-900">Mẫu Đơn DH-888</div>
+                            <div className="text-[10px] text-zinc-500">Đã nhận 150 nghìn đồng, đơn hàng 888</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md">Bấm Nghe</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          soundManager.speakPaymentSuccess(50000, 'DH-8868');
+                        }}
+                        className="py-2 px-3 rounded-xl bg-white hover:bg-amber-100 border border-amber-300 text-left transition flex items-center justify-between cursor-pointer shadow-2xs group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Volume2 className="w-4 h-4 text-emerald-600 group-hover:scale-110 transition" />
+                          <div>
+                            <div className="text-xs font-bold text-zinc-900">Mẫu Đơn DH-8868</div>
+                            <div className="text-[10px] text-zinc-500">Đã nhận 50 nghìn đồng, đơn hàng 8868</div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">Bấm Nghe</span>
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

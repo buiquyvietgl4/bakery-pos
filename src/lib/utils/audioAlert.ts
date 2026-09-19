@@ -3,11 +3,24 @@
 class AudioManager {
   private audioCtx: AudioContext | null = null;
   private soundEnabled: boolean = true;
+  private currentAudioElement: HTMLAudioElement | null = null;
+  private cachedVoices: SpeechSynthesisVoice[] = [];
 
   constructor() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('bakery_sound_enabled');
       this.soundEnabled = saved !== null ? saved === 'true' : true;
+
+      // Tải và lắng nghe danh sách giọng đọc tiếng Việt của trình duyệt
+      if ('speechSynthesis' in window) {
+        const loadVoices = () => {
+          try {
+            this.cachedVoices = window.speechSynthesis.getVoices() || [];
+          } catch {}
+        };
+        loadVoices();
+        window.speechSynthesis.onvoiceschanged = loadVoices;
+      }
 
       // Mở khóa AudioContext ngay khi người dùng chạm hoặc click vào màn hình lần đầu
       const unlockAudio = () => {
@@ -175,36 +188,139 @@ class AudioManager {
   }
 
   /**
-   * Đọc thông báo nhận tiền bằng tiếng Việt qua Web Speech API
-   * Ví dụ: "Đã nhận thành công 150.000 đồng đơn hàng 123"
+   * Lấy giọng đọc tiếng Việt tự nhiên và hay nhất trên thiết bị (ưu tiên các giọng Neural / Natural)
    */
-  public speakPaymentSuccess(amount: number, orderCode?: string) {
-    if (!this.soundEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
+  private getBestVietnameseVoice(): SpeechSynthesisVoice | null {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return null;
+    const voices = this.cachedVoices.length > 0 ? this.cachedVoices : window.speechSynthesis.getVoices();
+    if (!voices || voices.length === 0) return null;
 
-      const formattedAmount = Number(amount || 0).toLocaleString('vi-VN');
-      let text = `Đã nhận thành công ${formattedAmount} đồng`;
-      if (orderCode) {
-        const cleanCode = orderCode.replace(/^(DH|BK-SHIP-|BK-PRE-|BK-)/i, '');
-        text += ` cho đơn hàng ${cleanCode || orderCode}`;
+    const viVoices = voices.filter((v) => v.lang === 'vi-VN' || v.lang.startsWith('vi'));
+    if (viVoices.length === 0) return null;
+
+    // Ưu tiên 1: Giọng Hoài My Online (Natural) của Microsoft Edge (Cực kỳ truyền cảm & chuẩn xác)
+    const hoaiMy = viVoices.find((v) => v.name.includes('HoaiMy') || (v.name.includes('Natural') && v.name.includes('vi')));
+    if (hoaiMy) return hoaiMy;
+
+    // Ưu tiên 2: Giọng Nam Minh Online (Natural)
+    const namMinh = viVoices.find((v) => v.name.includes('NamMinh'));
+    if (namMinh) return namMinh;
+
+    // Ưu tiên 3: Giọng Google Tiếng Việt (Google Chrome / Android)
+    const googleVi = viVoices.find((v) => v.name.includes('Google'));
+    if (googleVi) return googleVi;
+
+    // Ưu tiên 4: Giọng Linh (Enhanced) trên Apple iOS / macOS
+    const appleEnhanced = viVoices.find((v) => v.name.includes('Enhanced') || v.name.includes('Premium'));
+    if (appleEnhanced) return appleEnhanced;
+
+    // Ưu tiên 5: Bất kỳ giọng tiếng Việt nào sẵn có
+    return viVoices[0];
+  }
+
+  /**
+   * Phát âm thanh giọng đọc tiếng Việt qua API proxy Google Assistant (Âm thanh chuẩn người thật, mượt mà và tự nhiên)
+   */
+  private playOnlineTts(text: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      try {
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          return resolve(false);
+        }
+
+        const audioUrl = `/api/tts?text=${encodeURIComponent(text)}`;
+        const audio = new Audio(audioUrl);
+        audio.playbackRate = 1.0;
+        this.currentAudioElement = audio;
+
+        let finished = false;
+        const finalize = (ok: boolean) => {
+          if (!finished) {
+            finished = true;
+            if (this.currentAudioElement === audio) {
+              this.currentAudioElement = null;
+            }
+            resolve(ok);
+          }
+        };
+
+        // Timeout 3 giây: nếu mạng yếu thì chuyển ngay sang Web Speech của máy để không bị trễ
+        const timeoutId = setTimeout(() => finalize(false), 3000);
+
+        audio.oncanplaythrough = () => {
+          clearTimeout(timeoutId);
+          audio.play().then(() => finalize(true)).catch(() => finalize(false));
+        };
+
+        audio.onerror = () => {
+          clearTimeout(timeoutId);
+          finalize(false);
+        };
+      } catch {
+        resolve(false);
       }
+    });
+  }
 
+  /**
+   * Phát qua Web Speech API khi offline hoặc dự phòng
+   */
+  private speakViaWebSpeech(text: string) {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    try {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'vi-VN';
-      utterance.rate = 1.05;
+      utterance.rate = 0.98;
       utterance.pitch = 1.0;
 
-      const voices = window.speechSynthesis.getVoices();
-      const viVoice = voices.find((v) => v.lang === 'vi-VN' || v.lang.startsWith('vi'));
-      if (viVoice) {
-        utterance.voice = viVoice;
+      const bestVoice = this.getBestVietnameseVoice();
+      if (bestVoice) {
+        utterance.voice = bestVoice;
       }
 
       window.speechSynthesis.speak(utterance);
     } catch (e) {
-      console.warn('Speech synthesis error:', e);
+      console.warn('Web Speech fallback error:', e);
     }
+  }
+
+  /**
+   * Đọc thông báo nhận tiền bằng tiếng Việt với giọng đọc tự nhiên, ấm áp và truyền cảm
+   * - Loại bỏ hoàn toàn lỗi đọc "âm" mã đơn do dấu gạch ngang (DH-888 -> "đơn hàng 888")
+   * - Đọc số tiền chuẩn văn phong giao dịch thu ngân (ví dụ: "150 nghìn đồng")
+   * - Ưu tiên giọng nữ AI Google Assistant mượt mà, fallback sang giọng Microsoft Edge Natural / Web Speech
+   */
+  public async speakPaymentSuccess(amount: number, orderCode?: string): Promise<void> {
+    if (!this.soundEnabled || typeof window === 'undefined') return;
+
+    const formattedAmount = formatAmountForSpeech(amount);
+    const cleanCode = cleanOrderCodeForSpeech(orderCode);
+
+    let text = `Đã nhận thành công ${formattedAmount}`;
+    if (cleanCode) {
+      text += `, đơn hàng ${cleanCode}`;
+    }
+
+    // 1. Dừng âm thanh đang phát trước đó để không bị đè âm
+    if (this.currentAudioElement) {
+      try {
+        this.currentAudioElement.pause();
+        this.currentAudioElement.currentTime = 0;
+      } catch {}
+      this.currentAudioElement = null;
+    }
+    if ('speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+      } catch {}
+    }
+
+    // 2. Thử phát giọng đọc AI Google Assistant trực tuyến (chuẩn, ấm áp, không bị máy móc)
+    const playedOnline = await this.playOnlineTts(text);
+    if (playedOnline) return;
+
+    // 3. Fallback: Phát qua Web Speech API trình duyệt với giọng tự nhiên nhất
+    this.speakViaWebSpeech(text);
   }
 
   /**
@@ -223,3 +339,53 @@ class AudioManager {
 }
 
 export const soundManager = new AudioManager();
+
+/**
+ * Chuyển số tiền sang cách đọc tiếng Việt tự nhiên và chuẩn mực cho loa thông báo thu ngân.
+ * Ví dụ: 150000 -> "150 nghìn đồng", 1250000 -> "1 triệu 250 nghìn đồng"
+ */
+export function formatAmountForSpeech(amount: number): string {
+  const n = Math.round(Number(amount || 0));
+  if (n <= 0) return '0 đồng';
+
+  if (n >= 1000000) {
+    const millions = Math.floor(n / 1000000);
+    const remainder = n % 1000000;
+    const thousands = Math.floor(remainder / 1000);
+    const sub = remainder % 1000;
+    let res = `${millions} triệu`;
+    if (thousands > 0) res += ` ${thousands} nghìn`;
+    if (sub > 0) res += ` ${sub}`;
+    return `${res} đồng`;
+  }
+
+  if (n >= 1000) {
+    const thousands = Math.floor(n / 1000);
+    const remainder = n % 1000;
+    let res = `${thousands} nghìn`;
+    if (remainder > 0) res += ` ${remainder}`;
+    return `${res} đồng`;
+  }
+
+  return `${n} đồng`;
+}
+
+/**
+ * Chuẩn hóa mã đơn hàng để giọng đọc phát âm chuẩn tiếng Việt,
+ * tuyệt đối loại bỏ dấu gạch nối và các ký hiệu để không bao giờ bị đọc nhầm thành số "âm".
+ * Ví dụ: "DH-888" -> "888", "DH-8868" -> "8868"
+ */
+export function cleanOrderCodeForSpeech(orderCode?: string): string {
+  if (!orderCode) return '';
+  // 1. Loại bỏ các tiền tố kèm dấu gạch: DH-, BK-SHIP-, BK-PRE-, BK-, POS-, ORD-, HD-, #
+  let clean = String(orderCode)
+    .replace(/^(DH|BK-SHIP-|BK-PRE-|BK|POS|ORD|HD|ĐH|DON|ĐƠN|#)[-_ ]*/i, '')
+    .trim();
+
+  // 2. Thay thế toàn bộ dấu gạch ngang (-), gạch dưới (_), chấm (.) bằng khoảng trắng
+  // để TTS không bao giờ nhận diện "-888" thành "âm tám trăm tám mươi tám"
+  clean = clean.replace(/[-_./\\]+/g, ' ').trim();
+
+  return clean;
+}
+
