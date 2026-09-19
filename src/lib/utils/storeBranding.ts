@@ -10,6 +10,10 @@ export interface StoreBrandingConfig {
   phone: string;
   address: string;
   footerMessage: string;
+  orderNumberPrefix?: string; // Tiền tố mã đơn (mặc định 'BK')
+  orderCounter?: number; // Số thứ tự đơn hàng hiện tại (mặc định 0)
+  orderCounterResetDate?: string; // Ngày reset gần nhất (YYYY-MM-DD)
+  autoResetDaily?: boolean; // Tự động reset về 0 mỗi ngày mới
   updated_at?: string;
   updated_by?: string;
 }
@@ -26,6 +30,9 @@ export const DEFAULT_BRANDING: StoreBrandingConfig = {
   phone: '0901 234 567',
   address: '123 Đường Bánh Ngọt, TP.HCM',
   footerMessage: 'Cảm ơn Quý khách & Hẹn gặp lại!',
+  orderNumberPrefix: 'BK',
+  orderCounter: 0,
+  autoResetDaily: true,
 };
 
 let inMemoryBranding: StoreBrandingConfig | null = null;
@@ -108,6 +115,10 @@ export async function fetchStoreBrandingFromDb(): Promise<StoreBrandingConfig> {
             phone: parsed.phone || DEFAULT_BRANDING.phone,
             address: parsed.address || DEFAULT_BRANDING.address,
             footerMessage: parsed.footerMessage || DEFAULT_BRANDING.footerMessage,
+            orderNumberPrefix: parsed.orderNumberPrefix || DEFAULT_BRANDING.orderNumberPrefix,
+            orderCounter: typeof parsed.orderCounter === 'number' ? parsed.orderCounter : 0,
+            orderCounterResetDate: parsed.orderCounterResetDate,
+            autoResetDaily: parsed.autoResetDaily !== undefined ? parsed.autoResetDaily : true,
             updated_at: parsed.updated_at,
             updated_by: parsed.updated_by,
           };
@@ -198,3 +209,90 @@ export async function saveStoreBrandingToDb(
     return { success: false, error: err.message || 'Lỗi lưu thương hiệu lên SQL' };
   }
 }
+
+/**
+ * Lấy mã số đơn hàng xem trước (chưa tăng bộ đếm, dùng khi mở giao diện thanh toán)
+ * Ví dụ: BK-20260919-001
+ */
+export function peekNextOrderNumber(customPrefix?: string): string {
+  const current = getStoreBranding();
+  const now = new Date();
+  const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  let currentCounter = Number(current.orderCounter || 0);
+
+  // Nếu bật tự động reset theo ngày và ngày hiện tại khác ngày reset gần nhất
+  if (current.autoResetDaily && current.orderCounterResetDate && current.orderCounterResetDate !== todayStr) {
+    currentCounter = 0;
+  }
+
+  const nextCounter = currentCounter + 1;
+  const prefix = customPrefix || current.orderNumberPrefix || 'BK';
+  const seqPart = String(nextCounter).padStart(3, '0');
+
+  return `${prefix}-${datePart}-${seqPart}`;
+}
+
+/**
+ * Sinh mã số đơn hàng tiếp theo và tăng bộ đếm thêm 1 (Ví dụ: BK-20260919-001, BK-20260919-002...)
+ */
+export function getNextOrderNumber(customPrefix?: string): string {
+  const current = getStoreBranding();
+  const now = new Date();
+  const datePart = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  let currentCounter = Number(current.orderCounter || 0);
+
+  // Nếu sang ngày mới và bật tự động reset theo ngày
+  if (current.autoResetDaily && current.orderCounterResetDate && current.orderCounterResetDate !== todayStr) {
+    currentCounter = 0;
+  }
+
+  const nextCounter = currentCounter + 1;
+
+  // Cập nhật bộ đếm cục bộ
+  saveStoreBranding({
+    orderCounter: nextCounter,
+    orderCounterResetDate: todayStr,
+  });
+
+  // Đồng bộ lên Supabase nếu online
+  if (typeof navigator !== 'undefined' && navigator.onLine) {
+    saveStoreBrandingToDb({
+      ...current,
+      orderCounter: nextCounter,
+      orderCounterResetDate: todayStr,
+    }).catch(() => {});
+  }
+
+  const prefix = customPrefix || current.orderNumberPrefix || 'BK';
+  const seqPart = String(nextCounter).padStart(3, '0');
+
+  return `${prefix}-${datePart}-${seqPart}`;
+}
+
+/**
+ * Đặt lại (reset) bộ đếm mã số đơn hàng về 0 (hoặc một số cụ thể)
+ */
+export async function resetOrderCounter(val: number = 0): Promise<{ success: boolean; error?: string }> {
+  const current = getStoreBranding();
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+
+  const updatedConfig: Partial<StoreBrandingConfig> = {
+    orderCounter: val,
+    orderCounterResetDate: todayStr,
+  };
+
+  saveStoreBranding(updatedConfig);
+
+  try {
+    const res = await saveStoreBrandingToDb(updatedConfig);
+    return res;
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Có lỗi xảy ra khi lưu lên CSDL' };
+  }
+}
+

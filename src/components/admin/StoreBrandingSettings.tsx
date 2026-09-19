@@ -3,13 +3,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building2, Image as ImageIcon, Upload, Save, CheckCircle2, 
-  Trash2, Phone, MapPin, Sparkles, Receipt, FileText, Cake
+  Trash2, Phone, MapPin, Sparkles, Receipt, FileText, Cake,
+  Hash, RotateCcw
 } from 'lucide-react';
 import { 
   getStoreBranding, 
   saveStoreBranding, 
   fetchStoreBrandingFromDb,
   saveStoreBrandingToDb,
+  peekNextOrderNumber,
+  resetOrderCounter,
   StoreBrandingConfig, 
   BRANDING_UPDATED_EVENT 
 } from '@/lib/utils/storeBranding';
@@ -21,6 +24,8 @@ export const StoreBrandingSettings: React.FC = () => {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [isResettingCounter, setIsResettingCounter] = useState(false);
+  const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -69,6 +74,33 @@ export const StoreBrandingSettings: React.FC = () => {
 
   const handleRemoveLogo = () => {
     setConfig((prev) => ({ ...prev, logoUrl: '' }));
+  };
+
+  const handleResetOrderCounter = async () => {
+    const confirmed = window.confirm(
+      '⚠️ BẠN CÓ CHẮC MUỐN ĐẶT LẠI MÃ SỐ ĐƠN HÀNG VỀ 0?\n\n' +
+      '• Sau khi reset, đơn hàng tiếp theo tạo ra tại quầy sẽ bắt đầu lại từ số #001.\n' +
+      '• Toàn bộ các thiết bị POS và Bếp sẽ tự động đồng bộ ngay lập tức.\n\n' +
+      'Bấm OK để thực hiện reset về 0.'
+    );
+    if (!confirmed) return;
+
+    setIsResettingCounter(true);
+    setResetSuccessMsg(null);
+    try {
+      const res = await resetOrderCounter(0);
+      if (res.success) {
+        setConfig((prev) => ({ ...prev, orderCounter: 0 }));
+        setResetSuccessMsg('✅ Đã đặt lại mã số đơn hàng về 0! Đơn tiếp theo sẽ là #001.');
+        setTimeout(() => setResetSuccessMsg(null), 5000);
+      } else {
+        alert('❌ Có lỗi khi reset: ' + (res.error || 'Vui lòng thử lại'));
+      }
+    } catch (e: any) {
+      alert('❌ Lỗi: ' + (e?.message || 'Không thể kết nối CSDL'));
+    } finally {
+      setIsResettingCounter(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -262,7 +294,95 @@ export const StoreBrandingSettings: React.FC = () => {
           />
         </div>
 
-        {/* KHỐI 4: XEM TRƯỚC THỰC TẾ (LIVE PREVIEWS) */}
+        {/* KHỐI 4: QUẢN LÝ & RESET MÃ SỐ ĐƠN HÀNG VỀ 0 */}
+        <div className="p-5 bg-gradient-to-br from-amber-50/80 via-orange-50/40 to-stone-50 rounded-2xl border-2 border-amber-200/90 shadow-2xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/80 pb-3">
+            <div>
+              <span className="text-xs font-black text-amber-900 flex items-center gap-2 uppercase tracking-wide">
+                <Hash className="w-4 h-4 text-amber-600" />
+                Quản Lý Mã Số Đơn Hàng & Bộ Đếm
+              </span>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Mã đơn trên hóa đơn in nhiệt và loa đọc thông báo sẽ tự động tăng dần theo thứ tự (ví dụ: #001, #002, #003...)
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-zinc-600">Số đơn hiện tại:</span>
+              <span className="px-3 py-1 bg-amber-600 text-white rounded-xl font-black text-xs font-mono shadow-2xs">
+                #{String(config.orderCounter || 0).padStart(3, '0')}
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Tiền tố mã đơn */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-zinc-700">
+                Tiền tố mã đơn hàng (Mặc định BK):
+              </label>
+              <input
+                type="text"
+                value={config.orderNumberPrefix || 'BK'}
+                onChange={(e) => setConfig({ ...config, orderNumberPrefix: e.target.value.toUpperCase().trim() })}
+                placeholder="BK, DH, TIEMBANH..."
+                className="w-full bg-white border border-zinc-300 rounded-xl px-4 py-2.5 text-sm font-black text-zinc-900 shadow-2xs focus:border-amber-500 focus:outline-none uppercase font-mono"
+              />
+              <span className="text-[11px] text-zinc-400">Ví dụ: BK $\rightarrow$ mã đơn tạo ra dạng BK-20260919-001</span>
+            </div>
+
+            {/* Xem trước mã đơn tiếp theo */}
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-zinc-700">
+                Mã đơn hàng tiếp theo sẽ phát sinh:
+              </label>
+              <div className="w-full bg-amber-100/60 border border-amber-300 rounded-xl px-4 py-2.5 text-sm font-black text-amber-900 font-mono flex items-center justify-between">
+                <span>{peekNextOrderNumber(config.orderNumberPrefix)}</span>
+                <span className="text-[10px] text-amber-700 font-sans font-bold bg-white/80 px-2 py-0.5 rounded-md">
+                  Đơn tiếp theo
+                </span>
+              </div>
+              <span className="text-[11px] text-zinc-500">Loa thông báo sẽ đọc 3 số đuôi: &quot;đơn hàng {String(Number(config.orderCounter || 0) + 1).padStart(3, '0')}&quot;</span>
+            </div>
+          </div>
+
+          {/* Hàng hành động Reset */}
+          <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3.5 rounded-xl border border-amber-200">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="autoResetDaily"
+                checked={config.autoResetDaily !== false}
+                onChange={(e) => setConfig({ ...config, autoResetDaily: e.target.checked })}
+                className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+              />
+              <label htmlFor="autoResetDaily" className="text-xs font-bold text-zinc-800 cursor-pointer select-none">
+                Tự động đặt lại mã đơn về 0 vào mỗi ngày mới (bắt đầu #001 mỗi sáng)
+              </label>
+            </div>
+
+            {/* Nút Reset Mã Đơn Về 0 */}
+            <button
+              type="button"
+              onClick={handleResetOrderCounter}
+              disabled={isResettingCounter}
+              className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-black shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
+              title="Đặt lại bộ đếm số đơn hàng về 0 để bắt đầu lại từ đơn #001"
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${isResettingCounter ? 'animate-spin' : ''}`} />
+              <span>{isResettingCounter ? 'Đang reset...' : '🔄 Reset Mã Số Đơn Hàng Về 0'}</span>
+            </button>
+          </div>
+
+          {resetSuccessMsg && (
+            <div className="p-3 rounded-xl bg-emerald-100 border border-emerald-300 text-xs font-bold text-emerald-900 flex items-center gap-2 animate-fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{resetSuccessMsg}</span>
+            </div>
+          )}
+        </div>
+
+        {/* KHỐI 5: XEM TRƯỚC THỰC TẾ (LIVE PREVIEWS) */}
         <div className="space-y-3 pt-2 border-t border-zinc-200">
           <span className="text-xs font-bold text-zinc-700 uppercase tracking-wider flex items-center gap-1.5">
             <Sparkles className="w-4 h-4 text-amber-600" />

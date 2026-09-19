@@ -69,7 +69,7 @@ import NotificationSettingsModal from '@/components/NotificationSettingsModal';
 import { PrintTemplateDesignerModal } from '@/components/pos/PrintTemplateDesignerModal';
 import { ReceiptTemplateConfig } from '@/lib/types/printTemplate';
 import { getReceiptTemplate, PRINT_TEMPLATE_UPDATED_EVENT } from '@/lib/utils/printTemplateManager';
-import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig, getNextOrderNumber, peekNextOrderNumber } from '@/lib/utils/storeBranding';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
@@ -1978,9 +1978,7 @@ export default function POSPage() {
       setProcessingOrder(true);
       const now = new Date();
       const prefix = orderPayload.orderDeliveryType === 'ship' ? 'BK-SHIP' : 'BK-CAKE';
-      const orderNumber = `${prefix}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
-        now.getDate()
-      ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
+      const orderNumber = getNextOrderNumber(prefix);
       const localId = generateUUID();
 
       const { product, cakeOrderSpec, customerName, customerPhone, pickupDateTime, orderDeliveryType, deliveryAddress, finalPrice, initialKdsStatus } = orderPayload;
@@ -2255,11 +2253,8 @@ export default function POSPage() {
     ) {
       let orderNumToUse = overrideOrderNumber || activeCheckoutOrderNumber;
       if (!orderNumToUse) {
-        const nowTemp = new Date();
         const prefixTemp = fulfillmentType === 'takeaway' ? 'BK' : fulfillmentType === 'shipping' ? 'BK-SHIP' : 'BK-PRE';
-        orderNumToUse = `${prefixTemp}-${nowTemp.getFullYear()}${String(nowTemp.getMonth() + 1).padStart(2, '0')}${String(
-          nowTemp.getDate()
-        ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
+        orderNumToUse = getNextOrderNumber(prefixTemp);
         setActiveCheckoutOrderNumber(orderNumToUse);
       }
 
@@ -2298,9 +2293,7 @@ export default function POSPage() {
     try {
       const now = new Date();
       const prefix = fulfillmentType === 'takeaway' ? 'BK' : fulfillmentType === 'shipping' ? 'BK-SHIP' : 'BK-PRE';
-      const orderNumber = overrideOrderNumber || activeCheckoutOrderNumber || `${prefix}-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
-        now.getDate()
-      ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
+      const orderNumber = overrideOrderNumber || activeCheckoutOrderNumber || getNextOrderNumber(prefix);
       const localId = generateUUID();
 
       const isPre = fulfillmentType !== 'takeaway';
@@ -2799,9 +2792,7 @@ export default function POSPage() {
     setProcessingOrder(true);
     try {
       const now = new Date();
-      const orderNumber = `BK-PRE-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
-        now.getDate()
-      ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
+      const orderNumber = getNextOrderNumber('BK-PRE');
       const localId = generateUUID();
       
       const pickupDateTimeStr = `${preorderForm.pickupTime} ngày ${preorderForm.pickupDate}`;
@@ -4323,11 +4314,8 @@ export default function POSPage() {
               setPaymentMethod('cash');
               const syntax = vietqrConfig.transferSyntax || 'DH';
               const randSuffix = String(Math.floor(100000 + Math.random() * 900000));
-              const nowTemp = new Date();
               const prefixTemp = fulfillmentType === 'takeaway' ? 'BK' : fulfillmentType === 'shipping' ? 'BK-SHIP' : 'BK-PRE';
-              const newOrderNum = `${prefixTemp}-${nowTemp.getFullYear()}${String(nowTemp.getMonth() + 1).padStart(2, '0')}${String(
-                nowTemp.getDate()
-              ).padStart(2, '0')}-${String(Math.floor(100 + Math.random() * 900))}`;
+              const newOrderNum = getNextOrderNumber(prefixTemp);
               setActiveCheckoutOrderNumber(newOrderNum);
               setCheckoutTransferCode(`${syntax}${randSuffix}`);
               setPaymentReceivedInfo(null);
