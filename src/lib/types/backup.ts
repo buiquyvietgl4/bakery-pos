@@ -114,6 +114,11 @@ export interface BakeryBackupData {
   images: BackupImageItem[];
   accounting_closings?: any[];
   security_config?: any;
+  pending_transfers?: any[];
+  current_shift?: any;
+  autobank_config?: any;
+  transfer_verify_config?: any;
+  notification_history?: any[];
   settings: {
     vietqr?: any;
     ewallet?: any;
@@ -125,6 +130,8 @@ export interface BakeryBackupData {
     tax_household?: any;
     tax_policy?: any;
     full_cake_bom_config?: any;
+    autobank?: any;
+    transfer_verify?: any;
   };
 }
 

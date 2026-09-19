@@ -545,6 +545,27 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawBom) fullCakeBomConfig = JSON.parse(rawBom);
     } catch {}
   }
+
+  let pendingTransfers: any[] = [];
+  let currentShift: any = null;
+  let autobankConfig: any = null;
+  let transferVerifyConfig: any = null;
+  let notificationHistory: any[] = [];
+
+  if (typeof window !== 'undefined') {
+    try {
+      const rawPT = localStorage.getItem('bakery_pending_transfers');
+      if (rawPT) pendingTransfers = JSON.parse(rawPT);
+      const rawCS = localStorage.getItem('bakery_current_shift');
+      if (rawCS) currentShift = JSON.parse(rawCS);
+      const rawAB = localStorage.getItem('bakery_autobank_config');
+      if (rawAB) autobankConfig = JSON.parse(rawAB);
+      const rawTV = localStorage.getItem('bakery_transfer_verification_config');
+      if (rawTV) transferVerifyConfig = JSON.parse(rawTV);
+      const rawNH = localStorage.getItem('bakery_notification_history');
+      if (rawNH) notificationHistory = JSON.parse(rawNH);
+    } catch {}
+  }
   printerConfig = getPrinterConfig();
   telegramConfig = getTelegramConfig();
 
@@ -678,6 +699,11 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     images,
     accounting_closings: accountingClosings,
     security_config: securityConfig,
+    pending_transfers: pendingTransfers,
+    current_shift: currentShift,
+    autobank_config: autobankConfig,
+    transfer_verify_config: transferVerifyConfig,
+    notification_history: notificationHistory,
     settings: {
       vietqr: vietqrConfig,
       ewallet: ewalletConfig,
@@ -689,6 +715,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       tax_household: taxHouseholdConfig,
       tax_policy: taxPolicyConfig,
       full_cake_bom_config: fullCakeBomConfig,
+      autobank: autobankConfig,
+      transfer_verify: transferVerifyConfig,
     },
   };
 }

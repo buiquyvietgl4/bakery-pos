@@ -1,5 +1,5 @@
-// src/lib/utils/notificationHistory.ts
-// Quản lý lưu trữ bền vững (Offline-first) và truy vấn Lịch Sử Thông Báo
+import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export type NotificationType =
   | 'new_order'
@@ -28,9 +28,13 @@ export interface NotificationLogItem {
   channel?: 'in_app' | 'pwa' | 'telegram' | 'native' | 'system';
 }
 
-const STORAGE_KEY = 'bakery_notification_history';
+export const STORAGE_KEY_NOTIFICATION_HISTORY = 'bakery_notification_history';
+const STORAGE_KEY = STORAGE_KEY_NOTIFICATION_HISTORY;
 const MAX_LOGS = 100;
 const EVENT_NAME = 'bakery_notif_history_change';
+
+export const DB_ROW_NOTIFICATION_HISTORY_ID = '00000000-0000-0000-0000-000000000013';
+export const DB_ROW_NOTIFICATION_HISTORY_NAME = 'SYS_CONFIG_NOTIFICATION_HISTORY';
 
 /**
  * Định dạng ngày giờ dạng HH:mm:ss dd/MM/yyyy
@@ -129,7 +133,68 @@ export function getNotificationHistory(): NotificationLogItem[] {
 }
 
 /**
- * Lưu danh sách thông báo vào LocalStorage
+ * Lưu danh sách thông báo lên Supabase Cloud SQL
+ */
+export async function saveNotificationHistoryToDb(list: NotificationLogItem[]): Promise<void> {
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+  try {
+    const trimmed = list.slice(0, MAX_LOGS);
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_NOTIFICATION_HISTORY_ID,
+        name: DB_ROW_NOTIFICATION_HISTORY_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: JSON.stringify(trimmed),
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi khi saveNotificationHistoryToDb:', err);
+  }
+}
+
+/**
+ * Tải lịch sử thông báo từ Supabase Cloud SQL
+ */
+export async function fetchNotificationHistoryFromDb(): Promise<NotificationLogItem[]> {
+  const fallback = getNotificationHistory();
+  if (isLocalMode()) return fallback;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return fallback;
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_NOTIFICATION_HISTORY_ID},name.eq.${DB_ROW_NOTIFICATION_HISTORY_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+            dispatchChange();
+          } catch {}
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi fetchNotificationHistoryFromDb:', err);
+  }
+  return fallback;
+}
+
+/**
+ * Lưu danh sách thông báo vào LocalStorage và đồng bộ Cloud SQL
  */
 function saveNotificationHistory(list: NotificationLogItem[]) {
   if (typeof window === 'undefined') return;
@@ -137,6 +202,7 @@ function saveNotificationHistory(list: NotificationLogItem[]) {
     const trimmed = list.slice(0, MAX_LOGS);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(trimmed));
     dispatchChange();
+    saveNotificationHistoryToDb(trimmed).catch(console.error);
   } catch (e) {
     console.warn('Lỗi lưu lịch sử thông báo:', e);
   }

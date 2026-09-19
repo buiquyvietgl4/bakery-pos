@@ -52,6 +52,11 @@ export const BAKERY_DATA_KEYS = [
   'bakery_full_bom_config',
   'bakery_tax_household_config',
   'bakery_tax_policy_config',
+  'bakery_pending_transfers',
+  'bakery_current_shift',
+  'bakery_autobank_config',
+  'bakery_transfer_verification_config',
+  'bakery_notification_history',
 ];
 
 export const DEFAULT_PRODUCTION_URL =

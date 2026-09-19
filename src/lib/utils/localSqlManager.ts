@@ -14,6 +14,7 @@ import {
 } from '@/lib/utils/sqlModeManager';
 import { supabase } from '@/lib/supabase/client';
 import { db } from '@/lib/db/dexie';
+import { generateUUID } from '@/lib/utils/uuid';
 
 const LOCAL_SQL_DB_NAME = 'bakery_local_sql_handle_db';
 const LOCAL_SQL_STORE = 'local_sql_handles';
@@ -396,7 +397,7 @@ CREATE TABLE IF NOT EXISTS material_stock_adjustments (
     id TEXT PRIMARY KEY,
     ingredient_id TEXT NOT NULL,
     ingredient_name TEXT NOT NULL,
-    unit TEXT NOT NULL,
+    unit TEXT DEFAULT 'g',
     old_quantity NUMERIC DEFAULT 0,
     new_quantity NUMERIC DEFAULT 0,
     delta_quantity NUMERIC DEFAULT 0,
@@ -573,6 +574,67 @@ CREATE TABLE IF NOT EXISTS bakery_bom_settings (
     decor_addons TEXT,
     birthday_bom_presets TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS pending_transfers (
+    id TEXT PRIMARY KEY,
+    order_number TEXT NOT NULL,
+    amount NUMERIC DEFAULT 0,
+    customer_name TEXT,
+    transfer_code TEXT,
+    requested_by TEXT,
+    cashier TEXT,
+    order_type TEXT,
+    requested_at TIMESTAMP,
+    raw_payload_json TEXT
+);
+
+CREATE TABLE IF NOT EXISTS current_shift (
+    id TEXT PRIMARY KEY,
+    is_open BOOLEAN DEFAULT TRUE,
+    opened_at TIMESTAMP,
+    opening_cash NUMERIC DEFAULT 500000,
+    cash_sales NUMERIC DEFAULT 0,
+    transfer_sales NUMERIC DEFAULT 0,
+    order_count INTEGER DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS autobank_config (
+    id TEXT PRIMARY KEY,
+    enabled BOOLEAN DEFAULT FALSE,
+    gateway TEXT DEFAULT 'sepay',
+    api_key TEXT,
+    account_number TEXT,
+    bank_brand TEXT,
+    auto_confirm_pos BOOLEAN DEFAULT TRUE,
+    raw_config_json TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS transfer_verify_config (
+    id TEXT PRIMARY KEY,
+    mode TEXT DEFAULT 'none',
+    skip_for_admin BOOLEAN DEFAULT TRUE,
+    alert_sound BOOLEAN DEFAULT TRUE,
+    auto_complete_on_approve BOOLEAN DEFAULT TRUE,
+    raw_config_json TEXT,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS notification_history (
+    id TEXT PRIMARY KEY,
+    type TEXT,
+    title TEXT,
+    message TEXT,
+    timestamp BIGINT,
+    created_at_formatted TEXT,
+    is_read BOOLEAN DEFAULT FALSE,
+    sender TEXT,
+    order_number TEXT,
+    url TEXT,
+    extra_details TEXT,
+    channel TEXT
 );
 `;
 }
@@ -771,7 +833,7 @@ ${generateSchemaSql()}
   const matAdjustments = data?.material_stock_adjustments || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_material_stock_adjustments') || '[]') : []);
   if (Array.isArray(matAdjustments) && matAdjustments.length > 0) {
     for (const ma of matAdjustments) {
-      sql += `INSERT INTO material_stock_adjustments (id, ingredient_id, ingredient_name, unit, old_quantity, new_quantity, delta_quantity, avg_cost, total_value_change, reason, notes, adjusted_by, adjusted_at) VALUES (${sqlEscape(ma.id)}, ${sqlEscape(ma.ingredientId || ma.ingredient_id)}, ${sqlEscape(ma.ingredientName || ma.ingredient_name)}, ${sqlEscape(ma.unit)}, ${sqlEscape(ma.oldQuantity ?? ma.old_quantity ?? 0)}, ${sqlEscape(ma.newQuantity ?? ma.new_quantity ?? 0)}, ${sqlEscape(ma.deltaQuantity ?? ma.delta_quantity ?? 0)}, ${sqlEscape(ma.avgCost ?? ma.avg_cost ?? 0)}, ${sqlEscape(ma.totalValueChange ?? ma.total_value_change ?? 0)}, ${sqlEscape(ma.reason)}, ${sqlEscape(ma.notes)}, ${sqlEscape(ma.adjustedBy || ma.adjusted_by)}, ${sqlEscape(ma.adjustedAt || ma.adjusted_at || new Date().toISOString())});
+      sql += `INSERT INTO material_stock_adjustments (id, ingredient_id, ingredient_name, unit, old_quantity, new_quantity, delta_quantity, avg_cost, total_value_change, reason, notes, adjusted_by, adjusted_at) VALUES (${sqlEscape(ma.id)}, ${sqlEscape(ma.ingredientId || ma.ingredient_id)}, ${sqlEscape(ma.ingredientName || ma.ingredient_name)}, ${sqlEscape(ma.unit || 'g')}, ${sqlEscape(ma.oldQuantity ?? ma.old_quantity ?? 0)}, ${sqlEscape(ma.newQuantity ?? ma.new_quantity ?? 0)}, ${sqlEscape(ma.deltaQuantity ?? ma.delta_quantity ?? 0)}, ${sqlEscape(ma.avgCost ?? ma.avg_cost ?? 0)}, ${sqlEscape(ma.totalValueChange ?? ma.total_value_change ?? 0)}, ${sqlEscape(ma.reason)}, ${sqlEscape(ma.notes)}, ${sqlEscape(ma.adjustedBy || ma.adjusted_by)}, ${sqlEscape(ma.adjustedAt || ma.adjusted_at || new Date().toISOString())});
 `;
     }
   }
@@ -918,6 +980,78 @@ INSERT INTO tax_policy_config (id, name, policy_name, circular_citation, annual_
 -- ----------------------------------------------------------------------------
 INSERT INTO bakery_bom_settings (id, version, target_food_cost_pct, cake_bases, cream_coatings, fillings, packagings, free_accessories, decor_addons, birthday_bom_presets, updated_at) VALUES ('primary', ${sqlEscape(bomConfig.version || '2.0.0')}, ${sqlEscape(bomConfig.targetFoodCostPct || 36.5)}, ${sqlEscape(JSON.stringify(bomConfig.cakeBases || []))}, ${sqlEscape(JSON.stringify(bomConfig.creamCoatings || []))}, ${sqlEscape(JSON.stringify(bomConfig.fillings || []))}, ${sqlEscape(JSON.stringify(bomConfig.packagings || []))}, ${sqlEscape(JSON.stringify(bomConfig.freeAccessories || []))}, ${sqlEscape(JSON.stringify(bomConfig.decorAddons || []))}, ${sqlEscape(JSON.stringify(bomConfig.birthdayBomPresets || []))}, ${sqlEscape(new Date().toISOString())});
 `;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 19. BẢNG DUYỆT CHUYỂN KHOẢN CHỜ (PENDING_TRANSFERS)
+  // ----------------------------------------------------------------------------
+  const pendingTransfers = data?.pending_transfers || data?.bakery_pending_transfers;
+  if (Array.isArray(pendingTransfers) && pendingTransfers.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 19. BẢNG DUYỆT CHUYỂN KHOẢN CHỜ (PENDING_TRANSFERS)
+-- ----------------------------------------------------------------------------
+`;
+    for (const pt of pendingTransfers) {
+      const rawPayload = typeof pt === 'object' ? JSON.stringify(pt) : null;
+      sql += `INSERT INTO pending_transfers (id, order_number, amount, customer_name, transfer_code, requested_by, cashier, order_type, requested_at, raw_payload_json) VALUES (${sqlEscape(pt.order_number || pt.id || generateUUID())}, ${sqlEscape(pt.order_number)}, ${sqlEscape(pt.amount || 0)}, ${sqlEscape(pt.customer_name)}, ${sqlEscape(pt.transfer_code)}, ${sqlEscape(pt.requested_by)}, ${sqlEscape(pt.cashier)}, ${sqlEscape(pt.order_type)}, ${sqlEscape(pt.requested_at || new Date().toISOString())}, ${sqlEscape(rawPayload)});\n`;
+    }
+  }
+
+  // ----------------------------------------------------------------------------
+  // 20. BẢNG CA BÁN HÀNG HIỆN TẠI (CURRENT_SHIFT)
+  // ----------------------------------------------------------------------------
+  const currentShift = data?.current_shift || data?.bakery_current_shift;
+  if (currentShift) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 20. BẢNG CA BÁN HÀNG HIỆN TẠI (CURRENT_SHIFT)
+-- ----------------------------------------------------------------------------
+INSERT INTO current_shift (id, is_open, opened_at, opening_cash, cash_sales, transfer_sales, order_count, updated_at) VALUES ('primary', ${sqlEscape(currentShift.isOpen ?? true)}, ${sqlEscape(currentShift.openedAt || new Date().toISOString())}, ${sqlEscape(currentShift.openingCash || 500000)}, ${sqlEscape(currentShift.cashSales || 0)}, ${sqlEscape(currentShift.transferSales || 0)}, ${sqlEscape(currentShift.orderCount || 0)}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 21. BẢNG CẤU HÌNH AUTO BANK (AUTOBANK_CONFIG)
+  // ----------------------------------------------------------------------------
+  const autobank = data?.autobank_config || data?.bakery_autobank_config || data?.settings?.autobank;
+  if (autobank) {
+    const rawAutobank = typeof autobank === 'object' ? JSON.stringify(autobank) : null;
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 21. BẢNG CẤU HÌNH AUTO BANK (AUTOBANK_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO autobank_config (id, enabled, gateway, api_key, account_number, bank_brand, auto_confirm_pos, raw_config_json, updated_at) VALUES ('primary', ${sqlEscape(autobank.enabled ?? false)}, ${sqlEscape(autobank.gateway || 'sepay')}, ${sqlEscape(autobank.apiKey || autobank.api_key)}, ${sqlEscape(autobank.accountNumber || autobank.account_number)}, ${sqlEscape(autobank.bankBrand || autobank.bank_brand)}, ${sqlEscape(autobank.autoConfirmPos ?? true)}, ${sqlEscape(rawAutobank)}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 22. BẢNG CẤU HÌNH XÁC THỰC CHUYỂN KHOẢN (TRANSFER_VERIFY_CONFIG)
+  // ----------------------------------------------------------------------------
+  const tv = data?.transfer_verify_config || data?.bakery_transfer_verification_config || data?.settings?.transfer_verify;
+  if (tv) {
+    const rawTv = typeof tv === 'object' ? JSON.stringify(tv) : null;
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 22. BẢNG CẤU HÌNH XÁC THỰC CHUYỂN KHOẢN (TRANSFER_VERIFY_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO transfer_verify_config (id, mode, skip_for_admin, alert_sound, auto_complete_on_approve, raw_config_json, updated_at) VALUES ('primary', ${sqlEscape(tv.mode || 'none')}, ${sqlEscape(tv.twoStep?.skipForAdmin ?? tv.skip_for_admin ?? true)}, ${sqlEscape(tv.twoStep?.alertSound ?? tv.alert_sound ?? true)}, ${sqlEscape(tv.twoStep?.autoCompleteOnApprove ?? tv.auto_complete_on_approve ?? true)}, ${sqlEscape(rawTv)}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 23. BẢNG LỊCH SỬ THÔNG BÁO (NOTIFICATION_HISTORY)
+  // ----------------------------------------------------------------------------
+  const notifHistory = data?.notification_history || data?.bakery_notification_history;
+  if (Array.isArray(notifHistory) && notifHistory.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 23. BẢNG LỊCH SỬ THÔNG BÁO (NOTIFICATION_HISTORY)
+-- ----------------------------------------------------------------------------
+`;
+    for (const nh of notifHistory) {
+      sql += `INSERT INTO notification_history (id, type, title, message, timestamp, created_at_formatted, is_read, sender, order_number, url, extra_details, channel) VALUES (${sqlEscape(nh.id)}, ${sqlEscape(nh.type)}, ${sqlEscape(nh.title)}, ${sqlEscape(nh.message)}, ${sqlEscape(nh.timestamp || Date.now())}, ${sqlEscape(nh.createdAtFormatted || '')}, ${sqlEscape(nh.isRead ?? false)}, ${sqlEscape(nh.sender || '')}, ${sqlEscape(nh.orderNumber || '')}, ${sqlEscape(nh.url || '')}, ${sqlEscape(nh.extraDetails || '')}, ${sqlEscape(nh.channel || 'in_app')});\n`;
+    }
   }
 
   return sql;
@@ -1135,6 +1269,31 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
       localSnapshot['bakery_full_bom_config'] = JSON.stringify(fullBom);
     }
 
+    const pendingTransfers = data.pending_transfers || data.bakery_pending_transfers;
+    if (Array.isArray(pendingTransfers)) {
+      localSnapshot['bakery_pending_transfers'] = JSON.stringify(pendingTransfers);
+    }
+
+    const currentShift = data.current_shift || data.bakery_current_shift;
+    if (currentShift) {
+      localSnapshot['bakery_current_shift'] = JSON.stringify(currentShift);
+    }
+
+    const autobank = data.autobank_config || data.bakery_autobank_config || data.settings?.autobank;
+    if (autobank) {
+      localSnapshot['bakery_autobank_config'] = JSON.stringify(autobank);
+    }
+
+    const transferVerify = data.transfer_verify_config || data.bakery_transfer_verification_config || data.settings?.transfer_verify;
+    if (transferVerify) {
+      localSnapshot['bakery_transfer_verification_config'] = JSON.stringify(transferVerify);
+    }
+
+    const notifHistory = data.notification_history || data.bakery_notification_history;
+    if (Array.isArray(notifHistory)) {
+      localSnapshot['bakery_notification_history'] = JSON.stringify(notifHistory);
+    }
+
     // Áp dụng vào hệ thống
     applyDataSnapshot(localSnapshot);
 
@@ -1203,6 +1362,11 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let tax_household_config: any = null;
     let tax_policy_config: any = null;
     let full_cake_bom_config: any = null;
+    let pending_transfers: any[] = [];
+    let current_shift: any = null;
+    let autobank_config: any = null;
+    let transfer_verify_config: any = null;
+    let notification_history: any[] = [];
 
     if (Array.isArray(sysRows)) {
       for (const row of sysRows) {
@@ -1227,6 +1391,11 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_TAX_HOUSEHOLD') tax_household_config = parsed;
           if (row.name === 'SYS_CONFIG_TAX_POLICY') tax_policy_config = parsed;
           if (row.name === 'SYS_CONFIG_CAKE_BOM' || row.name === 'SYS_CONFIG_BAKERY_BOM') full_cake_bom_config = parsed;
+          if (row.name === 'SYS_CONFIG_PENDING_TRANSFERS' && Array.isArray(parsed)) pending_transfers = parsed;
+          if (row.name === 'SYS_CONFIG_CURRENT_SHIFT') current_shift = parsed;
+          if (row.name === 'SYS_CONFIG_AUTOBANK') autobank_config = parsed;
+          if (row.name === 'SYS_CONFIG_TRANSFER_VERIFY') transfer_verify_config = parsed;
+          if (row.name === 'SYS_CONFIG_NOTIFICATION_HISTORY' && Array.isArray(parsed)) notification_history = parsed;
         } catch {}
       }
     }
@@ -1282,6 +1451,11 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       tax_household_config,
       tax_policy_config,
       bakery_bom_settings: full_cake_bom_config,
+      pending_transfers,
+      current_shift,
+      autobank_config,
+      transfer_verify_config,
+      notification_history,
       images: [],
       settings: {
         vietqr: vietqr_config,
@@ -1294,6 +1468,8 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
         tax_household: tax_household_config,
         tax_policy: tax_policy_config,
         full_cake_bom_config,
+        autobank: autobank_config,
+        transfer_verify: transfer_verify_config,
       },
     };
 
