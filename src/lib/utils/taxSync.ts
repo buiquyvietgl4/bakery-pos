@@ -15,6 +15,7 @@ import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { parsePreorderFromNotes } from '@/lib/supabase/realtimeSync';
+import { pruneOrdersCache, MAX_CACHED_ORDERS } from '@/lib/utils/deliveryAlerts';
 
 export const TAX_CONFIG_KEY = 'bakery_tax_household_config';
 export const TAX_CONFIG_UPDATED_EVENT = 'bakery_tax_config_updated';
@@ -533,9 +534,23 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
         if (typeof window !== 'undefined') {
           try {
             const curRaw = localStorage.getItem('bakery_orders');
-            const newSlice = JSON.stringify(merged.slice(0, 100));
-            if (curRaw !== newSlice) {
-              localStorage.setItem('bakery_orders', newSlice);
+            const curList = curRaw ? JSON.parse(curRaw) : [];
+            const safeMap = new Map<string, any>();
+            curList.forEach((o: any) => {
+              const k = o.order_number || o.orderNumber || o.id;
+              if (k) safeMap.set(k, o);
+            });
+            merged.forEach((o: any) => {
+              const k = o.order_number || o.orderNumber || o.id;
+              if (k) {
+                const exist = safeMap.get(k);
+                safeMap.set(k, { ...exist, ...o });
+              }
+            });
+            const safeResult = pruneOrdersCache(Array.from(safeMap.values()), MAX_CACHED_ORDERS);
+            const newPayload = JSON.stringify(safeResult);
+            if (curRaw !== newPayload) {
+              localStorage.setItem('bakery_orders', newPayload);
             }
           } catch {}
         }

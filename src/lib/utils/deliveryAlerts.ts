@@ -265,3 +265,59 @@ export function sortPreordersByUrgency<T = any>(orders: T[], referenceNow: Date 
     return urgA.minutesLeft - urgB.minutesLeft;
   });
 }
+
+export const MAX_CACHED_ORDERS = 500;
+export const MAX_CACHED_PREORDERS = 300;
+
+/**
+ * Cắt tỉa an toàn bộ đệm đơn hàng mà KHÔNG BAO GIỜ loại bỏ đơn đang hoạt động (chưa hoàn thành)
+ */
+export function pruneOrdersCache(orders: any[], maxLimit: number = MAX_CACHED_ORDERS): any[] {
+  if (!Array.isArray(orders)) return [];
+  if (orders.length <= maxLimit) {
+    return [...orders].sort(
+      (a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime()
+    );
+  }
+  const active: any[] = [];
+  const inactive: any[] = [];
+  orders.forEach((o) => {
+    if (isOrderCompletedOrCancelled(o)) {
+      inactive.push(o);
+    } else {
+      active.push(o);
+    }
+  });
+  inactive.sort(
+    (a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime()
+  );
+  const remainingSlots = Math.max(0, maxLimit - active.length);
+  const merged = [...active, ...inactive.slice(0, remainingSlots)];
+  return merged.sort(
+    (a, b) => new Date(b.created_at || b.updated_at || 0).getTime() - new Date(a.created_at || a.updated_at || 0).getTime()
+  );
+}
+
+/**
+ * Cắt tỉa an toàn danh sách đơn đặt trước (preorders) mà KHÔNG BAO GIỜ loại bỏ đơn chưa hoàn thành,
+ * và sắp xếp ưu tiên theo thời gian hẹn giao
+ */
+export function prunePreordersCache(preorders: any[], maxLimit: number = MAX_CACHED_PREORDERS): any[] {
+  if (!Array.isArray(preorders)) return [];
+  const active: any[] = [];
+  const inactive: any[] = [];
+  preorders.forEach((p) => {
+    if (isOrderCompletedOrCancelled(p)) {
+      inactive.push(p);
+    } else {
+      active.push(p);
+    }
+  });
+  const remainingSlots = Math.max(0, maxLimit - active.length);
+  const merged = [...active, ...inactive.slice(0, remainingSlots)];
+  return merged.sort((a, b) => {
+    const timeA = new Date(a.preorder_pickup_at || a.pickup_time || a.pickupDateTime || a.created_at || 0).getTime();
+    const timeB = new Date(b.preorder_pickup_at || b.pickup_time || b.pickupDateTime || b.created_at || 0).getTime();
+    return timeB - timeA;
+  });
+}

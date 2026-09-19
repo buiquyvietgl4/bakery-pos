@@ -3,7 +3,7 @@
 import { supabase } from './client';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 import { formatPickupDateTime, parsePreorderFromNotes, parseOrderBakeShortage, subscribeCrossDeviceSync } from './realtimeSync';
-import { getDeliveryUrgency, isOrderCompletedOrCancelled } from '@/lib/utils/deliveryAlerts';
+import { getDeliveryUrgency, isOrderCompletedOrCancelled, pruneOrdersCache, prunePreordersCache, MAX_CACHED_ORDERS, MAX_CACHED_PREORDERS } from '@/lib/utils/deliveryAlerts';
 import { sendTelegramOrderAlert, sendTelegramUrgentAlert } from '@/lib/utils/telegramNotify';
 import { soundManager } from '@/lib/utils/audioAlert';
 
@@ -183,7 +183,7 @@ class AutoOrderWatcher {
             return o;
           });
           if (ordersUpdated) {
-            localStorage.setItem('bakery_orders', JSON.stringify(updated.slice(0, 100)));
+            localStorage.setItem('bakery_orders', JSON.stringify(pruneOrdersCache(updated, MAX_CACHED_ORDERS)));
           }
         }
       }
@@ -215,7 +215,7 @@ class AutoOrderWatcher {
             return p;
           });
           if (preordersUpdated) {
-            localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo.slice(0, 100)));
+            localStorage.setItem('bakery_preorders', JSON.stringify(prunePreordersCache(updatedPo, MAX_CACHED_PREORDERS)));
           }
         }
       }
@@ -502,7 +502,7 @@ class AutoOrderWatcher {
         } else {
           list.unshift(unified);
         }
-        localStorage.setItem('bakery_orders', JSON.stringify(list.slice(0, 100)));
+        localStorage.setItem('bakery_orders', JSON.stringify(pruneOrdersCache(list, MAX_CACHED_ORDERS)));
       }
 
       if (isPre) {
@@ -515,7 +515,7 @@ class AutoOrderWatcher {
           } else {
             poList.unshift(unified);
           }
-          localStorage.setItem('bakery_preorders', JSON.stringify(poList.slice(0, 100)));
+          localStorage.setItem('bakery_preorders', JSON.stringify(prunePreordersCache(poList, MAX_CACHED_PREORDERS)));
         }
       }
 

@@ -38,7 +38,16 @@ import {
 } from '@/lib/supabase/realtimeSync';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
-import { getDeliveryUrgency, getUrgentPreorders, sortPreordersByUrgency, isOrderCompletedOrCancelled } from '@/lib/utils/deliveryAlerts';
+import {
+  getDeliveryUrgency,
+  getUrgentPreorders,
+  sortPreordersByUrgency,
+  isOrderCompletedOrCancelled,
+  pruneOrdersCache,
+  prunePreordersCache,
+  MAX_CACHED_ORDERS,
+  MAX_CACHED_PREORDERS,
+} from '@/lib/utils/deliveryAlerts';
 import { sendTelegramOrderAlert, sendTelegramDeliveredSuccessAlert } from '@/lib/utils/telegramNotify';
 import { triggerServerPush } from '@/lib/utils/webPushManager';
 import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerModal';
@@ -457,20 +466,34 @@ export default function POSPage() {
     if (typeof window !== 'undefined') {
       try {
         const hasSeeded = localStorage.getItem('bakery_kds_seeded');
+        const poMap = new Map<string, any>();
+
         const rawOrders = localStorage.getItem('bakery_orders');
         if (rawOrders) {
           const parsed = JSON.parse(rawOrders);
           if (Array.isArray(parsed)) {
-            const pos = parsed.filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime);
-            if (pos.length > 0 || hasSeeded) return pos;
+            parsed
+              .filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime || o.preorder_pickup_at || o.order_number?.startsWith('BK-PRE') || o.orderNumber?.startsWith('BK-PRE'))
+              .forEach((p: any) => {
+                const k = p.order_number || p.orderNumber || p.id;
+                if (k) poMap.set(k, p);
+              });
           }
         }
         const saved = localStorage.getItem('bakery_preorders');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && (parsed.length > 0 || hasSeeded)) return parsed;
+          if (Array.isArray(parsed)) {
+            parsed.forEach((p: any) => {
+              const k = p.order_number || p.orderNumber || p.id;
+              if (k) {
+                const exist = poMap.get(k);
+                poMap.set(k, { ...exist, ...p });
+              }
+            });
+          }
         }
-        if (hasSeeded) return [];
+        if (poMap.size > 0 || hasSeeded) return prunePreordersCache(Array.from(poMap.values()), MAX_CACHED_PREORDERS);
       } catch {}
     }
     return [
@@ -1229,11 +1252,14 @@ export default function POSPage() {
   const reloadOrdersData = () => {
     if (typeof window !== 'undefined') {
       try {
+        const poMap = new Map<string, any>();
+        let invoices: any[] = [];
+
         const raw = localStorage.getItem('bakery_orders');
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
-            const enriched = parsed.map((o: any) => {
+            invoices = parsed.map((o: any) => {
               const shortage = parseOrderBakeShortage(o);
               return {
                 ...o,
@@ -1244,45 +1270,43 @@ export default function POSPage() {
                 is_waiting_bake: shortage.isWaitingBake,
               };
             });
-            setInvoicesList(enriched);
-            const posFromOrders = enriched.filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime || o.preorder_pickup_at || o.order_number?.startsWith('BK-PRE') || o.orderNumber?.startsWith('BK-PRE'));
-            
-            // Đồng bộ hợp nhất với bakery_preorders
-            const rawPo = localStorage.getItem('bakery_preorders');
-            let mergedPos = posFromOrders;
-            if (rawPo) {
-              try {
-                const parsedPo = JSON.parse(rawPo);
-                if (Array.isArray(parsedPo)) {
-                  const poMap = new Map<string, any>();
-                  posFromOrders.forEach((p: any) => {
-                    const key = p.order_number || p.orderNumber || p.id;
-                    if (key) poMap.set(key, p);
-                  });
-                  parsedPo.forEach((p: any) => {
-                    const key = p.order_number || p.orderNumber || p.id;
-                    if (key) {
-                      const exist = poMap.get(key);
-                      const isCompleted = isOrderCompletedOrCancelled(exist) || isOrderCompletedOrCancelled(p);
-                      const mergedStatus = isCompleted ? 'completed' : (p.status || exist?.status);
-                      poMap.set(key, {
-                        ...exist,
-                        ...p,
-                        status: mergedStatus,
-                        remaining_amount: isCompleted ? 0 : (p.remaining_amount ?? exist?.remaining_amount ?? 0),
-                        remainingAmount: isCompleted ? 0 : (p.remainingAmount ?? exist?.remainingAmount ?? 0),
-                        payment_status: isCompleted ? 'paid' : (p.payment_status ?? exist?.payment_status ?? 'pending'),
-                      });
-                    }
-                  });
-                  mergedPos = Array.from(poMap.values());
-                }
-              } catch {}
-            }
-            if (mergedPos.length > 0) {
-              setPreordersList(mergedPos);
-            }
+            setInvoicesList(invoices);
+            invoices
+              .filter((o: any) => o.order_type === 'preorder' || o.pickupDateTime || o.preorder_pickup_at || o.order_number?.startsWith('BK-PRE') || o.orderNumber?.startsWith('BK-PRE'))
+              .forEach((p: any) => {
+                const key = p.order_number || p.orderNumber || p.id;
+                if (key) poMap.set(key, p);
+              });
           }
+        }
+
+        const rawPo = localStorage.getItem('bakery_preorders');
+        if (rawPo) {
+          try {
+            const parsedPo = JSON.parse(rawPo);
+            if (Array.isArray(parsedPo)) {
+              parsedPo.forEach((p: any) => {
+                const key = p.order_number || p.orderNumber || p.id;
+                if (key) {
+                  const exist = poMap.get(key);
+                  const isCompleted = isOrderCompletedOrCancelled(exist) || isOrderCompletedOrCancelled(p);
+                  const mergedStatus = isCompleted ? 'completed' : (p.status || exist?.status);
+                  poMap.set(key, {
+                    ...exist,
+                    ...p,
+                    status: mergedStatus,
+                    remaining_amount: isCompleted ? 0 : (p.remaining_amount ?? exist?.remaining_amount ?? 0),
+                    remainingAmount: isCompleted ? 0 : (p.remainingAmount ?? exist?.remainingAmount ?? 0),
+                    payment_status: isCompleted ? 'paid' : (p.payment_status ?? exist?.payment_status ?? 'pending'),
+                  });
+                }
+              });
+            }
+          } catch {}
+        }
+
+        if (poMap.size > 0) {
+          setPreordersList(prunePreordersCache(Array.from(poMap.values()), MAX_CACHED_PREORDERS));
         }
       } catch (e) {
         console.warn('Lỗi đồng bộ orders:', e);
@@ -1324,17 +1348,17 @@ export default function POSPage() {
           .from('orders')
           .select(orderFields)
           .order('created_at', { ascending: false })
-          .limit(200),
+          .limit(300),
         supabase
           .from('orders')
           .select(orderFields)
           .order('updated_at', { ascending: false })
-          .limit(200),
+          .limit(300),
         supabase
           .from('orders')
           .select(orderFields)
           .in('status', ['pending', 'preparing', 'ready'])
-          .limit(100),
+          .limit(300),
       ]);
 
       const sbOrders = new Map<string, any>();
@@ -1350,13 +1374,38 @@ export default function POSPage() {
 
       if (sbOrders.size === 0) return;
 
-      const raw = localStorage.getItem('bakery_orders');
-      const localList: any[] = raw ? JSON.parse(raw) : [];
       const localMap = new Map<string, any>();
-      localList.forEach((o: any) => {
-        const k = o.order_number || o.orderNumber || o.id;
-        if (k) localMap.set(k, o);
-      });
+
+      // 1. Đọc bakery_orders
+      const rawOrders = localStorage.getItem('bakery_orders');
+      if (rawOrders) {
+        try {
+          const parsed = JSON.parse(rawOrders);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((o: any) => {
+              const k = o.order_number || o.orderNumber || o.id;
+              if (k) localMap.set(k, o);
+            });
+          }
+        } catch {}
+      }
+
+      // 2. Đọc bakery_preorders (đảm bảo không bao giờ bỏ sót đơn hẹn chỉ tồn tại ở cache preorders)
+      const rawPreorders = localStorage.getItem('bakery_preorders');
+      if (rawPreorders) {
+        try {
+          const parsedPo = JSON.parse(rawPreorders);
+          if (Array.isArray(parsedPo)) {
+            parsedPo.forEach((p: any) => {
+              const k = p.order_number || p.orderNumber || p.id;
+              if (k) {
+                const exist = localMap.get(k);
+                localMap.set(k, { ...exist, ...p });
+              }
+            });
+          }
+        } catch {}
+      }
 
       let hasChange = false;
       sbOrders.forEach((so, orderNum) => {
@@ -1417,12 +1466,31 @@ export default function POSPage() {
         }
       });
 
+      // Lọc preorders từ toàn bộ localMap (KHÔNG cắt gọt trước khi lọc)
+      const allOrders = Array.from(localMap.values());
+      const safeOrders = pruneOrdersCache(allOrders, MAX_CACHED_ORDERS);
+      const allPreorders = allOrders.filter(
+        (o) =>
+          o.order_type === 'preorder' ||
+          Boolean(o.preorder_pickup_at) ||
+          Boolean(o.pickupDateTime) ||
+          String(o.order_number || '').startsWith('BK-PRE') ||
+          String(o.orderNumber || '').startsWith('BK-PRE')
+      );
+      const safePreorders = prunePreordersCache(allPreorders, MAX_CACHED_PREORDERS);
+
       if (hasChange) {
-        const mergedArray = Array.from(localMap.values());
-        localStorage.setItem('bakery_orders', JSON.stringify(mergedArray.slice(0, 100)));
-        const preorders = mergedArray.filter((o) => o.order_type === 'preorder' || o.preorder_pickup_at || o.pickupDateTime || o.order_number?.startsWith('BK-PRE') || o.orderNumber?.startsWith('BK-PRE'));
-        localStorage.setItem('bakery_preorders', JSON.stringify(preorders.slice(0, 100)));
+        localStorage.setItem('bakery_orders', JSON.stringify(safeOrders));
+        localStorage.setItem('bakery_preorders', JSON.stringify(safePreorders));
         reloadOrdersData();
+      } else {
+        // Tự phục hồi nếu cache local trước đó bị thiếu hụt so với dữ liệu hợp nhất
+        const curPoCount = rawPreorders ? (JSON.parse(rawPreorders)?.length || 0) : 0;
+        if (safePreorders.length > curPoCount) {
+          localStorage.setItem('bakery_orders', JSON.stringify(safeOrders));
+          localStorage.setItem('bakery_preorders', JSON.stringify(safePreorders));
+          reloadOrdersData();
+        }
       }
     } catch (e) {
       console.warn('Lỗi syncOrdersFromSupabase POS:', e);
@@ -1522,7 +1590,7 @@ export default function POSPage() {
                     nextOrder.is_waiting_bake = shortage.isWaitingBake;
                     updated.unshift(nextOrder);
                   }
-                  localStorage.setItem('bakery_orders', JSON.stringify(updated.slice(0, 100)));
+                  localStorage.setItem('bakery_orders', JSON.stringify(pruneOrdersCache(updated, MAX_CACHED_ORDERS)));
                 }
               }
 
@@ -1551,7 +1619,7 @@ export default function POSPage() {
                     }
                     return p;
                   });
-                  localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo.slice(0, 100)));
+                  localStorage.setItem('bakery_preorders', JSON.stringify(prunePreordersCache(updatedPo, MAX_CACHED_PREORDERS)));
                 }
               }
 
@@ -1624,7 +1692,7 @@ export default function POSPage() {
               const idx = parsed.findIndex((o: any) => (o.order_number || o.orderNumber) === oNum);
               if (idx >= 0) parsed[idx] = { ...parsed[idx], ...enrichedOrder };
               else parsed.unshift(enrichedOrder);
-              localStorage.setItem('bakery_orders', JSON.stringify(parsed.slice(0, 100)));
+              localStorage.setItem('bakery_orders', JSON.stringify(pruneOrdersCache(parsed, MAX_CACHED_ORDERS)));
 
               if (enrichedOrder.order_type === 'preorder' || oNum.startsWith('BK-PRE') || !!enrichedOrder.preorder_pickup_at) {
                 const rawPo = localStorage.getItem('bakery_preorders');
@@ -1632,7 +1700,7 @@ export default function POSPage() {
                 const pIdx = parsedPo.findIndex((o: any) => (o.order_number || o.orderNumber) === oNum);
                 if (pIdx >= 0) parsedPo[pIdx] = { ...parsedPo[pIdx], ...enrichedOrder };
                 else parsedPo.unshift(enrichedOrder);
-                localStorage.setItem('bakery_preorders', JSON.stringify(parsedPo.slice(0, 100)));
+                localStorage.setItem('bakery_preorders', JSON.stringify(prunePreordersCache(parsedPo, MAX_CACHED_PREORDERS)));
               }
             } catch {}
           }
@@ -2095,9 +2163,15 @@ export default function POSPage() {
       if (typeof window !== 'undefined') {
         const recentOrders = JSON.parse(localStorage.getItem('bakery_orders') || '[]');
         recentOrders.unshift(unifiedOrder);
-        localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 100)));
+        const safeOrders = pruneOrdersCache(recentOrders, MAX_CACHED_ORDERS);
+        localStorage.setItem('bakery_orders', JSON.stringify(safeOrders));
         localStorage.setItem('bakery_kds_seeded', 'true');
-        setInvoicesList(recentOrders.slice(0, 100));
+        setInvoicesList(safeOrders);
+
+        const recentPos = JSON.parse(localStorage.getItem('bakery_preorders') || '[]');
+        recentPos.unshift(unifiedOrder);
+        const safePos = prunePreordersCache(recentPos, MAX_CACHED_PREORDERS);
+        localStorage.setItem('bakery_preorders', JSON.stringify(safePos));
 
         window.dispatchEvent(new Event('bakery_orders_updated'));
         soundManager.playNewOrderChime();
@@ -2448,9 +2522,17 @@ export default function POSPage() {
         try {
           const recentOrders = JSON.parse(localStorage.getItem('bakery_orders') || '[]');
           recentOrders.unshift(orderData);
-          localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 100)));
+          const safeOrders = pruneOrdersCache(recentOrders, MAX_CACHED_ORDERS);
+          localStorage.setItem('bakery_orders', JSON.stringify(safeOrders));
           localStorage.setItem('bakery_kds_seeded', 'true');
-          setInvoicesList(recentOrders.slice(0, 100));
+          setInvoicesList(safeOrders);
+
+          if (orderData.order_type === 'preorder' || orderData.preorder_pickup_at || orderData.order_number?.startsWith('BK-PRE')) {
+            const recentPos = JSON.parse(localStorage.getItem('bakery_preorders') || '[]');
+            recentPos.unshift(orderData);
+            const safePos = prunePreordersCache(recentPos, MAX_CACHED_PREORDERS);
+            localStorage.setItem('bakery_preorders', JSON.stringify(safePos));
+          }
           window.dispatchEvent(new Event('bakery_orders_updated'));
           
           // Bắn thông báo Telegram tức thì cho đơn duy nhất
@@ -2935,13 +3017,15 @@ export default function POSPage() {
         try {
           const recentOrders = JSON.parse(localStorage.getItem('bakery_orders') || '[]');
           recentOrders.unshift(unifiedPreorder);
-          localStorage.setItem('bakery_orders', JSON.stringify(recentOrders.slice(0, 100)));
+          const safeOrders = pruneOrdersCache(recentOrders, MAX_CACHED_ORDERS);
+          localStorage.setItem('bakery_orders', JSON.stringify(safeOrders));
           localStorage.setItem('bakery_kds_seeded', 'true');
-          setInvoicesList(recentOrders.slice(0, 100));
+          setInvoicesList(safeOrders);
 
           const recentPos = JSON.parse(localStorage.getItem('bakery_preorders') || '[]');
           recentPos.unshift(unifiedPreorder);
-          localStorage.setItem('bakery_preorders', JSON.stringify(recentPos.slice(0, 100)));
+          const safePos = prunePreordersCache(recentPos, MAX_CACHED_PREORDERS);
+          localStorage.setItem('bakery_preorders', JSON.stringify(safePos));
 
           window.dispatchEvent(new Event('bakery_orders_updated'));
           soundManager.playNewOrderChime();
@@ -5728,8 +5812,14 @@ export default function POSPage() {
                                         const parsed = JSON.parse(raw);
                                         const filtered = parsed.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum && o.id !== po.id);
                                         localStorage.setItem('bakery_orders', JSON.stringify(filtered));
-                                        window.dispatchEvent(new Event('bakery_orders_updated'));
                                       }
+                                      const rawPo = localStorage.getItem('bakery_preorders');
+                                      if (rawPo) {
+                                        const parsedPo = JSON.parse(rawPo);
+                                        const filteredPo = parsedPo.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum && o.id !== po.id);
+                                        localStorage.setItem('bakery_preorders', JSON.stringify(filteredPo));
+                                      }
+                                      window.dispatchEvent(new Event('bakery_orders_updated'));
                                       setPreordersList((prev) => prev.filter((o) => (o.orderNumber || o.order_number) !== orderNum && o.id !== po.id));
                                     } catch {}
                                   }
@@ -6106,8 +6196,15 @@ export default function POSPage() {
                                         const filtered = parsed.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum);
                                         localStorage.setItem('bakery_orders', JSON.stringify(filtered));
                                         setInvoicesList(filtered);
-                                        window.dispatchEvent(new Event('bakery_orders_updated'));
                                       }
+                                      const rawPo = localStorage.getItem('bakery_preorders');
+                                      if (rawPo) {
+                                        const parsedPo = JSON.parse(rawPo);
+                                        const filteredPo = parsedPo.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum);
+                                        localStorage.setItem('bakery_preorders', JSON.stringify(filteredPo));
+                                        setPreordersList(filteredPo);
+                                      }
+                                      window.dispatchEvent(new Event('bakery_orders_updated'));
                                     } catch {}
                                   }
                                 },
