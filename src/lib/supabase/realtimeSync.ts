@@ -1434,7 +1434,10 @@ export function parsePreorderFromNotes(notes?: string): ParsedPreorderNotes {
  */
 export function cleanDisplayNotes(notes?: string): string {
   if (!notes || typeof notes !== 'string') return '';
-  const cleaned = notes.replace(/\[MẪU_ẢNH:[^\]]+\]/g, '').trim();
+  let cleaned = notes.replace(/\[MẪU_ẢNH:[^\]]+\]/g, '').trim();
+  // Lọc bỏ thông tin giá vốn nội bộ khỏi ghi chú đơn hàng hiển thị
+  cleaned = cleaned.replace(/\|\s*Vốn dự toán:[^|]+/gi, '').trim();
+  cleaned = cleaned.replace(/\|\s*Giá vốn:[^|]+/gi, '').trim();
   if (cleaned.startsWith('[ĐẶT BÁNH KEM]')) {
     const reqMatch = cleaned.match(/Yêu cầu:\s*([^|]+)/i);
     return reqMatch && reqMatch[1] ? reqMatch[1].trim() : '';

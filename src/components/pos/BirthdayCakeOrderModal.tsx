@@ -43,6 +43,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
+import { useAuth } from '@/lib/auth/AuthContext';
 
 interface BirthdayCakeOrderModalProps {
   isOpen: boolean;
@@ -67,6 +68,7 @@ export function BirthdayCakeOrderModal({
   availableProducts,
   onConfirmOrder,
 }: BirthdayCakeOrderModalProps) {
+  const { isAdmin } = useAuth();
   const [config, setConfig] = useState<FullCakeBomConfig>(() => getFullCakeBomConfig());
 
   // 2 Chế độ theo yêu cầu: 1. Bánh có sẵn (Preset) | 2. Bánh tùy chọn (Custom)
@@ -352,10 +354,10 @@ export function BirthdayCakeOrderModal({
     let sum = 0;
     for (const dId of selectedDecorAddonIds) {
       const d = config.decorAddons.find((item) => item.id === dId);
-      if (d) sum += d.sellingPrice || d.costPrice || 0;
+      if (d) sum += d.sellingPrice || (isAdmin ? (d.costPrice || 0) : 0);
     }
     return sum;
-  }, [selectedDecorAddonIds, config.decorAddons]);
+  }, [selectedDecorAddonIds, config.decorAddons, isAdmin]);
 
   // Thông tin loại hộp đựng bánh đang được chọn (ưu tiên hộp mặc định của quán)
   const selectedPackagingBox = useMemo(() => {
@@ -395,19 +397,27 @@ export function BirthdayCakeOrderModal({
 
   const handleConfirm = () => {
     if (!customerName.trim()) {
-      setValidationError('Vui lòng nhập Tên khách hàng đặt bánh!');
+      setValidationError('⚠️ Vui lòng nhập Tên người mua / khách hàng (bắt buộc nhập)!');
       return;
     }
     if (!customerPhone.trim()) {
-      setValidationError('Vui lòng nhập Số điện thoại khách hàng!');
+      setValidationError('⚠️ Vui lòng nhập Số điện thoại người mua / liên hệ (bắt buộc nhập)!');
       return;
     }
     if (orderDeliveryType === 'ship' && !deliveryAddress.trim()) {
-      setValidationError('Vui lòng nhập Địa chỉ giao hàng khi chọn Giao tận nơi (Ship bánh)!');
+      setValidationError('⚠️ Vui lòng nhập Địa chỉ nhận bánh chi tiết khi chọn Giao hàng tận nơi (bắt buộc nhập)!');
+      return;
+    }
+    if (!pickupDate || !pickupDate.trim()) {
+      setValidationError('⚠️ Vui lòng chọn Ngày hẹn nhận bánh (bắt buộc nhập)!');
+      return;
+    }
+    if (!pickupTime || !pickupTime.trim()) {
+      setValidationError('⚠️ Vui lòng chọn Giờ hẹn nhận bánh (bắt buộc nhập)!');
       return;
     }
     if (finalPriceInput <= 0) {
-      setValidationError('Vui lòng nhập giá bán hợp lệ!');
+      setValidationError('⚠️ Vui lòng nhập giá bán hợp lệ!');
       return;
     }
     setValidationError(null);
@@ -566,7 +576,9 @@ export function BirthdayCakeOrderModal({
                 )}
               </h3>
               <p className="text-[11px] text-zinc-500 truncate">
-                Định mức BOM tính vốn chuẩn xác & phân luồng thợ bếp
+                {isAdmin
+                  ? 'Định mức BOM tính vốn chuẩn xác & phân luồng thợ bếp'
+                  : 'Tùy chọn kích thước, cốt bánh & tự động gợi ý giá bán'}
               </p>
             </div>
           </div>
@@ -736,9 +748,11 @@ export function BirthdayCakeOrderModal({
                         </span>
                         <span>{tierInfo.tierName}</span>
                       </span>
-                      <span className="text-xs font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
-                        Vốn: {tierInfo.tierCost.toLocaleString('vi-VN')}₫
-                      </span>
+                      {isAdmin && (
+                        <span className="text-xs font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
+                          Vốn: {tierInfo.tierCost.toLocaleString('vi-VN')}₫
+                        </span>
+                      )}
                     </div>
 
                     {/* 1. Chọn Size đường kính bánh */}
@@ -768,7 +782,9 @@ export function BirthdayCakeOrderModal({
                               }`}
                             >
                               <div className="text-xs font-black">{s.diameterCm}cm</div>
-                              <div className="text-[10px] opacity-80 mt-0.5">~{s.baseCost.toLocaleString('vi-VN')}₫</div>
+                              {isAdmin && (
+                                <div className="text-[10px] opacity-80 mt-0.5">~{s.baseCost.toLocaleString('vi-VN')}₫</div>
+                              )}
                             </button>
                           );
                         })}
@@ -830,7 +846,7 @@ export function BirthdayCakeOrderModal({
                         >
                           {config.fillings.map((f) => (
                             <option key={f.id} value={f.id}>
-                              {f.name} {f.costPrice > 0 ? `(+${f.costPrice.toLocaleString('vi-VN')}₫)` : ''}
+                              {f.name} {isAdmin && f.costPrice > 0 ? `(+${f.costPrice.toLocaleString('vi-VN')}₫)` : ''}
                             </option>
                           ))}
                         </select>
@@ -873,7 +889,7 @@ export function BirthdayCakeOrderModal({
                     <div className="text-[11px] text-zinc-600 font-medium truncate mt-0.5">
                       {selectedPackagingBox ? (
                         <span className="text-pink-900 font-bold">
-                          {selectedPackagingBox.name} (~{(selectedPackagingBox.sellingPrice || selectedPackagingBox.costPrice || 0).toLocaleString('vi-VN')}₫)
+                          {selectedPackagingBox.name} {selectedPackagingBox.sellingPrice && selectedPackagingBox.sellingPrice > 0 ? `(~${selectedPackagingBox.sellingPrice.toLocaleString('vi-VN')}₫)` : (isAdmin && selectedPackagingBox.costPrice ? `(~${selectedPackagingBox.costPrice.toLocaleString('vi-VN')}₫ vốn)` : '')}
                         </span>
                       ) : (
                         'Nhấn để chọn loại hộp đựng...'
@@ -900,7 +916,7 @@ export function BirthdayCakeOrderModal({
                   <span className="inline-flex items-center gap-1.5 bg-pink-100 text-pink-950 border border-pink-300 px-2.5 py-1 rounded-lg text-[11px] font-bold">
                     <span>📦 {selectedPackagingBox.name}</span>
                     <span className="text-pink-700 font-black">
-                      (~{(selectedPackagingBox.sellingPrice || selectedPackagingBox.costPrice || 0).toLocaleString('vi-VN')}₫)
+                      {selectedPackagingBox.sellingPrice && selectedPackagingBox.sellingPrice > 0 ? `(~${selectedPackagingBox.sellingPrice.toLocaleString('vi-VN')}₫)` : (isAdmin && selectedPackagingBox.costPrice ? `(~${selectedPackagingBox.costPrice.toLocaleString('vi-VN')}₫ vốn)` : '')}
                     </span>
                     {selectedPackagingBox.isDefault && (
                       <span className="bg-white/80 text-pink-700 px-1 rounded text-[9px] font-bold">
@@ -916,7 +932,7 @@ export function BirthdayCakeOrderModal({
                 <div className="p-3 border-t border-pink-200 bg-white space-y-2.5 animate-fade-in">
                   <div className="flex items-center justify-between text-[11px] pb-1 border-b border-zinc-100">
                     <span className="text-zinc-500 font-medium">
-                      Chọn 1 loại hộp đựng (Cài đặt hộp mặc định trong tab <strong>Hộp & Bao Bì</strong> của Định Mức Bánh):
+                      {isAdmin ? 'Chọn 1 loại hộp đựng (Cài đặt hộp mặc định trong tab Hộp & Bao Bì):' : 'Chọn loại hộp đựng bánh:'}
                     </span>
                   </div>
 
@@ -960,7 +976,7 @@ export function BirthdayCakeOrderModal({
                               </div>
                             </div>
                             <span className={`text-[11px] font-black shrink-0 ${isSel ? 'text-pink-700' : 'text-zinc-500'}`}>
-                              ~{(pkg.sellingPrice || pkg.costPrice || 0).toLocaleString('vi-VN')}₫
+                              {pkg.sellingPrice && pkg.sellingPrice > 0 ? `~${pkg.sellingPrice.toLocaleString('vi-VN')}₫` : (isAdmin && pkg.costPrice ? `~${pkg.costPrice.toLocaleString('vi-VN')}₫ vốn` : 'Kèm bánh')}
                             </span>
                           </div>
                         );
@@ -1039,7 +1055,7 @@ export function BirthdayCakeOrderModal({
                         key={id}
                         className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 border border-amber-300 px-2 py-1 rounded-lg text-[11px] font-bold"
                       >
-                        ✓ {addon.name} (+{(addon.sellingPrice || addon.costPrice).toLocaleString('vi-VN')}₫)
+                        ✓ {addon.name} {addon.sellingPrice && addon.sellingPrice > 0 ? `(+${addon.sellingPrice.toLocaleString('vi-VN')}₫)` : (isAdmin && addon.costPrice ? `(+${addon.costPrice.toLocaleString('vi-VN')}₫ vốn)` : '')}
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1110,7 +1126,7 @@ export function BirthdayCakeOrderModal({
                               <span className="text-xs font-bold truncate">{addon.name}</span>
                             </div>
                             <span className={`text-[11px] font-black shrink-0 ${isSel ? 'text-amber-800' : 'text-zinc-500'}`}>
-                              +{(addon.sellingPrice || addon.costPrice).toLocaleString('vi-VN')}₫
+                              {addon.sellingPrice && addon.sellingPrice > 0 ? `+${addon.sellingPrice.toLocaleString('vi-VN')}₫` : (isAdmin && addon.costPrice ? `+${addon.costPrice.toLocaleString('vi-VN')}₫ vốn` : 'Miễn phí')}
                             </span>
                           </div>
                         );
@@ -1161,36 +1177,59 @@ export function BirthdayCakeOrderModal({
           </div>
 
           {/* ══════════════ THÔNG TIN KHÁCH HÀNG & GIAO NHẬN ══════════════ */}
-          <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200 space-y-3 text-xs">
-            <span className="font-black text-blue-900 flex items-center gap-1.5 text-xs sm:text-sm">
-              <Calendar className="w-4 h-4 text-blue-600" />
-              <span>Thông Tin Khách Hàng & Hẹn Giờ Giao Nhận:</span>
-            </span>
+          <div className="p-3.5 bg-blue-50/60 rounded-2xl border border-blue-200 space-y-3 text-xs overflow-hidden">
+            <div className="flex items-center justify-between flex-wrap gap-1">
+              <span className="font-black text-blue-900 flex items-center gap-1.5 text-xs sm:text-sm">
+                <Calendar className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>Thông Tin Người Mua & Hẹn Giờ Nhận:</span>
+              </span>
+              <span className="text-[11px] text-rose-600 font-bold bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+                * Các ô có dấu đỏ là bắt buộc
+              </span>
+            </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <label className="font-bold text-zinc-700 block mb-1">
-                  Tên khách hàng: <span className="text-rose-600 font-black">*</span>
+              <div className="w-full min-w-0">
+                <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1">
+                  <span>Tên người mua / khách hàng:</span>
+                  <span className="text-rose-600 font-bold text-xs">* (Bắt buộc)</span>
                 </label>
                 <input
                   type="text"
+                  required
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    if (validationError) setValidationError(null);
+                  }}
                   placeholder="VD: Chị Mai"
-                  className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
+                  className={`w-full p-2.5 rounded-xl bg-white border font-bold text-xs text-zinc-900 transition ${
+                    !customerName.trim() && validationError
+                      ? 'border-rose-400 ring-2 ring-rose-200'
+                      : 'border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400'
+                  }`}
                 />
               </div>
 
-              <div>
-                <label className="font-bold text-zinc-700 block mb-1">
-                  Số điện thoại: <span className="text-rose-600 font-black">*</span>
+              <div className="w-full min-w-0">
+                <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1">
+                  <span>Số điện thoại:</span>
+                  <span className="text-rose-600 font-bold text-xs">* (Bắt buộc)</span>
                 </label>
                 <input
                   type="tel"
+                  required
                   value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerPhone(e.target.value);
+                    if (validationError) setValidationError(null);
+                  }}
                   placeholder="VD: 0988..."
-                  className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
+                  className={`w-full p-2.5 rounded-xl bg-white border font-bold text-xs text-zinc-900 transition ${
+                    !customerPhone.trim() && validationError
+                      ? 'border-rose-400 ring-2 ring-rose-200'
+                      : 'border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400'
+                  }`}
                 />
               </div>
             </div>
@@ -1206,7 +1245,7 @@ export function BirthdayCakeOrderModal({
                     : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
                 }`}
               >
-                <Store className="w-4 h-4" /> Khách lấy tại tiệm
+                <Store className="w-4 h-4 shrink-0" /> Khách lấy tại tiệm
               </button>
               <button
                 type="button"
@@ -1217,23 +1256,34 @@ export function BirthdayCakeOrderModal({
                     : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
                 }`}
               >
-                <Truck className="w-4 h-4" /> Giao hàng tận nơi
+                <Truck className="w-4 h-4 shrink-0" /> Giao hàng tận nơi
               </button>
             </div>
 
             {orderDeliveryType === 'ship' && (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
-                <div className="sm:col-span-2">
-                  <label className="font-bold text-zinc-700 block mb-1">Địa chỉ nhận bánh chi tiết *:</label>
+                <div className="sm:col-span-2 w-full min-w-0">
+                  <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1">
+                    <span>Địa chỉ nhận bánh chi tiết:</span>
+                    <span className="text-rose-600 font-bold text-xs">* (Bắt buộc)</span>
+                  </label>
                   <input
                     type="text"
+                    required
                     value={deliveryAddress}
-                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    onChange={(e) => {
+                      setDeliveryAddress(e.target.value);
+                      if (validationError) setValidationError(null);
+                    }}
                     placeholder="Số nhà, tên đường, phường/xã..."
-                    className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900"
+                    className={`w-full p-2.5 rounded-xl bg-white border font-bold text-xs text-zinc-900 transition ${
+                      !deliveryAddress.trim() && validationError
+                        ? 'border-rose-400 ring-2 ring-rose-200'
+                        : 'border-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-400'
+                    }`}
                   />
                 </div>
-                <div>
+                <div className="w-full min-w-0">
                   <label className="font-bold text-zinc-700 block mb-1">Phí ship (₫):</label>
                   <input
                     type="text"
@@ -1242,7 +1292,7 @@ export function BirthdayCakeOrderModal({
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => setShippingFee(parseCurrencyInput(e.target.value))}
                     placeholder="0"
-                    className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900 text-right"
+                    className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900 text-right focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                 </div>
               </div>
@@ -1250,53 +1300,107 @@ export function BirthdayCakeOrderModal({
 
             {/* Ngày giờ hẹn (trên mobile xếp 1 cột, trên tablet/desktop 2 cột tránh bị chồng chéo) */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div className="min-w-0">
-                <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1.5">
-                  <Calendar className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Ngày hẹn nhận bánh:</span>
+              <div className="w-full min-w-0">
+                <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1">
+                  <span className="flex items-center gap-1 text-zinc-800">
+                    <Calendar className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Ngày hẹn nhận bánh:</span>
+                  </span>
+                  <span className="text-rose-600 font-bold text-xs">* (Bắt buộc)</span>
                 </label>
-                <input
-                  type="date"
-                  value={pickupDate}
-                  onChange={(e) => setPickupDate(e.target.value)}
-                  className="w-full min-w-0 p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
+                <div
+                  className={`w-full min-w-0 overflow-hidden rounded-xl border bg-white transition ${
+                    !pickupDate.trim() && validationError
+                      ? 'border-rose-400 ring-2 ring-rose-200'
+                      : 'border-blue-200 focus-within:ring-2 focus-within:ring-blue-400'
+                  }`}
+                >
+                  <input
+                    type="date"
+                    required
+                    value={pickupDate}
+                    onChange={(e) => {
+                      setPickupDate(e.target.value);
+                      if (validationError) setValidationError(null);
+                    }}
+                    className="w-full max-w-full box-border block p-2.5 bg-transparent border-0 font-bold text-xs text-zinc-900 focus:outline-none appearance-none [-webkit-appearance:none]"
+                  />
+                </div>
               </div>
-              <div className="min-w-0">
-                <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-blue-600" />
-                  <span>Giờ hẹn nhận bánh:</span>
+
+              <div className="w-full min-w-0">
+                <label className="font-bold text-zinc-700 block mb-1 flex items-center gap-1">
+                  <span className="flex items-center gap-1 text-zinc-800">
+                    <Clock className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <span>Giờ hẹn nhận bánh:</span>
+                  </span>
+                  <span className="text-rose-600 font-bold text-xs">* (Bắt buộc)</span>
                 </label>
-                <input
-                  type="time"
-                  value={pickupTime}
-                  onChange={(e) => setPickupTime(e.target.value)}
-                  className="w-full min-w-0 p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-blue-400"
-                />
+                <div
+                  className={`w-full min-w-0 overflow-hidden rounded-xl border bg-white transition ${
+                    !pickupTime.trim() && validationError
+                      ? 'border-rose-400 ring-2 ring-rose-200'
+                      : 'border-blue-200 focus-within:ring-2 focus-within:ring-blue-400'
+                  }`}
+                >
+                  <input
+                    type="time"
+                    required
+                    value={pickupTime}
+                    onChange={(e) => {
+                      setPickupTime(e.target.value);
+                      if (validationError) setValidationError(null);
+                    }}
+                    className="w-full max-w-full box-border block p-2.5 bg-transparent border-0 font-bold text-xs text-zinc-900 focus:outline-none appearance-none [-webkit-appearance:none]"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
         {/* ══════════════ PHẦN CHỐT GIÁ VÀ ĐẶT ĐƠN ══════════════ */}
         <div className="pt-3 border-t-2 border-zinc-200 space-y-3 bg-white">
-          {/* Tóm tắt chi phí BOM */}
-          <div className="flex items-center justify-between text-xs bg-pink-50/60 p-2.5 rounded-xl border border-pink-200">
-            <div>
-              <span className="text-[10px] text-zinc-500 block">Tổng Vốn BOM ({mode === 'custom' ? `${tierCount} tầng` : '1 tầng'}):</span>
-              <span className="font-black text-rose-600 text-sm">
-                {totalCalculation.totalCost.toLocaleString('vi-VN')}₫
-              </span>
-            </div>
+          {/* Tóm tắt chi phí BOM & Giá gợi ý bán */}
+          {isAdmin ? (
+            <div className="flex items-center justify-between text-xs bg-pink-50/60 p-2.5 rounded-xl border border-pink-200">
+              <div>
+                <span className="text-[10px] text-zinc-500 block">Tổng Vốn BOM ({mode === 'custom' ? `${tierCount} tầng` : '1 tầng'}):</span>
+                <span className="font-black text-rose-600 text-sm">
+                  {totalCalculation.totalCost.toLocaleString('vi-VN')}₫
+                </span>
+              </div>
 
-            <div className="text-right">
-              <span className="text-[10px] text-pink-700 font-bold block">
-                Giá Gợi Ý (~{customMarkupPct}%):
-              </span>
-              <span className="font-black text-pink-700 text-sm">
-                {totalCalculation.suggestedPrice.toLocaleString('vi-VN')}₫
-              </span>
+              <div className="text-right">
+                <span className="text-[10px] text-pink-700 font-bold block">
+                  Giá Gợi Ý (~{customMarkupPct}%):
+                </span>
+                <span className="font-black text-pink-700 text-sm">
+                  {totalCalculation.suggestedPrice.toLocaleString('vi-VN')}₫
+                </span>
+              </div>
             </div>
-          </div>
+          ) : (
+            /* Đối với tài khoản Bán Hàng và Thợ Bánh: Ẩn hết giá vốn đi, chỉ hiện giá gợi ý bán */
+            <div className="flex items-center justify-between text-xs bg-pink-50/70 p-2.5 sm:p-3 rounded-xl border border-pink-200 shadow-2xs">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-pink-500/15 text-pink-700 flex items-center justify-center shrink-0">
+                  <Sparkles className="w-4 h-4 text-pink-600" />
+                </div>
+                <div>
+                  <span className="text-xs font-bold text-zinc-800 block">
+                    Giá Gợi Ý Bán ({mode === 'custom' ? `${tierCount} tầng` : '1 tầng'}):
+                  </span>
+                  <span className="text-[10px] text-zinc-500">Tự động tính theo kích thước & tùy chọn bánh</span>
+                </div>
+              </div>
+
+              <div className="text-right">
+                <span className="font-black text-pink-700 text-base sm:text-lg">
+                  {totalCalculation.suggestedPrice.toLocaleString('vi-VN')}₫
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Hàng điều khiển số lượng, giá chốt và nút đặt */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">

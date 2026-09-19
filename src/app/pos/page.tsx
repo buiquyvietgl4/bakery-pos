@@ -2807,7 +2807,7 @@ export default function POSPage() {
       const isShip = preorderForm.deliveryMethod === 'shipping';
       const deliveryMethodStr = isShip ? `Giao tận nơi (Ship bánh)` : `Khách nhận tại tiệm`;
       const sampleImgTag = preorderForm.referenceImageUrl ? ` | Ảnh mẫu: Có [MẪU_ẢNH:${preorderForm.referenceImageUrl}]` : '';
-      const costDetailTag = ` | Vốn dự toán: ${cakeCostResult.totalCost.toLocaleString('vi-VN')}đ (${cakeCostResult.summaryText || preorderForm.size})`;
+      const costDetailTag = isAdmin ? ` | Vốn dự toán: ${cakeCostResult.totalCost.toLocaleString('vi-VN')}đ (${cakeCostResult.summaryText || preorderForm.size})` : '';
       const fillingTag = preorderForm.filling && preorderForm.fillingId !== 'filling-none' ? ` | Nhân: ${preorderForm.filling}` : '';
       const fullNotes = `[ĐẶT BÁNH KEM] Khách: ${preorderForm.customerName} (${preorderForm.customerPhone}) | Hình thức: ${deliveryMethodStr}${isShip ? ` | Đ/C: ${preorderForm.shippingAddress}` : ''} | Hẹn: ${pickupDateTimeStr} | Bánh: ${preorderForm.cakeName} (${preorderForm.size}) | Cốt & Kem: ${preorderForm.flavor || 'Vani'} - ${preorderForm.cream || 'Kem tươi'}${fillingTag} | Hộp: ${preorderForm.packaging || 'Hộp giấy'}${cakeCostResult.selectedAddons.length > 0 ? ' | Decor: ' + cakeCostResult.selectedAddons.map(a => a.name).join(', ') : ''} | Chữ: "${preorderForm.cakeMessage}" | Yêu cầu: ${preorderForm.notes}${sampleImgTag}${costDetailTag}${discountAmount > 0 ? ` | Giảm giá: -${discountAmount.toLocaleString('vi-VN')}đ` : ''}${shippingFee > 0 ? ` | Phí ship: +${shippingFee.toLocaleString('vi-VN')}đ` : ''} | GIÁ CUỐI: ${finalTotal.toLocaleString('vi-VN')}đ | Đã cọc: ${depositAmount.toLocaleString('vi-VN')}đ | CÒN THU KHI GIAO: ${remainingAmount.toLocaleString('vi-VN')}đ`;
 
@@ -4954,71 +4954,102 @@ export default function POSPage() {
                 </span>
 
                 {/* THẺ ĐỊNH MỨC VỐN & BÁO GIÁ THÔNG MINH CHO BÁNH ĐẶT RIÊNG */}
-                <div className="p-3 bg-white/95 rounded-xl border-2 border-pink-300 shadow-xs space-y-2 text-xs animate-in fade-in duration-200">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-lg bg-pink-100 text-pink-600 flex items-center justify-center">
-                        <Sparkles className="w-3.5 h-3.5" />
+                {isAdmin ? (
+                  <div className="p-3 bg-white/95 rounded-xl border-2 border-pink-300 shadow-xs space-y-2 text-xs animate-in fade-in duration-200">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-lg bg-pink-100 text-pink-600 flex items-center justify-center">
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </div>
+                        <div>
+                          <span className="font-black text-xs text-zinc-900 block">Định Mức Vốn & Báo Giá Bánh Đặt</span>
+                          <span className="text-[10px] text-zinc-500">Tự động tính từ Size & Phụ kiện đã chọn</span>
+                        </div>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                        cakeCostResult.statusLevel === 'good'
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : cakeCostResult.statusLevel === 'warning'
+                          ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                          : 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
+                      }`}>
+                        {cakeCostResult.statusLevel === 'good'
+                          ? '✓ Lãi Gộp Tốt'
+                          : cakeCostResult.statusLevel === 'warning'
+                          ? '⚠️ Lãi Mỏng'
+                          : '🚨 Giá Bán Quá Thấp!'}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 bg-pink-50/50 p-2 rounded-lg border border-pink-100 text-center">
+                      <div>
+                        <span className="text-[10px] text-zinc-500 block">Vốn Ước Tính (Cost)</span>
+                        <span className="text-xs font-black text-rose-600">
+                          {cakeCostResult.totalCost.toLocaleString('vi-VN')}₫
+                        </span>
                       </div>
                       <div>
-                        <span className="font-black text-xs text-zinc-900 block">Định Mức Vốn & Báo Giá Bánh Đặt</span>
-                        <span className="text-[10px] text-zinc-500">Tự động tính từ Size & Phụ kiện đã chọn</span>
+                        <span className="text-[10px] text-zinc-500 block">Giá Gợi Ý (~{cakeCostingConfig.targetFoodCostPct}%)</span>
+                        <span className="text-xs font-black text-pink-700">
+                          {cakeCostResult.suggestedPrice.toLocaleString('vi-VN')}₫
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-zinc-500 block">Lãi Gộp Dự Kiến</span>
+                        <span className="text-xs font-black text-emerald-600">
+                          +{cakeCostResult.estimatedProfit.toLocaleString('vi-VN')}₫
+                        </span>
                       </div>
                     </div>
-                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                      cakeCostResult.statusLevel === 'good'
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                        : cakeCostResult.statusLevel === 'warning'
-                        ? 'bg-amber-100 text-amber-800 border border-amber-300'
-                        : 'bg-rose-100 text-rose-800 border border-rose-300 animate-pulse'
-                    }`}>
-                      {cakeCostResult.statusLevel === 'good'
-                        ? '✓ Lãi Gộp Tốt'
-                        : cakeCostResult.statusLevel === 'warning'
-                        ? '⚠️ Lãi Mỏng'
-                        : '🚨 Giá Bán Quá Thấp!'}
-                    </span>
-                  </div>
 
-                  <div className="grid grid-cols-3 gap-2 bg-pink-50/50 p-2 rounded-lg border border-pink-100 text-center">
-                    <div>
-                      <span className="text-[10px] text-zinc-500 block">Vốn Ước Tính (Cost)</span>
-                      <span className="text-xs font-black text-rose-600">
-                        {cakeCostResult.totalCost.toLocaleString('vi-VN')}₫
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-zinc-500 block">Giá Gợi Ý (~{cakeCostingConfig.targetFoodCostPct}%)</span>
-                      <span className="text-xs font-black text-pink-700">
-                        {cakeCostResult.suggestedPrice.toLocaleString('vi-VN')}₫
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[10px] text-zinc-500 block">Lãi Gộp Dự Kiến</span>
-                      <span className="text-xs font-black text-emerald-600">
-                        +{cakeCostResult.estimatedProfit.toLocaleString('vi-VN')}₫
-                      </span>
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-100">
+                      <div className="text-[10px] text-zinc-600">
+                        Tỷ lệ Food Cost: <b className={cakeCostResult.foodCostPct > 40 ? 'text-rose-600 font-black' : 'text-emerald-700 font-bold'}>{cakeCostResult.foodCostPct}%</b>
+                        {cakeCostResult.foodCostPct > 45 && (
+                          <span className="text-rose-600 font-bold ml-1">
+                            (Báo giá bị thấp so với chi phí vốn!)
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setPreorderForm(prev => ({ ...prev, totalPrice: cakeCostResult.suggestedPrice }))}
+                        className="px-2.5 py-1 rounded-lg bg-pink-600 hover:bg-pink-700 text-white font-black text-[10px] flex items-center gap-1 shadow-2xs transition active:scale-95 cursor-pointer"
+                      >
+                        <Sparkles className="w-3 h-3" /> Điền Giá Gợi Ý ({cakeCostResult.suggestedPrice.toLocaleString('vi-VN')}₫)
+                      </button>
                     </div>
                   </div>
-
-                  <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-100">
-                    <div className="text-[10px] text-zinc-600">
-                      Tỷ lệ Food Cost: <b className={cakeCostResult.foodCostPct > 40 ? 'text-rose-600 font-black' : 'text-emerald-700 font-bold'}>{cakeCostResult.foodCostPct}%</b>
-                      {cakeCostResult.foodCostPct > 45 && (
-                        <span className="text-rose-600 font-bold ml-1">
-                          (Báo giá bị thấp so với chi phí vốn!)
+                ) : (
+                  /* Đối với tài khoản Bán Hàng và Thợ Bánh: Ẩn hết giá vốn, chỉ hiện giá gợi ý bán */
+                  <div className="p-3 bg-pink-50/70 rounded-xl border border-pink-200 shadow-2xs space-y-2 text-xs">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-lg bg-pink-500/15 text-pink-700 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-4 h-4 text-pink-600" />
+                        </div>
+                        <div>
+                          <span className="font-bold text-xs text-zinc-900 block">Giá Bánh Gợi Ý</span>
+                          <span className="text-[10px] text-zinc-500">Tự động tính từ kích thước & phụ kiện đã chọn</span>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm sm:text-base font-black text-pink-700">
+                          {cakeCostResult.suggestedPrice.toLocaleString('vi-VN')}₫
                         </span>
-                      )}
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setPreorderForm(prev => ({ ...prev, totalPrice: cakeCostResult.suggestedPrice }))}
-                      className="px-2.5 py-1 rounded-lg bg-pink-600 hover:bg-pink-700 text-white font-black text-[10px] flex items-center gap-1 shadow-2xs transition active:scale-95 cursor-pointer"
-                    >
-                      <Sparkles className="w-3 h-3" /> Điền Giá Gợi Ý ({cakeCostResult.suggestedPrice.toLocaleString('vi-VN')}₫)
-                    </button>
+                    <div className="flex justify-end pt-1 border-t border-pink-200/50">
+                      <button
+                        type="button"
+                        onClick={() => setPreorderForm(prev => ({ ...prev, totalPrice: cakeCostResult.suggestedPrice }))}
+                        className="px-3 py-1.5 rounded-lg bg-pink-600 hover:bg-pink-700 text-white font-black text-xs flex items-center gap-1 shadow-2xs transition active:scale-95 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" /> Điền Giá Gợi Ý Này ({cakeCostResult.suggestedPrice.toLocaleString('vi-VN')}₫)
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div className="min-w-0">
                     <label className="font-semibold text-zinc-700 text-xs">Giá bánh (VND):</label>
@@ -7885,17 +7916,19 @@ export default function POSPage() {
                 {(() => {
                   const summary = getTodaySpoilageSummary();
                   return (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    <div className={`grid grid-cols-1 ${isAdmin ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2.5`}>
                       <div className="bg-rose-50 p-3 rounded-2xl border border-rose-200">
                         <span className="text-[11px] text-rose-700 font-bold block">Tổng bánh hủy hôm nay</span>
                         <span className="text-lg font-black text-rose-800">{summary.totalItems} cái ({summary.count} lần)</span>
                       </div>
-                      <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200">
-                        <span className="text-[11px] text-amber-700 font-bold block">Thiệt hại giá vốn (Cost Loss)</span>
-                        <span className="text-lg font-black text-amber-900">
-                          {summary.totalCostLoss.toLocaleString('vi-VN')}₫
-                        </span>
-                      </div>
+                      {isAdmin && (
+                        <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200">
+                          <span className="text-[11px] text-amber-700 font-bold block">Thiệt hại giá vốn (Cost Loss)</span>
+                          <span className="text-lg font-black text-amber-900">
+                            {summary.totalCostLoss.toLocaleString('vi-VN')}₫
+                          </span>
+                        </div>
+                      )}
                       <div className="bg-zinc-50 p-3 rounded-2xl border border-zinc-200">
                         <span className="text-[11px] text-zinc-500 font-bold block">Doanh thu thất thu</span>
                         <span className="text-lg font-black text-zinc-700">
@@ -7997,9 +8030,11 @@ export default function POSPage() {
                       const costLoss = baseCost * spoilQty;
                       return (
                         <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
-                          <span className="text-xs font-bold text-zinc-600">
-                            Thiệt hại vốn: <b className="text-rose-600 text-sm">{costLoss.toLocaleString('vi-VN')}₫</b>
-                          </span>
+                          {isAdmin && (
+                            <span className="text-xs font-bold text-zinc-600">
+                              Thiệt hại vốn: <b className="text-rose-600 text-sm">{costLoss.toLocaleString('vi-VN')}₫</b>
+                            </span>
+                          )}
                           <button
                             type="submit"
                             className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-xl shadow-md shadow-rose-600/30 transition cursor-pointer active:scale-95 flex items-center gap-1.5"
@@ -8028,7 +8063,7 @@ export default function POSPage() {
                             <th className="py-2">Thời gian</th>
                             <th className="py-2">Tên bánh</th>
                             <th className="py-2 text-center">SL hủy</th>
-                            <th className="py-2 text-right">Thiệt hại vốn</th>
+                            {isAdmin && <th className="py-2 text-right">Thiệt hại vốn</th>}
                             <th className="py-2">Lý do</th>
                             <th className="py-2">Người báo</th>
                             <th className="py-2 text-center">Xóa</th>
@@ -8044,9 +8079,11 @@ export default function POSPage() {
                               <td className="py-2 text-center font-black text-rose-600">
                                 -{log.quantity} {log.unit}
                               </td>
-                              <td className="py-2 text-right font-black text-amber-800">
-                                {(log.totalCostLoss || 0).toLocaleString('vi-VN')}₫
-                              </td>
+                              {isAdmin && (
+                                <td className="py-2 text-right font-black text-amber-800">
+                                  {(log.totalCostLoss || 0).toLocaleString('vi-VN')}₫
+                                </td>
+                              )}
                               <td className="py-2 text-zinc-600">
                                 <span className="px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-700 text-[10px] font-bold">
                                   {log.reason}

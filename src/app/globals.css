@@ -45,10 +45,21 @@ input, select, textarea {
 input[type="date"],
 input[type="time"],
 input[type="datetime-local"] {
+  width: 100% !important;
   min-width: 0 !important;
   max-width: 100% !important;
   box-sizing: border-box !important;
-  display: block;
+  display: block !important;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="date"]::-webkit-date-and-time-value,
+input[type="time"]::-webkit-date-and-time-value {
+  text-align: left;
+  padding: 0;
+  margin: 0;
+  width: 100%;
 }
 
 @media screen and (max-width: 768px) {
