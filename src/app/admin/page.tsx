@@ -397,7 +397,7 @@ export default function AdminDashboard() {
   // Modal Sửa Tồn Kho Vật Tư (Kiểm kê thực tế)
   const [isAdjustMaterialStockModalOpen, setIsAdjustMaterialStockModalOpen] = useState<boolean>(false);
   const [adjustingIngredient, setAdjustingIngredient] = useState<Ingredient | null>(null);
-  const [adjustNewStockQty, setAdjustNewStockQty] = useState<number>(0);
+  const [adjustNewStockQty, setAdjustNewStockQty] = useState<number | string>(0);
   const [adjustReason, setAdjustReason] = useState<string>('Kiểm kê thực tế định kỳ');
   const [adjustNotes, setAdjustNotes] = useState<string>('');
   const [isSubmittingAdjustStock, setIsSubmittingAdjustStock] = useState<boolean>(false);
@@ -2231,7 +2231,7 @@ export default function AdminDashboard() {
   // ── XỬ LÝ MỞ MODAL ĐIỀU CHỈNH / KIỂM KÊ TỒN KHO VẬT TƯ ──
   const handleOpenAdjustMaterialStock = (ing: Ingredient) => {
     setAdjustingIngredient(ing);
-    setAdjustNewStockQty(ing.stock_qty);
+    setAdjustNewStockQty(String(ing.stock_qty || 0));
     setAdjustReason('Kiểm kê thực tế định kỳ');
     setAdjustNotes('');
     setIsAdjustMaterialStockModalOpen(true);
@@ -2243,9 +2243,9 @@ export default function AdminDashboard() {
     if (!adjustingIngredient) return;
     const oldQty = Number(adjustingIngredient.stock_qty || 0);
     const newQty = Number(adjustNewStockQty);
-    if (isNaN(newQty) || newQty < 0) {
+    if (adjustNewStockQty === '' || isNaN(newQty) || newQty < 0) {
       soundManager.playAlertTone();
-      alert('Số lượng tồn kho mới không hợp lệ (phải là số >= 0).');
+      alert('Vui lòng nhập số lượng tồn kho thực tế hợp lệ (phải là số >= 0).');
       return;
     }
 
@@ -5896,23 +5896,73 @@ export default function AdminDashboard() {
             <form onSubmit={handleSubmitAdjustMaterialStock} className="space-y-4">
               {/* Ô nhập số lượng tồn thực tế mới */}
               <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Số lượng tồn kho thực tế mới ({adjustingIngredient.unit}) <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-zinc-700">
+                    Số lượng tồn kho thực tế mới ({adjustingIngredient.unit}) <span className="text-rose-500">*</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setAdjustNewStockQty(String(adjustingIngredient.stock_qty || 0))}
+                    className="text-[11px] font-bold text-amber-700 hover:text-amber-800 hover:underline cursor-pointer"
+                  >
+                    Khôi phục số gốc ({adjustingIngredient.stock_qty.toLocaleString()} {adjustingIngredient.unit})
+                  </button>
+                </div>
                 <div className="relative">
                   <input
-                    type="number"
-                    min="0"
-                    step="any"
+                    type="text"
+                    inputMode="decimal"
                     value={adjustNewStockQty}
-                    onChange={(e) => setAdjustNewStockQty(parseFloat(e.target.value) || 0)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => {
+                      let val = e.target.value;
+                      // Đổi dấu phẩy thành dấu chấm
+                      val = val.replace(/,/g, '.');
+                      // Chỉ giữ lại chữ số và tối đa 1 dấu chấm
+                      val = val.replace(/[^0-9.]/g, '');
+                      const parts = val.split('.');
+                      if (parts.length > 2) {
+                        val = parts[0] + '.' + parts.slice(1).join('');
+                      }
+                      // Tự động bỏ số 0 ở đầu nếu là số nguyên lớn (ví dụ: gõ 003890 -> 3890)
+                      if (/^0+[1-9]/.test(val)) {
+                        val = val.replace(/^0+/, '');
+                      }
+                      setAdjustNewStockQty(val);
+                    }}
                     required
-                    className="w-full px-3 py-2.5 text-base font-black rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-zinc-900"
-                    placeholder="Nhập số lượng thực tế sau kiểm kê..."
+                    className="w-full pl-3.5 pr-20 py-2.5 text-lg font-black rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-zinc-900 bg-white shadow-2xs transition"
+                    placeholder="0"
                   />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-xs text-zinc-400">
+                  <span className="absolute right-2.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-lg bg-zinc-100 border border-zinc-200 font-bold text-xs text-zinc-600 pointer-events-none select-none">
                     {adjustingIngredient.unit}
                   </span>
+                </div>
+
+                {/* Các nút bấm điều chỉnh nhanh */}
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[10px] font-bold text-zinc-400 mr-0.5">Chỉnh nhanh:</span>
+                  {[-10, -5, -1, 1, 5, 10].map((step) => (
+                    <button
+                      key={step}
+                      type="button"
+                      onClick={() => {
+                        const curr = parseFloat(String(adjustNewStockQty)) || 0;
+                        const next = Math.max(0, Math.round((curr + step) * 1000) / 1000);
+                        setAdjustNewStockQty(String(next));
+                      }}
+                      className="px-2 py-0.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-[11px] transition cursor-pointer active:scale-95 border border-zinc-200"
+                    >
+                      {step > 0 ? `+${step}` : step}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setAdjustNewStockQty('0')}
+                    className="px-2 py-0.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] transition cursor-pointer active:scale-95 border border-rose-200"
+                  >
+                    Về 0
+                  </button>
                 </div>
               </div>
 
