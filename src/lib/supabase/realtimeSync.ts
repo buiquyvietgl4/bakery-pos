@@ -28,6 +28,8 @@ type TelegramConfigCallback = (config: any) => void;
 type StoreBrandingCallback = (branding: any) => void;
 type VietqrConfigCallback = (config: any) => void;
 type EwalletConfigCallback = (config: any) => void;
+export type SecurityConfigCallback = (config: any) => void;
+
 
 export interface BakeApprovalPayload {
   order_number: string;
@@ -96,6 +98,7 @@ const telegramConfigListeners = new Set<TelegramConfigCallback>();
 const storeBrandingListeners = new Set<StoreBrandingCallback>();
 const vietqrConfigListeners = new Set<VietqrConfigCallback>();
 const ewalletConfigListeners = new Set<EwalletConfigCallback>();
+const securityConfigListeners = new Set<SecurityConfigCallback>();
 const bakeApprovalListeners = new Set<BakeApprovalCallback>();
 const bakeApprovalResolvedListeners = new Set<BakeApprovalResolvedCallback>();
 const paymentReceivedListeners = new Set<PaymentReceivedCallback>();
@@ -252,6 +255,23 @@ function ensureSyncChannel() {
               cb(payload.config);
             } catch (e) {
               console.warn('Lỗi ewalletConfigListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'security_config_updated' }, ({ payload }: any) => {
+        if (payload?.config) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem('bakery_security_config', JSON.stringify(payload.config));
+              window.dispatchEvent(new CustomEvent('bakery_security_updated', { detail: payload.config }));
+            } catch {}
+          }
+          securityConfigListeners.forEach((cb) => {
+            try {
+              cb(payload.config);
+            } catch (e) {
+              console.warn('Lỗi securityConfigListener:', e);
             }
           });
         }
@@ -574,6 +594,27 @@ export async function broadcastEwalletConfig(config: any) {
 }
 
 /**
+ * Phát sóng cập nhật cấu hình bảo mật & ma trận phân quyền tài khoản (Admin, Bếp, Thu Ngân) tới tất cả thiết bị
+ */
+export async function broadcastSecurityConfig(config: any) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'security_config_updated',
+        payload: {
+          config,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastSecurityConfig:', err);
+  }
+}
+
+/**
  * Phát sóng cập nhật công thức bánh BOM tới tất cả thiết bị (Admin, Kitchen)
  */
 export async function broadcastRecipeChange(action: 'create' | 'update' | 'delete', recipe: any) {
@@ -612,6 +653,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   onStoreBrandingChange?: StoreBrandingCallback;
   onVietqrConfigChange?: VietqrConfigCallback;
   onEwalletConfigChange?: EwalletConfigCallback;
+  onSecurityConfigChange?: SecurityConfigCallback;
   onBakeApprovalRequest?: BakeApprovalCallback;
   onBakeApprovalResolved?: BakeApprovalResolvedCallback;
   onPaymentReceived?: PaymentReceivedCallback;
@@ -631,6 +673,7 @@ export function subscribeCrossDeviceSync(callbacks: {
     onStoreBrandingChange,
     onVietqrConfigChange,
     onEwalletConfigChange,
+    onSecurityConfigChange,
     onBakeApprovalRequest,
     onBakeApprovalResolved,
     onPaymentReceived,
@@ -648,6 +691,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onStoreBrandingChange) storeBrandingListeners.add(onStoreBrandingChange);
   if (onVietqrConfigChange) vietqrConfigListeners.add(onVietqrConfigChange);
   if (onEwalletConfigChange) ewalletConfigListeners.add(onEwalletConfigChange);
+  if (onSecurityConfigChange) securityConfigListeners.add(onSecurityConfigChange);
   if (onBakeApprovalRequest) bakeApprovalListeners.add(onBakeApprovalRequest);
   if (onBakeApprovalResolved) bakeApprovalResolvedListeners.add(onBakeApprovalResolved);
   if (onPaymentReceived) paymentReceivedListeners.add(onPaymentReceived);
@@ -665,11 +709,22 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onStoreBrandingChange) storeBrandingListeners.delete(onStoreBrandingChange);
     if (onVietqrConfigChange) vietqrConfigListeners.delete(onVietqrConfigChange);
     if (onEwalletConfigChange) ewalletConfigListeners.delete(onEwalletConfigChange);
+    if (onSecurityConfigChange) securityConfigListeners.delete(onSecurityConfigChange);
     if (onBakeApprovalRequest) bakeApprovalListeners.delete(onBakeApprovalRequest);
     if (onBakeApprovalResolved) bakeApprovalResolvedListeners.delete(onBakeApprovalResolved);
     if (onPaymentReceived) paymentReceivedListeners.delete(onPaymentReceived);
     if (onTransferApprovalRequest) transferApprovalListeners.delete(onTransferApprovalRequest);
     if (onTransferApprovalResolved) transferApprovalResolvedListeners.delete(onTransferApprovalResolved);
+  };
+}
+
+/**
+ * Đăng ký lắng nghe sự kiện cập nhật bảo mật & ma trận phân quyền
+ */
+export function subscribeSecurityConfig(callback: SecurityConfigCallback): () => void {
+  securityConfigListeners.add(callback);
+  return () => {
+    securityConfigListeners.delete(callback);
   };
 }
 

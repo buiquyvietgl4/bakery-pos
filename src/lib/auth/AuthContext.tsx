@@ -1,8 +1,9 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { broadcastSecurityConfig, subscribeSecurityConfig } from '@/lib/supabase/realtimeSync';
 
 export type UserRole = 'cashier' | 'kitchen' | 'admin' | 'staff';
 
@@ -242,10 +243,101 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return DEFAULT_SECURITY_CONFIG;
   });
 
+  // Helper: lưu cấu hình bảo mật vào Local SQL (qua API server-side)
+  const saveSecurityConfigToLocalSql = useCallback(async (cfg: SecurityConfig) => {
+    try {
+      await fetch('/api/local-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_security_config', data: cfg }),
+      });
+    } catch (err) {
+      console.warn('[AuthContext] Lỗi lưu cấu hình bảo mật vào Local SQL:', err);
+    }
+  }, []);
+
+  // Helper: đọc cấu hình bảo mật từ Local SQL (fallback khi Cloud SQL không khả dụng)
+  const fetchSecurityConfigFromLocalSql = useCallback(async (): Promise<SecurityConfig | null> => {
+    try {
+      const res = await fetch('/api/local-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_security_config' }),
+      });
+      const json = await res.json();
+      if (json.success && json.data) {
+        return json.data as SecurityConfig;
+      }
+    } catch (err) {
+      console.warn('[AuthContext] Lỗi đọc cấu hình bảo mật từ Local SQL:', err);
+    }
+    return null;
+  }, []);
+
+  // Fetch cấu hình bảo mật: Cloud SQL → Local SQL → localStorage
   useEffect(() => {
-    fetchSecurityConfigFromDb().then((cfg) => {
-      if (cfg) setSecurityConfig(cfg);
-    }).catch(console.error);
+    (async () => {
+      // 1. Thử Cloud SQL trước
+      const cloudCfg = await fetchSecurityConfigFromDb();
+      if (cloudCfg) {
+        setSecurityConfig(cloudCfg);
+        return;
+      }
+      // 2. Fallback Local SQL
+      const localCfg = await fetchSecurityConfigFromLocalSql();
+      if (localCfg) {
+        setSecurityConfig(prev => ({ ...prev, ...localCfg }));
+      }
+      // 3. Nếu cả 2 đều fail → giữ nguyên giá trị từ localStorage (đã init ở useState)
+    })().catch(console.error);
+  }, [fetchSecurityConfigFromLocalSql]);
+
+  // Lắng nghe realtime broadcast cập nhật bảo mật & phân quyền từ thiết bị khác
+  useEffect(() => {
+    const unsub = subscribeSecurityConfig((incomingCfg: any) => {
+      if (incomingCfg && typeof incomingCfg === 'object') {
+        const merged: SecurityConfig = {
+          ...DEFAULT_SECURITY_CONFIG,
+          ...incomingCfg,
+          permissions: {
+            admin: { ...DEFAULT_PERMISSIONS.admin, ...(incomingCfg.permissions?.admin || {}) },
+            kitchen: { ...DEFAULT_PERMISSIONS.kitchen, ...(incomingCfg.permissions?.kitchen || {}) },
+            staff: { ...DEFAULT_PERMISSIONS.staff, ...(incomingCfg.permissions?.staff || {}) },
+          },
+        };
+        setSecurityConfig(merged);
+        if (typeof window !== 'undefined') {
+          try { localStorage.setItem('bakery_security_config', JSON.stringify(merged)); } catch {}
+        }
+      }
+    });
+
+    // Lắng nghe window event (dự phòng cho Broadcast)
+    const handleWindowEvent = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail && typeof detail === 'object') {
+        const merged: SecurityConfig = {
+          ...DEFAULT_SECURITY_CONFIG,
+          ...detail,
+          permissions: {
+            admin: { ...DEFAULT_PERMISSIONS.admin, ...(detail.permissions?.admin || {}) },
+            kitchen: { ...DEFAULT_PERMISSIONS.kitchen, ...(detail.permissions?.kitchen || {}) },
+            staff: { ...DEFAULT_PERMISSIONS.staff, ...(detail.permissions?.staff || {}) },
+          },
+        };
+        setSecurityConfig(merged);
+      }
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('bakery_security_updated', handleWindowEvent);
+    }
+
+    return () => {
+      unsub();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('bakery_security_updated', handleWindowEvent);
+      }
+    };
   }, []);
 
   const [user, setUserState] = useState<CurrentUser | null>(() => {
@@ -261,12 +353,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginTargetRole, setLoginTargetRole] = useState<UserRole>('cashier');
 
+  // DUAL SYNC: Lưu vào Cloud SQL + Local SQL + Broadcast Realtime tới tất cả thiết bị
   const saveSecurityConfig = (cfg: SecurityConfig) => {
     setSecurityConfig(cfg);
     if (typeof window !== 'undefined') {
       localStorage.setItem('bakery_security_config', JSON.stringify(cfg));
     }
+    // 1. Cloud SQL (Supabase)
     saveSecurityConfigToDb(cfg).catch(console.error);
+    // 2. Local SQL (ổ cứng máy tính)
+    saveSecurityConfigToLocalSql(cfg).catch(console.error);
+    // 3. Broadcast Realtime tới POS, Kitchen, Admin trên thiết bị khác
+    broadcastSecurityConfig(cfg).catch(console.error);
   };
 
   const saveCurrentUser = (u: CurrentUser | null) => {

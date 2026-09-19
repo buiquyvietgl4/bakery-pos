@@ -437,8 +437,18 @@ CREATE TABLE IF NOT EXISTS accounting_closings (
 
 CREATE TABLE IF NOT EXISTS security_config (
     id TEXT PRIMARY KEY,
+    admin_username TEXT DEFAULT 'admin',
+    admin_name TEXT DEFAULT 'Chủ Tiệm (Admin)',
     admin_password_hash TEXT,
-    cashier_pin TEXT,
+    kitchen_pin TEXT DEFAULT '5678',
+    kitchen_password_hash TEXT DEFAULT '567890',
+    kitchen_name TEXT DEFAULT 'Nhân Viên Bếp',
+    staff_pin TEXT DEFAULT '1234',
+    staff_password_hash TEXT DEFAULT '123456',
+    staff_name TEXT DEFAULT 'Thu Ngân / Bán Hàng',
+    staff_username TEXT DEFAULT 'nhanvien',
+    permissions_json TEXT,
+    raw_config_json TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -786,7 +796,9 @@ ${generateSchemaSql()}
 `;
   const sec = data?.security_config || data?.security || data?.settings?.security;
   if (sec) {
-    sql += `INSERT INTO security_config (id, admin_password_hash, cashier_pin, updated_at) VALUES ('primary', ${sqlEscape(sec.adminPasswordHash || sec.admin_password_hash)}, ${sqlEscape(sec.cashierPin || sec.cashier_pin)}, ${sqlEscape(sec.updatedAt || sec.updated_at || new Date().toISOString())});
+    const permJson = sec.permissions ? JSON.stringify(sec.permissions) : null;
+    const rawJson = JSON.stringify(sec);
+    sql += `INSERT INTO security_config (id, admin_username, admin_name, admin_password_hash, kitchen_pin, kitchen_password_hash, kitchen_name, staff_pin, staff_password_hash, staff_name, staff_username, permissions_json, raw_config_json, updated_at) VALUES ('primary', ${sqlEscape(sec.adminUsername || sec.admin_username || 'admin')}, ${sqlEscape(sec.adminName || sec.admin_name || 'Chủ Tiệm (Admin)')}, ${sqlEscape(sec.adminPasswordHash || sec.admin_password_hash)}, ${sqlEscape(sec.kitchenPin || sec.kitchen_pin || '5678')}, ${sqlEscape(sec.kitchenPasswordHash || sec.kitchen_password_hash || '567890')}, ${sqlEscape(sec.kitchenName || sec.kitchen_name || 'Nhân Viên Bếp')}, ${sqlEscape(sec.staffPin || sec.staff_pin || '1234')}, ${sqlEscape(sec.staffPasswordHash || sec.staff_password_hash || '123456')}, ${sqlEscape(sec.staffName || sec.staff_name || 'Thu Ngân / Bán Hàng')}, ${sqlEscape(sec.staffUsername || sec.staff_username || 'nhanvien')}, ${sqlEscape(permJson)}, ${sqlEscape(rawJson)}, ${sqlEscape(sec.updatedAt || sec.updated_at || new Date().toISOString())});
 `;
   }
 

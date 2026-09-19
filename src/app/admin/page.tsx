@@ -8937,9 +8937,15 @@ export default function AdminDashboard() {
                 <h3 className="font-black text-base sm:text-lg text-zinc-900 flex items-center gap-2">
                   <UserCheck className="w-5 h-5 text-emerald-600" /> Bảng Ma Trận Phân Quyền 3 Loại Tài Khoản
                 </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Chủ tiệm có thể trực tiếp nhấn vào từng ô để <b>Cho phép</b> hoặc <b>Chặn</b> từng tính năng cho từng loại tài khoản (Bếp, Thu Ngân). Dữ liệu được lưu và đồng bộ tức thì trên toàn hệ thống.
-                </p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <p className="text-xs text-zinc-500">
+                    Chủ tiệm có thể trực tiếp nhấn vào từng ô để <b>Cho phép</b> hoặc <b>Chặn</b> từng tính năng cho từng loại tài khoản (Bếp, Thu Ngân). Dữ liệu được lưu và đồng bộ tức thì trên toàn hệ thống.
+                  </p>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] font-bold text-emerald-800 whitespace-nowrap">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                    ☁️ Cloud SQL &amp; 💾 Local SQL Song Hành
+                  </span>
+                </div>
               </div>
 
               {/* Cụm nút hành động nhanh */}

@@ -322,6 +322,74 @@ LƯU Ý DÀNH CHO MẠNG LAN (CÁC MÁY CON KẾT NỐI QUA PORT):
       });
     }
 
+    // 7. Lưu cấu hình bảo mật & phân quyền vào Local SQL
+    if (action === 'save_security_config') {
+      if (!data) {
+        return NextResponse.json({ success: false, error: 'Thiếu dữ liệu cấu hình bảo mật' }, { status: 400 });
+      }
+
+      // Lưu vào bakery_local_db.json (cập nhật trường security_config)
+      const jsonPath = path.join(targetDir, 'bakery_local_db.json');
+      let localDb: any = {};
+      try {
+        if (fs.existsSync(jsonPath)) {
+          localDb = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+        }
+      } catch {}
+
+      localDb.security_config = data;
+      if (localDb.settings) {
+        localDb.settings.security = data;
+      }
+
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      fs.writeFileSync(jsonPath, JSON.stringify(localDb, null, 2), 'utf-8');
+
+      // Tái tạo bakery_master.sql và bakery_schema.sql
+      try {
+        const masterSql = generateMasterSqlDump(localDb);
+        const schemaSql = generateSchemaSql();
+        fs.writeFileSync(path.join(targetDir, 'bakery_master.sql'), masterSql, 'utf-8');
+        fs.writeFileSync(path.join(targetDir, 'bakery_schema.sql'), schemaSql, 'utf-8');
+      } catch (sqlErr) {
+        console.warn('[API local-sql] Lỗi tái tạo SQL files:', sqlErr);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Đã lưu cấu hình bảo mật & phân quyền vào Local SQL thành công!',
+        path: targetDir,
+        env: currentEnv,
+      });
+    }
+
+    // 8. Đọc cấu hình bảo mật & phân quyền từ Local SQL
+    if (action === 'get_security_config') {
+      const jsonPath = path.join(targetDir, 'bakery_local_db.json');
+      if (!fs.existsSync(jsonPath)) {
+        return NextResponse.json({
+          success: false,
+          error: 'Chưa có dữ liệu Local SQL để đọc cấu hình bảo mật.',
+          data: null,
+        });
+      }
+
+      try {
+        const raw = JSON.parse(fs.readFileSync(jsonPath, 'utf-8'));
+        const secConfig = raw?.security_config || raw?.security || raw?.settings?.security || null;
+        return NextResponse.json({
+          success: true,
+          data: secConfig,
+          path: targetDir,
+          env: currentEnv,
+        });
+      } catch (readErr: any) {
+        return NextResponse.json({ success: false, error: readErr.message, data: null });
+      }
+    }
+
     return NextResponse.json({ success: false, error: 'Hành động không hợp lệ' }, { status: 400 });
   } catch (err: any) {
     return NextResponse.json({ success: false, error: err.message }, { status: 500 });
