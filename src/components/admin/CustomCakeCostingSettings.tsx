@@ -1005,7 +1005,14 @@ export function CustomCakeCostingSettings() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {config.packagings.map((pkg, idx) => (
-              <div key={pkg.id} className="p-3.5 rounded-2xl bg-white border border-zinc-200 shadow-xs space-y-2.5">
+              <div 
+                key={pkg.id} 
+                className={`p-3.5 rounded-2xl bg-white border shadow-xs space-y-2.5 transition ${
+                  pkg.isDefault 
+                    ? 'border-pink-500 ring-2 ring-pink-300/80 bg-pink-50/20' 
+                    : 'border-zinc-200 hover:border-zinc-300'
+                }`}
+              >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <span className="w-8 h-8 rounded-xl bg-pink-50 border border-pink-200 flex items-center justify-center text-base shrink-0">
@@ -1019,20 +1026,22 @@ export function CustomCakeCostingSettings() {
                       className="font-bold text-xs text-zinc-900 bg-transparent border-b border-zinc-200 focus:border-pink-500 focus:outline-none flex-1 min-w-0 py-1"
                     />
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <label className="flex items-center gap-1 text-[11px] text-zinc-600 font-bold cursor-pointer hover:text-pink-600 bg-zinc-50 px-2 py-1 rounded-lg border border-zinc-200">
-                      <input
-                        type="radio"
-                        name="default_packaging"
-                        checked={!!pkg.isDefault}
-                        onChange={() => {
-                          const updated = config.packagings.map((p, i) => ({ ...p, isDefault: i === idx }));
-                          setConfig({ ...config, packagings: updated });
-                        }}
-                        className="w-3.5 h-3.5 text-pink-600 focus:ring-pink-500 cursor-pointer"
-                      />
-                      <span>Mặc định</span>
-                    </label>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = config.packagings.map((p, i) => ({ ...p, isDefault: i === idx }));
+                        setConfig({ ...config, packagings: updated });
+                      }}
+                      className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-xl border transition cursor-pointer ${
+                        pkg.isDefault
+                          ? 'bg-pink-600 text-white border-pink-600 shadow-2xs'
+                          : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-pink-300 hover:text-pink-600 hover:bg-pink-50/40'
+                      }`}
+                      title={pkg.isDefault ? "Hộp này đang được chọn mặc định khi mở modal đặt bánh" : "Bấm để chọn hộp này làm mặc định"}
+                    >
+                      {pkg.isDefault ? '✓ Mặc định' : 'Chọn mặc định'}
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleDeletePackaging(idx)}

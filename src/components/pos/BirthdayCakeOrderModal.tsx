@@ -86,6 +86,7 @@ export function BirthdayCakeOrderModal({
   const [selectedFreeAccessoryIds, setSelectedFreeAccessoryIds] = useState<string[]>([]);
   const [selectedDecorAddonIds, setSelectedDecorAddonIds] = useState<string[]>([]);
   const [isDecorAccordionOpen, setIsDecorAccordionOpen] = useState(false);
+  const [isPackagingAccordionOpen, setIsPackagingAccordionOpen] = useState(false);
 
   // Tỷ lệ markup và giá bán
   const [customMarkupPct, setCustomMarkupPct] = useState<number>(36.5);
@@ -123,6 +124,7 @@ export function BirthdayCakeOrderModal({
     if (!isOpen) return;
     setValidationError(null);
     setIsDecorAccordionOpen(false);
+    setIsPackagingAccordionOpen(false);
     const currentConfig = getFullCakeBomConfig();
     setConfig(currentConfig);
     setCustomMarkupPct(currentConfig.targetFoodCostPct || 36.5);
@@ -178,7 +180,9 @@ export function BirthdayCakeOrderModal({
       },
     ]);
 
-    setSelectedPackagingId(currentConfig.packagings[0]?.id || '');
+    // Chọn hộp mặc định từ Định Mức Bánh Sinh Nhật
+    const defaultPkg = currentConfig.packagings.find((p) => p.isDefault) || currentConfig.packagings[0];
+    setSelectedPackagingId(defaultPkg?.id || '');
     setSelectedFreeAccessoryIds(currentConfig.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id));
     // Mặc định KHÔNG chọn bất kỳ phụ kiện decor nào khi mở modal
     setSelectedDecorAddonIds([]);
@@ -186,7 +190,8 @@ export function BirthdayCakeOrderModal({
 
   const applyPreset = (preset: BirthdayCakeBomPreset, currentConfig: FullCakeBomConfig) => {
     setSelectedPresetId(preset.id);
-    setSelectedPackagingId(preset.packagingId || currentConfig.packagings[0]?.id || '');
+    const defaultPkg = currentConfig.packagings.find((p) => p.isDefault) || currentConfig.packagings[0];
+    setSelectedPackagingId(preset.packagingId || defaultPkg?.id || '');
     setSelectedFreeAccessoryIds(preset.freeAccessoryIds || currentConfig.freeAccessories.filter((a) => a.isDefaultIncluded).map((a) => a.id));
     // Mặc định KHÔNG chọn bất kỳ phụ kiện decor nào theo yêu cầu
     setSelectedDecorAddonIds([]);
@@ -351,6 +356,13 @@ export function BirthdayCakeOrderModal({
     }
     return sum;
   }, [selectedDecorAddonIds, config.decorAddons]);
+
+  // Thông tin loại hộp đựng bánh đang được chọn (ưu tiên hộp mặc định của quán)
+  const selectedPackagingBox = useMemo(() => {
+    return config.packagings.find((p) => p.id === selectedPackagingId) ||
+           config.packagings.find((p) => p.isDefault) ||
+           config.packagings[0];
+  }, [config.packagings, selectedPackagingId]);
 
   // Tự động điền giá gợi ý khi thay đổi cấu hình
   useEffect(() => {
@@ -535,8 +547,8 @@ export function BirthdayCakeOrderModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-      {/* Cửa sổ dài chuẩn di động - Toàn bộ cuộn dọc liền mạch từ trên xuống dưới */}
-      <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-pink-200 p-4 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in-95 duration-150">
+      {/* Cửa sổ tương thích hoàn hảo cả Máy tính (Desktop/Laptop) và Điện thoại/Tablet */}
+      <div className="bg-white w-full max-w-2xl lg:max-w-3xl rounded-3xl shadow-2xl border border-pink-200 p-4 sm:p-6 space-y-4 max-h-[90dvh] overflow-y-auto overscroll-contain animate-in zoom-in-95 duration-150">
         
         {/* HEADER MODAL */}
         <div className="flex items-center justify-between pb-3 border-b border-pink-100">
@@ -837,20 +849,139 @@ export function BirthdayCakeOrderModal({
               <span>Hộp Đóng Gói & Phụ Kiện Decor:</span>
             </span>
 
-            {/* Loại Hộp Đựng Bánh */}
-            <div>
-              <label className="font-bold text-zinc-700 block mb-1">Loại Hộp Đựng Bánh:</label>
-              <select
-                value={selectedPackagingId}
-                onChange={(e) => setSelectedPackagingId(e.target.value)}
-                className="w-full p-2.5 rounded-xl bg-white border border-zinc-200 font-bold text-zinc-900 text-xs shadow-2xs focus:border-pink-500 focus:outline-none"
+            {/* Loại Hộp Đựng Bánh (Dạng cửa sổ thu gọn tương tự Phụ kiện Decor) */}
+            <div className="rounded-2xl border border-pink-200 bg-pink-50/40 overflow-hidden">
+              {/* Header thu gọn / mở rộng */}
+              <button
+                type="button"
+                onClick={() => setIsPackagingAccordionOpen((prev) => !prev)}
+                className="w-full p-3 flex items-center justify-between gap-2 text-left hover:bg-pink-100/50 transition cursor-pointer"
               >
-                {config.packagings.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name} {p.costPrice > 0 ? `(~${p.costPrice.toLocaleString('vi-VN')}₫)` : ''}
-                  </option>
-                ))}
-              </select>
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-7 h-7 rounded-xl bg-pink-500/15 text-pink-700 flex items-center justify-center shrink-0">
+                    <Package className="w-4 h-4 text-pink-600" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-zinc-900 text-xs truncate flex items-center gap-2">
+                      <span>Loại Hộp Đựng Bánh:</span>
+                      {selectedPackagingBox?.isDefault && (
+                        <span className="text-[9px] bg-pink-200 text-pink-800 font-bold px-1.5 py-0.5 rounded-md">
+                          Mặc định quán
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[11px] text-zinc-600 font-medium truncate mt-0.5">
+                      {selectedPackagingBox ? (
+                        <span className="text-pink-900 font-bold">
+                          {selectedPackagingBox.name} (~{(selectedPackagingBox.sellingPrice || selectedPackagingBox.costPrice || 0).toLocaleString('vi-VN')}₫)
+                        </span>
+                      ) : (
+                        'Nhấn để chọn loại hộp đựng...'
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span className="px-2 py-0.5 rounded-full bg-pink-100 text-pink-800 font-bold text-[10px]">
+                    1 hộp đã chọn
+                  </span>
+                  {isPackagingAccordionOpen ? (
+                    <ChevronUp className="w-4 h-4 text-pink-700" />
+                  ) : (
+                    <ChevronDown className="w-4 h-4 text-pink-700" />
+                  )}
+                </div>
+              </button>
+
+              {/* Tag tóm tắt hộp đang chọn khi thu gọn */}
+              {!isPackagingAccordionOpen && selectedPackagingBox && (
+                <div className="px-3 pb-3 pt-0 flex flex-wrap gap-1.5">
+                  <span className="inline-flex items-center gap-1.5 bg-pink-100 text-pink-950 border border-pink-300 px-2.5 py-1 rounded-lg text-[11px] font-bold">
+                    <span>📦 {selectedPackagingBox.name}</span>
+                    <span className="text-pink-700 font-black">
+                      (~{(selectedPackagingBox.sellingPrice || selectedPackagingBox.costPrice || 0).toLocaleString('vi-VN')}₫)
+                    </span>
+                    {selectedPackagingBox.isDefault && (
+                      <span className="bg-white/80 text-pink-700 px-1 rounded text-[9px] font-bold">
+                        Mặc định
+                      </span>
+                    )}
+                  </span>
+                </div>
+              )}
+
+              {/* Cửa sổ / List mở rộng để chọn 1 loại hộp */}
+              {isPackagingAccordionOpen && (
+                <div className="p-3 border-t border-pink-200 bg-white space-y-2.5 animate-fade-in">
+                  <div className="flex items-center justify-between text-[11px] pb-1 border-b border-zinc-100">
+                    <span className="text-zinc-500 font-medium">
+                      Chọn 1 loại hộp đựng (Cài đặt hộp mặc định trong tab <strong>Hộp & Bao Bì</strong> của Định Mức Bánh):
+                    </span>
+                  </div>
+
+                  {config.packagings.length === 0 ? (
+                    <div className="text-center py-3 text-zinc-400 text-xs">
+                      Chưa có loại hộp nào được cài đặt trong định mức bánh sinh nhật.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                      {config.packagings.map((pkg) => {
+                        const isSel = selectedPackagingId === pkg.id;
+                        return (
+                          <div
+                            key={pkg.id}
+                            onClick={() => setSelectedPackagingId(pkg.id)}
+                            className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 cursor-pointer transition select-none ${
+                              isSel
+                                ? 'bg-pink-50 border-pink-500 text-pink-950 ring-1 ring-pink-300'
+                                : 'bg-zinc-50/70 border-zinc-200 text-zinc-700 hover:bg-zinc-100/70'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                                  isSel
+                                    ? 'border-pink-600 bg-pink-600 text-white'
+                                    : 'border-zinc-300 bg-white'
+                                }`}
+                              >
+                                {isSel && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="text-xs font-bold truncate flex items-center gap-1.5">
+                                  <span className="truncate">{pkg.name}</span>
+                                  {pkg.isDefault && (
+                                    <span className="text-[9px] bg-pink-100 text-pink-700 px-1.5 py-0.2 rounded font-bold shrink-0">
+                                      Mặc định
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <span className={`text-[11px] font-black shrink-0 ${isSel ? 'text-pink-700' : 'text-zinc-500'}`}>
+                              ~{(pkg.sellingPrice || pkg.costPrice || 0).toLocaleString('vi-VN')}₫
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">
+                      Đang chọn: <strong className="text-pink-800 font-bold">{selectedPackagingBox?.name}</strong>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsPackagingAccordionOpen(false)}
+                      className="px-3.5 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs cursor-pointer shadow-xs transition"
+                    >
+                      Đóng danh sách
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Phụ kiện decor tính thêm (Dạng cửa sổ thu gọn theo yêu cầu) */}
