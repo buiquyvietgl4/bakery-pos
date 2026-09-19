@@ -7,7 +7,7 @@ import {
   Camera, Upload, Plus, Minus, Save, Sparkles, AlertTriangle, 
   FileText, CheckCircle2, Sliders, RefreshCw, HardDrive,
   Download, Trash2, ArrowUpRight, ArrowDownRight, ShieldAlert,
-  HelpCircle, ChevronRight, Cake, X, Image as ImageIcon,
+  HelpCircle, ChevronLeft, ChevronRight, Cake, X, Image as ImageIcon,
   ArrowDownCircle, ArrowUpCircle, QrCode, Copy, Check, Building2,
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
@@ -17,7 +17,6 @@ import {
 import { soundManager } from '@/lib/utils/audioAlert';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
-import { DEFAULT_BAKERY_PRODUCTS } from '@/lib/constants/bakeryData';
 import { db } from '@/lib/db/dexie';
 import { generateUUID } from '@/lib/utils/uuid';
 import { exportToCSV, exportMultiSheetExcel } from '@/lib/utils/exportExcel';
@@ -197,6 +196,16 @@ export default function AdminDashboard() {
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isAdminSyncing, setIsAdminSyncing] = useState(false);
+  const navScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollNav = (direction: 'left' | 'right') => {
+    if (navScrollRef.current) {
+      navScrollRef.current.scrollBy({
+        left: direction === 'left' ? -260 : 260,
+        behavior: 'smooth',
+      });
+    }
+  };
 
   // Khởi động watcher Auto Backup khi Admin đăng nhập
   useEffect(() => {
@@ -2905,93 +2914,146 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-6">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-200">
-        <div className="flex items-center justify-between sm:justify-start gap-4">
+    <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
+      {/* ── HEADER PHÂN HỆ QUẢN TRỊ (ROW 1: TITLE & ACTION BUTTONS) ── */}
+      <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-amber-900/10 p-4 sm:p-5 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        {/* Left: Title & Live Status */}
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 flex items-center justify-center text-white shadow-md shadow-amber-500/25 shrink-0">
+            <Shield className="w-5 h-5 drop-shadow-xs" />
+          </div>
           <div>
-            <span className="text-xs font-bold text-amber-600 uppercase tracking-wider">
-              Phân hệ Quản trị Toàn diện
-            </span>
-            <h1 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 bg-amber-100/80 border border-amber-200/80 px-2.5 py-0.5 rounded-full">
+                Phân Hệ Quản Trị Trung Tâm
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                Cloud Realtime Sync
+              </span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-amber-950 tracking-tight mt-1">
               Quản Lý Tiệm Bánh, Kho & Kế Toán
             </h1>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => setIsPrinterSettingsOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-stone-200 hover:border-blue-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-blue-50/60 cursor-pointer"
-              title="Cài đặt & kiểm tra kết nối máy in Bluetooth, USB, iPhone, Android"
-            >
-              <Printer className="w-4 h-4 text-blue-600" />
-              <span className="hidden sm:inline">Máy In POS</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={async () => {
-                setIsAdminSyncing(true);
-                try {
-                  clearProfileLocalData();
-                  await loadData();
-                  reloadAdminOrders(true);
-                  window.dispatchEvent(new Event('bakery_orders_updated'));
-                  alert('Đã xóa cache cục bộ và đồng bộ dữ liệu chuẩn 100% từ CSDL Supabase SQL!');
-                } catch (e: any) {
-                  alert('Lỗi đồng bộ: ' + (e?.message || e));
-                } finally {
-                  setIsAdminSyncing(false);
-                }
-              }}
-              disabled={isAdminSyncing}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 border border-emerald-300 hover:border-emerald-500 text-xs font-bold text-emerald-800 shadow-2xs hover:shadow-xs transition hover:bg-emerald-100/60 cursor-pointer disabled:opacity-50"
-              title="Xóa cache trình duyệt và tải lại toàn bộ dữ liệu chuẩn từ Cloud SQL"
-            >
-              <RefreshCw className={`w-4 h-4 text-emerald-600 ${isAdminSyncing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">{isAdminSyncing ? 'Đang tải...' : 'Đồng Bộ SQL'}</span>
-            </button>
-          </div>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex items-center gap-1.5 bg-zinc-200/80 p-1 rounded-2xl overflow-x-auto scrollbar-none">
-          {[
-            { id: 'overview', label: 'Kế Toán & Tài Chính', icon: BarChart3 },
-            { id: 'tax_accounting', label: 'Sổ Sách & Báo Cáo Thuế (TT 88)', icon: FileSpreadsheet },
-            { id: 'images', label: 'Quản Lý Bánh & Ảnh', icon: Cake },
-            { id: 'inventory', label: 'Kho Xuất Nhập & Vật Tư', icon: Package },
-            { id: 'recipes', label: 'Công Thức BOM', icon: BookOpen },
-            { id: 'cake_costing', label: 'Định Mức Bánh Đặt', icon: Sparkles },
-            { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode },
-            { id: 'transfer_verification', label: 'Xác Thực Chuyển Khoản', icon: ShieldCheck },
-            { id: 'ewallet', label: 'Cài Đặt Ví Điện Tử', icon: Wallet },
-            { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2 },
-            { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield },
-            { id: 'cloud', label: 'CSDL & Sao Lưu SQL', icon: Database },
-          ].map((tab) => {
-            const Icon = tab.icon;
-            const hasPendingTransfers = tab.id === 'transfer_verification' && adminPendingTransfers.length > 0;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`relative flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition ${
-                  activeTab === tab.id
-                    ? 'bg-white text-zinc-900 shadow-sm'
-                    : 'text-zinc-600 hover:text-zinc-900'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-                {hasPendingTransfers && (
-                  <span className="ml-1 px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse shadow-xs">
-                    {adminPendingTransfers.length}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2.5 shrink-0 self-start md:self-auto flex-wrap sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={() => setIsPrinterSettingsOpen(true)}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white border border-stone-200/90 hover:border-blue-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-blue-50/50 cursor-pointer"
+            title="Cài đặt máy in hóa đơn & tem nhãn bánh (Bluetooth, USB, WiFi)"
+          >
+            <Printer className="w-4 h-4 text-blue-600" />
+            <span>Máy In POS</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={async () => {
+              setIsAdminSyncing(true);
+              try {
+                clearProfileLocalData();
+                await loadData();
+                reloadAdminOrders(true);
+                window.dispatchEvent(new Event('bakery_orders_updated'));
+                alert('Đã xóa cache cục bộ và đồng bộ dữ liệu chuẩn 100% từ CSDL Supabase SQL!');
+              } catch (e: any) {
+                alert('Lỗi đồng bộ: ' + (e?.message || e));
+              } finally {
+                setIsAdminSyncing(false);
+              }
+            }}
+            disabled={isAdminSyncing}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs hover:shadow-md transition cursor-pointer disabled:opacity-50"
+            title="Xóa cache trình duyệt và tải lại toàn bộ dữ liệu chuẩn từ Cloud SQL"
+          >
+            <RefreshCw className={`w-4 h-4 text-white ${isAdminSyncing ? 'animate-spin' : ''}`} />
+            <span>{isAdminSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ SQL'}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── THANH ĐIỀU HƯỚNG TẬP TRUNG (ROW 2: DEDICATED ADMIN NAVIGATION TOOLBAR) ── */}
+      <div className="bg-white/80 backdrop-blur-md rounded-2xl border border-amber-900/10 p-1.5 shadow-2xs">
+        <div className="relative flex items-center">
+          {/* Nút cuộn trái */}
+          <button
+            type="button"
+            onClick={() => scrollNav('left')}
+            className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg bg-stone-100/90 hover:bg-stone-200 text-stone-600 transition shrink-0 cursor-pointer mr-1"
+            title="Cuộn sang trái"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
+          {/* Dải Tab */}
+          <div
+            ref={navScrollRef}
+            className="flex items-center gap-1.5 overflow-x-auto scrollbar-none scroll-smooth w-full py-0.5 px-0.5"
+          >
+            {[
+              // Nhóm 1: Tài chính & Thuế
+              { id: 'overview', label: 'Kế Toán & P&L', icon: BarChart3, group: 'finance' },
+              { id: 'tax_accounting', label: 'Sổ Sách Thuế (TT 88)', icon: FileSpreadsheet, group: 'finance' },
+              // Nhóm 2: Vận hành & Kho
+              { id: 'images', label: 'Quản Lý Bánh & Ảnh', icon: Cake, group: 'operations' },
+              { id: 'inventory', label: 'Kho & Vật Tư', icon: Package, group: 'operations' },
+              { id: 'recipes', label: 'Công Thức BOM', icon: BookOpen, group: 'operations' },
+              { id: 'cake_costing', label: 'Định Mức Bánh Đặt', icon: Sparkles, group: 'operations' },
+              // Nhóm 3: Thanh toán
+              { id: 'transfer_verification', label: 'Duyệt Chuyển Khoản', icon: ShieldCheck, group: 'payment' },
+              { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode, group: 'payment' },
+              { id: 'ewallet', label: 'Ví Điện Tử', icon: Wallet, group: 'payment' },
+              // Nhóm 4: Hệ thống
+              { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2, group: 'system' },
+              { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield, group: 'system' },
+              { id: 'cloud', label: 'CSDL & Sao Lưu SQL', icon: Database, group: 'system' },
+            ].map((tab, idx, arr) => {
+              const Icon = tab.icon;
+              const hasPendingTransfers = tab.id === 'transfer_verification' && adminPendingTransfers.length > 0;
+              const isActive = activeTab === tab.id;
+              const prevTab = arr[idx - 1];
+              const isNewGroup = prevTab && prevTab.group !== tab.group;
+
+              return (
+                <div key={tab.id} className="flex items-center shrink-0">
+                  {isNewGroup && (
+                    <div className="h-5 w-[1px] bg-stone-200/90 mx-1.5 shrink-0 hidden md:block" />
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(tab.id as any)}
+                    className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                      isActive
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-stone-500'}`} />
+                    <span>{tab.label}</span>
+                    {hasPendingTransfers && (
+                      <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse shadow-xs">
+                        {adminPendingTransfers.length}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Nút cuộn phải */}
+          <button
+            type="button"
+            onClick={() => scrollNav('right')}
+            className="hidden sm:flex items-center justify-center w-7 h-7 rounded-lg bg-stone-100/90 hover:bg-stone-200 text-stone-600 transition shrink-0 cursor-pointer ml-1"
+            title="Cuộn sang phải"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
