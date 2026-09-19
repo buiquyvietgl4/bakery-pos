@@ -133,7 +133,7 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
                 {bookCode === '01/TKN-CNKD'
                   ? `(Ban hành kèm theo ${policy?.circular_citation || 'Thông tư số 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP'})`
                   : bookCode === '01/CNKD'
-                  ? `(Ban hành kèm theo ${policy?.circular_citation || 'Thông tư số 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC'})`
+                  ? `(Ban hành kèm theo ${policy?.circular_01_cnkd_ref || 'Thông tư số 40/2021/TT-BTC & Nghị định 68/2026/NĐ-CP (NĐ 141/2026/NĐ-CP)'})`
                   : bookCode === '01-2/BK-HĐKD'
                   ? '(Ban hành kèm theo Thông tư số 40/2021/TT-BTC của Bộ Tài chính)'
                   : '(Ban hành kèm theo Thông tư số 88/2021/TT-BTC & Thông tư 152/2025/TT-BTC)'}

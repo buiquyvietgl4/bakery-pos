@@ -1393,7 +1393,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                     </>
                   ) : (
                     <>
-                      Theo <b>Thông tư 40/2021/TT-BTC</b> và <b>Thông tư 50/2026/TT-BTC</b>, hộ kinh doanh có tổng doanh thu
+                      Theo <b>Nghị định 68/2026/NĐ-CP</b>, <b>Nghị định 141/2026/NĐ-CP</b> và <b>Thông tư 40/2021/TT-BTC</b>, hộ kinh doanh có tổng doanh thu
                       <b> vượt 1 tỷ đồng/năm</b> bắt buộc áp dụng phương pháp Kê khai định kỳ (tháng/quý), sử dụng
                       <b> Hóa đơn điện tử khởi tạo từ máy tính tiền</b> và nộp thuế theo <b>Mẫu số 01/CNKD</b>
                       (Sản xuất chế biến bánh: GTGT 3%, TNCN 1.5%).
@@ -1761,7 +1761,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       Mẫu Số 01/CNKD
                     </span>
                     <span className="text-xs text-zinc-500">
-                      Thông tư 40/2021/TT-BTC &amp; Thông tư 50/2026/TT-BTC
+                      Thông tư 40/2021/TT-BTC &amp; Nghị định 68/2026/NĐ-CP (NĐ 141/2026/NĐ-CP)
                     </span>
                   </div>
                   <h3 className="text-lg font-black text-zinc-900 mt-1">
@@ -1811,6 +1811,32 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                     <Printer className="w-4 h-4 text-amber-400" />
                     <span>In Phụ Lục 01-2 (A4)</span>
                   </button>
+                </div>
+              </div>
+
+              {/* Khối Thông Tin Hành Chính & Căn Cứ Pháp Lý Cho Mẫu 01/CNKD */}
+              <div className="bg-rose-50/40 border border-rose-200 rounded-xl p-3.5 sm:p-4 text-xs space-y-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-zinc-700">
+                  <div>
+                    <span className="font-mono text-zinc-500 font-bold">[01]</span> Kỳ tính thuế: <b className="text-zinc-900">{periodLabel}</b> ({startDateStr} đến {endDateStr})
+                  </div>
+                  <div>
+                    <span className="font-mono text-zinc-500 font-bold">[02]</span> Người nộp thuế: <b className="text-zinc-900">{businessInfo.shop_name}</b> (Đại diện: {businessInfo.owner_name})
+                  </div>
+                  <div>
+                    <span className="font-mono text-zinc-500 font-bold">[03]</span> Mã số thuế: <b className="font-mono text-zinc-900">{businessInfo.tax_code}</b> - ĐT: {businessInfo.phone}
+                  </div>
+                  <div>
+                    <span className="font-mono text-zinc-500 font-bold">[04]</span> Địa chỉ: <span className="text-zinc-900">{businessInfo.business_address}</span>
+                  </div>
+                </div>
+                <div className="pt-2 border-t border-rose-200/80 flex items-center justify-between flex-wrap gap-2 text-[11px] text-rose-950">
+                  <span className="font-medium">
+                    🛡️ Căn cứ pháp lý: <b>Nghị định 68/2026/NĐ-CP, Nghị định 141/2026/NĐ-CP &amp; Thông tư 40/2021/TT-BTC</b> (Doanh thu năm vượt ngưỡng 1 tỷ đồng)
+                  </span>
+                  <span className="bg-rose-200/70 text-rose-950 px-2.5 py-0.5 rounded-full font-bold">
+                    BẮT BUỘC KÊ KHAI ĐỊNH KỲ &amp; HÓA ĐƠN ĐIỆN TỬ
+                  </span>
                 </div>
               </div>
 

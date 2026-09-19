@@ -44,7 +44,7 @@ export interface TaxPolicyConfig {
   
   // Viện dẫn căn cứ pháp lý hiển thị trên đầu các biểu mẫu xuất ra
   circular_01_tkn_ref: string;      // Tiêu ngữ Mẫu 01/TKN-CNKD (NĐ 141/2026 & TT 50/2026)
-  circular_01_cnkd_ref: string;     // Tiêu ngữ Mẫu 01/CNKD (TT 40/2021 & TT 50/2026)
+  circular_01_cnkd_ref: string;     // Tiêu ngữ Mẫu 01/CNKD (TT 40/2021 & NĐ 68/2026, NĐ 141/2026)
   circular_01_2_bkhdkd_ref: string; // Tiêu ngữ Phụ lục 01-2/BK-HĐKD (TT 40/2021)
   circular_books_ref: string;       // Tiêu ngữ 7 Sổ kế toán (TT 88/2021 & TT 152/2025)
 

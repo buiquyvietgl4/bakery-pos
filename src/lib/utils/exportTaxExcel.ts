@@ -342,7 +342,7 @@ export function export01TknCnkdExcel(
 
 /**
  * Xuất Tờ khai thuế Mẫu 01/CNKD KÈM PHỤ LỤC 01-2/BK-HĐKD (Doanh thu > 1 Tỷ/năm - Kê khai nộp thuế)
- * Chuẩn định dạng 2 Sheet của Tổng cục Thuế theo Thông tư 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC
+ * Chuẩn định dạng 2 Sheet của Tổng cục Thuế theo Thông tư 40/2021/TT-BTC & Nghị định 68/2026/NĐ-CP (NĐ 141/2026/NĐ-CP)
  */
 export function export01CnkdExcel(
   info: HouseholdBusinessInfo,
@@ -355,7 +355,7 @@ export function export01CnkdExcel(
   },
   policy?: TaxPolicyConfig
 ) {
-  const circularCnkdRef = policy?.circular_01_cnkd_ref || 'Thông tư số 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC';
+  const circularCnkdRef = policy?.circular_01_cnkd_ref || 'Thông tư số 40/2021/TT-BTC & Nghị định 68/2026/NĐ-CP (NĐ 141/2026/NĐ-CP)';
   const circularBkRef = policy?.circular_01_2_bkhdkd_ref || 'Phụ lục 01-2/BK-HĐKD ban hành kèm theo Thông tư số 40/2021/TT-BTC';
 
   // ── SHEET 1: TỜ KHAI CHÍNH MẪU 01/CNKD (Chỉ tiêu [28] đến [35] khớp 100% bản in) ──

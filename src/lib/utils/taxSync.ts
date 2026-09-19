@@ -59,7 +59,7 @@ export const DEFAULT_TAX_POLICY: TaxPolicyConfig = {
   notes: 'Bãi bỏ thuế khoán, bãi bỏ lệ phí môn bài. Doanh thu <= 1 tỷ miễn 100% thuế GTGT & TNCN. Doanh thu > 1 tỷ nộp thuế theo phương pháp kê khai định kỳ và áp dụng HĐĐT máy tính tiền.',
   circular_citation: 'Thông tư số 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP',
   circular_01_tkn_ref: 'Mẫu số 01/TKN-CNKD ban hành kèm theo Thông tư số 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP',
-  circular_01_cnkd_ref: 'Mẫu số 01/CNKD ban hành kèm theo Thông tư số 40/2021/TT-BTC & Thông tư 50/2026/TT-BTC',
+  circular_01_cnkd_ref: 'Mẫu số 01/CNKD ban hành kèm theo Thông tư số 40/2021/TT-BTC & Nghị định số 68/2026/NĐ-CP (NĐ 141/2026/NĐ-CP)',
   circular_01_2_bkhdkd_ref: 'Phụ lục 01-2/BK-HĐKD ban hành kèm theo Thông tư số 40/2021/TT-BTC',
   circular_books_ref: 'Thông tư số 88/2021/TT-BTC & Thông tư số 152/2025/TT-BTC',
   tax_groups: TAX_BUSINESS_GROUPS,
