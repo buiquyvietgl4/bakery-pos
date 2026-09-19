@@ -987,6 +987,7 @@ export function BirthdayCakeOrderModal({
                     type="text"
                     inputMode="numeric"
                     value={formatCurrencyInput(shippingFee)}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setShippingFee(parseCurrencyInput(e.target.value))}
                     placeholder="0"
                     className="w-full p-2.5 rounded-xl bg-white border border-blue-200 font-bold text-xs text-zinc-900 text-right"
@@ -1070,6 +1071,7 @@ export function BirthdayCakeOrderModal({
                   type="text"
                   inputMode="numeric"
                   value={formatCurrencyInput(finalPriceInput)}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setFinalPriceInput(parseCurrencyInput(e.target.value))}
                   placeholder="Giá bán chốt"
                   className="w-28 sm:w-32 px-2.5 py-1.5 rounded-xl border-2 border-pink-500 bg-white font-black text-sm text-pink-700 focus:outline-none text-center shadow-xs"

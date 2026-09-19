@@ -348,6 +348,7 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
                 type="text"
                 inputMode="numeric"
                 value={formatCurrencyInput(actualCashInput)}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setActualCashInput(parseCurrencyInput(e.target.value).toString())}
                 placeholder="Nhập số tiền thực tế..."
                 disabled={!!existingClosedRecord}

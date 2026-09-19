@@ -3941,7 +3941,8 @@ export default function AdminDashboard() {
                           type="number"
                           min="0"
                           value={tempStockValue}
-                          onChange={(e) => setTempStockValue(Math.max(0, parseInt(e.target.value) || 0))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setTempStockValue(e.target.value === '' ? ('' as any) : Math.max(0, parseInt(e.target.value) || 0))}
                           className="w-16 h-8 text-center bg-white border-2 border-amber-400 rounded-xl text-sm font-black text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
                           autoFocus
                           title="Gõ trực tiếp số lượng có sẵn"
@@ -4236,6 +4237,7 @@ export default function AdminDashboard() {
                     inputMode="numeric"
                     required
                     value={formatCurrencyInput(newProdPrice)}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNewProdPrice(parseCurrencyInput(e.target.value))}
                     placeholder="VD: 35.000"
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-amber-600 text-sm"
@@ -4253,6 +4255,7 @@ export default function AdminDashboard() {
                       inputMode="numeric"
                       required
                       value={formatCurrencyInput(newProdImportPrice)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setNewProdImportPrice(parseCurrencyInput(e.target.value))}
                       placeholder="VD: 25.000"
                       className="w-full mt-1 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 font-black text-blue-700 text-sm"
@@ -4322,7 +4325,8 @@ export default function AdminDashboard() {
                       type="number"
                       min="0"
                       value={newProdStockQty}
-                      onChange={(e) => setNewProdStockQty(Math.max(0, parseInt(e.target.value) || 0))}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setNewProdStockQty(e.target.value === '' ? ('' as any) : Math.max(0, parseInt(e.target.value) || 0))}
                       className="w-full p-2.5 pr-12 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-zinc-900 text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none"
                       placeholder="10"
                     />
@@ -4558,7 +4562,8 @@ export default function AdminDashboard() {
                             min="0.01"
                             step="any"
                             value={poPackageQty || ''}
-                            onChange={(e) => setPoPackageQty(Number(e.target.value))}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => setPoPackageQty(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                             placeholder="VD: 5"
                             className="w-full mt-1 p-2 rounded-xl border border-zinc-300 bg-white font-black text-amber-900 text-sm"
                           />
@@ -4574,6 +4579,7 @@ export default function AdminDashboard() {
                             type="text"
                             inputMode="numeric"
                             value={formatCurrencyInput(poPackageUnitPrice)}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => setPoPackageUnitPrice(parseCurrencyInput(e.target.value))}
                             placeholder="VD: 35.000 hoặc 450.000"
                             className="w-full p-2.5 pr-8 rounded-xl border border-zinc-300 bg-white font-black text-amber-700 text-sm"
@@ -4593,6 +4599,7 @@ export default function AdminDashboard() {
                           <input
                             type="text"
                             value={poBaseUnitName}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => setPoBaseUnitName(e.target.value)}
                             placeholder="g, ml, quả, cái..."
                             className="w-full mt-1 p-2 rounded-xl border border-amber-300 bg-white font-bold text-zinc-900"
@@ -4610,7 +4617,8 @@ export default function AdminDashboard() {
                               min="0.001"
                               step="any"
                               value={poConversionRate || ''}
-                              onChange={(e) => setPoConversionRate(Math.max(0.001, Number(e.target.value)))}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => setPoConversionRate(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                               placeholder="1000"
                               className="flex-1 p-2 rounded-xl border border-amber-300 bg-white font-black text-amber-900 text-xs text-center"
                             />
@@ -4726,7 +4734,8 @@ export default function AdminDashboard() {
                         <input
                           type="number"
                           value={poProductQty || ''}
-                          onChange={(e) => setPoProductQty(Number(e.target.value))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setPoProductQty(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                           placeholder="Nhập số lượng..."
                           className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
                         />
@@ -4737,6 +4746,7 @@ export default function AdminDashboard() {
                           type="text"
                           inputMode="numeric"
                           value={formatCurrencyInput(poProductUnitPrice)}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => setPoProductUnitPrice(parseCurrencyInput(e.target.value))}
                           placeholder="Nhập đơn giá (VD: 30.000)..."
                           className="w-full mt-1 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 font-bold text-blue-700"
@@ -4796,7 +4806,8 @@ export default function AdminDashboard() {
                   <input
                     type="number"
                     value={soQty || ''}
-                    onChange={(e) => setSoQty(Number(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setSoQty(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                     placeholder="Nhập số lượng xuất..."
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-rose-600"
                   />
@@ -5500,7 +5511,8 @@ export default function AdminDashboard() {
                       type="number"
                       min="1"
                       value={newIngConversionRate || ''}
-                      onChange={(e) => setNewIngConversionRate(Math.max(1, Number(e.target.value)))}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setNewIngConversionRate(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                       className="flex-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-amber-900"
                     />
                     <span className="text-xs font-bold text-zinc-600 whitespace-nowrap">{newIngUnit || 'đơn vị kho'}</span>
@@ -5538,7 +5550,8 @@ export default function AdminDashboard() {
                   <input
                     type="number"
                     value={newIngStockQty || ''}
-                    onChange={(e) => setNewIngStockQty(Number(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNewIngStockQty(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
                   />
                 </div>
@@ -5551,6 +5564,7 @@ export default function AdminDashboard() {
                     type="text"
                     inputMode="numeric"
                     value={formatCurrencyInput(newIngAvgCost)}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setNewIngAvgCost(parseCurrencyInput(e.target.value))}
                     placeholder="VD: 30"
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
@@ -5566,7 +5580,8 @@ export default function AdminDashboard() {
                   <input
                     type="number"
                     value={newIngReorderLevel || ''}
-                    onChange={(e) => setNewIngReorderLevel(Number(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNewIngReorderLevel(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
                   />
                 </div>
@@ -5577,7 +5592,8 @@ export default function AdminDashboard() {
                 <input
                   type="number"
                   value={newIngWastagePct || ''}
-                  onChange={(e) => setNewIngWastagePct(Number(e.target.value))}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setNewIngWastagePct(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                   className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
                 />
               </div>
@@ -5744,7 +5760,8 @@ export default function AdminDashboard() {
                       type="number"
                       min="1"
                       value={editIngConversionRate || ''}
-                      onChange={(e) => setEditIngConversionRate(Math.max(1, Number(e.target.value)))}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setEditIngConversionRate(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                       className="flex-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-amber-900"
                     />
                     <span className="text-xs font-bold text-zinc-600 whitespace-nowrap">{editIngUnit || 'đơn vị kho'}</span>
@@ -5782,7 +5799,8 @@ export default function AdminDashboard() {
                   <input
                     type="number"
                     value={editIngStockQty}
-                    onChange={(e) => setEditIngStockQty(Number(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setEditIngStockQty(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-zinc-900"
                   />
                   {editIngConversionRate > 1 && (
@@ -5800,6 +5818,7 @@ export default function AdminDashboard() {
                     type="text"
                     inputMode="numeric"
                     value={formatCurrencyInput(editIngAvgCost)}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setEditIngAvgCost(parseCurrencyInput(e.target.value))}
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
                   />
@@ -5814,7 +5833,8 @@ export default function AdminDashboard() {
                   <input
                     type="number"
                     value={editIngReorderLevel || ''}
-                    onChange={(e) => setEditIngReorderLevel(Number(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setEditIngReorderLevel(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
                   />
                 </div>
@@ -5825,7 +5845,8 @@ export default function AdminDashboard() {
                 <input
                   type="number"
                   value={editIngWastagePct || ''}
-                  onChange={(e) => setEditIngWastagePct(Number(e.target.value))}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => setEditIngWastagePct(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                   className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
                 />
               </div>
@@ -6222,7 +6243,8 @@ export default function AdminDashboard() {
                     min={1}
                     required
                     value={newRecipeYield || ''}
-                    onChange={(e) => setNewRecipeYield(Math.max(1, Number(e.target.value)))}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNewRecipeYield(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                     className="w-full p-2 bg-white border border-zinc-200 rounded-xl font-black text-center text-sm"
                   />
                 </div>
@@ -6247,7 +6269,8 @@ export default function AdminDashboard() {
                     min={10}
                     max={80}
                     value={newRecipeFoodCostPct || ''}
-                    onChange={(e) => setNewRecipeFoodCostPct(Number(e.target.value))}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNewRecipeFoodCostPct(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                     className="w-full p-2 bg-white border border-zinc-200 rounded-xl font-black text-center text-sm text-amber-700"
                   />
                 </div>
@@ -6271,6 +6294,7 @@ export default function AdminDashboard() {
                         max={300}
                         required
                         value={newRecipeBakeTime}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) => setNewRecipeBakeTime(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full p-2 pr-12 bg-white border border-orange-300 rounded-xl font-black text-center text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-orange-400"
                         placeholder="25"
@@ -6289,6 +6313,7 @@ export default function AdminDashboard() {
                         max={350}
                         required
                         value={newRecipeBakeTemp}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) => setNewRecipeBakeTemp(e.target.value === '' ? '' : Number(e.target.value))}
                         className="w-full p-2 pr-10 bg-white border border-orange-300 rounded-xl font-black text-center text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-orange-400"
                         placeholder="190"
@@ -6351,7 +6376,8 @@ export default function AdminDashboard() {
                               min={0.1}
                               step="any"
                               value={item.quantity || ''}
-                              onChange={(e) => handleUpdateRecipeItemRow(idx, 'quantity', Number(e.target.value))}
+                              onFocus={(e) => e.target.select()}
+                              onChange={(e) => handleUpdateRecipeItemRow(idx, 'quantity', e.target.value === '' ? ('' as any) : Number(e.target.value))}
                               className="w-24 p-1.5 bg-white border border-zinc-200 rounded-lg font-black text-center text-xs focus:ring-1 focus:ring-amber-500"
                               placeholder="100"
                             />

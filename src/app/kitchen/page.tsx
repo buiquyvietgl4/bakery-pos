@@ -5086,7 +5086,8 @@ export default function KitchenPage() {
                           min={1}
                           max={240}
                           value={customBakeMinutes}
-                          onChange={(e) => setCustomBakeMinutes(Math.max(1, parseInt(e.target.value) || 1))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setCustomBakeMinutes(e.target.value === '' ? '' : Math.max(1, parseInt(e.target.value) || 1))}
                           className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-white font-bold text-center text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
                         />
                         <span className="text-xs font-bold text-zinc-400">phút</span>
@@ -5103,7 +5104,8 @@ export default function KitchenPage() {
                           min={50}
                           max={300}
                           value={customBakeTemp}
-                          onChange={(e) => setCustomBakeTemp(Math.max(50, parseInt(e.target.value) || 150))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setCustomBakeTemp(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value) || 0))}
                           className="w-full px-3 py-2 rounded-xl bg-zinc-900 border border-zinc-700 text-white font-bold text-center text-sm focus:outline-none focus:ring-1 focus:ring-orange-400"
                         />
                         <span className="text-xs font-bold text-zinc-400">°C</span>

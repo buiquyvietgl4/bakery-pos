@@ -707,20 +707,21 @@ export default function POSPage() {
   const handleReportSpoilage = (e: React.FormEvent) => {
     e.preventDefault();
     const prodId = spoilProductId || (products[0]?.id ?? '');
-    if (!prodId || spoilQty <= 0) return;
+    const actualQty = Math.max(1, Number(spoilQty) || 1);
+    if (!prodId || actualQty <= 0) return;
     const targetProduct = products.find((p) => p.id === prodId);
     if (!targetProduct) return;
 
     const baseCost = (targetProduct as any).base_cost_price || Math.round((targetProduct.selling_price || 0) * 0.35);
     const sellingPrice = targetProduct.selling_price || 0;
-    const totalCostLoss = baseCost * spoilQty;
-    const totalRevenueLoss = sellingPrice * spoilQty;
+    const totalCostLoss = baseCost * actualQty;
+    const totalRevenueLoss = sellingPrice * actualQty;
 
     // 1. Thêm vào nhật ký hao hụt
     addSpoilageLog({
       productId: targetProduct.id,
       productName: targetProduct.name,
-      quantity: spoilQty,
+      quantity: actualQty,
       unit: targetProduct.unit || 'cái',
       baseCost,
       sellingPrice,
@@ -733,11 +734,11 @@ export default function POSPage() {
 
     // 2. Trừ tồn kho sản phẩm thực tế
     const currentStock = targetProduct.stock_qty ?? 0;
-    const newStock = Math.max(0, currentStock - spoilQty);
+    const newStock = Math.max(0, currentStock - actualQty);
     updateProductStock(targetProduct.id, newStock);
 
     // 3. Thông báo thành công
-    setSpoilSuccessMsg(`Đã ghi nhận báo hủy ${spoilQty} ${targetProduct.unit || 'cái'} "${targetProduct.name}" (Thiệt hại vốn: ${totalCostLoss.toLocaleString('vi-VN')}₫). Đã tự động trừ tồn kho!`);
+    setSpoilSuccessMsg(`Đã ghi nhận báo hủy ${actualQty} ${targetProduct.unit || 'cái'} "${targetProduct.name}" (Thiệt hại vốn: ${totalCostLoss.toLocaleString('vi-VN')}₫). Đã tự động trừ tồn kho!`);
     setTimeout(() => setSpoilSuccessMsg(null), 6000);
 
     // Reset form
@@ -4272,11 +4273,12 @@ export default function POSPage() {
                       min="0"
                       max="100"
                       value={discountPercent || ''}
-                      onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value))))}
-                      placeholder="0"
-                      className="w-full pr-6 pl-2.5 py-1 text-right bg-stone-50 border border-stone-200 rounded-lg text-xs font-black text-amber-800 focus:bg-white focus:outline-amber-500"
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setDiscountPercent(e.target.value === '' ? ('' as any) : Math.min(100, Math.max(0, Number(e.target.value))))}
+                      placeholder="Nhập % giảm..."
+                      className="w-full pr-7 pl-3 py-1.5 text-right bg-white border border-stone-200 rounded-xl text-xs font-black text-amber-800 focus:outline-amber-500"
                     />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 pointer-events-none">%</span>
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 pointer-events-none">%</span>
                   </div>
                 ) : (
                   <div className="flex-1 relative">
@@ -4284,11 +4286,12 @@ export default function POSPage() {
                       type="text"
                       inputMode="numeric"
                       value={formatCurrencyInput(discountCustomAmount)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setDiscountCustomAmount(parseCurrencyInput(e.target.value))}
-                      placeholder="0"
-                      className="w-full pr-6 pl-2.5 py-1 text-right bg-stone-50 border border-stone-200 rounded-lg text-xs font-black text-amber-800 focus:bg-white focus:outline-amber-500"
+                      placeholder="Nhập số tiền giảm (VND)..."
+                      className="w-full pr-7 pl-3 py-1.5 text-right bg-white border border-stone-200 rounded-xl text-xs font-black text-amber-800 focus:outline-amber-500"
                     />
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 pointer-events-none">₫</span>
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-zinc-400 pointer-events-none">₫</span>
                   </div>
                 )}
               </div>
@@ -5060,6 +5063,7 @@ export default function POSPage() {
                       inputMode="numeric"
                       required
                       value={formatCurrencyInput(preorderForm.totalPrice)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => setPreorderForm({ ...preorderForm, totalPrice: parseCurrencyInput(e.target.value) })}
                       placeholder="VD: 320.000"
                       className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-amber-700 text-sm min-w-0"
@@ -5091,7 +5095,8 @@ export default function POSPage() {
                       min={preorderDiscountMode === 'percent' ? '0' : undefined}
                       max={preorderDiscountMode === 'percent' ? '100' : undefined}
                       value={preorderDiscountMode === 'percent' ? (preorderDiscountVal || '') : formatCurrencyInput(preorderDiscountVal)}
-                      onChange={(e) => setPreorderDiscountVal(preorderDiscountMode === 'percent' ? Math.min(100, Math.max(0, Number(e.target.value))) : parseCurrencyInput(e.target.value))}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setPreorderDiscountVal(preorderDiscountMode === 'percent' ? (e.target.value === '' ? ('' as any) : Math.min(100, Math.max(0, Number(e.target.value)))) : parseCurrencyInput(e.target.value))}
                       placeholder={preorderDiscountMode === 'percent' ? 'VD: 10 (%)' : 'VD: 50.000 (₫)'}
                       className="w-full mt-1 p-2 rounded-xl bg-white border border-zinc-200 font-black text-emerald-600 text-sm min-w-0"
                     />
@@ -5130,6 +5135,7 @@ export default function POSPage() {
                     type="text"
                     inputMode="numeric"
                     value={preorderForm.depositAmount === undefined || preorderForm.depositAmount === null ? '' : (preorderForm.depositAmount === 0 ? '0' : formatCurrencyInput(preorderForm.depositAmount))}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setPreorderForm({ ...preorderForm, depositAmount: parseCurrencyInput(e.target.value) })}
                     placeholder={`Thu đủ: ${(preorderFinalTotal || 0).toLocaleString('vi-VN')}₫`}
                     className="w-full p-2 rounded-xl bg-white border border-amber-300 font-black text-emerald-700 text-sm text-right"
@@ -6217,6 +6223,7 @@ export default function POSPage() {
                 type="text"
                 inputMode="numeric"
                 value={formatCurrencyInput(closingCashInput)}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setClosingCashInput(parseCurrencyInput(e.target.value))}
                 placeholder="Nhập số tiền đếm trong két..."
                 className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-base font-black text-zinc-900"
@@ -6424,6 +6431,7 @@ export default function POSPage() {
                       type="text"
                       inputMode="numeric"
                       value={posDepositAmount === null ? '' : (posDepositAmount === 0 ? '0' : formatCurrencyInput(posDepositAmount))}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const val = e.target.value === '' ? null : parseCurrencyInput(e.target.value);
                         setPosDepositAmount(val);
@@ -6516,6 +6524,7 @@ export default function POSPage() {
                           type="text"
                           inputMode="numeric"
                           value={formatCurrencyInput(posShippingFee)}
+                          onFocus={(e) => e.target.select()}
                           onChange={(e) => setPosShippingFee(parseCurrencyInput(e.target.value))}
                           placeholder="0 (miễn phí)"
                           className="w-full px-2.5 py-2 bg-white border border-emerald-300/80 rounded-xl text-xs font-bold text-zinc-900 focus:outline-emerald-500 text-right shadow-2xs min-w-0"
@@ -6566,6 +6575,7 @@ export default function POSPage() {
                       type="text"
                       inputMode="numeric"
                       value={posDepositAmount === null ? '' : (posDepositAmount === 0 ? '0' : formatCurrencyInput(posDepositAmount))}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const val = e.target.value === '' ? null : parseCurrencyInput(e.target.value);
                         setPosDepositAmount(val);
@@ -6698,7 +6708,8 @@ export default function POSPage() {
                         min="0"
                         max="100"
                         value={discountPercent || ''}
-                        onChange={(e) => setDiscountPercent(Math.min(100, Math.max(0, Number(e.target.value))))}
+                        onFocus={(e) => e.target.select()}
+                        onChange={(e) => setDiscountPercent(e.target.value === '' ? ('' as any) : Math.min(100, Math.max(0, Number(e.target.value))))}
                         placeholder="Nhập % giảm..."
                         className="w-full pr-7 pl-3 py-1.5 text-right bg-white border border-stone-200 rounded-xl text-xs font-black text-amber-800 focus:outline-amber-500"
                       />
@@ -6710,6 +6721,7 @@ export default function POSPage() {
                         type="text"
                         inputMode="numeric"
                         value={formatCurrencyInput(discountCustomAmount)}
+                        onFocus={(e) => e.target.select()}
                         onChange={(e) => setDiscountCustomAmount(parseCurrencyInput(e.target.value))}
                         placeholder="Nhập số tiền giảm (VND)..."
                         className="w-full pr-7 pl-3 py-1.5 text-right bg-white border border-stone-200 rounded-xl text-xs font-black text-amber-800 focus:outline-amber-500"
@@ -6831,6 +6843,7 @@ export default function POSPage() {
                     type="text"
                     inputMode="numeric"
                     value={formatCurrencyInput(cashGiven)}
+                    onFocus={(e) => e.target.select()}
                     onChange={(e) => setCashGiven(parseCurrencyInput(e.target.value))}
                     placeholder={(dueNow || 0).toLocaleString('vi-VN')}
                     className="w-36 px-2.5 py-1.5 text-right font-black text-sm bg-white border border-zinc-200 rounded-lg text-zinc-900"
@@ -7811,14 +7824,21 @@ export default function POSPage() {
                                     type="number"
                                     min="0"
                                     value={editingStockVal}
-                                    onChange={(e) => setEditingStockVal(Number(e.target.value))}
+                                    onFocus={(e) => e.target.select()}
+                                    onChange={(e) => setEditingStockVal(e.target.value === '' ? ('' as any) : Number(e.target.value))}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        updateProductStock(product.id, Number(editingStockVal) || 0);
+                                        setEditingStockId(null);
+                                      }
+                                    }}
                                     className="w-16 px-1.5 py-0.5 border border-emerald-400 rounded-lg text-xs font-black text-center"
                                     autoFocus
                                   />
                                   <button
                                     type="button"
                                     onClick={() => {
-                                      updateProductStock(product.id, editingStockVal);
+                                      updateProductStock(product.id, Number(editingStockVal) || 0);
                                       setEditingStockId(null);
                                     }}
                                     className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
@@ -7968,7 +7988,8 @@ export default function POSPage() {
                             return p?.stock_qty ?? 99;
                           })()}
                           value={spoilQty}
-                          onChange={(e) => setSpoilQty(Math.max(1, parseInt(e.target.value) || 1))}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setSpoilQty(e.target.value === '' ? ('' as any) : Number(e.target.value))}
                           className="w-full p-2.5 bg-white border border-zinc-300 rounded-xl font-black text-rose-600 text-center text-sm"
                         />
                         <span className="text-xs text-zinc-500 font-bold shrink-0">

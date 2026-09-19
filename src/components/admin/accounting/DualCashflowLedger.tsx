@@ -640,6 +640,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
                   inputMode="numeric"
                   required
                   value={formatCurrencyInput(txAmount)}
+                  onFocus={(e) => e.target.select()}
                   onChange={(e) => setTxAmount(parseCurrencyInput(e.target.value))}
                   placeholder="Ví dụ: 500.000"
                   className="w-full p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-sm text-zinc-900 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"

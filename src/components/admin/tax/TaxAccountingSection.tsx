@@ -540,6 +540,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
               <input
                 type="number"
                 value={selectedYear}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setSelectedYear(Number(e.target.value))}
                 className="w-16 px-2 py-1 rounded-lg bg-zinc-50 border border-zinc-200 font-bold text-zinc-800"
               />
@@ -2431,8 +2432,9 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       type="number"
                       placeholder="VD: 45"
                       value={businessInfo.business_area || ''}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
-                        const upd = { ...businessInfo, business_area: Number(e.target.value) || 0 };
+                        const upd = { ...businessInfo, business_area: e.target.value === '' ? ('' as any) : Number(e.target.value) };
                         setBusinessInfo(upd);
                         saveHouseholdBusinessInfo(upd);
                         triggerTaxAutoSyncToDb(upd, taxPolicy);
@@ -2448,9 +2450,10 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                     <input
                       type="number"
                       placeholder="VD: 3"
-                      value={businessInfo.regular_employees_count || 1}
+                      value={businessInfo.regular_employees_count || ''}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
-                        const upd = { ...businessInfo, regular_employees_count: Number(e.target.value) || 1 };
+                        const upd = { ...businessInfo, regular_employees_count: e.target.value === '' ? ('' as any) : Number(e.target.value) };
                         setBusinessInfo(upd);
                         saveHouseholdBusinessInfo(upd);
                         triggerTaxAutoSyncToDb(upd, taxPolicy);
@@ -2619,6 +2622,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       type="number"
                       step={50000000}
                       value={taxPolicy.annual_threshold}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const val = Number(e.target.value) || 0;
                         const upd: TaxPolicyConfig = { ...taxPolicy, annual_threshold: val };
@@ -2638,6 +2642,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       type="number"
                       step={0.1}
                       value={taxPolicy.tax_groups?.find(g => g.id === 3)?.vat_percent ?? 3}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const v = Number(e.target.value) || 0;
                         const groups = (taxPolicy.tax_groups || TAX_BUSINESS_GROUPS).map(g =>
@@ -2660,6 +2665,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       type="number"
                       step={0.1}
                       value={taxPolicy.tax_groups?.find(g => g.id === 3)?.pit_percent ?? 1.5}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                         const v = Number(e.target.value) || 0;
                         const groups = (taxPolicy.tax_groups || TAX_BUSINESS_GROUPS).map(g =>

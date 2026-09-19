@@ -144,6 +144,7 @@ export const OpexManager: React.FC<OpexManagerProps> = ({
                 inputMode="numeric"
                 required
                 value={formatCurrencyInput(newAmount)}
+                onFocus={(e) => e.target.select()}
                 onChange={(e) => setNewAmount(parseCurrencyInput(e.target.value))}
                 placeholder="Ví dụ: 2.500.000"
                 className="w-full p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-rose-600 text-base focus:outline-none focus:ring-2 focus:ring-rose-500/20"

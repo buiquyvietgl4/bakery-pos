@@ -529,7 +529,8 @@ export function CustomCakeCostingSettings() {
               min="10"
               max="100"
               value={config.targetFoodCostPct}
-              onChange={(e) => setConfig({ ...config, targetFoodCostPct: parseFloat(e.target.value) || 36.5 })}
+              onFocus={(e) => e.target.select()}
+              onChange={(e) => setConfig({ ...config, targetFoodCostPct: e.target.value === '' ? ('' as any) : parseFloat(e.target.value) })}
               className="w-14 text-center font-black text-xs text-pink-700 bg-pink-50 rounded-lg py-0.5 border border-pink-200 focus:outline-none"
               title="Tỷ lệ giá vốn mục tiêu, mặc định 36.5%. Tự động tính giá bán gợi ý = Cost / %"
             />
@@ -935,6 +936,7 @@ export function CustomCakeCostingSettings() {
                     <input
                       type="text"
                       value={formatCurrencyInput(fill.costPrice || 0)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => handleUpdateFilling(idx, 'costPrice', parseCurrencyInput(e.target.value))}
                       className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
                     />
@@ -944,6 +946,7 @@ export function CustomCakeCostingSettings() {
                     <input
                       type="text"
                       value={formatCurrencyInput(fill.extraPrice || 0)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => handleUpdateFilling(idx, 'extraPrice', parseCurrencyInput(e.target.value))}
                       className="w-full font-black text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
                     />
@@ -1047,6 +1050,7 @@ export function CustomCakeCostingSettings() {
                     <input
                       type="text"
                       value={formatCurrencyInput(pkg.costPrice || 0)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => handleUpdatePackaging(idx, 'costPrice', parseCurrencyInput(e.target.value))}
                       className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
                     />
@@ -1056,6 +1060,7 @@ export function CustomCakeCostingSettings() {
                     <input
                       type="text"
                       value={formatCurrencyInput(pkg.sellingPrice || 0)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => handleUpdatePackaging(idx, 'sellingPrice', parseCurrencyInput(e.target.value))}
                       className="w-full font-black text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:border-pink-500 focus:outline-none"
                     />
@@ -1155,9 +1160,10 @@ export function CustomCakeCostingSettings() {
                     <input
                       type="number"
                       min="1"
-                      value={acc.quantityDefault || 1}
+                      value={acc.quantityDefault || ''}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) =>
-                        handleUpdateFreeAccessory(idx, 'quantityDefault', parseInt(e.target.value) || 1)
+                        handleUpdateFreeAccessory(idx, 'quantityDefault', e.target.value === '' ? ('' as any) : Math.max(1, parseInt(e.target.value) || 1))
                       }
                       className="w-full font-black text-zinc-900 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs text-center focus:bg-white focus:border-pink-500 focus:outline-none"
                     />
@@ -1167,6 +1173,7 @@ export function CustomCakeCostingSettings() {
                     <input
                       type="text"
                       value={formatCurrencyInput(acc.costPrice || 0)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) =>
                         handleUpdateFreeAccessory(idx, 'costPrice', parseCurrencyInput(e.target.value))
                       }
@@ -1235,6 +1242,7 @@ export function CustomCakeCostingSettings() {
                     <input
                       type="text"
                       value={formatCurrencyInput(dec.costPrice || 0)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => handleUpdateDecorAddon(idx, 'costPrice', parseCurrencyInput(e.target.value))}
                       className="w-full font-black text-rose-600 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:outline-none"
                     />
@@ -1244,6 +1252,7 @@ export function CustomCakeCostingSettings() {
                     <input
                       type="text"
                       value={formatCurrencyInput(dec.sellingPrice || 0)}
+                      onFocus={(e) => e.target.select()}
                       onChange={(e) => handleUpdateDecorAddon(idx, 'sellingPrice', parseCurrencyInput(e.target.value))}
                       className="w-full font-black text-amber-700 bg-zinc-50 border border-zinc-200 rounded-lg px-2 py-1 text-xs focus:bg-white focus:outline-none"
                     />
@@ -1653,11 +1662,13 @@ export function CustomCakeCostingSettings() {
                             type="number"
                             min={0.1}
                             step="any"
-                            value={item.quantity}
+                            value={item.quantity ?? ''}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => {
-                              const qty = parseFloat(e.target.value) || 0;
+                              const val = e.target.value;
+                              const qty = val === '' ? ('' as any) : (parseFloat(val) || 0);
                               const updated = [...editingBaseBom.size.bomIngredients];
-                              updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
+                              updated[idx] = { ...item, quantity: qty, totalCost: (typeof qty === 'number' ? qty : 0) * item.unitCost };
                               setEditingBaseBom({
                                 ...editingBaseBom,
                                 size: { ...editingBaseBom.size, bomIngredients: updated },
@@ -1914,11 +1925,13 @@ export function CustomCakeCostingSettings() {
                             type="number"
                             min={0.1}
                             step="any"
-                            value={item.quantity}
+                            value={item.quantity ?? ''}
+                            onFocus={(e) => e.target.select()}
                             onChange={(e) => {
-                              const qty = parseFloat(e.target.value) || 0;
+                              const val = e.target.value;
+                              const qty = val === '' ? ('' as any) : (parseFloat(val) || 0);
                               const updated = [...editingCreamBom.size.bomIngredients];
-                              updated[idx] = { ...item, quantity: qty, totalCost: qty * item.unitCost };
+                              updated[idx] = { ...item, quantity: qty, totalCost: (typeof qty === 'number' ? qty : 0) * item.unitCost };
                               setEditingCreamBom({
                                 ...editingCreamBom,
                                 size: { ...editingCreamBom.size, bomIngredients: updated },

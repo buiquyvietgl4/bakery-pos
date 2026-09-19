@@ -827,7 +827,8 @@ const PrintTemplateDesignerInner: React.FC<PrintTemplateDesignerModalProps> = ({
                             max="16"
                             step="0.5"
                             value={selectedElement.fontSize}
-                            onChange={(e) => handleUpdateElement(selectedElement.id, { fontSize: parseFloat(e.target.value) || 7 })}
+                            onFocus={(e) => e.target.select()}
+                            onChange={(e) => handleUpdateElement(selectedElement.id, { fontSize: e.target.value === '' ? ('' as any) : (parseFloat(e.target.value) || 7) })}
                             className="w-full px-2 py-1 bg-white border border-zinc-200 rounded-lg font-bold text-center"
                           />
                         </div>
