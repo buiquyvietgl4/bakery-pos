@@ -44,6 +44,12 @@ import { triggerServerPush } from '@/lib/utils/webPushManager';
 import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerModal';
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { ManagerPinModal } from '@/components/pos/ManagerPinModal';
+import {
+  getCurrentShiftLocally,
+  fetchCurrentShiftFromDb,
+  saveCurrentShiftToDb,
+  EVENT_CURRENT_SHIFT_UPDATED,
+} from '@/lib/utils/shiftSync';
 import { printHtml } from '@/lib/utils/printHelper';
 import { SpoilageLog, SPOILAGE_REASONS } from '@/lib/types/spoilage';
 import {
@@ -186,32 +192,20 @@ export default function POSPage() {
   }, [cartToast]);
   
   // Shift Management State
-  const [shift, setShift] = useState<ShiftState>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('bakery_current_shift');
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          return {
-            isOpen: parsed.isOpen ?? true,
-            openedAt: parsed.openedAt || new Date().toISOString(),
-            openingCash: Number(parsed.openingCash ?? 500000),
-            cashSales: Number(parsed.cashSales ?? 0),
-            transferSales: Number(parsed.transferSales ?? 0),
-            orderCount: Number(parsed.orderCount ?? 0),
-          };
-        } catch {}
-      }
-    }
-    return {
-      isOpen: true,
-      openedAt: new Date().toISOString(),
-      openingCash: 500000,
-      cashSales: 0,
-      transferSales: 0,
-      orderCount: 0,
+  const [shift, setShift] = useState<ShiftState>(() => getCurrentShiftLocally());
+
+  useEffect(() => {
+    fetchCurrentShiftFromDb().then((dbShift) => {
+      if (dbShift) setShift(dbShift);
+    });
+
+    const handleShiftUpdated = (e: any) => {
+      if (e?.detail) setShift(e.detail);
+      else setShift(getCurrentShiftLocally());
     };
-  });
+    window.addEventListener(EVENT_CURRENT_SHIFT_UPDATED, handleShiftUpdated);
+    return () => window.removeEventListener(EVENT_CURRENT_SHIFT_UPDATED, handleShiftUpdated);
+  }, []);
 
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   const [closingCashInput, setClosingCashInput] = useState<number>(0);
@@ -1721,10 +1715,10 @@ export default function POSPage() {
     };
   }, []);
 
-  // Save Shift State
+  // Save Shift State to LocalStorage and Supabase DB
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem('bakery_current_shift', JSON.stringify(shift));
+      saveCurrentShiftToDb(shift).catch(console.error);
     }
   }, [shift]);
 
@@ -3206,6 +3200,7 @@ export default function POSPage() {
               clearProfileLocalData();
               await syncOrdersFromSupabase();
               await loadProducts();
+              await fetchCurrentShiftFromDb();
               reloadOrdersData();
               alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL thành công!');
             } catch (e: any) {
@@ -3565,6 +3560,7 @@ export default function POSPage() {
                   clearProfileLocalData();
                   await syncOrdersFromSupabase();
                   await loadProducts();
+                  await fetchCurrentShiftFromDb();
                   reloadOrdersData();
                   alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL Cloud SQL thành công!');
                 } catch (err: any) {

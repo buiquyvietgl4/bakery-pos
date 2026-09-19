@@ -303,7 +303,7 @@ export function decodeProductWithMeta(product: any): any {
     import_price: meta.import_price !== undefined ? meta.import_price : (isImported ? baseCost : product.import_price),
     supplier_name: meta.supplier_name || product.supplier_name || (isImported ? 'Hàng nhập ngoài' : undefined),
     barcode: meta.barcode || product.barcode || undefined,
-    stock_qty: product.stock_qty !== undefined ? product.stock_qty : (meta.stock_qty ?? 10),
+    stock_qty: product.stock_qty !== undefined ? product.stock_qty : meta.stock_qty,
     unit: product.unit || meta.unit || 'cái',
     is_preorder_only: isImported ? false : (product.is_preorder_only ?? false),
     cake_type_label: isImported ? 'standard' : (product.cake_type_label || meta.cake_type_label || 'standard'),
@@ -350,13 +350,9 @@ export async function persistProductToSupabase(product: any): Promise<{ success:
   const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
   if (!isOnline || isLocalMode()) return { success: true };
 
-  // Khóa bảo vệ tối cao: Tuyệt đối không bao giờ đẩy các sản phẩm mẫu default (prod-*, 00000000-0000-4000-8000-*) lên Supabase
-  if (
-    product.id &&
-    (String(product.id).startsWith('prod-') ||
-      String(product.id).startsWith('00000000-0000-4000-8000-') ||
-      DEFAULT_BAKERY_PRODUCTS.some((d) => d.id === product.id || d.name.toLowerCase().trim() === String(product.name || '').toLowerCase().trim()))
-  ) {
+  // Khóa bảo vệ: Chặn đẩy các sản phẩm mẫu default chưa được cấp UUID thực (prod-*, 00000000-0000-4000-8000-*)
+  const isRealUuid = product.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(product.id) && !String(product.id).startsWith('00000000-0000-4000-8000-');
+  if (!isRealUuid && product.id && (String(product.id).startsWith('prod-') || String(product.id).startsWith('00000000-0000-4000-8000-'))) {
     console.warn('Đã chặn đẩy sản phẩm mẫu mặc định lên Supabase SQL:', product.name);
     return { success: true };
   }
@@ -443,6 +439,16 @@ export async function persistProductToSupabase(product: any): Promise<{ success:
 export function mergeProductLists(localList: any[], supabaseList: any[]): any[] {
   const deletedSet = getDeletedProductIds();
   const productMap = new Map<string, any>();
+  const nameToKeyMap = new Map<string, string>();
+
+  // Đọc dữ liệu tồn kho cục bộ nếu có
+  let localStocks: Record<string, number> = {};
+  if (typeof window !== 'undefined') {
+    try {
+      const rawStocks = localStorage.getItem(BAKERY_STOCKS_KEY);
+      if (rawStocks) localStocks = JSON.parse(rawStocks);
+    } catch {}
+  }
 
   // 1. Đưa các sản phẩm Supabase vào map trước
   if (Array.isArray(supabaseList)) {
@@ -455,7 +461,11 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
       if (idKey && deletedSet.has(idKey)) continue;
       if (nameKey && deletedSet.has(nameKey)) continue;
 
-      productMap.set(decoded.id || nameKey, decoded);
+      const primaryKey = decoded.id || nameKey;
+      productMap.set(primaryKey, decoded);
+      if (nameKey) {
+        nameToKeyMap.set(nameKey, primaryKey);
+      }
     }
   }
 
@@ -470,14 +480,28 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
       if (idKey && deletedSet.has(idKey)) continue;
       if (nameKey && deletedSet.has(nameKey)) continue;
 
-      const key = decoded.id || nameKey;
-      if (productMap.has(key)) {
-        const existing = productMap.get(key);
-        // CSDL Supabase là nguồn chân lý: giữ nguyên giá trị từ Supabase (existing), chỉ giữ ảnh nếu local có ảnh
-        productMap.set(key, {
+      // Khớp theo ID trực tiếp, hoặc khớp qua tên sản phẩm
+      let matchedKey = decoded.id && productMap.has(decoded.id) ? decoded.id : null;
+      if (!matchedKey && nameKey && nameToKeyMap.has(nameKey)) {
+        matchedKey = nameToKeyMap.get(nameKey)!;
+      }
+      if (!matchedKey && nameKey && productMap.has(nameKey)) {
+        matchedKey = nameKey;
+      }
+
+      if (matchedKey && productMap.has(matchedKey)) {
+        const existing = productMap.get(matchedKey);
+        // Supabase là nguồn chân lý cho thông tin, nhưng số lượng tồn kho:
+        // Ưu tiên: Supabase metadata stock_qty -> localStocks map -> decoded.stock_qty -> 10
+        const resolvedStock = existing.stock_qty !== undefined
+          ? existing.stock_qty
+          : (localStocks[matchedKey] ?? (nameKey ? localStocks[nameKey] : undefined) ?? decoded.stock_qty ?? 10);
+
+        productMap.set(matchedKey, {
           ...decoded,
           ...existing,
-          stock_qty: existing.stock_qty !== undefined ? existing.stock_qty : (decoded.stock_qty ?? 10),
+          id: existing.id || decoded.id,
+          stock_qty: resolvedStock,
           image_url: existing.image_url || decoded.image_url,
           product_type: existing.product_type || decoded.product_type,
           supplier_name: existing.supplier_name || decoded.supplier_name,
@@ -485,6 +509,14 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
           barcode: existing.barcode || decoded.barcode,
         });
       }
+    }
+  }
+
+  // Đảm bảo không sản phẩm nào có stock_qty bị undefined
+  for (const prod of productMap.values()) {
+    const nameKey = String(prod.name || '').toLowerCase().trim();
+    if (prod.stock_qty === undefined || prod.stock_qty === null) {
+      prod.stock_qty = localStocks[prod.id] ?? (nameKey ? localStocks[nameKey] : undefined) ?? 10;
     }
   }
 
