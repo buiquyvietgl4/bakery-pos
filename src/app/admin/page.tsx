@@ -364,18 +364,16 @@ export default function AdminDashboard() {
 
   // Form Nhập Kho (Purchase Order) - Nguyên Vật Liệu
   const [poIngredientId, setPoIngredientId] = useState<string>('');
-  const [poQty, setPoQty] = useState<number>(1000);
-  const [poUnitPrice, setPoUnitPrice] = useState<number>(30);
   const [poSupplier, setPoSupplier] = useState<string>('Đại lý Bột Mì Nhất Hương');
   const [poSuccess, setPoSuccess] = useState<string | null>(null);
   const [isSubmittingPo, setIsSubmittingPo] = useState<boolean>(false);
 
-  // ── ĐƠN VỊ QUY ĐỔI ĐÓNG GÓI KHI NHẬP KHO (TÚI, BAO, THÙNG -> GRAM / ML) ──
-  const [poUnitMode, setPoUnitMode] = useState<string>('base'); // 'base' | preset label | 'custom'
+  // ── THÔNG TIN NHẬP KHO THỰC TẾ & QUY ĐỔI ĐƠN VỊ ──
+  const [poPackageUnitName, setPoPackageUnitName] = useState<string>('Túi');
+  const [poPackageUnitPrice, setPoPackageUnitPrice] = useState<number>(35000);
   const [poPackageQty, setPoPackageQty] = useState<number>(5);
-  const [poPackageUnitName, setPoPackageUnitName] = useState<string>('Túi 1kg');
+  const [poBaseUnitName, setPoBaseUnitName] = useState<string>('g');
   const [poConversionRate, setPoConversionRate] = useState<number>(1000);
-  const [poPackageUnitPrice, setPoPackageUnitPrice] = useState<number>(25000);
 
   // ── PHÂN HỆ LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ ──
   const [inventoryViewSubTab, setInventoryViewSubTab] = useState<'stock' | 'history'>('stock');
@@ -1361,18 +1359,20 @@ export default function AdminDashboard() {
         if (typeof window !== 'undefined') {
           localStorage.setItem('bakery_ingredients', JSON.stringify(cleanIngs));
         }
-        setPoIngredientId((prev) => (cleanIngs.some((i) => i.id === prev) ? prev : cleanIngs[0]?.id || ''));
+        const defaultIngId = cleanIngs.some((i) => i.id === poIngredientId) ? poIngredientId : cleanIngs[0]?.id || '';
+        setPoIngredientId(defaultIngId);
         setSoIngredientId((prev) => (cleanIngs.some((i) => i.id === prev) ? prev : cleanIngs[0]?.id || ''));
-        const currentIng = cleanIngs.find((i) => i.id === poIngredientId) || cleanIngs[0];
+        const currentIng = cleanIngs.find((i) => i.id === defaultIngId) || cleanIngs[0];
         if (currentIng) {
-          if (currentIng.avg_cost) setPoUnitPrice(currentIng.avg_cost);
-          if (currentIng.packaging_unit) setPoPackageUnitName(currentIng.packaging_unit);
-          if (currentIng.conversion_rate && currentIng.conversion_rate > 1) {
-            setPoConversionRate(currentIng.conversion_rate);
-            if (currentIng.avg_cost) {
-              setPoPackageUnitPrice(Math.round(currentIng.avg_cost * currentIng.conversion_rate));
-            }
-          }
+          const baseU = currentIng.unit || 'g';
+          const pkgU = currentIng.packaging_unit || (baseU === 'g' ? 'Túi' : baseU === 'ml' ? 'Hộp' : baseU);
+          const rate = currentIng.conversion_rate && currentIng.conversion_rate > 0 ? currentIng.conversion_rate : (baseU === 'g' || baseU === 'ml' ? 1000 : 1);
+          const cost = currentIng.avg_cost || 0;
+
+          setPoBaseUnitName(baseU);
+          setPoPackageUnitName(pkgU);
+          setPoConversionRate(rate);
+          setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 35000));
         }
       }
     } catch (err) {
@@ -1622,9 +1622,14 @@ export default function AdminDashboard() {
       if (!poIngredientId || !ingredients.some((i) => i.id === poIngredientId)) {
         const first = ingredients[0];
         setPoIngredientId(first.id);
-        if (first.avg_cost !== undefined) {
-          setPoUnitPrice(first.avg_cost);
-        }
+        const baseU = first.unit || 'g';
+        const pkgU = first.packaging_unit || (baseU === 'g' ? 'Túi' : baseU === 'ml' ? 'Hộp' : baseU);
+        const rate = first.conversion_rate && first.conversion_rate > 0 ? first.conversion_rate : (baseU === 'g' || baseU === 'ml' ? 1000 : 1);
+        const cost = first.avg_cost || 0;
+        setPoBaseUnitName(baseU);
+        setPoPackageUnitName(pkgU);
+        setPoConversionRate(rate);
+        setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 35000));
       }
       if (!soIngredientId || !ingredients.some((i) => i.id === soIngredientId)) {
         setSoIngredientId(ingredients[0].id);
@@ -2106,12 +2111,13 @@ export default function AdminDashboard() {
 
       // Đồng bộ ngay sang form PO nếu đang chọn vật tư này
       if (poIngredientId === editingIngredient.id) {
-        setPoUnitPrice(updatedIng.avg_cost);
-        if (updatedIng.packaging_unit) setPoPackageUnitName(updatedIng.packaging_unit);
-        if (updatedIng.conversion_rate && updatedIng.conversion_rate > 1) {
-          setPoConversionRate(updatedIng.conversion_rate);
-          setPoPackageUnitPrice(Math.round(updatedIng.avg_cost * updatedIng.conversion_rate));
-        }
+        const baseU = updatedIng.unit || 'g';
+        const pkgU = updatedIng.packaging_unit || 'Túi';
+        const rate = updatedIng.conversion_rate && updatedIng.conversion_rate > 0 ? updatedIng.conversion_rate : 1;
+        setPoBaseUnitName(baseU);
+        setPoPackageUnitName(pkgU);
+        setPoConversionRate(rate);
+        setPoPackageUnitPrice(rate > 1 ? Math.round(updatedIng.avg_cost * rate) : updatedIng.avg_cost);
       }
 
       setPoSuccess(`Đã cập nhật đơn vị kho & đơn vị nhập cho "${editIngName}" thành công!`);
@@ -2582,54 +2588,54 @@ export default function AdminDashboard() {
     }
   };
 
-  // ── XỬ LÝ NHẬP KHO (WAC CALCULATION & QUY ĐỔI ĐƠN VỊ ĐÓNG GÓI) ──
+  // ── XỬ LÝ CHỌN VẬT TƯ NHẬP KHO (TỰ ĐỘNG ĐIỀN ĐƠN VỊ GỐC & ĐƠN VỊ KHO) ──
+  const handleSelectPoIngredient = (newId: string) => {
+    setPoIngredientId(newId);
+    const ing = visibleIngredients.find((i: Ingredient) => i.id === newId);
+    if (ing) {
+      const baseU = ing.unit || 'g';
+      const pkgU = ing.packaging_unit || (baseU === 'g' ? 'Túi' : baseU === 'ml' ? 'Hộp' : baseU);
+      const rate = ing.conversion_rate && ing.conversion_rate > 0 ? ing.conversion_rate : (baseU === 'g' || baseU === 'ml' ? 1000 : 1);
+      const cost = ing.avg_cost || 0;
+
+      setPoBaseUnitName(baseU);
+      setPoPackageUnitName(pkgU);
+      setPoConversionRate(rate);
+      setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 35000));
+    }
+  };
+
+  // ── XỬ LÝ NHẬP KHO (TỰ ĐỘNG QUY ĐỔI VÀO KHO & TÍNH GIÁ VỐN WAC) ──
   const handleCreatePurchaseOrder = async () => {
-    const ing = ingredients.find((i) => i.id === poIngredientId) || ingredients[0];
+    const ing = visibleIngredients.find((i) => i.id === poIngredientId) || visibleIngredients[0];
     if (!ing) {
       alert('Vui lòng chọn nguyên vật liệu cần nhập kho!');
       return;
     }
 
-    const isPackageMode = poUnitMode !== 'base';
-    let effectiveQty = 0;
-    let effectiveUnitPrice = 0;
-    let totalCost = 0;
-
-    if (isPackageMode) {
-      const pkgQty = Number(poPackageQty);
-      if (!pkgQty || pkgQty <= 0 || isNaN(pkgQty)) {
-        alert('Vui lòng nhập số lượng bao/túi/hộp hợp lệ (lớn hơn 0)!');
-        return;
-      }
-      const rate = Number(poConversionRate) || 1;
-      if (rate <= 0) {
-        alert('Tỉ lệ quy đổi phải lớn hơn 0!');
-        return;
-      }
-      const pkgPrice = Number(poPackageUnitPrice);
-      if (pkgPrice === undefined || pkgPrice < 0 || isNaN(pkgPrice)) {
-        alert('Vui lòng nhập đơn giá mỗi bao/túi/hộp hợp lệ!');
-        return;
-      }
-
-      effectiveQty = Math.round(pkgQty * rate * 100) / 100;
-      effectiveUnitPrice = Math.round((pkgPrice / rate) * 100) / 100;
-      totalCost = pkgQty * pkgPrice;
-    } else {
-      const qty = Number(poQty);
-      if (!qty || qty <= 0 || isNaN(qty)) {
-        alert('Vui lòng nhập số lượng nhập hợp lệ (lớn hơn 0)!');
-        return;
-      }
-      const unitPrice = Number(poUnitPrice);
-      if (unitPrice === undefined || unitPrice === null || unitPrice < 0 || isNaN(unitPrice)) {
-        alert('Vui lòng nhập đơn giá nhập hợp lệ (không âm)!');
-        return;
-      }
-      effectiveQty = qty;
-      effectiveUnitPrice = unitPrice;
-      totalCost = qty * unitPrice;
+    const pkgQty = Number(poPackageQty);
+    if (!pkgQty || pkgQty <= 0 || isNaN(pkgQty)) {
+      alert('Vui lòng nhập số lượng nhập hợp lệ (lớn hơn 0)!');
+      return;
     }
+
+    const rate = Number(poConversionRate) || 1;
+    if (rate <= 0) {
+      alert('Tỉ lệ quy đổi phải lớn hơn 0!');
+      return;
+    }
+
+    const pkgPrice = Number(poPackageUnitPrice);
+    if (pkgPrice === undefined || pkgPrice < 0 || isNaN(pkgPrice)) {
+      alert('Vui lòng nhập giá nhập vật tư hợp lệ!');
+      return;
+    }
+
+    const effectiveQty = Math.round(pkgQty * rate * 100) / 100;
+    const effectiveUnitPrice = Math.round((pkgPrice / rate) * 100) / 100;
+    const totalCost = Math.round(pkgQty * pkgPrice);
+    const baseUnit = (poBaseUnitName || ing.unit || 'g').trim();
+    const pkgUnit = (poPackageUnitName || ing.packaging_unit || 'Túi').trim();
 
     setIsSubmittingPo(true);
     try {
@@ -2640,25 +2646,42 @@ export default function AdminDashboard() {
         ? Math.round((currentStock * currentCost + effectiveQty * effectiveUnitPrice) / newQty)
         : effectiveUnitPrice;
 
-      setIngredients((prev) =>
-        prev.map((i) =>
-          i.id === ing.id
-            ? { ...i, stock_qty: newQty, avg_cost: newAvgCost }
-            : i
-        )
-      );
+      // Cập nhật nguyên liệu kèm theo đơn vị kho và đơn vị gốc mới
+      const updatedIng: Ingredient = {
+        ...ing,
+        stock_qty: newQty,
+        avg_cost: newAvgCost,
+        unit: baseUnit,
+        packaging_unit: pkgUnit,
+        conversion_rate: rate,
+      };
+
+      const nextIngs = ingredients.map((i) => (i.id === ing.id ? updatedIng : i));
+      setIngredients(nextIngs);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_ingredients', JSON.stringify(nextIngs));
+      }
+      autoSyncToLocalSqlFolder();
 
       if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
-          await supabase.from('ingredients').update({ stock_qty: newQty, avg_cost: newAvgCost }).eq('id', ing.id);
+          await supabase.from('ingredients').update({
+            stock_qty: newQty,
+            avg_cost: newAvgCost,
+            unit: baseUnit,
+            packaging_unit: pkgUnit,
+            conversion_rate: rate,
+            updated_at: new Date().toISOString(),
+          }).eq('id', ing.id);
         } catch (err) {
           console.error('Lỗi cập nhật nhập kho trên Supabase:', err);
         }
       }
 
-      const descPo = isPackageMode
-        ? `Nhập kho ${poPackageQty} ${poPackageUnitName} (=${effectiveQty.toLocaleString()} ${ing.unit}) ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`
-        : `Nhập kho ${effectiveQty.toLocaleString()} ${ing.unit} ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`;
+      const isDiffUnit = rate > 1 || pkgUnit.toLowerCase() !== baseUnit.toLowerCase();
+      const descPo = isDiffUnit
+        ? `Nhập kho ${pkgQty} ${pkgUnit} (=${effectiveQty.toLocaleString()} ${baseUnit}) ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`
+        : `Nhập kho ${effectiveQty.toLocaleString()} ${baseUnit} ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`;
 
       const poCfItem: CashflowTransaction = {
         id: generateUUID(),
@@ -2680,25 +2703,25 @@ export default function AdminDashboard() {
         materialId: ing.id,
         materialName: ing.name,
         materialCategory: ing.category,
-        unit: ing.unit,
-        packageQty: isPackageMode ? poPackageQty : undefined,
-        packageUnit: isPackageMode ? poPackageUnitName : undefined,
-        conversionRate: isPackageMode ? poConversionRate : 1,
+        unit: baseUnit,
+        packageQty: pkgQty,
+        packageUnit: pkgUnit,
+        conversionRate: rate,
         quantity: effectiveQty,
         unitPrice: effectiveUnitPrice,
-        packageUnitPrice: isPackageMode ? poPackageUnitPrice : undefined,
+        packageUnitPrice: pkgPrice,
         totalAmount: totalCost,
         supplierOrReason: poSupplier || 'Nhà cung cấp',
         performedBy: isAdmin ? 'Quản lý / Admin' : 'Nhân viên quầy',
         date: new Date().toISOString().split('T')[0],
-        notes: isPackageMode
-          ? `Quy đổi: ${poPackageQty} ${poPackageUnitName} × ${poConversionRate.toLocaleString()} ${ing.unit}`
-          : undefined,
+        notes: isDiffUnit
+          ? `Quy đổi: ${pkgQty} ${pkgUnit} × ${rate.toLocaleString()} ${baseUnit}. Giá vốn WAC mới: ${newAvgCost.toLocaleString('vi-VN')}₫/${baseUnit}`
+          : `Đơn giá vốn WAC: ${newAvgCost.toLocaleString('vi-VN')}₫/${baseUnit}`,
       });
 
-      const msg = isPackageMode
-        ? `Đã nhập kho thành công! ${poPackageQty} ${poPackageUnitName} quy đổi thành +${effectiveQty.toLocaleString()} ${ing.unit} ${ing.name} (Tồn mới: ${newQty.toLocaleString()} ${ing.unit}). Đơn giá WAC: ${newAvgCost.toLocaleString('vi-VN')}₫/${ing.unit}!`
-        : `Đã nhập kho thành công! Thêm +${effectiveQty.toLocaleString()} ${ing.unit} ${ing.name} (Tồn mới: ${newQty.toLocaleString()} ${ing.unit}). Đơn giá WAC: ${newAvgCost.toLocaleString('vi-VN')}₫/${ing.unit}!`;
+      const msg = isDiffUnit
+        ? `Đã nhập kho thành công! ${pkgQty} ${pkgUnit} quy đổi thành +${effectiveQty.toLocaleString()} ${baseUnit} ${ing.name} (Tồn mới: ${newQty.toLocaleString()} ${baseUnit}). Đơn giá WAC: ${newAvgCost.toLocaleString('vi-VN')}₫/${baseUnit}!`
+        : `Đã nhập kho thành công! Thêm +${effectiveQty.toLocaleString()} ${baseUnit} ${ing.name} (Tồn mới: ${newQty.toLocaleString()} ${baseUnit}). Đơn giá WAC: ${newAvgCost.toLocaleString('vi-VN')}₫/${baseUnit}!`;
 
       setPoSuccess(msg);
       alert(msg);
@@ -4332,238 +4355,162 @@ export default function AdminDashboard() {
 
                 {poCategory === 'ingredient' ? (
                   <>
+                    {/* 1. ĐẦU TIÊN CHỌN LOẠI VẬT TƯ NHẬP */}
                     <div>
                       <div className="flex items-center justify-between">
-                        <label className="font-bold text-zinc-700">Chọn nguyên vật liệu nhập:</label>
-                        {(() => {
-                          const cur = visibleIngredients.find((i) => i.id === poIngredientId) || visibleIngredients[0];
-                          if (!cur) return null;
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => handleOpenEditIngredient(cur)}
-                              className="text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 cursor-pointer bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition"
-                              title="Cài đặt đơn vị kho & đơn vị nhập cho vật tư này"
-                            >
-                              <Settings2 className="w-3 h-3" /> Cài đơn vị kho/nhập
-                            </button>
-                          );
-                        })()}
+                        <label className="font-bold text-zinc-800 text-xs flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-amber-600 inline-block"></span>
+                          <span>1. Chọn loại vật tư nhập:</span>
+                        </label>
+                        <span className="text-[10px] text-zinc-400 font-medium">
+                          ({visibleIngredients.length} vật tư)
+                        </span>
                       </div>
                       <select
                         value={poIngredientId || (visibleIngredients[0]?.id ?? '')}
-                        onChange={(e) => {
-                          const newId = e.target.value;
-                          setPoIngredientId(newId);
-                          const ing = visibleIngredients.find((i: Ingredient) => i.id === newId);
-                          if (ing) {
-                            if (ing.avg_cost !== undefined) {
-                              setPoUnitPrice(ing.avg_cost);
-                            }
-                            if (ing.packaging_unit) {
-                              setPoPackageUnitName(ing.packaging_unit);
-                              setPoUnitMode(ing.packaging_unit);
-                            }
-                            if (ing.conversion_rate && ing.conversion_rate > 1) {
-                              setPoConversionRate(ing.conversion_rate);
-                              if (ing.avg_cost) {
-                                setPoPackageUnitPrice(Math.round(ing.avg_cost * ing.conversion_rate));
-                              }
-                            } else {
-                              setPoUnitMode('base');
-                              setPoConversionRate(1);
-                              setPoPackageUnitName(ing.unit || 'g');
-                            }
-                          }
-                        }}
-                        className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
+                        onChange={(e) => handleSelectPoIngredient(e.target.value)}
+                        className="w-full mt-1.5 p-2.5 rounded-xl border border-amber-300 bg-amber-50/40 font-black text-zinc-900 focus:outline-amber-600 text-xs"
                       >
                         {visibleIngredients.map((ing: Ingredient) => (
                           <option key={ing.id} value={ing.id}>
-                            {ing.name} (Kho: {ing.unit} | Nhập: {ing.packaging_unit || ing.unit}) — Tồn: {ing.stock_qty.toLocaleString()} {ing.unit}
+                            {ing.name} (Tồn: {ing.stock_qty.toLocaleString()} {ing.unit || 'g'})
                           </option>
                         ))}
                       </select>
                     </div>
 
+                    {/* 2. CHỌN XONG HIỆN RA: Ô NHẬP ĐƠN VỊ GỐC, GIÁ NHẬP VẬT TƯ, SỐ LƯỢNG NHẬP */}
+                    <div className="p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="font-bold text-zinc-700 block">
+                            Đơn vị gốc (khi mua):
+                          </label>
+                          <input
+                            type="text"
+                            value={poPackageUnitName}
+                            onChange={(e) => setPoPackageUnitName(e.target.value)}
+                            placeholder="VD: Túi, Bao, Thùng, Hộp..."
+                            className="w-full mt-1 p-2 rounded-xl border border-zinc-300 bg-white font-bold text-zinc-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="font-bold text-zinc-700 block">
+                            Số lượng nhập:
+                          </label>
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="any"
+                            value={poPackageQty || ''}
+                            onChange={(e) => setPoPackageQty(Number(e.target.value))}
+                            placeholder="VD: 5"
+                            className="w-full mt-1 p-2 rounded-xl border border-zinc-300 bg-white font-black text-amber-900 text-sm"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="font-bold text-zinc-700 block">
+                          Giá nhập vật tư (Giá 1 {poPackageUnitName || 'đơn vị'}):
+                        </label>
+                        <div className="relative mt-1">
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={formatCurrencyInput(poPackageUnitPrice)}
+                            onChange={(e) => setPoPackageUnitPrice(parseCurrencyInput(e.target.value))}
+                            placeholder="VD: 35.000 hoặc 450.000"
+                            className="w-full p-2.5 pr-8 rounded-xl border border-zinc-300 bg-white font-black text-amber-700 text-sm"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-zinc-400 text-xs">₫</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 3. PHÍA DƯỚI NHẬP ĐƠN VỊ KHO & CÁCH TÍNH QUY ĐỔI */}
+                    <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-2.5">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="font-bold text-zinc-700 block">
+                            Đơn vị kho (làm bánh):
+                          </label>
+                          <input
+                            type="text"
+                            value={poBaseUnitName}
+                            onChange={(e) => setPoBaseUnitName(e.target.value)}
+                            placeholder="g, ml, quả, cái..."
+                            className="w-full mt-1 p-2 rounded-xl border border-amber-300 bg-white font-bold text-zinc-900"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="font-bold text-zinc-700 block">
+                            Cách tính quy đổi:
+                          </label>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            <span className="font-bold text-zinc-600 whitespace-nowrap text-[11px]">1 {poPackageUnitName || 'gói'} =</span>
+                            <input
+                              type="number"
+                              min="0.001"
+                              step="any"
+                              value={poConversionRate || ''}
+                              onChange={(e) => setPoConversionRate(Math.max(0.001, Number(e.target.value)))}
+                              placeholder="1000"
+                              className="flex-1 p-2 rounded-xl border border-amber-300 bg-white font-black text-amber-900 text-xs text-center"
+                            />
+                            <span className="font-bold text-zinc-600 whitespace-nowrap text-[11px]">{poBaseUnitName || 'g'}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p className="text-[10px] text-amber-800 italic">
+                        * Ví dụ: 1 Bao = 25.000 g | 1 Túi = 1.000 g | 1 Thùng = 12 hộp. Nếu nhập cùng đơn vị kho thì để 1.
+                      </p>
+                    </div>
+
+                    {/* NHÀ CUNG CẤP */}
                     <div>
                       <label className="font-bold text-zinc-700">Nhà cung cấp:</label>
                       <input
                         type="text"
                         value={poSupplier}
                         onChange={(e) => setPoSupplier(e.target.value)}
-                        className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-medium"
+                        placeholder="VD: Đại lý Bột Mì Nhất Hương..."
+                        className="w-full mt-1 p-2 rounded-xl border border-zinc-200 bg-zinc-50 font-medium text-xs"
                       />
                     </div>
 
-                    {/* ── BỘ QUY ĐỔI ĐƠN VỊ ĐÓNG GÓI THÔNG MINH (TÚI, BAO, THÙNG -> G/ML) ── */}
+                    {/* 4. HỘP TÍNH TOÁN TỰ ĐỘNG & XEM TRƯỚC */}
                     {(() => {
-                      const curIng = visibleIngredients.find((i: Ingredient) => i.id === poIngredientId) || visibleIngredients[0];
-                      const baseUnit = curIng?.unit || 'g';
-                      const isPkg = poUnitMode !== 'base';
+                      const qty = Number(poPackageQty) || 0;
+                      const price = Number(poPackageUnitPrice) || 0;
+                      const rate = Number(poConversionRate) || 1;
+                      const totalInStock = Math.round(qty * rate * 100) / 100;
+                      const costPerBase = rate > 0 ? Math.round((price / rate) * 100) / 100 : price;
+                      const totalMoney = Math.round(qty * price);
 
                       return (
-                        <div className="space-y-3 pt-1">
-                          {/* Khung chọn cách nhập */}
-                          <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <label className="font-bold text-[11px] text-amber-950 flex items-center gap-1.5">
-                                <span>📦 Đơn vị khi nhập hàng:</span>
-                              </label>
-                              <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
-                                Đơn vị kho: {baseUnit}
-                              </span>
-                            </div>
-
-                            <select
-                              value={poUnitMode}
-                              onChange={(e) => {
-                                const val = e.target.value;
-                                setPoUnitMode(val);
-                                if (val === 'base') {
-                                  setPoConversionRate(1);
-                                  setPoPackageUnitName(baseUnit);
-                                } else {
-                                  const preset = UNIT_CONVERSION_PRESETS.find((p) => p.label === val);
-                                  if (preset && preset.multiplier > 0) {
-                                    setPoConversionRate(preset.multiplier);
-                                    setPoPackageUnitName(preset.label.split(' ')[0]);
-                                  } else if (val === 'Tùy chỉnh khác...') {
-                                    setPoPackageUnitName('Túi');
-                                    setPoConversionRate(1000);
-                                  }
-                                }
-                              }}
-                              className="w-full p-2 bg-white rounded-xl border border-amber-300 text-xs font-bold text-zinc-900 focus:outline-amber-600"
-                            >
-                              <option value="base">
-                                ⚖️ Nhập trực tiếp theo đơn vị gốc ({baseUnit})
-                              </option>
-                              {UNIT_CONVERSION_PRESETS.filter((p) => p.multiplier > 1 || p.label === 'Tùy chỉnh khác...').map((preset) => (
-                                <option key={preset.label} value={preset.label}>
-                                  {preset.label}
-                                </option>
-                              ))}
-                            </select>
-
-                            {/* Tùy chỉnh khác nếu chọn custom */}
-                            {poUnitMode === 'Tùy chỉnh khác...' && (
-                              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200/80 text-xs animate-in fade-in">
-                                <div>
-                                  <span className="text-[10px] font-bold text-zinc-600 block">Tên đơn vị mua:</span>
-                                  <input
-                                    type="text"
-                                    value={poPackageUnitName}
-                                    onChange={(e) => setPoPackageUnitName(e.target.value)}
-                                    placeholder="VD: Túi, Bao, Thùng..."
-                                    className="w-full mt-0.5 p-1.5 bg-white border border-amber-300 rounded-lg font-bold text-xs"
-                                  />
-                                </div>
-                                <div>
-                                  <span className="text-[10px] font-bold text-zinc-600 block">
-                                    1 {poPackageUnitName || 'gói'} = bao nhiêu {baseUnit}?
-                                  </span>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    value={poConversionRate || ''}
-                                    onChange={(e) => setPoConversionRate(Number(e.target.value))}
-                                    placeholder="VD: 1000"
-                                    className="w-full mt-0.5 p-1.5 bg-white border border-amber-300 rounded-lg font-black text-xs text-amber-700"
-                                  />
-                                </div>
-                              </div>
-                            )}
+                        <div className="p-3 bg-gradient-to-br from-amber-100/90 to-amber-50 rounded-2xl border border-amber-300 text-xs space-y-1.5 animate-in fade-in">
+                          <div className="flex justify-between items-center text-amber-950 font-bold">
+                            <span>💡 Số lượng vào kho:</span>
+                            <span className="text-sm font-black text-emerald-800">
+                              +{totalInStock.toLocaleString('vi-VN')} {poBaseUnitName || 'đơn vị'}
+                            </span>
                           </div>
-
-                          {/* Nhập số lượng & đơn giá */}
-                          {!isPkg ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                              <div>
-                                <label className="font-bold text-zinc-700">Số lượng ({baseUnit}):</label>
-                                <input
-                                  type="number"
-                                  value={poQty || ''}
-                                  onChange={(e) => setPoQty(Number(e.target.value))}
-                                  placeholder="Nhập số lượng..."
-                                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
-                                />
-                              </div>
-                              <div>
-                                <label className="font-bold text-zinc-700">Đơn giá/{baseUnit} (VND):</label>
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  value={formatCurrencyInput(poUnitPrice)}
-                                  onChange={(e) => setPoUnitPrice(parseCurrencyInput(e.target.value))}
-                                  placeholder="Nhập đơn giá (VD: 30)..."
-                                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
-                                />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="space-y-2.5">
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                <div>
-                                  <label className="font-bold text-zinc-700">
-                                    Số lượng {poPackageUnitName || 'gói'} nhập:
-                                  </label>
-                                  <input
-                                    type="number"
-                                    min="1"
-                                    value={poPackageQty || ''}
-                                    onChange={(e) => setPoPackageQty(Number(e.target.value))}
-                                    placeholder="VD: 5"
-                                    className="w-full mt-1 p-2.5 rounded-xl border border-amber-300 bg-amber-50/30 font-black text-amber-900"
-                                  />
-                                </div>
-                                <div>
-                                  <label className="font-bold text-zinc-700">
-                                    Đơn giá/{poPackageUnitName || 'gói'} (VND):
-                                  </label>
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={formatCurrencyInput(poPackageUnitPrice)}
-                                    onChange={(e) => setPoPackageUnitPrice(parseCurrencyInput(e.target.value))}
-                                    placeholder="VD: 25.000"
-                                    className="w-full mt-1 p-2.5 rounded-xl border border-amber-300 bg-amber-50/30 font-black text-amber-600"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* HỘP QUY ĐỔI TRỰC QUAN LIVE */}
-                              <div className="p-3 bg-amber-100/70 rounded-2xl border border-amber-300 text-xs space-y-1.5 animate-in fade-in">
-                                <div className="flex justify-between items-center text-amber-950 font-bold">
-                                  <span>💡 Tự động quy đổi vào kho:</span>
-                                  <span className="text-sm font-black text-emerald-800">
-                                    +{((poPackageQty || 0) * (poConversionRate || 1)).toLocaleString('vi-VN')} {baseUnit}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between items-center text-[11px] text-amber-800">
-                                  <span>Đơn giá vốn tính WAC:</span>
-                                  <span className="font-bold text-amber-900">
-                                    {poConversionRate > 0
-                                      ? (Math.round(((poPackageUnitPrice || 0) / poConversionRate) * 100) / 100).toLocaleString('vi-VN')
-                                      : 0}₫ / {baseUnit}
-                                  </span>
-                                </div>
-                                <div className="flex justify-between items-center text-xs font-black text-amber-950 pt-1.5 border-t border-amber-200">
-                                  <span>Thành tiền phiếu nhập:</span>
-                                  <span className="text-base font-black text-amber-800">
-                                    {((poPackageQty || 0) * (poPackageUnitPrice || 0)).toLocaleString('vi-VN')}₫
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-
-                          {!isPkg && (
-                            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex justify-between font-bold">
-                              <span>Thành tiền phiếu nhập:</span>
-                              <span className="text-amber-700">{((poQty || 0) * (poUnitPrice || 0)).toLocaleString('vi-VN')}₫</span>
-                            </div>
-                          )}
+                          <div className="flex justify-between items-center text-[11px] text-amber-900">
+                            <span>Đơn giá vốn kho:</span>
+                            <span className="font-bold text-amber-950">
+                              {costPerBase.toLocaleString('vi-VN')}₫ / {poBaseUnitName || 'đơn vị'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-xs font-black text-amber-950 pt-1.5 border-t border-amber-200">
+                            <span>Thành tiền thanh toán:</span>
+                            <span className="text-base font-black text-rose-700">
+                              {totalMoney.toLocaleString('vi-VN')}₫
+                            </span>
+                          </div>
                         </div>
                       );
                     })()}
