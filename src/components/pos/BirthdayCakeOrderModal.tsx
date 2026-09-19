@@ -88,6 +88,7 @@ export function BirthdayCakeOrderModal({
   const [selectedFreeAccessoryIds, setSelectedFreeAccessoryIds] = useState<string[]>([]);
   const [selectedDecorAddonIds, setSelectedDecorAddonIds] = useState<string[]>([]);
   const [isDecorAccordionOpen, setIsDecorAccordionOpen] = useState(false);
+  const [isPresetListOpen, setIsPresetListOpen] = useState(false);
 
   // Tỷ lệ markup và giá bán
   const [customMarkupPct, setCustomMarkupPct] = useState<number>(36.5);
@@ -125,6 +126,7 @@ export function BirthdayCakeOrderModal({
     if (!isOpen) return;
     setValidationError(null);
     setIsDecorAccordionOpen(false);
+    setIsPresetListOpen(false);
     const currentConfig = getFullCakeBomConfig();
     setConfig(currentConfig);
     setCustomMarkupPct(currentConfig.targetFoodCostPct || 36.5);
@@ -304,6 +306,14 @@ export function BirthdayCakeOrderModal({
       };
     });
   }, [mode, selectedPresetId, tierCount, tiers, config]);
+
+  // Mẫu bánh BOM định mức có sẵn đang được chọn
+  const selectedPreset = useMemo(() => {
+    return (
+      (selectedPresetId && config.birthdayBomPresets.find((p) => p.id === selectedPresetId)) ||
+      config.birthdayBomPresets[0]
+    );
+  }, [config.birthdayBomPresets, selectedPresetId]);
 
   // Thông tin loại hộp đựng bánh mặc định chung theo Mục 4 (không chọn tay khi đặt bánh)
   const selectedPackagingBox = useMemo(() => {
@@ -645,38 +655,180 @@ export function BirthdayCakeOrderModal({
           </button>
         </div>
           
-          {/* ══════════════ MỤC 1: BÁNH CÓ SẴN (PRESET BOM) ══════════════ */}
+          {/* ══════════════ MỤC 1: BÁNH CÓ SẴN (PRESET BOM) - DẠNG CỬA SỔ CHỌN LIST NỔI BẬT & GỌN GÀNG ══════════════ */}
           {mode === 'preset' && (
-            <div className="space-y-3 bg-zinc-50/70 p-3 sm:p-4 rounded-2xl border border-zinc-200">
-              <label className="font-black text-zinc-900 text-xs sm:text-sm flex items-center gap-1.5">
-                <Boxes className="w-4 h-4 text-pink-600" />
-                <span>Chọn Mẫu Bánh Định Mức Chuẩn:</span>
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {config.birthdayBomPresets.map((preset) => {
-                  const isSel = selectedPresetId === preset.id;
-                  return (
+            <div className="rounded-2xl sm:rounded-3xl border-2 border-pink-400/90 bg-gradient-to-r from-pink-50/90 via-white to-pink-50/70 shadow-sm overflow-hidden transition-all duration-200">
+              {/* Header thu gọn / mở rộng - Kích thước to hơn các mục khác để nổi bật */}
+              <button
+                type="button"
+                onClick={() => setIsPresetListOpen((prev) => !prev)}
+                className="w-full p-3.5 sm:p-4.5 flex items-center justify-between gap-3 text-left hover:bg-pink-100/40 transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 sm:gap-3.5 min-w-0 flex-1">
+                  <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-tr from-pink-600 to-rose-500 text-white flex items-center justify-center shadow-md shadow-pink-500/25 shrink-0 group-hover:scale-105 transition">
+                    <Boxes className="w-5 h-5 sm:w-6 sm:h-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs sm:text-sm font-black text-pink-900 uppercase tracking-wide">
+                        Mẫu Bánh Định Mức Chuẩn (BOM):
+                      </span>
+                      {selectedPreset && (
+                        <span className="text-[10px] sm:text-[11px] bg-pink-600 text-white font-black px-2 py-0.5 rounded-lg shadow-2xs">
+                          Đang chọn
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-sm sm:text-base font-extrabold text-zinc-900 mt-1 truncate group-hover:text-pink-700 transition">
+                      {selectedPreset?.name || 'Chọn mẫu bánh sinh nhật có sẵn...'}
+                    </div>
+                    {selectedPreset && (
+                      <div className="text-[11px] sm:text-xs text-zinc-600 truncate mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        {(() => {
+                          const base = config.cakeBases.find((b) => b.id === selectedPreset.cakeBaseId);
+                          const cream = config.creamCoatings.find((c) => c.id === selectedPreset.creamCoatingId);
+                          const baseSize = base?.sizes.find((s) => s.id === selectedPreset.cakeBaseSizeId);
+                          return (
+                            <>
+                              {baseSize?.sizeName && (
+                                <span className="font-bold text-pink-700">
+                                  📏 {baseSize.sizeName}
+                                </span>
+                              )}
+                              {base?.name && (
+                                <span className="font-semibold text-zinc-700">
+                                  • Cốt: {base.name}
+                                </span>
+                              )}
+                              {cream?.name && (
+                                <span className="font-semibold text-zinc-700">
+                                  • Kem: {cream.name}
+                                </span>
+                              )}
+                              {selectedPreset.notes && (
+                                <span className="text-zinc-500 hidden md:inline">
+                                  ({selectedPreset.notes})
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="px-2.5 py-1 rounded-xl bg-pink-100 text-pink-800 font-extrabold text-xs hidden sm:inline-flex items-center gap-1 border border-pink-200">
+                    {config.birthdayBomPresets.length} mẫu có sẵn
+                  </span>
+                  <div className="flex items-center gap-1 text-xs font-bold text-pink-700 bg-pink-100/80 border border-pink-200 px-2.5 py-1.5 rounded-xl group-hover:bg-pink-600 group-hover:text-white transition">
+                    <span className="hidden sm:inline">{isPresetListOpen ? 'Thu gọn' : 'Đổi mẫu bánh'}</span>
+                    {isPresetListOpen ? (
+                      <ChevronUp className="w-4 h-4" />
+                    ) : (
+                      <ChevronDown className="w-4 h-4" />
+                    )}
+                  </div>
+                </div>
+              </button>
+
+              {/* Cửa sổ List mở rộng để chọn mẫu bánh */}
+              {isPresetListOpen && (
+                <div className="p-3.5 sm:p-4 border-t-2 border-pink-200 bg-white space-y-3 animate-fade-in">
+                  <div className="flex items-center justify-between text-xs pb-1.5 border-b border-zinc-100">
+                    <span className="text-zinc-600 font-bold flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-pink-600" />
+                      <span>Chọn 1 mẫu bánh định mức BOM chuẩn (nhấp để áp dụng ngay):</span>
+                    </span>
+                    <span className="text-[11px] text-zinc-400 font-medium hidden sm:inline">
+                      Tự động nạp Cốt bánh, Kem phủ, Nhân bánh & Hộp mặc định
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 sm:max-h-80 overflow-y-auto pr-1">
+                    {config.birthdayBomPresets.map((preset) => {
+                      const isSel = selectedPreset?.id === preset.id;
+                      const base = config.cakeBases.find((b) => b.id === preset.cakeBaseId);
+                      const baseSize = base?.sizes.find((s) => s.id === preset.cakeBaseSizeId);
+                      const cream = config.creamCoatings.find((c) => c.id === preset.creamCoatingId);
+                      const filling = config.fillings.find((f) => f.id === preset.fillingId);
+
+                      return (
+                        <div
+                          key={preset.id}
+                          onClick={() => {
+                            applyPreset(preset, config);
+                            setIsPresetListOpen(false);
+                          }}
+                          className={`p-3.5 rounded-2xl border-2 transition cursor-pointer relative select-none flex flex-col justify-between ${
+                            isSel
+                              ? 'bg-pink-50/90 border-pink-600 ring-2 ring-pink-300 text-pink-950 shadow-sm'
+                              : 'bg-zinc-50/60 border-zinc-200 hover:border-pink-300 hover:bg-pink-50/30 text-zinc-800'
+                          }`}
+                        >
+                          <div>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="font-black text-xs sm:text-sm text-zinc-900 leading-snug">
+                                {preset.name}
+                              </div>
+                              <div
+                                className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 mt-0.5 ${
+                                  isSel
+                                    ? 'border-pink-600 bg-pink-600 text-white'
+                                    : 'border-zinc-300 bg-white'
+                                }`}
+                              >
+                                {isSel && <Check className="w-3 h-3 text-white stroke-[3]" />}
+                              </div>
+                            </div>
+
+                            <p className="text-[11px] text-zinc-500 mt-1 line-clamp-2 leading-relaxed">
+                              {preset.notes || 'Mẫu bánh sinh nhật định mức chuẩn của quán'}
+                            </p>
+                          </div>
+
+                          <div className="mt-2.5 pt-2 border-t border-zinc-200/60 flex flex-wrap items-center gap-1.5 text-[10px]">
+                            {baseSize?.sizeName && (
+                              <span className="bg-white border border-pink-200 text-pink-800 font-bold px-1.5 py-0.5 rounded-md">
+                                📏 {baseSize.sizeName}
+                              </span>
+                            )}
+                            {base?.name && (
+                              <span className="bg-white border border-zinc-200 text-zinc-700 font-medium px-1.5 py-0.5 rounded-md">
+                                🍰 {base.name}
+                              </span>
+                            )}
+                            {cream?.name && (
+                              <span className="bg-white border border-zinc-200 text-zinc-700 font-medium px-1.5 py-0.5 rounded-md">
+                                🥛 {cream.name}
+                              </span>
+                            )}
+                            {filling?.name && (
+                              <span className="bg-white border border-zinc-200 text-zinc-700 font-medium px-1.5 py-0.5 rounded-md">
+                                🍓 {filling.name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <div className="pt-2 border-t border-zinc-100 flex items-center justify-between">
+                    <span className="text-xs text-zinc-600">
+                      Đang chọn: <strong className="text-pink-700 font-bold">{selectedPreset?.name}</strong>
+                    </span>
                     <button
-                      key={preset.id}
                       type="button"
-                      onClick={() => applyPreset(preset, config)}
-                      className={`p-3.5 rounded-2xl text-left border transition cursor-pointer active:scale-98 ${
-                        isSel
-                          ? 'bg-pink-50 border-pink-600 ring-2 ring-pink-300 text-pink-950 shadow-sm'
-                          : 'bg-white border-zinc-200 text-zinc-700 hover:border-pink-300 hover:bg-pink-50/20'
-                      }`}
+                      onClick={() => setIsPresetListOpen(false)}
+                      className="px-4 py-1.5 rounded-xl bg-pink-600 hover:bg-pink-700 text-white font-bold text-xs cursor-pointer shadow-xs transition flex items-center gap-1"
                     >
-                      <div className="font-bold text-xs sm:text-sm flex items-center justify-between">
-                        <span className="line-clamp-1">{preset.name}</span>
-                        {isSel && <Check className="w-4 h-4 text-pink-600 shrink-0" />}
-                      </div>
-                      <div className="text-[11px] text-zinc-500 mt-1 line-clamp-2 leading-relaxed">
-                        {preset.notes || 'Mẫu bánh sinh nhật định mức BOM chuẩn'}
-                      </div>
+                      <span>✓ Đóng danh sách</span>
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
