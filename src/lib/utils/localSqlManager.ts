@@ -978,7 +978,7 @@ INSERT INTO tax_policy_config (id, name, policy_name, circular_citation, annual_
 -- ----------------------------------------------------------------------------
 -- 18. BẢNG ĐỊNH MỨC BOM BÁNH SINH NHẬT (BAKERY_BOM_SETTINGS)
 -- ----------------------------------------------------------------------------
-INSERT INTO bakery_bom_settings (id, version, target_food_cost_pct, cake_bases, cream_coatings, fillings, packagings, free_accessories, decor_addons, birthday_bom_presets, updated_at) VALUES ('primary', ${sqlEscape(bomConfig.version || '2.0.0')}, ${sqlEscape(bomConfig.targetFoodCostPct || 36.5)}, ${sqlEscape(JSON.stringify(bomConfig.cakeBases || []))}, ${sqlEscape(JSON.stringify(bomConfig.creamCoatings || []))}, ${sqlEscape(JSON.stringify(bomConfig.fillings || []))}, ${sqlEscape(JSON.stringify(bomConfig.packagings || []))}, ${sqlEscape(JSON.stringify(bomConfig.freeAccessories || []))}, ${sqlEscape(JSON.stringify(bomConfig.decorAddons || []))}, ${sqlEscape(JSON.stringify(bomConfig.birthdayBomPresets || []))}, ${sqlEscape(new Date().toISOString())});
+INSERT INTO bakery_bom_settings (id, version, target_food_cost_pct, cake_bases, cream_coatings, fillings, packagings, free_accessories, decor_addons, birthday_bom_presets, updated_at) VALUES ('primary', ${sqlEscape(bomConfig.version || '2.0.0')}, ${sqlEscape(bomConfig.targetFoodCostPct || 36.5)}, ${sqlEscape(JSON.stringify(bomConfig.cakeBases || []))}, ${sqlEscape(JSON.stringify(bomConfig.creamCoatings || []))}, ${sqlEscape(JSON.stringify(bomConfig.fillings || []))}, ${sqlEscape(JSON.stringify(bomConfig.packagings || []))}, ${sqlEscape(JSON.stringify(bomConfig.freeAccessories || []))}, ${sqlEscape(JSON.stringify(bomConfig.decorAddons || []))}, ${sqlEscape(JSON.stringify(bomConfig.birthdayBomPresets || []))}, ${sqlEscape(new Date().toISOString())}) ON CONFLICT(id) DO UPDATE SET version = EXCLUDED.version, target_food_cost_pct = EXCLUDED.target_food_cost_pct, cake_bases = EXCLUDED.cake_bases, cream_coatings = EXCLUDED.cream_coatings, fillings = EXCLUDED.fillings, packagings = EXCLUDED.packagings, free_accessories = EXCLUDED.free_accessories, decor_addons = EXCLUDED.decor_addons, birthday_bom_presets = EXCLUDED.birthday_bom_presets, updated_at = EXCLUDED.updated_at;
 `;
   }
 
@@ -1368,6 +1368,24 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let transfer_verify_config: any = null;
     let notification_history: any[] = [];
 
+    // Tải cấu hình định mức BOM bánh sinh nhật trực tiếp từ bảng bakery_bom_settings
+    try {
+      const { data: bomDb } = await supabase.from('bakery_bom_settings').select('*').eq('id', 'primary').maybeSingle();
+      if (bomDb) {
+        full_cake_bom_config = {
+          version: bomDb.version || '2.0.0',
+          targetFoodCostPct: Number(bomDb.target_food_cost_pct || 36.5),
+          cakeBases: (typeof bomDb.cake_bases === 'string' ? JSON.parse(bomDb.cake_bases) : bomDb.cake_bases) || [],
+          creamCoatings: (typeof bomDb.cream_coatings === 'string' ? JSON.parse(bomDb.cream_coatings) : bomDb.cream_coatings) || [],
+          fillings: (typeof bomDb.fillings === 'string' ? JSON.parse(bomDb.fillings) : bomDb.fillings) || [],
+          packagings: (typeof bomDb.packagings === 'string' ? JSON.parse(bomDb.packagings) : bomDb.packagings) || [],
+          freeAccessories: (typeof bomDb.free_accessories === 'string' ? JSON.parse(bomDb.free_accessories) : bomDb.free_accessories) || [],
+          decorAddons: (typeof bomDb.decor_addons === 'string' ? JSON.parse(bomDb.decor_addons) : bomDb.decor_addons) || [],
+          birthdayBomPresets: (typeof bomDb.birthday_bom_presets === 'string' ? JSON.parse(bomDb.birthday_bom_presets) : bomDb.birthday_bom_presets) || [],
+        };
+      }
+    } catch {}
+
     if (Array.isArray(sysRows)) {
       for (const row of sysRows) {
         const rawJson = row.notes || row.category;
@@ -1390,7 +1408,9 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_CAKE_COSTING') cake_costing_config = parsed;
           if (row.name === 'SYS_CONFIG_TAX_HOUSEHOLD') tax_household_config = parsed;
           if (row.name === 'SYS_CONFIG_TAX_POLICY') tax_policy_config = parsed;
-          if (row.name === 'SYS_CONFIG_CAKE_BOM' || row.name === 'SYS_CONFIG_BAKERY_BOM') full_cake_bom_config = parsed;
+          if ((row.name === 'SYS_CONFIG_CAKE_BOM' || row.name === 'SYS_CONFIG_BAKERY_BOM' || row.name === 'SYS_CONFIG_FULL_BOM') && !full_cake_bom_config) {
+            full_cake_bom_config = parsed;
+          }
           if (row.name === 'SYS_CONFIG_PENDING_TRANSFERS' && Array.isArray(parsed)) pending_transfers = parsed;
           if (row.name === 'SYS_CONFIG_CURRENT_SHIFT') current_shift = parsed;
           if (row.name === 'SYS_CONFIG_AUTOBANK') autobank_config = parsed;

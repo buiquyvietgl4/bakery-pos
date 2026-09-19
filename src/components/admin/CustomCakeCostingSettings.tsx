@@ -1003,6 +1003,13 @@ export function CustomCakeCostingSettings() {
             </div>
           </div>
 
+          <div className="p-3 bg-pink-50 border border-pink-200 rounded-2xl flex items-center gap-2.5 text-xs text-pink-900">
+            <span className="text-base">📦</span>
+            <div>
+              <span className="font-bold">Cơ chế Hộp & Bao Bì Mặc Định Chung:</span> Hộp được đánh dấu <strong className="text-pink-700 font-bold">Mặc định</strong> sẽ tự động áp dụng chung cho tất cả đơn đặt bánh sinh nhật và công thức BOM Presets (không cần nhân viên chọn tay khi bán hàng). Mọi thay đổi được lưu và đồng bộ tức thì vào Cloud SQL & Local SQL.
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {config.packagings.map((pkg, idx) => (
               <div 
@@ -1031,14 +1038,18 @@ export function CustomCakeCostingSettings() {
                       type="button"
                       onClick={() => {
                         const updated = config.packagings.map((p, i) => ({ ...p, isDefault: i === idx }));
-                        setConfig({ ...config, packagings: updated });
+                        const newConfig = { ...config, packagings: updated };
+                        setConfig(newConfig);
+                        saveFullCakeBomConfig(newConfig);
+                        setSaveSuccess(true);
+                        setTimeout(() => setSaveSuccess(false), 2500);
                       }}
                       className={`flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-xl border transition cursor-pointer ${
                         pkg.isDefault
                           ? 'bg-pink-600 text-white border-pink-600 shadow-2xs'
                           : 'bg-zinc-50 text-zinc-600 border-zinc-200 hover:border-pink-300 hover:text-pink-600 hover:bg-pink-50/40'
                       }`}
-                      title={pkg.isDefault ? "Hộp này đang được chọn mặc định khi mở modal đặt bánh" : "Bấm để chọn hộp này làm mặc định"}
+                      title={pkg.isDefault ? "Hộp này đang được chọn mặc định chung cho toàn quán" : "Bấm để chọn hộp này làm mặc định chung (tự động lưu vào SQL)"}
                     >
                       {pkg.isDefault ? '✓ Mặc định' : 'Chọn mặc định'}
                     </button>
@@ -1427,18 +1438,21 @@ export function CustomCakeCostingSettings() {
                     </div>
 
                     <div className="p-3 bg-pink-50/50 rounded-2xl border border-pink-100 space-y-1.5">
-                      <span className="font-bold text-pink-800 flex items-center gap-1">📦 Hộp & Bao Bì:</span>
-                      <select
-                        value={preset.packagingId || ''}
-                        onChange={(e) => handleUpdateBomPreset(pIdx, 'packagingId', e.target.value)}
-                        className="w-full p-1.5 rounded-lg bg-white border border-zinc-200 font-bold"
-                      >
-                        {config.packagings.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} ({p.costPrice.toLocaleString('vi-VN')}₫)
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-pink-800 flex items-center gap-1">📦 Hộp & Bao Bì:</span>
+                        <span className="text-[10px] bg-pink-200 text-pink-800 font-bold px-1.5 py-0.5 rounded">Mặc định chung (Mục 4)</span>
+                      </div>
+                      {(() => {
+                        const defaultBox = config.packagings.find((p) => p.isDefault) || config.packagings[0];
+                        return (
+                          <div className="w-full p-2 rounded-lg bg-white border border-pink-200 text-xs font-bold text-pink-950 flex items-center justify-between">
+                            <span className="truncate">{defaultBox?.name || 'Hộp tiêu chuẩn'}</span>
+                            <span className="text-zinc-500 font-medium shrink-0 ml-1">
+                              ({(defaultBox?.costPrice || 0).toLocaleString('vi-VN')}₫)
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

@@ -15,6 +15,7 @@ import {
 } from '@/lib/types/bakery-bom';
 import { INITIAL_FULL_CAKE_BOM_CONFIG } from '@/lib/constants/defaultCakeBomData';
 import { supabase } from '@/lib/supabase/client';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 export const CAKE_BOM_CONFIG_KEY = 'bakery_full_bom_config';
 export const CAKE_BOM_UPDATED_EVENT = 'bakery_bom_updated';
@@ -36,7 +37,7 @@ export function getFullCakeBomConfig(): FullCakeBomConfig {
   }
 }
 
-// ── LƯU CẤU HÌNH VÀO LOCALSTORAGE VÀ SYNC CLOUD ──
+// ── LƯU CẤU HÌNH VÀO LOCALSTORAGE VÀ SYNC CLOUD & LOCAL SQL ──
 export function saveFullCakeBomConfig(config: FullCakeBomConfig): void {
   if (typeof window === 'undefined') return;
   try {
@@ -46,31 +47,58 @@ export function saveFullCakeBomConfig(config: FullCakeBomConfig): void {
     console.error('Lỗi lưu cấu hình BOM vào localStorage:', e);
   }
 
-  // Tự động đồng bộ lên Supabase nếu có bảng hoặc lưu vào settings
+  // Tự động đồng bộ lên Supabase Cloud SQL và Local SQL
   syncCakeBomConfigToDb(config).catch((err) => {
     console.warn('Lỗi đồng bộ BOM lên CSDL Cloud:', err);
   });
 }
 
-// ── ĐỒNG BỘ LÊN SUPABASE CLOUD ──
+// ── ĐỒNG BỘ LÊN SUPABASE CLOUD & LOCAL SQL ──
 export async function syncCakeBomConfigToDb(config: FullCakeBomConfig): Promise<void> {
+  const defPkg = config.packagings.find((p) => p.isDefault) || config.packagings[0];
+
+  // 1. Supabase Cloud SQL: Bảng bakery_bom_settings
   try {
     const payload = {
       id: 'primary',
-      config_data: config,
+      version: config.version || '2.0.0',
+      target_food_cost_pct: config.targetFoodCostPct || 36.5,
+      cake_bases: config.cakeBases || [],
+      cream_coatings: config.creamCoatings || [],
+      fillings: config.fillings || [],
+      packagings: config.packagings || [],
+      free_accessories: config.freeAccessories || [],
+      decor_addons: config.decorAddons || [],
+      birthday_bom_presets: config.birthdayBomPresets || [],
       updated_at: new Date().toISOString(),
     };
     await supabase.from('bakery_bom_settings').upsert(payload);
-  } catch {
-    // Fallback: lưu vào bảng cấu hình chung nếu bảng chưa tạo
-    try {
-      await supabase.from('system_settings').upsert({
-        key: 'bakery_full_bom_config',
-        value: JSON.stringify(config),
-        updated_at: new Date().toISOString(),
-      });
-    } catch {}
+  } catch (err) {
+    console.warn('Lỗi upsert bakery_bom_settings:', err);
   }
+
+  // 2. Supabase Cloud SQL: Dự phòng kép vào bảng recipes với id sys-full-bom-config
+  try {
+    await supabase.from('recipes').upsert(
+      {
+        id: 'sys-full-bom-config',
+        name: 'SYS_CONFIG_FULL_BOM',
+        category: 'Hệ thống',
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: defPkg?.costPrice || 0,
+        notes: JSON.stringify(config),
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } catch {}
+
+  // 3. Tự động đồng bộ ra file Local SQL & Master Dump
+  try {
+    autoSyncToLocalSqlFolder();
+  } catch {}
 }
 
 // ── TẢI CẤU HÌNH TỪ SUPABASE CLOUD ──
@@ -78,12 +106,22 @@ export async function fetchFullCakeBomConfigFromDb(): Promise<FullCakeBomConfig 
   try {
     const { data, error } = await supabase
       .from('bakery_bom_settings')
-      .select('config_data')
+      .select('*')
       .eq('id', 'primary')
-      .single();
+      .maybeSingle();
 
-    if (!error && data?.config_data) {
-      const remote = data.config_data as FullCakeBomConfig;
+    if (!error && data) {
+      const remote: FullCakeBomConfig = {
+        version: data.version || '2.0.0',
+        targetFoodCostPct: Number(data.target_food_cost_pct || 36.5),
+        cakeBases: (typeof data.cake_bases === 'string' ? JSON.parse(data.cake_bases) : data.cake_bases) || [],
+        creamCoatings: (typeof data.cream_coatings === 'string' ? JSON.parse(data.cream_coatings) : data.cream_coatings) || [],
+        fillings: (typeof data.fillings === 'string' ? JSON.parse(data.fillings) : data.fillings) || [],
+        packagings: (typeof data.packagings === 'string' ? JSON.parse(data.packagings) : data.packagings) || [],
+        freeAccessories: (typeof data.free_accessories === 'string' ? JSON.parse(data.free_accessories) : data.free_accessories) || [],
+        decorAddons: (typeof data.decor_addons === 'string' ? JSON.parse(data.decor_addons) : data.decor_addons) || [],
+        birthdayBomPresets: (typeof data.birthday_bom_presets === 'string' ? JSON.parse(data.birthday_bom_presets) : data.birthday_bom_presets) || [],
+      };
       if (typeof window !== 'undefined') {
         localStorage.setItem(CAKE_BOM_CONFIG_KEY, JSON.stringify(remote));
         window.dispatchEvent(new CustomEvent(CAKE_BOM_UPDATED_EVENT, { detail: remote }));
@@ -94,12 +132,12 @@ export async function fetchFullCakeBomConfigFromDb(): Promise<FullCakeBomConfig 
 
   try {
     const { data } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', 'bakery_full_bom_config')
-      .single();
-    if (data?.value) {
-      const parsed = JSON.parse(data.value);
+      .from('recipes')
+      .select('notes')
+      .eq('name', 'SYS_CONFIG_FULL_BOM')
+      .maybeSingle();
+    if (data?.notes) {
+      const parsed = JSON.parse(data.notes);
       if (typeof window !== 'undefined') {
         localStorage.setItem(CAKE_BOM_CONFIG_KEY, JSON.stringify(parsed));
         window.dispatchEvent(new CustomEvent(CAKE_BOM_UPDATED_EVENT, { detail: parsed }));
@@ -160,8 +198,9 @@ export function calculateCakeCostDetails(
   const fillingCost = filling?.costPrice ?? 0;
   const fillingPrice = filling?.extraPrice ?? 0;
 
-  // 4. Hộp và bao bì
-  const pkg = config.packagings.find((p) => p.id === params.packagingId);
+  // 4. Hộp và bao bì: Tự động áp dụng hộp mặc định chung (isDefault: true) trong Mục 4
+  const defaultPkg = config.packagings.find((p) => p.isDefault) || config.packagings[0];
+  const pkg = (params.packagingId ? config.packagings.find((p) => p.id === params.packagingId) : null) || defaultPkg;
   const packagingCost = pkg?.costPrice ?? 0;
   const packagingPrice = pkg?.sellingPrice ?? 0;
 
@@ -241,7 +280,10 @@ export function buildCakeOrderSpec(
   const creamSize = cream?.sizes.find((s) => s.id === params.creamCoatingSizeId) || cream?.sizes[0];
 
   const filling = config.fillings.find((f) => f.id === params.fillingId);
-  const pkg = config.packagings.find((p) => p.id === params.packagingId);
+  const pkg =
+    (params.packagingId ? config.packagings.find((p) => p.id === params.packagingId) : null) ||
+    config.packagings.find((p) => p.isDefault) ||
+    config.packagings[0];
 
   const freeAccessories = (params.freeAccessoryIds || [])
     .map((id) => {
