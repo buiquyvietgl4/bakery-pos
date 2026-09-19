@@ -12,7 +12,7 @@ import {
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
   Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff,
-  Zap, Link2, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock
+  Zap, Link2, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -58,6 +58,14 @@ import {
   fetchMaterialTransactionsFromDb,
   MATERIAL_TRANSACTION_EVENT,
 } from '@/lib/utils/materialTransactionManager';
+import { MaterialStockAdjustmentLog, COMMON_MATERIAL_ADJUSTMENT_REASONS } from '@/lib/types/materialStockAdjustment';
+import {
+  getMaterialStockAdjustmentLogs,
+  addMaterialStockAdjustmentLog,
+  fetchMaterialStockAdjustmentLogsFromDb,
+  clearMaterialStockAdjustmentLogs,
+  MATERIAL_STOCK_ADJUSTMENT_EVENT,
+} from '@/lib/utils/materialStockAdjustmentManager';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
@@ -375,11 +383,24 @@ export default function AdminDashboard() {
   const [poBaseUnitName, setPoBaseUnitName] = useState<string>('g');
   const [poConversionRate, setPoConversionRate] = useState<number>(1000);
 
-  // ── PHÂN HỆ LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ ──
-  const [inventoryViewSubTab, setInventoryViewSubTab] = useState<'stock' | 'history'>('stock');
+  // ── PHÂN HỆ LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ & KIỂM KÊ ──
+  const [inventoryViewSubTab, setInventoryViewSubTab] = useState<'stock' | 'history' | 'adjustments'>('stock');
   const [materialTransactions, setMaterialTransactions] = useState<MaterialTransaction[]>(() => getMaterialTransactions());
   const [materialTxSearch, setMaterialTxSearch] = useState<string>('');
   const [materialTxTypeFilter, setMaterialTxTypeFilter] = useState<'all' | 'import' | 'export'>('all');
+
+  // ── LỊCH SỬ SỬA TỒN KHO / KIỂM KÊ VẬT TƯ ──
+  const [materialStockAdjustments, setMaterialStockAdjustments] = useState<MaterialStockAdjustmentLog[]>(() => getMaterialStockAdjustmentLogs());
+  const [matAdjSearch, setMatAdjSearch] = useState<string>('');
+  const [matAdjReasonFilter, setMatAdjReasonFilter] = useState<string>('all');
+
+  // Modal Sửa Tồn Kho Vật Tư (Kiểm kê thực tế)
+  const [isAdjustMaterialStockModalOpen, setIsAdjustMaterialStockModalOpen] = useState<boolean>(false);
+  const [adjustingIngredient, setAdjustingIngredient] = useState<Ingredient | null>(null);
+  const [adjustNewStockQty, setAdjustNewStockQty] = useState<number>(0);
+  const [adjustReason, setAdjustReason] = useState<string>('Kiểm kê thực tế định kỳ');
+  const [adjustNotes, setAdjustNotes] = useState<string>('');
+  const [isSubmittingAdjustStock, setIsSubmittingAdjustStock] = useState<boolean>(false);
 
   // Form Nhập Kho (Purchase Order) - Bánh & Hàng Bán Sẵn (Thành phẩm nhập)
   const [poProductId, setPoProductId] = useState<string>('');
@@ -1460,12 +1481,20 @@ export default function AdminDashboard() {
     fetchMaterialTransactionsFromDb().then((txs) => {
       if (txs && txs.length > 0) setMaterialTransactions(txs);
     }).catch(console.error);
+    fetchMaterialStockAdjustmentLogsFromDb().then((adjs) => {
+      if (adjs && adjs.length > 0) setMaterialStockAdjustments(adjs);
+    }).catch(console.error);
     fetchClosingRecordsFromDb().catch(console.error);
 
     const handleMatUpdate = () => {
       setMaterialTransactions(getMaterialTransactions());
     };
     window.addEventListener(MATERIAL_TRANSACTION_EVENT, handleMatUpdate);
+
+    const handleMatAdjUpdate = () => {
+      setMaterialStockAdjustments(getMaterialStockAdjustmentLogs());
+    };
+    window.addEventListener(MATERIAL_STOCK_ADJUSTMENT_EVENT, handleMatAdjUpdate);
 
     // Lắng nghe đồng bộ sản phẩm & cấu hình thanh toán thời gian thực giữa điện thoại và máy tính
     const unsubscribeSync = subscribeCrossDeviceSync({
@@ -1613,6 +1642,8 @@ export default function AdminDashboard() {
       window.removeEventListener('bakery_pending_transfers_updated', handlePendingTransfersUpdate);
       window.removeEventListener('transfer_approval_requested', handlePendingTransfersUpdate);
       window.removeEventListener('transfer_approval_resolved', handlePendingTransfersUpdate);
+      window.removeEventListener(MATERIAL_TRANSACTION_EVENT, handleMatUpdate);
+      window.removeEventListener(MATERIAL_STOCK_ADJUSTMENT_EVENT, handleMatAdjUpdate);
     };
   }, []);
 
@@ -2193,6 +2224,129 @@ export default function AdminDashboard() {
     const link = document.createElement('a');
     link.href = url;
     link.download = `Lich_Su_Xuat_Nhap_Kho_Vat_Tu_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── XỬ LÝ MỞ MODAL ĐIỀU CHỈNH / KIỂM KÊ TỒN KHO VẬT TƯ ──
+  const handleOpenAdjustMaterialStock = (ing: Ingredient) => {
+    setAdjustingIngredient(ing);
+    setAdjustNewStockQty(ing.stock_qty);
+    setAdjustReason('Kiểm kê thực tế định kỳ');
+    setAdjustNotes('');
+    setIsAdjustMaterialStockModalOpen(true);
+  };
+
+  // ── XỬ LÝ LƯU ĐIỀU CHỈNH / KIỂM KÊ TỒN KHO VẬT TƯ ──
+  const handleSubmitAdjustMaterialStock = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!adjustingIngredient) return;
+    const oldQty = Number(adjustingIngredient.stock_qty || 0);
+    const newQty = Number(adjustNewStockQty);
+    if (isNaN(newQty) || newQty < 0) {
+      soundManager.playAlertTone();
+      alert('Số lượng tồn kho mới không hợp lệ (phải là số >= 0).');
+      return;
+    }
+
+    setIsSubmittingAdjustStock(true);
+    try {
+      const deltaQty = newQty - oldQty;
+      const avgCost = Number(adjustingIngredient.avg_cost || 0);
+      const totalValueChange = Math.round(deltaQty * avgCost);
+
+      // 1. Tạo bản ghi lịch sử kiểm kê / điều chỉnh tồn kho riêng biệt
+      addMaterialStockAdjustmentLog({
+        ingredientId: adjustingIngredient.id,
+        ingredientName: adjustingIngredient.name,
+        unit: adjustingIngredient.unit,
+        oldQuantity: oldQty,
+        newQuantity: newQty,
+        deltaQuantity: deltaQty,
+        avgCost: avgCost,
+        totalValueChange: totalValueChange,
+        reason: adjustReason,
+        notes: adjustNotes.trim() || undefined,
+        adjustedBy: isAdmin ? 'Quản lý / Admin' : 'Nhân viên kho',
+      });
+
+      // 2. Cập nhật số lượng tồn kho của nguyên vật liệu
+      const nextIngs = ingredients.map((i) =>
+        i.id === adjustingIngredient.id ? { ...i, stock_qty: newQty } : i
+      );
+      setIngredients(nextIngs);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_ingredients', JSON.stringify(nextIngs));
+      }
+
+      // 3. Cập nhật Cloud SQL nếu online
+      if (navigator.onLine && !isLocalMode()) {
+        try {
+          await supabase
+            .from('ingredients')
+            .update({ stock_qty: newQty, updated_at: new Date().toISOString() })
+            .eq('id', adjustingIngredient.id);
+        } catch (dbErr) {
+          console.warn('Lỗi khi cập nhật stock_qty lên Supabase ingredients:', dbErr);
+        }
+      }
+
+      autoSyncToLocalSqlFolder();
+      soundManager.playSuccessTone();
+      setPoSuccess(`Đã cập nhật tồn kho "${adjustingIngredient.name}" thành công: ${oldQty.toLocaleString()} -> ${newQty.toLocaleString()} ${adjustingIngredient.unit}`);
+      setTimeout(() => setPoSuccess(null), 4000);
+      setIsAdjustMaterialStockModalOpen(false);
+      setAdjustingIngredient(null);
+    } catch (err: any) {
+      console.error('Lỗi khi thực hiện kiểm kê / sửa tồn kho:', err);
+      alert('Lỗi: ' + err.message);
+    } finally {
+      setIsSubmittingAdjustStock(false);
+    }
+  };
+
+  // ── XUẤT LỊCH SỬ SỬA TỒN KHO VẬT TƯ RA FILE CSV ──
+  const handleExportMaterialStockAdjustmentsCsv = () => {
+    if (!materialStockAdjustments || materialStockAdjustments.length === 0) {
+      alert('Chưa có dữ liệu lịch sử sửa đổi / kiểm kê tồn kho để xuất!');
+      return;
+    }
+    const headers = [
+      'Mã kiểm kê',
+      'Thời gian',
+      'Mã vật tư',
+      'Tên vật tư',
+      'Đơn vị',
+      'Tồn cũ',
+      'Tồn mới',
+      'Chênh lệch (+/-)',
+      'Đơn giá vốn WAC (VND)',
+      'Biến động giá trị (VND)',
+      'Lý do điều chỉnh',
+      'Ghi chú',
+      'Người thực hiện',
+    ];
+    const rows = materialStockAdjustments.map((a) => [
+      a.id,
+      new Date(a.adjustedAt).toLocaleString('vi-VN'),
+      a.ingredientId,
+      `"${a.ingredientName.replace(/"/g, '""')}"`,
+      a.unit,
+      a.oldQuantity,
+      a.newQuantity,
+      a.deltaQuantity > 0 ? `+${a.deltaQuantity}` : a.deltaQuantity,
+      a.avgCost,
+      a.totalValueChange,
+      `"${a.reason.replace(/"/g, '""')}"`,
+      `"${(a.notes || '').replace(/"/g, '""')}"`,
+      `"${(a.adjustedBy || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Lich_Su_Kiem_Ke_Ton_Kho_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -4719,7 +4873,19 @@ export default function AdminDashboard() {
                   }`}
                 >
                   <History className="w-4 h-4" />
-                  <span>Lịch Sử Xuất Nhập Kho ({materialTransactions.length})</span>
+                  <span>Lịch Sử Xuất Nhập (PO) ({materialTransactions.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInventoryViewSubTab('adjustments')}
+                  className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
+                    inventoryViewSubTab === 'adjustments'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <Scale className="w-4 h-4" />
+                  <span>Lịch Sử Sửa Tồn Kho ({materialStockAdjustments.length})</span>
                 </button>
               </div>
 
@@ -4730,7 +4896,7 @@ export default function AdminDashboard() {
                 >
                   <Plus className="w-4 h-4" /> Thêm Loại Vật Tư Mới
                 </button>
-              ) : (
+              ) : inventoryViewSubTab === 'history' ? (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleExportMaterialCsv}
@@ -4738,6 +4904,16 @@ export default function AdminDashboard() {
                     title="Xuất danh sách ra tệp CSV"
                   >
                     <Download className="w-3.5 h-3.5 text-amber-600" /> Xuất File CSV
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExportMaterialStockAdjustmentsCsv}
+                    className="px-3.5 py-2 rounded-xl bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-bold text-xs shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                    title="Xuất danh sách lịch sử sửa tồn kho ra tệp CSV"
+                  >
+                    <Download className="w-3.5 h-3.5 text-blue-600" /> Xuất File CSV
                   </button>
                 </div>
               )}
@@ -4814,6 +4990,14 @@ export default function AdminDashboard() {
                             <div className="flex items-center justify-center gap-1">
                               <button
                                 type="button"
+                                onClick={() => handleOpenAdjustMaterialStock(ing)}
+                                className="p-1.5 rounded-lg text-zinc-400 hover:text-amber-600 hover:bg-amber-50 transition cursor-pointer"
+                                title="Sửa đổi số lượng tồn kho (Kiểm kê)"
+                              >
+                                <Scale className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => handleOpenEditIngredient(ing)}
                                 className="p-1.5 rounded-lg text-zinc-400 hover:text-blue-600 hover:bg-blue-50 transition cursor-pointer"
                                 title="Chỉnh sửa đơn vị kho, đơn vị nhập & thông tin vật tư"
@@ -4836,7 +5020,7 @@ export default function AdminDashboard() {
                   </tbody>
                 </table>
               </div>
-            ) : (
+            ) : inventoryViewSubTab === 'history' ? (
               /* TAB CON 2: LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ */
               <div className="space-y-3 flex-1 flex flex-col min-h-0">
                 {/* 3 Thẻ thống kê nhanh */}
@@ -5006,6 +5190,163 @@ export default function AdminDashboard() {
                                 </td>
                                 <td className="py-2.5 px-3 text-[11px] text-zinc-500 whitespace-nowrap">
                                   {tx.performedBy || 'Hệ thống'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    );
+                  })()}
+                </div>
+              </div>
+            ) : (
+              /* TAB CON 3: LỊCH SỬ SỬA ĐỔI TỒN KHO VẬT TƯ (KIỂM KÊ) */
+              <div className="space-y-3 flex-1 flex flex-col min-h-0">
+                {/* 3 Thẻ thống kê nhanh */}
+                {(() => {
+                  const totalCount = materialStockAdjustments.length;
+                  const totalDeltaQty = materialStockAdjustments.reduce((sum, a) => sum + (Number(a.deltaQuantity) || 0), 0);
+                  const totalValChange = materialStockAdjustments.reduce((sum, a) => sum + (Number(a.totalValueChange) || 0), 0);
+
+                  return (
+                    <div className="grid grid-cols-3 gap-2 shrink-0">
+                      <div className="p-2.5 bg-zinc-50 rounded-2xl border border-zinc-200">
+                        <span className="text-[10px] font-bold text-zinc-500 block">Tổng số lần sửa tồn</span>
+                        <span className="text-base font-black text-zinc-900 mt-0.5 block">{totalCount} lượt</span>
+                      </div>
+                      <div className={`p-2.5 rounded-2xl border ${totalDeltaQty >= 0 ? 'bg-emerald-50 border-emerald-200' : 'bg-rose-50 border-rose-200'}`}>
+                        <span className={`text-[10px] font-bold block ${totalDeltaQty >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          Tổng lượng chênh lệch
+                        </span>
+                        <span className={`text-base font-black mt-0.5 block ${totalDeltaQty >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {totalDeltaQty > 0 ? `+${totalDeltaQty.toLocaleString()}` : totalDeltaQty.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className={`p-2.5 rounded-2xl border ${totalValChange >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
+                        <span className={`text-[10px] font-bold block ${totalValChange >= 0 ? 'text-blue-700' : 'text-amber-800'}`}>
+                          Biến động giá trị vốn
+                        </span>
+                        <span className={`text-base font-black mt-0.5 block ${totalValChange >= 0 ? 'text-blue-700' : 'text-amber-800'}`}>
+                          {totalValChange > 0 ? `+${totalValChange.toLocaleString('vi-VN')}₫` : `${totalValChange.toLocaleString('vi-VN')}₫`}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Thanh tìm kiếm & bộ lọc */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={matAdjSearch}
+                      onChange={(e) => setMatAdjSearch(e.target.value)}
+                      placeholder="Tìm theo tên vật tư, lý do, ghi chú, người sửa..."
+                      className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-zinc-200 text-xs bg-zinc-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                    />
+                  </div>
+                  <select
+                    value={matAdjReasonFilter}
+                    onChange={(e) => setMatAdjReasonFilter(e.target.value)}
+                    aria-label="Lọc theo lý do kiểm kê"
+                    className="px-3 py-1.5 rounded-xl border border-zinc-200 text-xs bg-zinc-50 focus:bg-white font-bold text-zinc-700"
+                  >
+                    <option value="all">Tất cả lý do ({materialStockAdjustments.length})</option>
+                    {COMMON_MATERIAL_ADJUSTMENT_REASONS.map((r) => (
+                      <option key={r} value={r}>{r}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Bảng dữ liệu lịch sử sửa tồn kho */}
+                <div className="overflow-y-auto max-h-[480px] border border-zinc-100 rounded-2xl">
+                  {(() => {
+                    const filtered = materialStockAdjustments.filter((adj) => {
+                      if (matAdjReasonFilter !== 'all' && adj.reason !== matAdjReasonFilter) return false;
+                      if (matAdjSearch.trim()) {
+                        const q = matAdjSearch.toLowerCase();
+                        const match =
+                          adj.ingredientName.toLowerCase().includes(q) ||
+                          (adj.reason && adj.reason.toLowerCase().includes(q)) ||
+                          (adj.notes && adj.notes.toLowerCase().includes(q)) ||
+                          (adj.adjustedBy && adj.adjustedBy.toLowerCase().includes(q));
+                        if (!match) return false;
+                      }
+                      return true;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="p-8 text-center text-zinc-400 flex flex-col items-center justify-center">
+                          <Scale className="w-8 h-8 text-zinc-300 stroke-1 mb-2" />
+                          <p className="font-bold text-xs text-zinc-500">Chưa có lượt sửa đổi tồn kho nào</p>
+                          <p className="text-[11px] text-zinc-400 mt-0.5">Khi bạn chỉnh sửa hoặc kiểm kê số lượng tồn kho của bất kỳ vật tư nào, toàn bộ lịch sử biến động sẽ được lưu lại riêng biệt tại đây.</p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-zinc-50 sticky top-0 border-b border-zinc-200 z-10">
+                          <tr className="text-zinc-400 font-bold">
+                            <th className="py-2.5 px-3">Thời gian</th>
+                            <th className="py-2.5 px-3">Tên vật tư</th>
+                            <th className="py-2.5 px-3 text-right">Tồn cũ</th>
+                            <th className="py-2.5 px-3 text-right">Tồn mới</th>
+                            <th className="py-2.5 px-3 text-right">Chênh lệch</th>
+                            <th className="py-2.5 px-3 text-right">Giá vốn WAC</th>
+                            <th className="py-2.5 px-3 text-right">Biến động giá trị</th>
+                            <th className="py-2.5 px-3">Lý do & Ghi chú</th>
+                            <th className="py-2.5 px-3">Người sửa</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {filtered.map((adj) => {
+                            const isIncrease = adj.deltaQuantity > 0;
+                            const isNeutral = adj.deltaQuantity === 0;
+
+                            return (
+                              <tr key={adj.id} className="hover:bg-zinc-50 transition">
+                                <td className="py-2.5 px-3 whitespace-nowrap text-zinc-500 text-[11px]">
+                                  {new Date(adj.adjustedAt).toLocaleString('vi-VN')}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <span className="font-bold text-zinc-900 block">{adj.ingredientName}</span>
+                                  <span className="text-[10px] text-zinc-400">Đơn vị: {adj.unit}</span>
+                                </td>
+                                <td className="py-2.5 px-3 text-right text-zinc-600 font-medium">
+                                  {adj.oldQuantity.toLocaleString()} {adj.unit}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-black text-zinc-900">
+                                  {adj.newQuantity.toLocaleString()} {adj.unit}
+                                </td>
+                                <td className="py-2.5 px-3 text-right whitespace-nowrap font-bold">
+                                  {isNeutral ? (
+                                    <span className="text-zinc-400">0</span>
+                                  ) : isIncrease ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px]">
+                                      +{adj.deltaQuantity.toLocaleString()} {adj.unit}
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px]">
+                                      {adj.deltaQuantity.toLocaleString()} {adj.unit}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3 text-right text-zinc-500 whitespace-nowrap">
+                                  {adj.avgCost.toLocaleString('vi-VN')}₫
+                                </td>
+                                <td className={`py-2.5 px-3 text-right font-black whitespace-nowrap ${adj.totalValueChange >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+                                  {adj.totalValueChange > 0 ? `+${adj.totalValueChange.toLocaleString('vi-VN')}₫` : `${adj.totalValueChange.toLocaleString('vi-VN')}₫`}
+                                </td>
+                                <td className="py-2.5 px-3 text-[11px]">
+                                  <div className="font-semibold text-zinc-800">{adj.reason}</div>
+                                  {adj.notes && <div className="text-zinc-500 text-[10px] italic">{adj.notes}</div>}
+                                </td>
+                                <td className="py-2.5 px-3 text-[11px] text-zinc-500 whitespace-nowrap">
+                                  {adj.adjustedBy || 'Hệ thống'}
                                 </td>
                               </tr>
                             );
@@ -5504,6 +5845,148 @@ export default function AdminDashboard() {
                 >
                   <Save className="w-4 h-4" />
                   {savingIngredient ? 'Đang cập nhật...' : 'Lưu Thay Đổi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: ĐIỀU CHỈNH / KIỂM KÊ TỒN KHO VẬT TƯ ── */}
+      {isAdjustMaterialStockModalOpen && adjustingIngredient && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <Scale className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-zinc-900">Sửa Số Lượng Tồn Kho (Kiểm Kê)</h3>
+                  <p className="text-[11px] text-zinc-500">Ghi nhận kiểm kê thực tế và lưu vào lịch sử riêng</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAdjustMaterialStockModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-600 p-1 rounded-lg hover:bg-zinc-100 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Thông tin vật tư hiện tại */}
+            <div className="p-3.5 bg-amber-50/60 rounded-2xl border border-amber-200 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-sm text-zinc-900">{adjustingIngredient.name}</span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 font-bold">{adjustingIngredient.category}</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-amber-200/60">
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Tồn kho sổ sách hiện tại:</span>
+                  <span className="font-black text-zinc-900 text-sm">{adjustingIngredient.stock_qty.toLocaleString()} {adjustingIngredient.unit}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Giá vốn bình quân (WAC):</span>
+                  <span className="font-black text-amber-800 text-sm">{adjustingIngredient.avg_cost.toLocaleString('vi-VN')}₫/{adjustingIngredient.unit}</span>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleSubmitAdjustMaterialStock} className="space-y-4">
+              {/* Ô nhập số lượng tồn thực tế mới */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Số lượng tồn kho thực tế mới ({adjustingIngredient.unit}) <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={adjustNewStockQty}
+                    onChange={(e) => setAdjustNewStockQty(parseFloat(e.target.value) || 0)}
+                    required
+                    className="w-full px-3 py-2.5 text-base font-black rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-amber-500 text-zinc-900"
+                    placeholder="Nhập số lượng thực tế sau kiểm kê..."
+                  />
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-xs text-zinc-400">
+                    {adjustingIngredient.unit}
+                  </span>
+                </div>
+              </div>
+
+              {/* Hộp xem trước biến động (Delta preview) */}
+              {(() => {
+                const delta = Number(adjustNewStockQty) - Number(adjustingIngredient.stock_qty || 0);
+                const cost = Number(adjustingIngredient.avg_cost || 0);
+                const valChange = Math.round(delta * cost);
+                const isIncrease = delta > 0;
+                const isNeutral = delta === 0;
+
+                return (
+                  <div className={`p-3 rounded-2xl border text-xs ${isNeutral ? 'bg-zinc-50 border-zinc-200' : isIncrease ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-rose-50 border-rose-200 text-rose-900'}`}>
+                    <div className="flex items-center justify-between font-bold">
+                      <span>Chênh lệch lượng tồn:</span>
+                      <span className="text-sm">
+                        {isNeutral ? '0 (Không đổi)' : isIncrease ? `+${delta.toLocaleString()} ${adjustingIngredient.unit} (Thừa kho)` : `${delta.toLocaleString()} ${adjustingIngredient.unit} (Hao hụt/Thiếu kho)`}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between mt-1 text-[11px] opacity-90">
+                      <span>Biến động giá trị tồn kho:</span>
+                      <span className="font-black">
+                        {valChange > 0 ? `+${valChange.toLocaleString('vi-VN')}₫` : `${valChange.toLocaleString('vi-VN')}₫`}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Lý do điều chỉnh */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Lý do kiểm kê / điều chỉnh <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={adjustReason}
+                  onChange={(e) => setAdjustReason(e.target.value)}
+                  className="w-full px-3 py-2 text-xs font-semibold rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-amber-500 bg-white"
+                >
+                  {COMMON_MATERIAL_ADJUSTMENT_REASONS.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Ghi chú chi tiết */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Ghi chú chi tiết (nếu có)
+                </label>
+                <textarea
+                  value={adjustNotes}
+                  onChange={(e) => setAdjustNotes(e.target.value)}
+                  rows={2}
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-zinc-300 focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                  placeholder="Ví dụ: Kiểm kê cuối tuần, mẻ bánh cháy dùng hỏng 300g..."
+                />
+              </div>
+
+              {/* Nút hành động */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setIsAdjustMaterialStockModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-zinc-600 hover:bg-zinc-100 transition cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSubmittingAdjustStock}
+                  className="px-5 py-2 rounded-xl text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-600/30 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+                >
+                  {isSubmittingAdjustStock ? 'Đang cập nhật...' : 'Xác Nhận Sửa Tồn Kho'}
                 </button>
               </div>
             </form>

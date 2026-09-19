@@ -107,6 +107,7 @@ export interface BakeryBackupData {
   stock_adjustments: StockAdjustmentLog[];
   spoilage_logs: SpoilageLog[];
   material_transactions?: any[];
+  material_stock_adjustments?: any[];
   orders: BackupOrder[];
   expenses: BackupExpense[];
   cashflow: BackupCashflow[];

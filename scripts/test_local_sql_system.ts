@@ -154,6 +154,8 @@ async function runLocalSqlTests() {
       'cashflow',
       'spoilage',
       'stock_adjustments',
+      'material_transactions',
+      'material_stock_adjustments',
       'accounting_closings',
       'security_config',
       'store_branding',
@@ -301,6 +303,10 @@ async function runLocalSqlTests() {
     sqliteDb.exec("INSERT INTO orders (id, order_number, total_amount, payment_status) VALUES ('ord-local-exec-99', 'DH-LOCAL-99', 450000, 'paid');");
     const insertedOrder: any = sqliteDb.prepare("SELECT id, order_number, total_amount FROM orders WHERE id = 'ord-local-exec-99'").get();
     assert('Chèn và truy vấn đơn hàng mới thành công trên CSDL SQLite Cục bộ', insertedOrder?.order_number === 'DH-LOCAL-99' && Number(insertedOrder?.total_amount) === 450000);
+
+    sqliteDb.exec(`INSERT INTO material_stock_adjustments (id, ingredient_id, ingredient_name, unit, old_quantity, new_quantity, delta_quantity, avg_cost, total_value_change, reason, notes, adjusted_by) VALUES ('adj-1', 'ing-1', 'Bột mì số 8', 'g', 10000, 9500, -500, 18, -9000, 'Kiểm kê thực tế định kỳ', 'Hao hụt tự nhiên', 'Quản lý');`);
+    const insertedAdj: any = sqliteDb.prepare("SELECT * FROM material_stock_adjustments WHERE id = 'adj-1'").get();
+    assert('Chèn và truy vấn lịch sử sửa tồn kho vật tư (material_stock_adjustments) thành công trên SQLite', insertedAdj?.ingredient_name === 'Bột mì số 8' && Number(insertedAdj?.delta_quantity) === -500);
 
     // =========================================================================
     // NHÓM 5: LƯU TRỮ VÀ GHI TỆP VÀO THƯ MỤC Ổ ĐĨA MÁY TÍNH

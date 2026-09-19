@@ -392,6 +392,22 @@ CREATE TABLE IF NOT EXISTS material_transactions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS material_stock_adjustments (
+    id TEXT PRIMARY KEY,
+    ingredient_id TEXT NOT NULL,
+    ingredient_name TEXT NOT NULL,
+    unit TEXT NOT NULL,
+    old_quantity NUMERIC DEFAULT 0,
+    new_quantity NUMERIC DEFAULT 0,
+    delta_quantity NUMERIC DEFAULT 0,
+    avg_cost NUMERIC DEFAULT 0,
+    total_value_change NUMERIC DEFAULT 0,
+    reason TEXT NOT NULL,
+    notes TEXT,
+    adjusted_by TEXT,
+    adjusted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS accounting_closings (
     id TEXT PRIMARY KEY,
     period_type TEXT,
@@ -739,6 +755,19 @@ ${generateSchemaSql()}
 
   sql += `
 -- ----------------------------------------------------------------------------
+-- 8c. BẢNG LỊCH SỬ SỬA ĐỔI TỒN KHO VẬT TƯ (MATERIAL_STOCK_ADJUSTMENTS)
+-- ----------------------------------------------------------------------------
+`;
+  const matAdjustments = data?.material_stock_adjustments || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_material_stock_adjustments') || '[]') : []);
+  if (Array.isArray(matAdjustments) && matAdjustments.length > 0) {
+    for (const ma of matAdjustments) {
+      sql += `INSERT INTO material_stock_adjustments (id, ingredient_id, ingredient_name, unit, old_quantity, new_quantity, delta_quantity, avg_cost, total_value_change, reason, notes, adjusted_by, adjusted_at) VALUES (${sqlEscape(ma.id)}, ${sqlEscape(ma.ingredientId || ma.ingredient_id)}, ${sqlEscape(ma.ingredientName || ma.ingredient_name)}, ${sqlEscape(ma.unit)}, ${sqlEscape(ma.oldQuantity ?? ma.old_quantity ?? 0)}, ${sqlEscape(ma.newQuantity ?? ma.new_quantity ?? 0)}, ${sqlEscape(ma.deltaQuantity ?? ma.delta_quantity ?? 0)}, ${sqlEscape(ma.avgCost ?? ma.avg_cost ?? 0)}, ${sqlEscape(ma.totalValueChange ?? ma.total_value_change ?? 0)}, ${sqlEscape(ma.reason)}, ${sqlEscape(ma.notes)}, ${sqlEscape(ma.adjustedBy || ma.adjusted_by)}, ${sqlEscape(ma.adjustedAt || ma.adjusted_at || new Date().toISOString())});
+`;
+    }
+  }
+
+  sql += `
+-- ----------------------------------------------------------------------------
 -- 9. BẢNG BIÊN BẢN CHỐT SỔ KỲ (ACCOUNTING_CLOSINGS)
 -- ----------------------------------------------------------------------------
 `;
@@ -1034,6 +1063,10 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
       localSnapshot['bakery_material_transactions'] = JSON.stringify(data.material_transactions);
     }
 
+    if (Array.isArray(data.material_stock_adjustments)) {
+      localSnapshot['bakery_material_stock_adjustments'] = JSON.stringify(data.material_stock_adjustments);
+    }
+
     const closings = data.accounting_closings || data.closings;
     if (Array.isArray(closings)) {
       localSnapshot['bakery_accounting_closings'] = JSON.stringify(closings);
@@ -1146,6 +1179,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let spoilage_logs: any[] = [];
     let stock_adjustments: any[] = [];
     let material_transactions: any[] = [];
+    let material_stock_adjustments: any[] = [];
     let accounting_closings: any[] = [];
     let security_config: any = null;
     let branding_config: any = null;
@@ -1169,6 +1203,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_SPOILAGE' && Array.isArray(parsed)) spoilage_logs = parsed;
           if (row.name === 'SYS_CONFIG_STOCK_ADJUSTMENTS' && Array.isArray(parsed)) stock_adjustments = parsed;
           if (row.name === 'SYS_CONFIG_MATERIAL_TRANSACTIONS' && Array.isArray(parsed)) material_transactions = parsed;
+          if (row.name === 'SYS_CONFIG_MATERIAL_STOCK_ADJUSTMENTS' && Array.isArray(parsed)) material_stock_adjustments = parsed;
           if (row.name === 'SYS_CONFIG_CLOSINGS' && Array.isArray(parsed)) accounting_closings = parsed;
           if (row.name === 'SYS_CONFIG_SECURITY') security_config = parsed;
           if (row.name === 'SYS_CONFIG_BRANDING') branding_config = parsed;
@@ -1209,6 +1244,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
         totalStockLogs: stock_adjustments.length,
         totalSpoilageLogs: spoilage_logs.length,
         totalMaterialTransactions: material_transactions.length,
+        totalMaterialStockAdjustments: material_stock_adjustments.length,
         totalExpenses: expenses.length,
         totalImages: 0,
         estimatedSizeBytes: 0,
@@ -1222,6 +1258,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       spoilage_logs,
       stock_adjustments,
       material_transactions,
+      material_stock_adjustments,
       accounting_closings,
       security_config,
       branding_config,

@@ -206,6 +206,20 @@ class AudioManager {
       console.warn('Speech synthesis error:', e);
     }
   }
+
+  /**
+   * Âm cảnh báo lỗi / sai sót
+   */
+  public playAlertTone() {
+    this.playUrgentAlert();
+  }
+
+  /**
+   * Âm báo thành công thao tác
+   */
+  public playSuccessTone() {
+    this.playPaymentSuccessChime();
+  }
 }
 
 export const soundManager = new AudioManager();

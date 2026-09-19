@@ -51,6 +51,7 @@ export const BAKERY_DATA_KEYS = [
   'bakery_stock_adjustments',
   'bakery_stock_adjustment_logs',
   'bakery_material_transactions',
+  'bakery_material_stock_adjustments',
   'bakery_accounting_closings',
   'bakery_closing_records',
   'bakery_security_config',

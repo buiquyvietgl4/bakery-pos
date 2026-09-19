@@ -11,6 +11,7 @@ import { filterActiveProducts, getDeletedProductIds } from '@/lib/utils/productM
 import { getStockAdjustmentLogs } from './stockAdjustmentManager';
 import { getSpoilageLogs } from './spoilageManager';
 import { getMaterialTransactions } from './materialTransactionManager';
+import { getMaterialStockAdjustmentLogs } from './materialStockAdjustmentManager';
 import { supabase } from '@/lib/supabase/client';
 import { getTelegramConfig } from './telegramNotify';
 import { getPrinterConfig } from './printerManager';
@@ -440,6 +441,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   const stock_adjustments = getStockAdjustmentLogs();
   const spoilage_logs = getSpoilageLogs();
   const material_transactions = getMaterialTransactions();
+  const material_stock_adjustments = getMaterialStockAdjustmentLogs();
 
   // 5. Đơn hàng (orders & preorders)
   let orders: BackupOrder[] = [];
@@ -639,6 +641,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     stock_adjustments,
     spoilage_logs,
     material_transactions,
+    material_stock_adjustments,
     orders,
     expenses,
     cashflow,
@@ -668,6 +671,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     stock_adjustments,
     spoilage_logs,
     material_transactions,
+    material_stock_adjustments,
     orders,
     expenses,
     cashflow,
