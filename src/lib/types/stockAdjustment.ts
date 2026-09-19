@@ -2,6 +2,7 @@ export interface StockAdjustmentLog {
   id: string;
   productId: string;
   productName: string;
+  productImage?: string;
   productCategory?: string;
   oldQuantity: number;
   newQuantity: number;

@@ -489,12 +489,15 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
       }
 
       if (matchedKey && productMap.has(matchedKey)) {
-        const existing = productMap.get(matchedKey);
-        // Supabase là nguồn chân lý cho thông tin, nhưng số lượng tồn kho:
-        // Ưu tiên: Supabase metadata stock_qty -> localStocks map -> decoded.stock_qty -> 10
-        const resolvedStock = existing.stock_qty !== undefined
-          ? existing.stock_qty
-          : (localStocks[matchedKey] ?? (nameKey ? localStocks[nameKey] : undefined) ?? decoded.stock_qty ?? 10);
+        const existing = productMap.get(matchedKey)!;
+        // Ưu tiên số lượng tồn kho:
+        // 1. localStocks map (người dùng vừa thao tác sửa tức thì)
+        // 2. existing.stock_qty (từ Supabase)
+        // 3. decoded.stock_qty -> 10
+        const localVal = localStocks[matchedKey] ?? (nameKey ? localStocks[nameKey] : undefined);
+        const resolvedStock = localVal !== undefined
+          ? localVal
+          : (existing.stock_qty !== undefined ? existing.stock_qty : (decoded.stock_qty ?? 10));
 
         productMap.set(matchedKey, {
           ...decoded,

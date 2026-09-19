@@ -60,6 +60,9 @@ import {
   fetchSpoilageLogsFromDb,
 } from '@/lib/utils/spoilageManager';
 import { addStockAdjustmentLog } from '@/lib/utils/stockAdjustmentManager';
+import { persistProductToSupabase } from '@/lib/utils/productManager';
+import { broadcastProductChange } from '@/lib/supabase/realtimeSync';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { PrintTemplateDesignerModal } from '@/components/pos/PrintTemplateDesignerModal';
@@ -294,14 +297,18 @@ export default function POSPage() {
   const [posStockFilterId, setPosStockFilterId] = useState<string | null>(null);
 
   const updateProductStock = (productId: string, newQty: number, reason: string = 'Kiểm kê định kỳ quầy POS') => {
+    let updatedTarget: any = null;
+    const safeNewQty = Math.max(0, newQty);
+
     setProducts((prev) => {
       const target = prev.find((p) => p.id === productId);
-      const safeNewQty = Math.max(0, newQty);
       if (target) {
         const oldQty = target.stock_qty ?? 10;
+        updatedTarget = { ...target, stock_qty: safeNewQty };
         addStockAdjustmentLog({
           productId,
           productName: target.name,
+          productImage: target.image_url,
           productCategory: target.category,
           oldQuantity: oldQty,
           newQuantity: safeNewQty,
@@ -313,23 +320,42 @@ export default function POSPage() {
       const updated = prev.map((p) => (p.id === productId ? { ...p, stock_qty: safeNewQty } : p));
       try {
         localStorage.setItem('bakery_products', JSON.stringify(updated));
-        db.products.bulkPut(updated);
-        window.dispatchEvent(new Event('bakery_products_updated'));
-        window.dispatchEvent(new Event('bakery_stocks_updated'));
+        const rawStocks = localStorage.getItem('bakery_stocks') || '{}';
+        const stockMap = JSON.parse(rawStocks);
+        stockMap[productId] = safeNewQty;
+        if (target?.name) stockMap[target.name.toLowerCase().trim()] = safeNewQty;
+        localStorage.setItem('bakery_stocks', JSON.stringify(stockMap));
+
+        db.products.update(productId, { stock_qty: safeNewQty }).catch(() => db.products.bulkPut(updated));
       } catch {}
       return updated;
     });
+
+    // Đồng bộ tức thì lên Supabase SQL và phát sóng Realtime Sync (<50ms)
+    if (updatedTarget) {
+      persistProductToSupabase(updatedTarget).catch(console.error);
+      supabase.from('products').update({ stock_qty: safeNewQty }).eq('id', productId).then(() => {}, console.error);
+      broadcastProductChange({ action: 'update', product: updatedTarget }).catch(console.error);
+      if (isLocalMode()) {
+        autoSyncToLocalSqlFolder().catch(console.warn);
+      }
+    }
   };
 
   const addProductStock = (productId: string, amount: number, reason: string = 'Nhập thêm mẻ mới từ lò bếp') => {
+    let updatedTarget: any = null;
+
     setProducts((prev) => {
       const target = prev.find((p) => p.id === productId);
+      let safeNewQty = 0;
       if (target) {
         const oldQty = target.stock_qty ?? 10;
-        const safeNewQty = Math.max(0, oldQty + amount);
+        safeNewQty = Math.max(0, oldQty + amount);
+        updatedTarget = { ...target, stock_qty: safeNewQty };
         addStockAdjustmentLog({
           productId,
           productName: target.name,
+          productImage: target.image_url,
           productCategory: target.category,
           oldQuantity: oldQty,
           newQuantity: safeNewQty,
@@ -341,12 +367,25 @@ export default function POSPage() {
       const updated = prev.map((p) => (p.id === productId ? { ...p, stock_qty: Math.max(0, (p.stock_qty ?? 0) + amount) } : p));
       try {
         localStorage.setItem('bakery_products', JSON.stringify(updated));
-        db.products.bulkPut(updated);
-        window.dispatchEvent(new Event('bakery_products_updated'));
-        window.dispatchEvent(new Event('bakery_stocks_updated'));
+        const rawStocks = localStorage.getItem('bakery_stocks') || '{}';
+        const stockMap = JSON.parse(rawStocks);
+        stockMap[productId] = safeNewQty;
+        if (target?.name) stockMap[target.name.toLowerCase().trim()] = safeNewQty;
+        localStorage.setItem('bakery_stocks', JSON.stringify(stockMap));
+
+        db.products.update(productId, { stock_qty: safeNewQty }).catch(() => db.products.bulkPut(updated));
       } catch {}
       return updated;
     });
+
+    if (updatedTarget) {
+      persistProductToSupabase(updatedTarget).catch(console.error);
+      supabase.from('products').update({ stock_qty: updatedTarget.stock_qty }).eq('id', productId).then(() => {}, console.error);
+      broadcastProductChange({ action: 'update', product: updatedTarget }).catch(console.error);
+      if (isLocalMode()) {
+        autoSyncToLocalSqlFolder().catch(console.warn);
+      }
+    }
   };
 
   // VietQR Config State

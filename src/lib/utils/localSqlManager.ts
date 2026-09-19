@@ -186,9 +186,12 @@ CREATE TABLE IF NOT EXISTS products (
     food_cost_pct NUMERIC DEFAULT 35,
     stock_qty NUMERIC DEFAULT 10,
     unit TEXT DEFAULT 'cái',
+    is_active BOOLEAN DEFAULT TRUE,
     is_preorder_only BOOLEAN DEFAULT FALSE,
+    recipe_id TEXT,
     image_url TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS ingredients (
@@ -200,22 +203,28 @@ CREATE TABLE IF NOT EXISTS ingredients (
     reorder_level NUMERIC DEFAULT 0,
     avg_cost NUMERIC DEFAULT 0,
     wastage_pct NUMERIC DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS recipes (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
+    product_id TEXT,
     category TEXT DEFAULT 'Bánh tươi',
     yield_qty NUMERIC DEFAULT 1,
     yield_unit TEXT DEFAULT 'chiếc',
+    total_material_cost NUMERIC DEFAULT 0,
     cost_per_unit NUMERIC DEFAULT 0,
     target_food_cost_pct NUMERIC DEFAULT 35,
     suggested_price NUMERIC DEFAULT 0,
     bake_time_minutes NUMERIC DEFAULT 25,
     bake_temp_celsius NUMERIC DEFAULT 190,
+    notes TEXT,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS recipe_items (
@@ -224,16 +233,20 @@ CREATE TABLE IF NOT EXISTS recipe_items (
     ingredient_id TEXT NOT NULL,
     quantity NUMERIC DEFAULT 0,
     unit TEXT DEFAULT 'g',
-    line_cost NUMERIC DEFAULT 0
+    line_cost NUMERIC DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS orders (
     id TEXT PRIMARY KEY,
+    local_id TEXT,
     order_number TEXT NOT NULL,
     order_type TEXT DEFAULT 'takeaway',
     status TEXT DEFAULT 'pending',
-    total_amount NUMERIC DEFAULT 0,
+    subtotal NUMERIC DEFAULT 0,
     discount_amount NUMERIC DEFAULT 0,
+    discount_pct NUMERIC DEFAULT 0,
+    total_amount NUMERIC DEFAULT 0,
     final_amount NUMERIC DEFAULT 0,
     total_cogs NUMERIC DEFAULT 0,
     deposit_amount NUMERIC DEFAULT 0,
@@ -249,27 +262,61 @@ CREATE TABLE IF NOT EXISTS orders (
     delivery_method TEXT DEFAULT 'pickup',
     shipping_address TEXT,
     preorder_pickup_at TEXT,
-    bake_status TEXT,
+    bake_status TEXT DEFAULT 'done',
     need_bake_qty NUMERIC DEFAULT 0,
     ready_stock_qty NUMERIC DEFAULT 0,
     parent_order_number TEXT,
     cake_order_spec TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    bake_approval_status TEXT,
+    reference_image_url TEXT,
+    created_by TEXT,
+    store_id TEXT,
+    shift_id TEXT,
+    sync_status TEXT DEFAULT 'synced',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS order_items (
     id TEXT PRIMARY KEY,
     order_id TEXT NOT NULL,
     product_id TEXT,
+    variant_id TEXT,
     product_name_snapshot TEXT,
     quantity NUMERIC DEFAULT 1,
     unit_price NUMERIC DEFAULT 0,
     unit_cost NUMERIC DEFAULT 0,
     subtotal NUMERIC DEFAULT 0,
+    line_total NUMERIC DEFAULT 0,
     line_cost NUMERIC DEFAULT 0,
     product_type TEXT DEFAULT 'produced',
     supplier_name TEXT,
-    notes TEXT
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS payments (
+    id TEXT PRIMARY KEY,
+    order_id TEXT NOT NULL,
+    method TEXT NOT NULL DEFAULT 'cash',
+    amount NUMERIC DEFAULT 0,
+    reference_code TEXT,
+    paid_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS shifts (
+    id TEXT PRIMARY KEY,
+    staff_id TEXT,
+    store_id TEXT,
+    started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    ended_at TIMESTAMP,
+    opening_cash NUMERIC DEFAULT 0,
+    closing_cash NUMERIC,
+    expected_cash NUMERIC DEFAULT 0,
+    cash_difference NUMERIC DEFAULT 0,
+    status TEXT DEFAULT 'open',
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS operating_expenses (
@@ -312,6 +359,7 @@ CREATE TABLE IF NOT EXISTS stock_adjustments (
     id TEXT PRIMARY KEY,
     product_id TEXT,
     product_name TEXT,
+    product_image TEXT,
     old_stock NUMERIC DEFAULT 0,
     new_stock NUMERIC DEFAULT 0,
     difference NUMERIC DEFAULT 0,
@@ -321,17 +369,52 @@ CREATE TABLE IF NOT EXISTS stock_adjustments (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS material_transactions (
+    id TEXT PRIMARY KEY,
+    type TEXT,
+    material_id TEXT,
+    material_name TEXT,
+    material_category TEXT,
+    unit TEXT,
+    package_qty NUMERIC,
+    package_unit TEXT,
+    conversion_rate NUMERIC,
+    quantity NUMERIC DEFAULT 0,
+    unit_price NUMERIC DEFAULT 0,
+    package_unit_price NUMERIC,
+    total_amount NUMERIC DEFAULT 0,
+    supplier_or_reason TEXT,
+    performed_by TEXT,
+    transaction_date TEXT,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS accounting_closings (
     id TEXT PRIMARY KEY,
     period_type TEXT,
     period_key TEXT,
+    period_label TEXT,
+    start_date TEXT,
+    end_date TEXT,
     closed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     closed_by TEXT,
+    total_orders NUMERIC DEFAULT 0,
     total_revenue NUMERIC DEFAULT 0,
+    cash_revenue NUMERIC DEFAULT 0,
+    bank_revenue NUMERIC DEFAULT 0,
+    total_cogs NUMERIC DEFAULT 0,
+    gross_profit NUMERIC DEFAULT 0,
+    total_opex NUMERIC DEFAULT 0,
+    spoilage_cost NUMERIC DEFAULT 0,
+    spoilage_qty NUMERIC DEFAULT 0,
+    net_profit NUMERIC DEFAULT 0,
     total_cash_sales NUMERIC DEFAULT 0,
     actual_cash_counted NUMERIC DEFAULT 0,
+    system_cash NUMERIC DEFAULT 0,
     cash_difference NUMERIC DEFAULT 0,
-    notes TEXT
+    notes TEXT,
+    status TEXT DEFAULT 'closed'
 );
 
 CREATE TABLE IF NOT EXISTS security_config (
@@ -348,31 +431,46 @@ CREATE TABLE IF NOT EXISTS vietqr_config (
     account_no TEXT,
     account_name TEXT,
     template TEXT DEFAULT 'compact2',
+    transfer_syntax TEXT DEFAULT 'DH',
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS store_branding (
     id TEXT PRIMARY KEY,
     store_name TEXT,
+    slogan TEXT,
     tagline TEXT,
     address TEXT,
     phone TEXT,
     wifi_password TEXT,
     logo_url TEXT,
+    footer_message TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS printer_configs (
     id TEXT PRIMARY KEY,
+    mode TEXT DEFAULT 'browser',
     printer_name TEXT,
-    paper_size TEXT DEFAULT '80mm',
+    receipt_size TEXT DEFAULT '80mm',
+    label_size TEXT DEFAULT '50x30',
     connection_type TEXT DEFAULT 'usb',
     auto_print BOOLEAN DEFAULT FALSE,
+    auto_cut BOOLEAN DEFAULT TRUE,
+    print_delivery_address BOOLEAN DEFAULT TRUE,
+    copies INTEGER DEFAULT 1,
+    sticker_scale NUMERIC DEFAULT 92,
+    receipt_scale NUMERIC DEFAULT 100,
+    store_name TEXT,
+    store_address TEXT,
+    store_hotline TEXT,
+    raw_config_json TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS ewallet_config (
     id TEXT PRIMARY KEY,
+    active_wallet TEXT DEFAULT 'momo',
     momo_phone TEXT,
     momo_name TEXT,
     momo_qr_url TEXT,
@@ -382,6 +480,15 @@ CREATE TABLE IF NOT EXISTS ewallet_config (
     viettelmoney_phone TEXT,
     viettelmoney_name TEXT,
     viettelmoney_qr_url TEXT,
+    transfer_syntax TEXT DEFAULT 'VIMO',
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS telegram_config (
+    id TEXT PRIMARY KEY,
+    enabled BOOLEAN DEFAULT FALSE,
+    bot_token TEXT,
+    chat_id TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -398,6 +505,13 @@ CREATE TABLE IF NOT EXISTS tax_household_config (
     business_address TEXT,
     owner_name TEXT,
     phone TEXT,
+    email TEXT,
+    business_area NUMERIC,
+    bank_account_number TEXT,
+    bank_name TEXT,
+    district TEXT,
+    province TEXT,
+    software_name TEXT,
     registered_revenue_level INTEGER DEFAULT 2,
     pit_calculation_method INTEGER DEFAULT 1,
     regular_employees_count INTEGER DEFAULT 5,
@@ -407,10 +521,15 @@ CREATE TABLE IF NOT EXISTS tax_household_config (
 
 CREATE TABLE IF NOT EXISTS tax_policy_config (
     id TEXT PRIMARY KEY,
+    name TEXT,
     policy_name TEXT,
     circular_citation TEXT,
     annual_threshold NUMERIC DEFAULT 1000000000,
+    is_active BOOLEAN DEFAULT TRUE,
+    effective_date TEXT,
+    notes TEXT,
     tax_groups TEXT,
+    cost_indicators TEXT,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -454,7 +573,8 @@ ${generateSchemaSql()}
       const foodCostPct = p.food_cost_pct ?? 35;
       const importPrice = p.import_price ?? cost;
       const prodType = p.product_type || 'produced';
-      sql += `INSERT INTO products (id, name, category, selling_price, base_cost_price, import_price, product_type, supplier_name, barcode, food_cost_pct, stock_qty, unit, is_preorder_only, image_url) VALUES (${sqlEscape(p.id)}, ${sqlEscape(p.name)}, ${sqlEscape(p.category)}, ${sqlEscape(price)}, ${sqlEscape(cost)}, ${sqlEscape(importPrice)}, ${sqlEscape(prodType)}, ${sqlEscape(p.supplier_name)}, ${sqlEscape(p.barcode)}, ${sqlEscape(foodCostPct)}, ${sqlEscape(p.stock_qty ?? 10)}, ${sqlEscape(p.unit || 'cái')}, ${sqlEscape(p.is_preorder_only || false)}, ${sqlEscape(p.image_url)});
+      const isAct = p.is_active !== undefined ? Boolean(p.is_active) : true;
+      sql += `INSERT INTO products (id, name, category, selling_price, base_cost_price, import_price, product_type, supplier_name, barcode, food_cost_pct, stock_qty, unit, is_active, is_preorder_only, recipe_id, image_url, created_at, updated_at) VALUES (${sqlEscape(p.id)}, ${sqlEscape(p.name)}, ${sqlEscape(p.category)}, ${sqlEscape(price)}, ${sqlEscape(cost)}, ${sqlEscape(importPrice)}, ${sqlEscape(prodType)}, ${sqlEscape(p.supplier_name)}, ${sqlEscape(p.barcode)}, ${sqlEscape(foodCostPct)}, ${sqlEscape(p.stock_qty ?? 10)}, ${sqlEscape(p.unit || 'cái')}, ${sqlEscape(isAct)}, ${sqlEscape(p.is_preorder_only || false)}, ${sqlEscape(p.recipe_id || p.recipeId)}, ${sqlEscape(p.image_url)}, ${sqlEscape(p.created_at || new Date().toISOString())}, ${sqlEscape(p.updated_at || new Date().toISOString())});
 `;
     }
   }
@@ -466,7 +586,8 @@ ${generateSchemaSql()}
 `;
   if (Array.isArray(data?.ingredients) && data.ingredients.length > 0) {
     for (const ing of data.ingredients) {
-      sql += `INSERT INTO ingredients (id, name, unit, category, stock_qty, reorder_level, avg_cost, wastage_pct) VALUES (${sqlEscape(ing.id)}, ${sqlEscape(ing.name)}, ${sqlEscape(ing.unit || 'g')}, ${sqlEscape(ing.category)}, ${sqlEscape(ing.stock_qty || 0)}, ${sqlEscape(ing.reorder_level || 0)}, ${sqlEscape(ing.avg_cost || 0)}, ${sqlEscape(ing.wastage_pct || 0)});
+      const isAct = ing.is_active !== undefined ? Boolean(ing.is_active) : true;
+      sql += `INSERT INTO ingredients (id, name, unit, category, stock_qty, reorder_level, avg_cost, wastage_pct, is_active, created_at, updated_at) VALUES (${sqlEscape(ing.id)}, ${sqlEscape(ing.name)}, ${sqlEscape(ing.unit || 'g')}, ${sqlEscape(ing.category)}, ${sqlEscape(ing.stock_qty || 0)}, ${sqlEscape(ing.reorder_level || 0)}, ${sqlEscape(ing.avg_cost || 0)}, ${sqlEscape(ing.wastage_pct || 0)}, ${sqlEscape(isAct)}, ${sqlEscape(ing.created_at || new Date().toISOString())}, ${sqlEscape(ing.updated_at || new Date().toISOString())});
 `;
     }
   }
@@ -483,7 +604,9 @@ ${generateSchemaSql()}
       const sugPrice = r.suggested_price ?? r.suggestedPrice ?? 0;
       const bakeMins = r.bake_time_minutes ?? r.bakeTimeMinutes ?? 25;
       const bakeTemp = r.bake_temp_celsius ?? r.bakeTempCelsius ?? 190;
-      sql += `INSERT INTO recipes (id, name, category, yield_qty, yield_unit, cost_per_unit, target_food_cost_pct, suggested_price, bake_time_minutes, bake_temp_celsius, is_active) VALUES (${sqlEscape(r.id)}, ${sqlEscape(r.name)}, ${sqlEscape(r.category || 'Bánh tươi')}, ${sqlEscape(r.yield_qty || r.yieldQty || 1)}, ${sqlEscape(r.yield_unit || r.yieldUnit || 'chiếc')}, ${sqlEscape(costPerUnit)}, ${sqlEscape(targetPct)}, ${sqlEscape(sugPrice)}, ${sqlEscape(bakeMins)}, ${sqlEscape(bakeTemp)}, TRUE);
+      const totalMatCost = r.total_material_cost ?? r.totalMaterialCost ?? costPerUnit;
+      const isAct = r.is_active !== undefined ? Boolean(r.is_active) : true;
+      sql += `INSERT INTO recipes (id, name, product_id, category, yield_qty, yield_unit, total_material_cost, cost_per_unit, target_food_cost_pct, suggested_price, bake_time_minutes, bake_temp_celsius, notes, is_active, created_at, updated_at) VALUES (${sqlEscape(r.id)}, ${sqlEscape(r.name)}, ${sqlEscape(r.product_id || r.productId)}, ${sqlEscape(r.category || 'Bánh tươi')}, ${sqlEscape(r.yield_qty || r.yieldQty || 1)}, ${sqlEscape(r.yield_unit || r.yieldUnit || 'chiếc')}, ${sqlEscape(totalMatCost)}, ${sqlEscape(costPerUnit)}, ${sqlEscape(targetPct)}, ${sqlEscape(sugPrice)}, ${sqlEscape(bakeMins)}, ${sqlEscape(bakeTemp)}, ${sqlEscape(r.notes)}, ${sqlEscape(isAct)}, ${sqlEscape(r.created_at || new Date().toISOString())}, ${sqlEscape(r.updated_at || new Date().toISOString())});
 `;
       if (Array.isArray(r.items)) {
         for (const it of r.items) {
@@ -491,7 +614,7 @@ ${generateSchemaSql()}
           const ingId = it.ingredient_id || it.ingredientId || '1';
           const qty = it.quantity ?? it.qty ?? 0;
           const lineCost = it.line_cost ?? it.cost ?? 0;
-          sql += `INSERT INTO recipe_items (id, recipe_id, ingredient_id, quantity, unit, line_cost) VALUES (${sqlEscape(itId)}, ${sqlEscape(r.id)}, ${sqlEscape(ingId)}, ${sqlEscape(qty)}, ${sqlEscape(it.unit || 'g')}, ${sqlEscape(lineCost)});
+          sql += `INSERT INTO recipe_items (id, recipe_id, ingredient_id, quantity, unit, line_cost, created_at) VALUES (${sqlEscape(itId)}, ${sqlEscape(r.id)}, ${sqlEscape(ingId)}, ${sqlEscape(qty)}, ${sqlEscape(it.unit || 'g')}, ${sqlEscape(lineCost)}, ${sqlEscape(it.created_at || new Date().toISOString())});
 `;
         }
       }
@@ -521,8 +644,9 @@ ${generateSchemaSql()}
       const readyStock = o.ready_stock_qty ?? 0;
       const parentOrder = o.parent_order_number ?? null;
       const specStr = o.cake_order_spec ? JSON.stringify(o.cake_order_spec) : null;
+      const subtotal = o.subtotal ?? (o.total_amount || o.totalPrice || 0);
 
-      sql += `INSERT INTO orders (id, order_number, order_type, status, total_amount, discount_amount, final_amount, total_cogs, deposit_amount, remaining_amount, shipping_fee, payment_status, payment_method, notes, customer_name, customer_phone, cake_name, cake_message, delivery_method, shipping_address, preorder_pickup_at, bake_status, need_bake_qty, ready_stock_qty, parent_order_number, cake_order_spec, created_at) VALUES (${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.order_type || o.orderType || 'takeaway')}, ${sqlEscape(o.status)}, ${sqlEscape(o.total_amount || o.totalPrice || 0)}, ${sqlEscape(discount)}, ${sqlEscape(finalAmt)}, ${sqlEscape(totalCogs)}, ${sqlEscape(depositAmt)}, ${sqlEscape(remainAmt)}, ${sqlEscape(shipFee)}, ${sqlEscape(payStatus)}, ${sqlEscape(payMethod)}, ${sqlEscape(o.notes)}, ${sqlEscape(o.customer_name || o.customerName)}, ${sqlEscape(o.customer_phone || o.customerPhone)}, ${sqlEscape(cakeName)}, ${sqlEscape(cakeMsg)}, ${sqlEscape(o.delivery_method || o.deliveryMethod || 'pickup')}, ${sqlEscape(o.shipping_address || o.shippingAddress)}, ${sqlEscape(preorderPickup)}, ${sqlEscape(bakeStatus)}, ${sqlEscape(needBake)}, ${sqlEscape(readyStock)}, ${sqlEscape(parentOrder)}, ${sqlEscape(specStr)}, ${sqlEscape(o.created_at || o.createdAt || new Date().toISOString())});
+      sql += `INSERT INTO orders (id, local_id, order_number, order_type, status, subtotal, discount_amount, discount_pct, total_amount, final_amount, total_cogs, deposit_amount, remaining_amount, shipping_fee, payment_status, payment_method, notes, customer_name, customer_phone, cake_name, cake_message, delivery_method, shipping_address, preorder_pickup_at, bake_status, need_bake_qty, ready_stock_qty, parent_order_number, cake_order_spec, bake_approval_status, reference_image_url, created_by, store_id, shift_id, sync_status, created_at, updated_at) VALUES (${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(o.local_id || o.localId || o.id)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.order_type || o.orderType || 'takeaway')}, ${sqlEscape(o.status)}, ${sqlEscape(subtotal)}, ${sqlEscape(discount)}, ${sqlEscape(o.discount_pct ?? o.discountPct ?? 0)}, ${sqlEscape(o.total_amount || o.totalPrice || 0)}, ${sqlEscape(finalAmt)}, ${sqlEscape(totalCogs)}, ${sqlEscape(depositAmt)}, ${sqlEscape(remainAmt)}, ${sqlEscape(shipFee)}, ${sqlEscape(payStatus)}, ${sqlEscape(payMethod)}, ${sqlEscape(o.notes)}, ${sqlEscape(o.customer_name || o.customerName)}, ${sqlEscape(o.customer_phone || o.customerPhone)}, ${sqlEscape(cakeName)}, ${sqlEscape(cakeMsg)}, ${sqlEscape(o.delivery_method || o.deliveryMethod || 'pickup')}, ${sqlEscape(o.shipping_address || o.shippingAddress)}, ${sqlEscape(preorderPickup)}, ${sqlEscape(bakeStatus)}, ${sqlEscape(needBake)}, ${sqlEscape(readyStock)}, ${sqlEscape(parentOrder)}, ${sqlEscape(specStr)}, ${sqlEscape(o.bake_approval_status || o.bakeApprovalStatus)}, ${sqlEscape(o.reference_image_url || o.referenceImageUrl)}, ${sqlEscape(o.created_by || o.createdBy)}, ${sqlEscape(o.store_id || o.storeId)}, ${sqlEscape(o.shift_id || o.shiftId)}, ${sqlEscape(o.sync_status || 'synced')}, ${sqlEscape(o.created_at || o.createdAt || new Date().toISOString())}, ${sqlEscape(o.updated_at || o.updatedAt || new Date().toISOString())});
 `;
       if (Array.isArray(o.items)) {
         for (const item of o.items) {
@@ -531,13 +655,13 @@ ${generateSchemaSql()}
           const pName = item.product_name || item.product_name_snapshot || item.name || 'Sản phẩm';
           const unitPrice = item.unit_price || item.unitPrice || item.price || 0;
           const unitCost = item.unit_cost ?? item.unitCost ?? item.cost ?? 0;
-          const subtotal = item.subtotal || (item.quantity * unitPrice);
+          const itemSubtotal = item.subtotal || (item.quantity * unitPrice);
           const lineCost = item.line_cost ?? item.lineCost ?? Math.round(unitCost * (item.quantity || 1));
           const prodType = item.product_type || item.productType || 'produced';
           const supName = item.supplier_name || item.supplierName || null;
           const itemNotes = item.notes || null;
 
-          sql += `INSERT INTO order_items (id, order_id, product_id, product_name_snapshot, quantity, unit_price, unit_cost, subtotal, line_cost, product_type, supplier_name, notes) VALUES (${sqlEscape(itemId)}, ${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(pId)}, ${sqlEscape(pName)}, ${sqlEscape(item.quantity || 1)}, ${sqlEscape(unitPrice)}, ${sqlEscape(unitCost)}, ${sqlEscape(subtotal)}, ${sqlEscape(lineCost)}, ${sqlEscape(prodType)}, ${sqlEscape(supName)}, ${sqlEscape(itemNotes)});
+          sql += `INSERT INTO order_items (id, order_id, product_id, variant_id, product_name_snapshot, quantity, unit_price, unit_cost, subtotal, line_total, line_cost, product_type, supplier_name, notes, created_at) VALUES (${sqlEscape(itemId)}, ${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(pId)}, ${sqlEscape(item.variant_id || item.variantId)}, ${sqlEscape(pName)}, ${sqlEscape(item.quantity || 1)}, ${sqlEscape(unitPrice)}, ${sqlEscape(unitCost)}, ${sqlEscape(itemSubtotal)}, ${sqlEscape(itemSubtotal)}, ${sqlEscape(lineCost)}, ${sqlEscape(prodType)}, ${sqlEscape(supName)}, ${sqlEscape(itemNotes)}, ${sqlEscape(item.created_at || new Date().toISOString())});
 `;
         }
       }
@@ -592,7 +716,21 @@ ${generateSchemaSql()}
       const newStock = st.newStock ?? st.new_stock ?? 0;
       const diff = st.difference ?? (newStock - oldStock);
       const created = st.createdAt ?? st.adjustedAt ?? st.created_at ?? new Date().toISOString();
-      sql += `INSERT INTO stock_adjustments (id, product_id, product_name, old_stock, new_stock, difference, reason, notes, adjusted_by, created_at) VALUES (${sqlEscape(st.id)}, ${sqlEscape(st.productId || st.product_id)}, ${sqlEscape(st.productName || st.product_name)}, ${sqlEscape(oldStock)}, ${sqlEscape(newStock)}, ${sqlEscape(diff)}, ${sqlEscape(st.reason)}, ${sqlEscape(st.notes)}, ${sqlEscape(st.adjustedBy || st.adjusted_by)}, ${sqlEscape(created)});
+      const prodImg = st.productImage ?? st.product_image ?? '';
+      sql += `INSERT INTO stock_adjustments (id, product_id, product_name, product_image, old_stock, new_stock, difference, reason, notes, adjusted_by, created_at) VALUES (${sqlEscape(st.id)}, ${sqlEscape(st.productId || st.product_id)}, ${sqlEscape(st.productName || st.product_name)}, ${sqlEscape(prodImg)}, ${sqlEscape(oldStock)}, ${sqlEscape(newStock)}, ${sqlEscape(diff)}, ${sqlEscape(st.reason)}, ${sqlEscape(st.notes)}, ${sqlEscape(st.adjustedBy || st.adjusted_by)}, ${sqlEscape(created)});
+`;
+    }
+  }
+
+  sql += `
+-- ----------------------------------------------------------------------------
+-- 8b. BẢNG LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ (MATERIAL_TRANSACTIONS)
+-- ----------------------------------------------------------------------------
+`;
+  const matTxs = data?.material_transactions || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_material_transactions') || '[]') : []);
+  if (Array.isArray(matTxs) && matTxs.length > 0) {
+    for (const mt of matTxs) {
+      sql += `INSERT INTO material_transactions (id, type, material_id, material_name, material_category, unit, package_qty, package_unit, conversion_rate, quantity, unit_price, package_unit_price, total_amount, supplier_or_reason, performed_by, transaction_date, notes, created_at) VALUES (${sqlEscape(mt.id)}, ${sqlEscape(mt.type)}, ${sqlEscape(mt.materialId || mt.material_id)}, ${sqlEscape(mt.materialName || mt.material_name)}, ${sqlEscape(mt.materialCategory || mt.material_category)}, ${sqlEscape(mt.unit)}, ${sqlEscape(mt.packageQty || mt.package_qty)}, ${sqlEscape(mt.packageUnit || mt.package_unit)}, ${sqlEscape(mt.conversionRate || mt.conversion_rate || 1)}, ${sqlEscape(mt.quantity || 0)}, ${sqlEscape(mt.unitPrice || mt.unit_price || 0)}, ${sqlEscape(mt.packageUnitPrice || mt.package_unit_price)}, ${sqlEscape(mt.totalAmount || mt.total_amount || 0)}, ${sqlEscape(mt.supplierOrReason || mt.supplier_or_reason)}, ${sqlEscape(mt.performedBy || mt.performed_by)}, ${sqlEscape(mt.date || mt.transaction_date)}, ${sqlEscape(mt.notes)}, ${sqlEscape(mt.createdAt || mt.created_at || new Date().toISOString())});
 `;
     }
   }
@@ -605,7 +743,7 @@ ${generateSchemaSql()}
   const closings = data?.accounting_closings || data?.closings;
   if (Array.isArray(closings) && closings.length > 0) {
     for (const cl of closings) {
-      sql += `INSERT INTO accounting_closings (id, period_type, period_key, closed_at, closed_by, total_revenue, total_cash_sales, actual_cash_counted, cash_difference, notes) VALUES (${sqlEscape(cl.id)}, ${sqlEscape(cl.periodType || cl.period_type)}, ${sqlEscape(cl.periodKey || cl.period_key)}, ${sqlEscape(cl.closedAt || cl.closed_at)}, ${sqlEscape(cl.closedBy || cl.closed_by)}, ${sqlEscape(cl.totalRevenue || cl.total_revenue || 0)}, ${sqlEscape(cl.totalCashSales || cl.total_cash_sales || 0)}, ${sqlEscape(cl.actualCashCounted || cl.actual_cash_counted || 0)}, ${sqlEscape(cl.cashDifference || cl.cash_difference || 0)}, ${sqlEscape(cl.notes)});
+      sql += `INSERT INTO accounting_closings (id, period_type, period_key, period_label, start_date, end_date, closed_at, closed_by, total_orders, total_revenue, cash_revenue, bank_revenue, total_cogs, gross_profit, total_opex, spoilage_cost, spoilage_qty, net_profit, total_cash_sales, actual_cash_counted, system_cash, cash_difference, notes, status) VALUES (${sqlEscape(cl.id)}, ${sqlEscape(cl.periodType || cl.period_type)}, ${sqlEscape(cl.periodKey || cl.period_key)}, ${sqlEscape(cl.periodLabel || cl.period_label)}, ${sqlEscape(cl.startDate || cl.start_date)}, ${sqlEscape(cl.endDate || cl.end_date)}, ${sqlEscape(cl.closedAt || cl.closed_at)}, ${sqlEscape(cl.closedBy || cl.closed_by)}, ${sqlEscape(cl.totalOrders || cl.total_orders || 0)}, ${sqlEscape(cl.totalRevenue || cl.total_revenue || 0)}, ${sqlEscape(cl.cashRevenue || cl.cash_revenue || 0)}, ${sqlEscape(cl.bankRevenue || cl.bank_revenue || 0)}, ${sqlEscape(cl.totalCOGS || cl.total_cogs || 0)}, ${sqlEscape(cl.grossProfit || cl.gross_profit || 0)}, ${sqlEscape(cl.totalOpex || cl.total_opex || 0)}, ${sqlEscape(cl.spoilageCost || cl.spoilage_cost || 0)}, ${sqlEscape(cl.spoilageQty || cl.spoilage_qty || 0)}, ${sqlEscape(cl.netProfit || cl.net_profit || 0)}, ${sqlEscape(cl.totalCashSales || cl.total_cash_sales || 0)}, ${sqlEscape(cl.actualCashCounted || cl.actual_cash_counted || 0)}, ${sqlEscape(cl.systemCash || cl.system_cash || 0)}, ${sqlEscape(cl.cashDifference || cl.cash_difference || 0)}, ${sqlEscape(cl.notes)}, ${sqlEscape(cl.status || 'closed')});
 `;
     }
   }
@@ -630,7 +768,7 @@ ${generateSchemaSql()}
 -- ----------------------------------------------------------------------------
 -- 11. BẢNG CẤU HÌNH VIETQR (VIETQR_CONFIG)
 -- ----------------------------------------------------------------------------
-INSERT INTO vietqr_config (id, bank_id, bank_name, account_no, account_name, template, updated_at) VALUES ('primary', ${sqlEscape(vq.bankId || vq.bank_id)}, ${sqlEscape(vq.bankName || vq.bank_name)}, ${sqlEscape(vq.accountNo || vq.account_no)}, ${sqlEscape(vq.accountName || vq.account_name)}, ${sqlEscape(vq.template || 'compact2')}, ${sqlEscape(new Date().toISOString())});
+INSERT INTO vietqr_config (id, bank_id, bank_name, account_no, account_name, template, transfer_syntax, updated_at) VALUES ('primary', ${sqlEscape(vq.bankId || vq.bank_id)}, ${sqlEscape(vq.bankName || vq.bank_name)}, ${sqlEscape(vq.accountNo || vq.account_no)}, ${sqlEscape(vq.accountName || vq.account_name)}, ${sqlEscape(vq.template || 'compact2')}, ${sqlEscape(vq.transferSyntax || vq.transfer_syntax || 'DH')}, ${sqlEscape(new Date().toISOString())});
 `;
   }
 
@@ -643,7 +781,7 @@ INSERT INTO vietqr_config (id, bank_id, bank_name, account_no, account_name, tem
 -- ----------------------------------------------------------------------------
 -- 12. BẢNG THÔNG TIN TIỆM BÁNH (STORE_BRANDING)
 -- ----------------------------------------------------------------------------
-INSERT INTO store_branding (id, store_name, tagline, address, phone, wifi_password, logo_url, updated_at) VALUES ('primary', ${sqlEscape(br.storeName || br.store_name)}, ${sqlEscape(br.tagline)}, ${sqlEscape(br.address)}, ${sqlEscape(br.phone)}, ${sqlEscape(br.wifiPassword || br.wifi_password)}, ${sqlEscape(br.logoUrl || br.logo_url)}, ${sqlEscape(new Date().toISOString())});
+INSERT INTO store_branding (id, store_name, slogan, tagline, address, phone, wifi_password, logo_url, footer_message, updated_at) VALUES ('primary', ${sqlEscape(br.storeName || br.store_name)}, ${sqlEscape(br.slogan || br.tagline)}, ${sqlEscape(br.tagline || br.slogan)}, ${sqlEscape(br.address)}, ${sqlEscape(br.phone)}, ${sqlEscape(br.wifiPassword || br.wifi_password)}, ${sqlEscape(br.logoUrl || br.logo_url)}, ${sqlEscape(br.footerMessage || br.footer_message || 'Cảm ơn Quý khách & Hẹn gặp lại!')}, ${sqlEscape(new Date().toISOString())});
 `;
   }
 
@@ -652,11 +790,12 @@ INSERT INTO store_branding (id, store_name, tagline, address, phone, wifi_passwo
   // ----------------------------------------------------------------------------
   const pr = data?.printer_configs || data?.printer || data?.settings?.printer;
   if (pr) {
+    const rawPrJson = typeof pr === 'object' ? JSON.stringify(pr) : null;
     sql += `
 -- ----------------------------------------------------------------------------
 -- 13. BẢNG CẤU HÌNH MÁY IN (PRINTER_CONFIGS)
 -- ----------------------------------------------------------------------------
-INSERT INTO printer_configs (id, printer_name, paper_size, connection_type, auto_print, updated_at) VALUES ('primary', ${sqlEscape(pr.printerName || pr.printer_name || 'POS Printer')}, ${sqlEscape(pr.paperSize || pr.paper_size || '80mm')}, ${sqlEscape(pr.connectionType || pr.connection_type || 'usb')}, ${sqlEscape(pr.autoPrint || pr.auto_print || false)}, ${sqlEscape(new Date().toISOString())});
+INSERT INTO printer_configs (id, mode, printer_name, receipt_size, label_size, connection_type, auto_print, auto_cut, print_delivery_address, copies, sticker_scale, receipt_scale, store_name, store_address, store_hotline, raw_config_json, updated_at) VALUES ('primary', ${sqlEscape(pr.mode || 'browser')}, ${sqlEscape(pr.printerName || pr.printer_name || 'POS Printer')}, ${sqlEscape(pr.receiptSize || pr.receipt_size || pr.paperSize || '80mm')}, ${sqlEscape(pr.labelSize || pr.label_size || '50x30')}, ${sqlEscape(pr.connectionType || pr.connection_type || 'usb')}, ${sqlEscape(pr.autoPrint || pr.auto_print || false)}, ${sqlEscape(pr.autoCut ?? true)}, ${sqlEscape(pr.printDeliveryAddress ?? true)}, ${sqlEscape(pr.copies || 1)}, ${sqlEscape(pr.stickerScale ?? 92)}, ${sqlEscape(pr.receiptScale ?? 100)}, ${sqlEscape(pr.storeName || pr.store_name)}, ${sqlEscape(pr.storeAddress || pr.store_address)}, ${sqlEscape(pr.storeHotline || pr.store_hotline)}, ${sqlEscape(rawPrJson)}, ${sqlEscape(new Date().toISOString())});
 `;
   }
 
@@ -669,7 +808,20 @@ INSERT INTO printer_configs (id, printer_name, paper_size, connection_type, auto
 -- ----------------------------------------------------------------------------
 -- 14. BẢNG CẤU HÌNH VÍ ĐIỆN TỬ (EWALLET_CONFIG)
 -- ----------------------------------------------------------------------------
-INSERT INTO ewallet_config (id, momo_phone, momo_name, momo_qr_url, zalopay_phone, zalopay_name, zalopay_qr_url, viettelmoney_phone, viettelmoney_name, viettelmoney_qr_url, updated_at) VALUES ('primary', ${sqlEscape(ew.momo?.phone)}, ${sqlEscape(ew.momo?.name)}, ${sqlEscape(ew.momo?.qrUrl)}, ${sqlEscape(ew.zalopay?.phone)}, ${sqlEscape(ew.zalopay?.name)}, ${sqlEscape(ew.zalopay?.qrUrl)}, ${sqlEscape(ew.viettelmoney?.phone)}, ${sqlEscape(ew.viettelmoney?.name)}, ${sqlEscape(ew.viettelmoney?.qrUrl)}, ${sqlEscape(new Date().toISOString())});
+INSERT INTO ewallet_config (id, active_wallet, momo_phone, momo_name, momo_qr_url, zalopay_phone, zalopay_name, zalopay_qr_url, viettelmoney_phone, viettelmoney_name, viettelmoney_qr_url, transfer_syntax, updated_at) VALUES ('primary', ${sqlEscape(ew.activeWallet || ew.active_wallet || 'momo')}, ${sqlEscape(ew.momo?.phone)}, ${sqlEscape(ew.momo?.name)}, ${sqlEscape(ew.momo?.qrUrl)}, ${sqlEscape(ew.zalopay?.phone)}, ${sqlEscape(ew.zalopay?.name)}, ${sqlEscape(ew.zalopay?.qrUrl)}, ${sqlEscape(ew.viettelmoney?.phone)}, ${sqlEscape(ew.viettelmoney?.name)}, ${sqlEscape(ew.viettelmoney?.qrUrl)}, ${sqlEscape(ew.transferSyntax || ew.transfer_syntax || 'VIMO')}, ${sqlEscape(new Date().toISOString())});
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 14b. BẢNG CẤU HÌNH TELEGRAM THÔNG BÁO ĐƠN (TELEGRAM_CONFIG)
+  // ----------------------------------------------------------------------------
+  const tg = data?.telegram_config || data?.telegram || data?.settings?.telegram;
+  if (tg) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 14b. BẢNG CẤU HÌNH TELEGRAM (TELEGRAM_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO telegram_config (id, enabled, bot_token, chat_id, updated_at) VALUES ('primary', ${sqlEscape(tg.enabled || false)}, ${sqlEscape(tg.botToken || tg.bot_token)}, ${sqlEscape(tg.chatId || tg.chat_id)}, ${sqlEscape(new Date().toISOString())});
 `;
   }
 
@@ -695,7 +847,7 @@ INSERT INTO cake_costing_config (id, config_data, updated_at) VALUES ('primary',
 -- ----------------------------------------------------------------------------
 -- 16. BẢNG THÔNG TIN KẾ TOÁN & THUẾ HỘ KINH DOANH (TAX_HOUSEHOLD_CONFIG)
 -- ----------------------------------------------------------------------------
-INSERT INTO tax_household_config (id, shop_name, tax_code, business_address, owner_name, phone, registered_revenue_level, pit_calculation_method, regular_employees_count, operating_hours, updated_at) VALUES ('primary', ${sqlEscape(taxInfo.shop_name)}, ${sqlEscape(taxInfo.tax_code)}, ${sqlEscape(taxInfo.business_address)}, ${sqlEscape(taxInfo.owner_name)}, ${sqlEscape(taxInfo.phone)}, ${sqlEscape(taxInfo.registered_revenue_level || 2)}, ${sqlEscape(taxInfo.pit_calculation_method || 1)}, ${sqlEscape(taxInfo.regular_employees_count || 5)}, ${sqlEscape(taxInfo.operating_hours || '06:30 - 22:00')}, ${sqlEscape(new Date().toISOString())});
+INSERT INTO tax_household_config (id, shop_name, tax_code, business_address, owner_name, phone, email, business_area, bank_account_number, bank_name, district, province, software_name, registered_revenue_level, pit_calculation_method, regular_employees_count, operating_hours, updated_at) VALUES ('primary', ${sqlEscape(taxInfo.shop_name)}, ${sqlEscape(taxInfo.tax_code)}, ${sqlEscape(taxInfo.business_address)}, ${sqlEscape(taxInfo.owner_name)}, ${sqlEscape(taxInfo.phone)}, ${sqlEscape(taxInfo.email)}, ${sqlEscape(taxInfo.business_area)}, ${sqlEscape(taxInfo.bank_account_number)}, ${sqlEscape(taxInfo.bank_name)}, ${sqlEscape(taxInfo.district)}, ${sqlEscape(taxInfo.province)}, ${sqlEscape(taxInfo.software_name)}, ${sqlEscape(taxInfo.registered_revenue_level || 2)}, ${sqlEscape(taxInfo.pit_calculation_method || 1)}, ${sqlEscape(taxInfo.regular_employees_count || 5)}, ${sqlEscape(taxInfo.operating_hours || '06:30 - 22:00')}, ${sqlEscape(new Date().toISOString())});
 `;
   }
 
@@ -708,7 +860,7 @@ INSERT INTO tax_household_config (id, shop_name, tax_code, business_address, own
 -- ----------------------------------------------------------------------------
 -- 17. BẢNG CẤU HÌNH CHÍNH SÁCH THUẾ (TAX_POLICY_CONFIG)
 -- ----------------------------------------------------------------------------
-INSERT INTO tax_policy_config (id, policy_name, circular_citation, annual_threshold, tax_groups, updated_at) VALUES ('primary', ${sqlEscape(taxPolicy.policy_name || 'Thông Tư 88 & 40-BTC')}, ${sqlEscape(taxPolicy.circular_citation || 'Thông tư 88/2021/TT-BTC & 40/2021/TT-BTC')}, ${sqlEscape(taxPolicy.annual_threshold || 1000000000)}, ${sqlEscape(JSON.stringify(taxPolicy.tax_groups || []))}, ${sqlEscape(new Date().toISOString())});
+INSERT INTO tax_policy_config (id, name, policy_name, circular_citation, annual_threshold, is_active, effective_date, notes, tax_groups, cost_indicators, updated_at) VALUES ('primary', ${sqlEscape(taxPolicy.name || taxPolicy.policy_name)}, ${sqlEscape(taxPolicy.policy_name || 'Thông Tư 50/2026 & NĐ 141')}, ${sqlEscape(taxPolicy.circular_citation || 'Thông tư 50/2026/TT-BTC & Nghị định 141/2026/NĐ-CP')}, ${sqlEscape(taxPolicy.annual_threshold || 1000000000)}, ${sqlEscape(taxPolicy.is_active ?? true)}, ${sqlEscape(taxPolicy.effective_date || '01/01/2026')}, ${sqlEscape(taxPolicy.notes)}, ${sqlEscape(JSON.stringify(taxPolicy.tax_groups || []))}, ${sqlEscape(JSON.stringify(taxPolicy.cost_indicators || []))}, ${sqlEscape(new Date().toISOString())});
 `;
   }
 
@@ -876,6 +1028,10 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
       localSnapshot['bakery_stock_adjustment_logs'] = JSON.stringify(data.stock_adjustments);
     }
 
+    if (Array.isArray(data.material_transactions)) {
+      localSnapshot['bakery_material_transactions'] = JSON.stringify(data.material_transactions);
+    }
+
     const closings = data.accounting_closings || data.closings;
     if (Array.isArray(closings)) {
       localSnapshot['bakery_accounting_closings'] = JSON.stringify(closings);
@@ -987,6 +1143,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let cashflow: any[] = [];
     let spoilage_logs: any[] = [];
     let stock_adjustments: any[] = [];
+    let material_transactions: any[] = [];
     let accounting_closings: any[] = [];
     let security_config: any = null;
     let branding_config: any = null;
@@ -995,6 +1152,9 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let printer_config: any = null;
     let telegram_config: any = null;
     let cake_costing_config: any = null;
+    let tax_household_config: any = null;
+    let tax_policy_config: any = null;
+    let full_cake_bom_config: any = null;
 
     if (Array.isArray(sysRows)) {
       for (const row of sysRows) {
@@ -1006,6 +1166,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_CASHFLOW' && Array.isArray(parsed)) cashflow = parsed;
           if (row.name === 'SYS_CONFIG_SPOILAGE' && Array.isArray(parsed)) spoilage_logs = parsed;
           if (row.name === 'SYS_CONFIG_STOCK_ADJUSTMENTS' && Array.isArray(parsed)) stock_adjustments = parsed;
+          if (row.name === 'SYS_CONFIG_MATERIAL_TRANSACTIONS' && Array.isArray(parsed)) material_transactions = parsed;
           if (row.name === 'SYS_CONFIG_CLOSINGS' && Array.isArray(parsed)) accounting_closings = parsed;
           if (row.name === 'SYS_CONFIG_SECURITY') security_config = parsed;
           if (row.name === 'SYS_CONFIG_BRANDING') branding_config = parsed;
@@ -1014,6 +1175,9 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_PRINTER') printer_config = parsed;
           if (row.name === 'SYS_CONFIG_TELEGRAM') telegram_config = parsed;
           if (row.name === 'SYS_CONFIG_CAKE_COSTING') cake_costing_config = parsed;
+          if (row.name === 'SYS_CONFIG_TAX_HOUSEHOLD') tax_household_config = parsed;
+          if (row.name === 'SYS_CONFIG_TAX_POLICY') tax_policy_config = parsed;
+          if (row.name === 'SYS_CONFIG_CAKE_BOM' || row.name === 'SYS_CONFIG_BAKERY_BOM') full_cake_bom_config = parsed;
         } catch {}
       }
     }
@@ -1042,6 +1206,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
         totalIngredients: ings?.length || 0,
         totalStockLogs: stock_adjustments.length,
         totalSpoilageLogs: spoilage_logs.length,
+        totalMaterialTransactions: material_transactions.length,
         totalExpenses: expenses.length,
         totalImages: 0,
         estimatedSizeBytes: 0,
@@ -1054,6 +1219,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       cashflow,
       spoilage_logs,
       stock_adjustments,
+      material_transactions,
       accounting_closings,
       security_config,
       branding_config,
@@ -1062,6 +1228,9 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       printer_configs: printer_config,
       telegram_config,
       cake_costing_config,
+      tax_household_config,
+      tax_policy_config,
+      bakery_bom_settings: full_cake_bom_config,
       images: [],
       settings: {
         vietqr: vietqr_config,
@@ -1071,6 +1240,9 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
         branding: branding_config,
         security: security_config,
         cake_costing: cake_costing_config,
+        tax_household: tax_household_config,
+        tax_policy: tax_policy_config,
+        full_cake_bom_config,
       },
     };
 

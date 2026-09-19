@@ -49,12 +49,20 @@ import {
   fetchStockAdjustmentLogsFromDb,
   STOCK_ADJUSTMENT_EVENT,
 } from '@/lib/utils/stockAdjustmentManager';
-import { fetchClosingRecordsFromDb } from '@/lib/utils/closingManager';
 import { StockAdjustmentHistoryModal } from '@/components/StockAdjustmentHistoryModal';
+import { MaterialTransaction, UNIT_CONVERSION_PRESETS } from '@/lib/types/materialTransaction';
+import {
+  getMaterialTransactions,
+  addMaterialTransaction,
+  saveMaterialTransactionsToDb,
+  fetchMaterialTransactionsFromDb,
+  MATERIAL_TRANSACTION_EVENT,
+} from '@/lib/utils/materialTransactionManager';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { AccountingClosingSection } from '@/components/admin/AccountingClosingSection';
+import { fetchClosingRecordsFromDb } from '@/lib/utils/closingManager';
 import {
   getSqlModeConfig,
   saveSqlModeConfig,
@@ -359,6 +367,19 @@ export default function AdminDashboard() {
   const [poSupplier, setPoSupplier] = useState<string>('Đại lý Bột Mì Nhất Hương');
   const [poSuccess, setPoSuccess] = useState<string | null>(null);
   const [isSubmittingPo, setIsSubmittingPo] = useState<boolean>(false);
+
+  // ── ĐƠN VỊ QUY ĐỔI ĐÓNG GÓI KHI NHẬP KHO (TÚI, BAO, THÙNG -> GRAM / ML) ──
+  const [poUnitMode, setPoUnitMode] = useState<string>('base'); // 'base' | preset label | 'custom'
+  const [poPackageQty, setPoPackageQty] = useState<number>(5);
+  const [poPackageUnitName, setPoPackageUnitName] = useState<string>('Túi 1kg');
+  const [poConversionRate, setPoConversionRate] = useState<number>(1000);
+  const [poPackageUnitPrice, setPoPackageUnitPrice] = useState<number>(25000);
+
+  // ── PHÂN HỆ LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ ──
+  const [inventoryViewSubTab, setInventoryViewSubTab] = useState<'stock' | 'history'>('stock');
+  const [materialTransactions, setMaterialTransactions] = useState<MaterialTransaction[]>(() => getMaterialTransactions());
+  const [materialTxSearch, setMaterialTxSearch] = useState<string>('');
+  const [materialTxTypeFilter, setMaterialTxTypeFilter] = useState<'all' | 'import' | 'export'>('all');
 
   // Form Nhập Kho (Purchase Order) - Bánh & Hàng Bán Sẵn (Thành phẩm nhập)
   const [poProductId, setPoProductId] = useState<string>('');
@@ -1392,7 +1413,15 @@ export default function AdminDashboard() {
     }).catch(console.error);
 
     fetchStockAdjustmentLogsFromDb().catch(console.error);
+    fetchMaterialTransactionsFromDb().then((txs) => {
+      if (txs && txs.length > 0) setMaterialTransactions(txs);
+    }).catch(console.error);
     fetchClosingRecordsFromDb().catch(console.error);
+
+    const handleMatUpdate = () => {
+      setMaterialTransactions(getMaterialTransactions());
+    };
+    window.addEventListener(MATERIAL_TRANSACTION_EVENT, handleMatUpdate);
 
     // Lắng nghe đồng bộ sản phẩm & cấu hình thanh toán thời gian thực giữa điện thoại và máy tính
     const unsubscribeSync = subscribeCrossDeviceSync({
@@ -1968,6 +1997,48 @@ export default function AdminDashboard() {
     }
   };
 
+  // ── XUẤT LỊCH SỬ XUẤT NHẬP VẬT TƯ RA FILE CSV ──
+  const handleExportMaterialCsv = () => {
+    if (!materialTransactions || materialTransactions.length === 0) {
+      alert('Chưa có dữ liệu lịch sử xuất nhập kho để xuất!');
+      return;
+    }
+    const headers = [
+      'Mã GD',
+      'Thời gian',
+      'Loại',
+      'Tên vật tư',
+      'Đơn vị gốc',
+      'Quy đổi đóng gói',
+      'Số lượng thực',
+      'Đơn giá kho (VND)',
+      'Thành tiền (VND)',
+      'Nhà cung cấp / Lý do',
+      'Người thực hiện',
+    ];
+    const rows = materialTransactions.map((tx) => [
+      tx.id,
+      new Date(tx.createdAt).toLocaleString('vi-VN'),
+      tx.type === 'import' ? 'Nhập kho (PO)' : 'Xuất kho / Hao hụt',
+      `"${tx.materialName.replace(/"/g, '""')}"`,
+      tx.unit,
+      tx.packageQty ? `"${tx.packageQty} ${tx.packageUnit} (x${tx.conversionRate})"` : 'Đơn vị gốc',
+      tx.quantity,
+      tx.unitPrice,
+      tx.totalAmount,
+      `"${(tx.supplierOrReason || '').replace(/"/g, '""')}"`,
+      `"${(tx.performedBy || '').replace(/"/g, '""')}"`,
+    ]);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Lich_Su_Xuat_Nhap_Kho_Vat_Tu_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   // ── XỬ LÝ XUẤT KHO / BÁO HỎNG (STOCK OUT) ──
   const handleCreateStockOut = async () => {
     const ing = ingredients.find((i) => i.id === soIngredientId) || ingredients[0];
@@ -2018,6 +2089,22 @@ export default function AdminDashboard() {
         const updated = [soCfItem, ...prev];
         saveCashflowToDb(updated);
         return updated;
+      });
+
+      // Ghi nhận vào Lịch Sử Xuất Nhập Kho Vật Tư & Đồng bộ SQL
+      addMaterialTransaction({
+        type: 'export',
+        materialId: ing.id,
+        materialName: ing.name,
+        materialCategory: ing.category,
+        unit: ing.unit,
+        quantity: qty,
+        unitPrice: ing.avg_cost || 0,
+        totalAmount: lossValue,
+        supplierOrReason: soReason,
+        performedBy: isAdmin ? 'Quản lý / Admin' : 'Nhân viên quầy',
+        date: new Date().toISOString().split('T')[0],
+        notes: `Xuất kho / Hao hụt: ${soReason}`,
       });
 
       const msg = `Đã xuất kho ${qty.toLocaleString()} ${ing.unit} ${ing.name}. Tồn kho còn lại: ${newQty.toLocaleString()} ${ing.unit}. Giá trị hao hụt: ${lossValue.toLocaleString('vi-VN')}₫.`;
@@ -2305,6 +2392,7 @@ export default function AdminDashboard() {
       addStockAdjustmentLog({
         productId,
         productName: targetProduct.name,
+        productImage: targetProduct.image_url,
         productCategory: targetProduct.category,
         oldQuantity: oldQty,
         newQuantity: qty,
@@ -2342,7 +2430,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // ── XỬ LÝ NHẬP KHO (WAC CALCULATION) ──
+  // ── XỬ LÝ NHẬP KHO (WAC CALCULATION & QUY ĐỔI ĐƠN VỊ ĐÓNG GÓI) ──
   const handleCreatePurchaseOrder = async () => {
     const ing = ingredients.find((i) => i.id === poIngredientId) || ingredients[0];
     if (!ing) {
@@ -2350,26 +2438,55 @@ export default function AdminDashboard() {
       return;
     }
 
-    const qty = Number(poQty);
-    if (!qty || qty <= 0 || isNaN(qty)) {
-      alert('Vui lòng nhập số lượng nhập hợp lệ (lớn hơn 0)!');
-      return;
-    }
+    const isPackageMode = poUnitMode !== 'base';
+    let effectiveQty = 0;
+    let effectiveUnitPrice = 0;
+    let totalCost = 0;
 
-    const unitPrice = Number(poUnitPrice);
-    if (unitPrice === undefined || unitPrice === null || unitPrice < 0 || isNaN(unitPrice)) {
-      alert('Vui lòng nhập đơn giá nhập hợp lệ (không âm)!');
-      return;
+    if (isPackageMode) {
+      const pkgQty = Number(poPackageQty);
+      if (!pkgQty || pkgQty <= 0 || isNaN(pkgQty)) {
+        alert('Vui lòng nhập số lượng bao/túi/hộp hợp lệ (lớn hơn 0)!');
+        return;
+      }
+      const rate = Number(poConversionRate) || 1;
+      if (rate <= 0) {
+        alert('Tỉ lệ quy đổi phải lớn hơn 0!');
+        return;
+      }
+      const pkgPrice = Number(poPackageUnitPrice);
+      if (pkgPrice === undefined || pkgPrice < 0 || isNaN(pkgPrice)) {
+        alert('Vui lòng nhập đơn giá mỗi bao/túi/hộp hợp lệ!');
+        return;
+      }
+
+      effectiveQty = Math.round(pkgQty * rate * 100) / 100;
+      effectiveUnitPrice = Math.round((pkgPrice / rate) * 100) / 100;
+      totalCost = pkgQty * pkgPrice;
+    } else {
+      const qty = Number(poQty);
+      if (!qty || qty <= 0 || isNaN(qty)) {
+        alert('Vui lòng nhập số lượng nhập hợp lệ (lớn hơn 0)!');
+        return;
+      }
+      const unitPrice = Number(poUnitPrice);
+      if (unitPrice === undefined || unitPrice === null || unitPrice < 0 || isNaN(unitPrice)) {
+        alert('Vui lòng nhập đơn giá nhập hợp lệ (không âm)!');
+        return;
+      }
+      effectiveQty = qty;
+      effectiveUnitPrice = unitPrice;
+      totalCost = qty * unitPrice;
     }
 
     setIsSubmittingPo(true);
     try {
       const currentStock = Number(ing.stock_qty) || 0;
       const currentCost = Number(ing.avg_cost) || 0;
-      const newQty = currentStock + qty;
+      const newQty = currentStock + effectiveQty;
       const newAvgCost = newQty > 0
-        ? Math.round((currentStock * currentCost + qty * unitPrice) / newQty)
-        : unitPrice;
+        ? Math.round((currentStock * currentCost + effectiveQty * effectiveUnitPrice) / newQty)
+        : effectiveUnitPrice;
 
       setIngredients((prev) =>
         prev.map((i) =>
@@ -2387,13 +2504,16 @@ export default function AdminDashboard() {
         }
       }
 
-      const totalCost = qty * unitPrice;
+      const descPo = isPackageMode
+        ? `Nhập kho ${poPackageQty} ${poPackageUnitName} (=${effectiveQty.toLocaleString()} ${ing.unit}) ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`
+        : `Nhập kho ${effectiveQty.toLocaleString()} ${ing.unit} ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`;
+
       const poCfItem: CashflowTransaction = {
         id: generateUUID(),
         type: 'expense',
         category: 'purchase',
         amount: totalCost,
-        desc: `Nhập kho ${qty.toLocaleString()} ${ing.unit} ${ing.name} từ ${poSupplier || 'Nhà cung cấp'}`,
+        desc: descPo,
         date: new Date().toISOString().split('T')[0],
       };
       setCashflow((prev) => {
@@ -2402,7 +2522,32 @@ export default function AdminDashboard() {
         return updated;
       });
 
-      const msg = `Đã nhập kho thành công! Thêm +${qty.toLocaleString()} ${ing.unit} ${ing.name} (Tồn mới: ${newQty.toLocaleString()} ${ing.unit}). Đơn giá bình quân (WAC) tự động tính lại: ${newAvgCost.toLocaleString('vi-VN')}₫/${ing.unit}!`;
+      // Ghi nhận vào Lịch Sử Xuất Nhập Kho Vật Tư & Đồng bộ SQL
+      addMaterialTransaction({
+        type: 'import',
+        materialId: ing.id,
+        materialName: ing.name,
+        materialCategory: ing.category,
+        unit: ing.unit,
+        packageQty: isPackageMode ? poPackageQty : undefined,
+        packageUnit: isPackageMode ? poPackageUnitName : undefined,
+        conversionRate: isPackageMode ? poConversionRate : 1,
+        quantity: effectiveQty,
+        unitPrice: effectiveUnitPrice,
+        packageUnitPrice: isPackageMode ? poPackageUnitPrice : undefined,
+        totalAmount: totalCost,
+        supplierOrReason: poSupplier || 'Nhà cung cấp',
+        performedBy: isAdmin ? 'Quản lý / Admin' : 'Nhân viên quầy',
+        date: new Date().toISOString().split('T')[0],
+        notes: isPackageMode
+          ? `Quy đổi: ${poPackageQty} ${poPackageUnitName} × ${poConversionRate.toLocaleString()} ${ing.unit}`
+          : undefined,
+      });
+
+      const msg = isPackageMode
+        ? `Đã nhập kho thành công! ${poPackageQty} ${poPackageUnitName} quy đổi thành +${effectiveQty.toLocaleString()} ${ing.unit} ${ing.name} (Tồn mới: ${newQty.toLocaleString()} ${ing.unit}). Đơn giá WAC: ${newAvgCost.toLocaleString('vi-VN')}₫/${ing.unit}!`
+        : `Đã nhập kho thành công! Thêm +${effectiveQty.toLocaleString()} ${ing.unit} ${ing.name} (Tồn mới: ${newQty.toLocaleString()} ${ing.unit}). Đơn giá WAC: ${newAvgCost.toLocaleString('vi-VN')}₫/${ing.unit}!`;
+
       setPoSuccess(msg);
       alert(msg);
       setTimeout(() => setPoSuccess(null), 7000);
@@ -4067,34 +4212,177 @@ export default function AdminDashboard() {
                       />
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div>
-                        <label className="font-bold text-zinc-700">Số lượng nhập:</label>
-                        <input
-                          type="number"
-                          value={poQty || ''}
-                          onChange={(e) => setPoQty(Number(e.target.value))}
-                          placeholder="Nhập số lượng..."
-                          className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
-                        />
-                      </div>
-                      <div>
-                        <label className="font-bold text-zinc-700">Đơn giá nhập (VND):</label>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={formatCurrencyInput(poUnitPrice)}
-                          onChange={(e) => setPoUnitPrice(parseCurrencyInput(e.target.value))}
-                          placeholder="Nhập đơn giá (VD: 50.000)..."
-                          className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
-                        />
-                      </div>
-                    </div>
+                    {/* ── BỘ QUY ĐỔI ĐƠN VỊ ĐÓNG GÓI THÔNG MINH (TÚI, BAO, THÙNG -> G/ML) ── */}
+                    {(() => {
+                      const curIng = visibleIngredients.find((i: Ingredient) => i.id === poIngredientId) || visibleIngredients[0];
+                      const baseUnit = curIng?.unit || 'g';
+                      const isPkg = poUnitMode !== 'base';
 
-                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex justify-between font-bold">
-                      <span>Thành tiền phiếu nhập:</span>
-                      <span className="text-amber-700">{((poQty || 0) * (poUnitPrice || 0)).toLocaleString('vi-VN')}₫</span>
-                    </div>
+                      return (
+                        <div className="space-y-3 pt-1">
+                          {/* Khung chọn cách nhập */}
+                          <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <label className="font-bold text-[11px] text-amber-950 flex items-center gap-1.5">
+                                <span>📦 Đơn vị khi nhập hàng:</span>
+                              </label>
+                              <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                                Đơn vị kho: {baseUnit}
+                              </span>
+                            </div>
+
+                            <select
+                              value={poUnitMode}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setPoUnitMode(val);
+                                if (val === 'base') {
+                                  setPoConversionRate(1);
+                                  setPoPackageUnitName(baseUnit);
+                                } else {
+                                  const preset = UNIT_CONVERSION_PRESETS.find((p) => p.label === val);
+                                  if (preset && preset.multiplier > 0) {
+                                    setPoConversionRate(preset.multiplier);
+                                    setPoPackageUnitName(preset.label.split(' ')[0]);
+                                  } else if (val === 'Tùy chỉnh khác...') {
+                                    setPoPackageUnitName('Túi');
+                                    setPoConversionRate(1000);
+                                  }
+                                }
+                              }}
+                              className="w-full p-2 bg-white rounded-xl border border-amber-300 text-xs font-bold text-zinc-900 focus:outline-amber-600"
+                            >
+                              <option value="base">
+                                ⚖️ Nhập trực tiếp theo đơn vị gốc ({baseUnit})
+                              </option>
+                              {UNIT_CONVERSION_PRESETS.filter((p) => p.multiplier > 1 || p.label === 'Tùy chỉnh khác...').map((preset) => (
+                                <option key={preset.label} value={preset.label}>
+                                  {preset.label}
+                                </option>
+                              ))}
+                            </select>
+
+                            {/* Tùy chỉnh khác nếu chọn custom */}
+                            {poUnitMode === 'Tùy chỉnh khác...' && (
+                              <div className="grid grid-cols-2 gap-2 pt-1 border-t border-amber-200/80 text-xs animate-in fade-in">
+                                <div>
+                                  <span className="text-[10px] font-bold text-zinc-600 block">Tên đơn vị mua:</span>
+                                  <input
+                                    type="text"
+                                    value={poPackageUnitName}
+                                    onChange={(e) => setPoPackageUnitName(e.target.value)}
+                                    placeholder="VD: Túi, Bao, Thùng..."
+                                    className="w-full mt-0.5 p-1.5 bg-white border border-amber-300 rounded-lg font-bold text-xs"
+                                  />
+                                </div>
+                                <div>
+                                  <span className="text-[10px] font-bold text-zinc-600 block">
+                                    1 {poPackageUnitName || 'gói'} = bao nhiêu {baseUnit}?
+                                  </span>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={poConversionRate || ''}
+                                    onChange={(e) => setPoConversionRate(Number(e.target.value))}
+                                    placeholder="VD: 1000"
+                                    className="w-full mt-0.5 p-1.5 bg-white border border-amber-300 rounded-lg font-black text-xs text-amber-700"
+                                  />
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Nhập số lượng & đơn giá */}
+                          {!isPkg ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                              <div>
+                                <label className="font-bold text-zinc-700">Số lượng ({baseUnit}):</label>
+                                <input
+                                  type="number"
+                                  value={poQty || ''}
+                                  onChange={(e) => setPoQty(Number(e.target.value))}
+                                  placeholder="Nhập số lượng..."
+                                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold"
+                                />
+                              </div>
+                              <div>
+                                <label className="font-bold text-zinc-700">Đơn giá/{baseUnit} (VND):</label>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={formatCurrencyInput(poUnitPrice)}
+                                  onChange={(e) => setPoUnitPrice(parseCurrencyInput(e.target.value))}
+                                  placeholder="Nhập đơn giá (VD: 30)..."
+                                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-2.5">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                                <div>
+                                  <label className="font-bold text-zinc-700">
+                                    Số lượng {poPackageUnitName || 'gói'} nhập:
+                                  </label>
+                                  <input
+                                    type="number"
+                                    min="1"
+                                    value={poPackageQty || ''}
+                                    onChange={(e) => setPoPackageQty(Number(e.target.value))}
+                                    placeholder="VD: 5"
+                                    className="w-full mt-1 p-2.5 rounded-xl border border-amber-300 bg-amber-50/30 font-black text-amber-900"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="font-bold text-zinc-700">
+                                    Đơn giá/{poPackageUnitName || 'gói'} (VND):
+                                  </label>
+                                  <input
+                                    type="text"
+                                    inputMode="numeric"
+                                    value={formatCurrencyInput(poPackageUnitPrice)}
+                                    onChange={(e) => setPoPackageUnitPrice(parseCurrencyInput(e.target.value))}
+                                    placeholder="VD: 25.000"
+                                    className="w-full mt-1 p-2.5 rounded-xl border border-amber-300 bg-amber-50/30 font-black text-amber-600"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* HỘP QUY ĐỔI TRỰC QUAN LIVE */}
+                              <div className="p-3 bg-amber-100/70 rounded-2xl border border-amber-300 text-xs space-y-1.5 animate-in fade-in">
+                                <div className="flex justify-between items-center text-amber-950 font-bold">
+                                  <span>💡 Tự động quy đổi vào kho:</span>
+                                  <span className="text-sm font-black text-emerald-800">
+                                    +{((poPackageQty || 0) * (poConversionRate || 1)).toLocaleString('vi-VN')} {baseUnit}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center text-[11px] text-amber-800">
+                                  <span>Đơn giá vốn tính WAC:</span>
+                                  <span className="font-bold text-amber-900">
+                                    {poConversionRate > 0
+                                      ? (Math.round(((poPackageUnitPrice || 0) / poConversionRate) * 100) / 100).toLocaleString('vi-VN')
+                                      : 0}₫ / {baseUnit}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between items-center text-xs font-black text-amber-950 pt-1.5 border-t border-amber-200">
+                                  <span>Thành tiền phiếu nhập:</span>
+                                  <span className="text-base font-black text-amber-800">
+                                    {((poPackageQty || 0) * (poPackageUnitPrice || 0)).toLocaleString('vi-VN')}₫
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {!isPkg && (
+                            <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex justify-between font-bold">
+                              <span>Thành tiền phiếu nhập:</span>
+                              <span className="text-amber-700">{((poQty || 0) * (poUnitPrice || 0)).toLocaleString('vi-VN')}₫</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <button
                       type="button"
@@ -4273,77 +4561,294 @@ export default function AdminDashboard() {
             )}
           </div>
 
-          {/* CỘT PHẢI: BẢNG DANH MỤC VẬT TƯ VÀ NÚT THÊM/XÓA */}
-          <div className="lg:col-span-2 bg-white rounded-3xl border border-zinc-200 p-5 shadow-xs space-y-3">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-zinc-100">
-              <div>
-                <h2 className="font-black text-base text-zinc-900">Danh Mục Tồn Kho & Giá Vốn Trung Bình (WAC)</h2>
-                <span className="text-xs text-zinc-500 font-semibold">{visibleIngredients.length} loại vật tư trong kho</span>
+          {/* CỘT PHẢI: BẢNG DANH MỤC VẬT TƯ HOẶC LỊCH SỬ XUẤT NHẬP KHO */}
+          <div className="lg:col-span-2 bg-white rounded-3xl border border-zinc-200 p-5 shadow-xs space-y-3 flex flex-col">
+            {/* Thanh chuyển Tab con & Nút hành động */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-zinc-100">
+              <div className="flex rounded-2xl bg-zinc-100 p-1 border border-zinc-200 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setInventoryViewSubTab('stock')}
+                  className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
+                    inventoryViewSubTab === 'stock'
+                      ? 'bg-white text-zinc-900 shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <Package className="w-4 h-4 text-emerald-600" />
+                  <span>Danh Mục Kho & WAC ({visibleIngredients.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setInventoryViewSubTab('history')}
+                  className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
+                    inventoryViewSubTab === 'history'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <History className="w-4 h-4" />
+                  <span>Lịch Sử Xuất Nhập Kho ({materialTransactions.length})</span>
+                </button>
               </div>
 
-              {/* NÚT THÊM MỚI VẬT TƯ */}
-              <button
-                onClick={() => setIsAddIngredientModalOpen(true)}
-                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
-              >
-                <Plus className="w-4 h-4" /> Thêm Loại Vật Tư Mới
-              </button>
+              {inventoryViewSubTab === 'stock' ? (
+                <button
+                  onClick={() => setIsAddIngredientModalOpen(true)}
+                  className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
+                >
+                  <Plus className="w-4 h-4" /> Thêm Loại Vật Tư Mới
+                </button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExportMaterialCsv}
+                    className="px-3.5 py-2 rounded-xl bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-bold text-xs shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                    title="Xuất danh sách ra tệp CSV"
+                  >
+                    <Download className="w-3.5 h-3.5 text-amber-600" /> Xuất File CSV
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b border-zinc-100 text-zinc-400 font-bold">
-                    <th className="py-2.5">Tên vật tư</th>
-                    <th className="py-2.5">Đơn vị</th>
-                    <th className="py-2.5 text-right">Tồn kho</th>
-                    <th className="py-2.5 text-right">Giá bình quân WAC</th>
-                    <th className="py-2.5 text-right">Trạng thái</th>
-                    <th className="py-2.5 text-center">Xóa</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100">
-                  {visibleIngredients.map((ing: Ingredient) => {
-                    const isLow = ing.stock_qty <= ing.reorder_level;
+            {inventoryViewSubTab === 'stock' ? (
+              /* TAB CON 1: BẢNG DANH MỤC TỒN KHO & WAC */
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-100 text-zinc-400 font-bold">
+                      <th className="py-2.5">Tên vật tư</th>
+                      <th className="py-2.5">Đơn vị</th>
+                      <th className="py-2.5 text-right">Tồn kho</th>
+                      <th className="py-2.5 text-right">Giá bình quân WAC</th>
+                      <th className="py-2.5 text-right">Trạng thái</th>
+                      <th className="py-2.5 text-center">Xóa</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100">
+                    {visibleIngredients.map((ing: Ingredient) => {
+                      const isLow = ing.stock_qty <= ing.reorder_level;
+                      return (
+                        <tr key={ing.id} className="hover:bg-zinc-50 group">
+                          <td className="py-2.5">
+                            <span className="font-bold text-zinc-900 block">{ing.name}</span>
+                            <span className="text-[10px] text-zinc-400">{ing.category}</span>
+                          </td>
+                          <td className="py-2.5 text-zinc-500">{ing.unit}</td>
+                          <td className={`py-2.5 text-right font-bold ${isLow ? 'text-rose-600' : 'text-zinc-800'}`}>
+                            {ing.stock_qty.toLocaleString()}
+                          </td>
+                          <td className="py-2.5 text-right font-black text-amber-700">
+                            {ing.avg_cost.toLocaleString('vi-VN')}₫/{ing.unit}
+                          </td>
+                          <td className="py-2.5 text-right">
+                            {isLow ? (
+                              <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold text-[10px]">
+                                Sắp hết
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px]">
+                                An toàn
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 text-center">
+                            <button
+                              onClick={() => handleDeleteIngredient(ing.id, ing.name)}
+                              className="p-1 rounded-lg text-zinc-300 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
+                              title="Xóa vật tư này khỏi kho"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              /* TAB CON 2: LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ */
+              <div className="space-y-3 flex-1 flex flex-col min-h-0">
+                {/* 3 Thẻ thống kê nhanh */}
+                <div className="grid grid-cols-3 gap-2 shrink-0">
+                  <div className="p-2.5 bg-zinc-50 rounded-2xl border border-zinc-200">
+                    <span className="text-[10px] font-bold text-zinc-500 block">Tổng số lượt</span>
+                    <span className="text-base font-black text-zinc-900 mt-0.5 block">{materialTransactions.length} lượt</span>
+                  </div>
+                  <div className="p-2.5 bg-emerald-50 rounded-2xl border border-emerald-200">
+                    <span className="text-[10px] font-bold text-emerald-700 block">Tiền nhập hàng (PO)</span>
+                    <span className="text-base font-black text-emerald-700 mt-0.5 block">
+                      {materialTransactions
+                        .filter((t) => t.type === 'import')
+                        .reduce((s, t) => s + (t.totalAmount || 0), 0)
+                        .toLocaleString('vi-VN')}₫
+                    </span>
+                  </div>
+                  <div className="p-2.5 bg-rose-50 rounded-2xl border border-rose-200">
+                    <span className="text-[10px] font-bold text-rose-700 block">Giá trị xuất / hao hụt</span>
+                    <span className="text-base font-black text-rose-700 mt-0.5 block">
+                      {materialTransactions
+                        .filter((t) => t.type !== 'import')
+                        .reduce((s, t) => s + (t.totalAmount || 0), 0)
+                        .toLocaleString('vi-VN')}₫
+                    </span>
+                  </div>
+                </div>
+
+                {/* Thanh tìm kiếm & lọc loại giao dịch */}
+                <div className="flex flex-col sm:flex-row gap-2 shrink-0">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={materialTxSearch}
+                      onChange={(e) => setMaterialTxSearch(e.target.value)}
+                      placeholder="Tìm theo tên vật tư, nhà cung cấp, lý do..."
+                      className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setMaterialTxTypeFilter('all')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        materialTxTypeFilter === 'all'
+                          ? 'bg-zinc-900 text-white'
+                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      }`}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMaterialTxTypeFilter('import')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        materialTxTypeFilter === 'import'
+                          ? 'bg-emerald-600 text-white'
+                          : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      }`}
+                    >
+                      🟢 Nhập kho (PO)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMaterialTxTypeFilter('export')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        materialTxTypeFilter === 'export'
+                          ? 'bg-rose-600 text-white'
+                          : 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                      }`}
+                    >
+                      🔴 Xuất kho / Hỏng
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bảng dữ liệu lịch sử xuất nhập */}
+                <div className="overflow-y-auto max-h-[480px] border border-zinc-100 rounded-2xl">
+                  {(() => {
+                    const filtered = materialTransactions.filter((tx) => {
+                      if (materialTxTypeFilter === 'import' && tx.type !== 'import') return false;
+                      if (materialTxTypeFilter === 'export' && tx.type === 'import') return false;
+                      if (materialTxSearch.trim()) {
+                        const q = materialTxSearch.toLowerCase();
+                        const match =
+                          tx.materialName.toLowerCase().includes(q) ||
+                          (tx.supplierOrReason && tx.supplierOrReason.toLowerCase().includes(q)) ||
+                          (tx.performedBy && tx.performedBy.toLowerCase().includes(q));
+                        if (!match) return false;
+                      }
+                      return true;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="p-8 text-center text-zinc-400 flex flex-col items-center justify-center">
+                          <History className="w-8 h-8 text-zinc-300 stroke-1 mb-2" />
+                          <p className="font-bold text-xs text-zinc-500">Chưa có giao dịch xuất nhập kho nào phù hợp</p>
+                          <p className="text-[11px] text-zinc-400 mt-0.5">Mọi lượt Nhập kho (PO) hoặc Xuất kho/Hao hụt sẽ tự động hiển thị chi tiết tại đây.</p>
+                        </div>
+                      );
+                    }
+
                     return (
-                      <tr key={ing.id} className="hover:bg-zinc-50 group">
-                        <td className="py-2.5">
-                          <span className="font-bold text-zinc-900 block">{ing.name}</span>
-                          <span className="text-[10px] text-zinc-400">{ing.category}</span>
-                        </td>
-                        <td className="py-2.5 text-zinc-500">{ing.unit}</td>
-                        <td className={`py-2.5 text-right font-bold ${isLow ? 'text-rose-600' : 'text-zinc-800'}`}>
-                          {ing.stock_qty.toLocaleString()}
-                        </td>
-                        <td className="py-2.5 text-right font-black text-amber-700">
-                          {ing.avg_cost.toLocaleString('vi-VN')}₫/{ing.unit}
-                        </td>
-                        <td className="py-2.5 text-right">
-                          {isLow ? (
-                            <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 font-bold text-[10px]">
-                              Sắp hết
-                            </span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold text-[10px]">
-                              An toàn
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-2.5 text-center">
-                          <button
-                            onClick={() => handleDeleteIngredient(ing.id, ing.name)}
-                            className="p-1 rounded-lg text-zinc-300 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                            title="Xóa vật tư này khỏi kho"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </td>
-                      </tr>
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-zinc-50 sticky top-0 border-b border-zinc-200 z-10">
+                          <tr className="text-zinc-400 font-bold">
+                            <th className="py-2.5 px-3">Thời gian</th>
+                            <th className="py-2.5 px-2">Loại</th>
+                            <th className="py-2.5 px-3">Vật tư & Quy đổi</th>
+                            <th className="py-2.5 px-3 text-right">Số lượng thực</th>
+                            <th className="py-2.5 px-3 text-right">Đơn giá kho</th>
+                            <th className="py-2.5 px-3 text-right">Thành tiền</th>
+                            <th className="py-2.5 px-3">NCC / Lý do</th>
+                            <th className="py-2.5 px-3">Thao tác bởi</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {filtered.map((tx) => {
+                            const d = new Date(tx.createdAt);
+                            const timeStr = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                            const dateStr = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+                            const isImp = tx.type === 'import';
+
+                            return (
+                              <tr key={tx.id} className="hover:bg-zinc-50/80 transition">
+                                <td className="py-2.5 px-3 text-[11px] text-zinc-500 whitespace-nowrap">
+                                  <div className="font-bold text-zinc-800">{timeStr}</div>
+                                  <div className="text-[10px] text-zinc-400">{dateStr}</div>
+                                </td>
+                                <td className="py-2.5 px-2 whitespace-nowrap">
+                                  {isImp ? (
+                                    <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-extrabold text-[10px] inline-flex items-center gap-1">
+                                      <ArrowDownCircle className="w-3 h-3 text-emerald-600" /> Nhập kho
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-extrabold text-[10px] inline-flex items-center gap-1">
+                                      <ArrowUpCircle className="w-3 h-3 text-rose-600" /> Xuất kho
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-black text-zinc-900">{tx.materialName}</div>
+                                  {tx.packageQty ? (
+                                    <div className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded inline-block mt-0.5">
+                                      📦 {tx.packageQty} {tx.packageUnit || 'gói'} (x{tx.conversionRate?.toLocaleString()} {tx.unit})
+                                    </div>
+                                  ) : (
+                                    <div className="text-[10px] text-zinc-400">{tx.unit}</div>
+                                  )}
+                                </td>
+                                <td className={`py-2.5 px-3 text-right font-black whitespace-nowrap ${
+                                  isImp ? 'text-emerald-700' : 'text-rose-600'
+                                }`}>
+                                  {isImp ? '+' : '-'}{tx.quantity.toLocaleString()} {tx.unit}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-bold text-zinc-600 whitespace-nowrap">
+                                  {(tx.unitPrice || 0).toLocaleString('vi-VN')}₫/{tx.unit}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-black text-amber-700 whitespace-nowrap">
+                                  {(tx.totalAmount || 0).toLocaleString('vi-VN')}₫
+                                </td>
+                                <td className="py-2.5 px-3 text-[11px] text-zinc-600 max-w-[160px] truncate" title={tx.supplierOrReason}>
+                                  {tx.supplierOrReason || '—'}
+                                </td>
+                                <td className="py-2.5 px-3 text-[11px] text-zinc-500 whitespace-nowrap">
+                                  {tx.performedBy || 'Hệ thống'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

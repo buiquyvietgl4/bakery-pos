@@ -10,6 +10,7 @@ import { DEFAULT_BAKERY_PRODUCTS, DEFAULT_BAKERY_RECIPES } from '@/lib/constants
 import { filterActiveProducts, getDeletedProductIds } from '@/lib/utils/productManager';
 import { getStockAdjustmentLogs } from './stockAdjustmentManager';
 import { getSpoilageLogs } from './spoilageManager';
+import { getMaterialTransactions } from './materialTransactionManager';
 import { supabase } from '@/lib/supabase/client';
 import { getTelegramConfig } from './telegramNotify';
 import { getPrinterConfig } from './printerManager';
@@ -435,9 +436,10 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     } catch {}
   }
 
-  // 4. Lịch sử biến động kho & Hao hụt
+  // 4. Lịch sử biến động kho & Hao hụt & Vật tư
   const stock_adjustments = getStockAdjustmentLogs();
   const spoilage_logs = getSpoilageLogs();
+  const material_transactions = getMaterialTransactions();
 
   // 5. Đơn hàng (orders & preorders)
   let orders: BackupOrder[] = [];
@@ -636,6 +638,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     ingredients,
     stock_adjustments,
     spoilage_logs,
+    material_transactions,
     orders,
     expenses,
     cashflow,
@@ -664,6 +667,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     ingredients,
     stock_adjustments,
     spoilage_logs,
+    material_transactions,
     orders,
     expenses,
     cashflow,

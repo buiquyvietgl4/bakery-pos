@@ -81,6 +81,26 @@ export const StockAdjustmentHistoryModal: React.FC<StockAdjustmentHistoryModalPr
     return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
   }, [logs]);
 
+  // Bản đồ ảnh sản phẩm từ LocalStorage để hiển thị thumbnail đầy đủ
+  const productImageMap = useMemo(() => {
+    const map = new Map<string, string>();
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_products');
+        if (raw) {
+          const prods = JSON.parse(raw);
+          if (Array.isArray(prods)) {
+            prods.forEach((p: any) => {
+              if (p.id && p.image_url) map.set(p.id, p.image_url);
+              if (p.name && p.image_url) map.set(p.name.toLowerCase().trim(), p.image_url);
+            });
+          }
+        }
+      } catch {}
+    }
+    return map;
+  }, [logs]);
+
   // Bộ lọc dữ liệu
   const filteredLogs = useMemo(() => {
     return logs.filter((log) => {
@@ -374,18 +394,36 @@ export const StockAdjustmentHistoryModal: React.FC<StockAdjustmentHistoryModalPr
                     key={log.id}
                     className="p-3 bg-white rounded-2xl border border-zinc-200/90 hover:border-amber-300 shadow-2xs transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5"
                   >
-                    {/* Cột trái: Tên bánh & Thời gian & Người sửa */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-black text-sm text-zinc-900 truncate">
-                          {log.productName}
-                        </span>
-                        {log.productCategory && (
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-500">
-                            {log.productCategory}
+                    {/* Cột trái: Ảnh bánh + Tên bánh & Thời gian & Người sửa */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      {/* Thumbnail ảnh bánh */}
+                      {(() => {
+                        const imgUrl =
+                          log.productImage ||
+                          productImageMap.get(log.productId) ||
+                          (log.productName ? productImageMap.get(log.productName.toLowerCase().trim()) : null);
+                        return (
+                          <div className="w-12 h-12 rounded-2xl bg-amber-50/80 border border-amber-200/60 overflow-hidden shrink-0 flex items-center justify-center shadow-2xs">
+                            {imgUrl ? (
+                              <img src={imgUrl} alt={log.productName} className="w-full h-full object-cover" />
+                            ) : (
+                              <Package className="w-5 h-5 text-amber-600/60" />
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-black text-sm text-zinc-900 truncate">
+                            {log.productName}
                           </span>
-                        )}
-                      </div>
+                          {log.productCategory && (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-500">
+                              {log.productCategory}
+                            </span>
+                          )}
+                        </div>
 
                       <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-500 mt-1">
                         <span className="flex items-center gap-1 font-medium">
@@ -412,8 +450,9 @@ export const StockAdjustmentHistoryModal: React.FC<StockAdjustmentHistoryModalPr
                         )}
                       </div>
                     </div>
+                  </div>
 
-                    {/* Cột phải: Số lượng cũ -> mới & Chênh lệch */}
+                  {/* Cột phải: Số lượng cũ -> mới & Chênh lệch */}
                     <div className="flex items-center gap-3 shrink-0 self-end sm:self-center bg-zinc-50 sm:bg-transparent p-2 sm:p-0 rounded-xl sm:rounded-none w-full sm:w-auto justify-between sm:justify-end border sm:border-0 border-zinc-100">
                       {/* Biến động số lượng */}
                       <div className="text-right">

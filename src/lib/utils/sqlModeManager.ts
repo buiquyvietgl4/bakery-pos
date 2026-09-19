@@ -50,6 +50,7 @@ export const BAKERY_DATA_KEYS = [
   'bakery_spoilage_logs',
   'bakery_stock_adjustments',
   'bakery_stock_adjustment_logs',
+  'bakery_material_transactions',
   'bakery_accounting_closings',
   'bakery_closing_records',
   'bakery_security_config',
@@ -149,6 +150,12 @@ export function saveSqlModeConfig(patch: Partial<SqlModeConfig>): SqlModeConfig 
   // Đồng bộ lại các trường tương thích ngược
   const activeEnv = updated.activeLocalEnv || 'production';
   if (updated.localEnvs && updated.localEnvs[activeEnv]) {
+    if (patch.localFolderPath !== undefined) {
+      updated.localEnvs[activeEnv].folderPath = patch.localFolderPath;
+    }
+    if (patch.localFolderName !== undefined) {
+      updated.localEnvs[activeEnv].folderName = patch.localFolderName;
+    }
     updated.localFolderName = updated.localEnvs[activeEnv].folderName || '';
     updated.localFolderPath = updated.localEnvs[activeEnv].folderPath || '';
     if (updated.localEnvs[activeEnv].lastSyncAt) {
