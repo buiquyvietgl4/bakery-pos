@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Building2, Image as ImageIcon, Upload, Save, CheckCircle2, 
   Trash2, Phone, MapPin, Sparkles, Receipt, FileText, Cake,
-  Hash, RotateCcw
+  Hash, RotateCcw, Crop
 } from 'lucide-react';
+import { LogoCropModal } from './LogoCropModal';
 import { 
   getStoreBranding, 
   saveStoreBranding, 
@@ -26,6 +27,8 @@ export const StoreBrandingSettings: React.FC = () => {
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
   const [isResettingCounter, setIsResettingCounter] = useState(false);
   const [resetSuccessMsg, setResetSuccessMsg] = useState<string | null>(null);
+  const [isCropModalOpen, setIsCropModalOpen] = useState(false);
+  const [rawImageForCrop, setRawImageForCrop] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -45,31 +48,47 @@ export const StoreBrandingSettings: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsUploadingLogo(true);
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       const base64 = event.target?.result as string;
       if (base64) {
-        setConfig((prev) => ({ ...prev, logoUrl: base64 }));
-
-        // Tự động đẩy lên Supabase Storage bucket bakery-images nếu online
-        try {
-          const fileName = `branding/logo_${Date.now()}.png`;
-          const { data: sData, error: sErr } = await supabase.storage
-            .from('bakery-images')
-            .upload(fileName, file, { contentType: file.type || 'image/png', upsert: true });
-
-          if (!sErr && sData?.path) {
-            const { data: uData } = supabase.storage.from('bakery-images').getPublicUrl(sData.path);
-            if (uData?.publicUrl) {
-              setConfig((prev) => ({ ...prev, logoUrl: uData.publicUrl }));
-            }
-          }
-        } catch {}
+        setRawImageForCrop(base64);
+        setIsCropModalOpen(true);
       }
-      setIsUploadingLogo(false);
     };
     reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  const handleCropComplete = async (croppedBase64: string, blob?: Blob) => {
+    setIsUploadingLogo(true);
+    setConfig((prev) => ({ ...prev, logoUrl: croppedBase64 }));
+
+    // Tự động đẩy file đã cắt lên Supabase Storage bucket bakery-images nếu online
+    if (blob) {
+      try {
+        const fileName = `branding/logo_${Date.now()}.png`;
+        const { data: sData, error: sErr } = await supabase.storage
+          .from('bakery-images')
+          .upload(fileName, blob, { contentType: 'image/png', upsert: true });
+
+        if (!sErr && sData?.path) {
+          const { data: uData } = supabase.storage.from('bakery-images').getPublicUrl(sData.path);
+          if (uData?.publicUrl) {
+            setConfig((prev) => ({ ...prev, logoUrl: uData.publicUrl }));
+          }
+        }
+      } catch (err) {
+        console.error('Lỗi khi tải logo lên Supabase storage:', err);
+      }
+    }
+    setIsUploadingLogo(false);
+  };
+
+  const handleOpenCropWithCurrent = () => {
+    if (!config.logoUrl) return;
+    setRawImageForCrop(config.logoUrl);
+    setIsCropModalOpen(true);
   };
 
   const handleRemoveLogo = () => {
@@ -194,27 +213,50 @@ export const StoreBrandingSettings: React.FC = () => {
             <span className="text-xs font-bold text-amber-950 flex items-center gap-2">
               <ImageIcon className="w-4 h-4 text-amber-700" />
               Logo Tiệm Bánh
+              <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900 font-bold uppercase tracking-wider">
+                Tỉ lệ 1:1 chuẩn Header Web
+              </span>
             </span>
             {config.logoUrl && (
-              <button
-                type="button"
-                onClick={handleRemoveLogo}
-                className="text-xs text-rose-600 hover:text-rose-800 font-bold flex items-center gap-1 cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" /> Xóa logo (Dùng icon mặc định)
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleOpenCropWithCurrent}
+                  className="text-xs text-amber-700 hover:text-amber-900 bg-amber-100/80 hover:bg-amber-200 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1.5 cursor-pointer transition"
+                  title="Cắt hoặc điều chỉnh lại khung logo"
+                >
+                  <Crop className="w-3.5 h-3.5" /> Căn Chỉnh Khung
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRemoveLogo}
+                  className="text-xs text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1 cursor-pointer transition"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Xóa logo
+                </button>
+              </div>
             )}
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-5">
-            {/* VÙNG HIỂN THỊ LOGO HIỆN TẠI */}
-            <div className="relative flex items-center justify-center w-24 h-24 rounded-2xl border-2 border-dashed border-amber-300 bg-white p-2 shrink-0 shadow-inner">
+            {/* VÙNG HIỂN THỊ LOGO HIỆN TẠI (CLICK ĐỂ CĂN CHỈNH) */}
+            <div 
+              onClick={() => config.logoUrl ? handleOpenCropWithCurrent() : fileInputRef.current?.click()}
+              className="group relative flex items-center justify-center w-24 h-24 rounded-2xl border-2 border-dashed border-amber-300 bg-white p-2 shrink-0 shadow-inner cursor-pointer hover:border-amber-500 transition overflow-hidden"
+              title={config.logoUrl ? "Bấm vào để căn chỉnh lại khung ảnh" : "Bấm để tải ảnh lên"}
+            >
               {config.logoUrl ? (
-                <img
-                  src={config.logoUrl}
-                  alt="Store Logo"
-                  className="w-full h-full object-contain rounded-xl"
-                />
+                <>
+                  <img
+                    src={config.logoUrl}
+                    alt="Store Logo"
+                    className="w-full h-full object-contain rounded-xl"
+                  />
+                  <div className="absolute inset-0 bg-black/40 text-white text-[10px] font-bold opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center transition-opacity rounded-2xl">
+                    <Crop className="w-4 h-4 mb-0.5" />
+                    Chỉnh Khung
+                  </div>
+                </>
               ) : (
                 <div className="flex flex-col items-center justify-center text-amber-600">
                   <Cake className="w-8 h-8" />
@@ -223,7 +265,7 @@ export const StoreBrandingSettings: React.FC = () => {
               )}
             </div>
 
-            {/* NÚT TẢI LÊN */}
+            {/* NÚT TẢI LÊN & HƯỚNG DẪN */}
             <div className="flex-1 space-y-2 text-center sm:text-left">
               <input
                 ref={fileInputRef}
@@ -232,17 +274,30 @@ export const StoreBrandingSettings: React.FC = () => {
                 onChange={handleLogoUpload}
                 className="hidden"
               />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploadingLogo}
-                className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-2xs hover:shadow transition flex items-center justify-center sm:justify-start gap-2 cursor-pointer disabled:opacity-60"
-              >
-                <Upload className="w-4 h-4" />
-                {isUploadingLogo ? 'Đang tải logo...' : 'Tải Ảnh Logo Lên (PNG, JPG, SVG)'}
-              </button>
+              <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingLogo}
+                  className="px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-500 hover:from-amber-700 hover:to-orange-600 text-white rounded-xl text-xs font-bold shadow-md shadow-amber-600/20 hover:shadow transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  <Upload className="w-4 h-4" />
+                  {isUploadingLogo ? 'Đang xử lý logo...' : 'Chọn Ảnh Logo Mới'}
+                </button>
+
+                {config.logoUrl && (
+                  <button
+                    type="button"
+                    onClick={handleOpenCropWithCurrent}
+                    className="px-3.5 py-2.5 bg-white border border-amber-300 text-amber-900 hover:bg-amber-100/70 rounded-xl text-xs font-bold shadow-2xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Crop className="w-4 h-4 text-amber-700" />
+                    Căn Chỉnh Khung Ảnh Hiện Tại
+                  </button>
+                )}
+              </div>
               <p className="text-xs text-zinc-500">
-                Khuyên dùng ảnh logo vuông hoặc tròn nền trong suốt (PNG), kích thước từ 200x200px đến 800x800px.
+                Khi chọn ảnh xong, cửa sổ <strong>căn chỉnh khung ảnh</strong> sẽ tự động hiện lên để bạn zoom và di chuyển cho vừa khít với ô hiển thị logo trên Web và Hóa đơn.
               </p>
             </div>
           </div>
@@ -397,7 +452,7 @@ export const StoreBrandingSettings: React.FC = () => {
               <div className="p-2.5 bg-[#fbf7f2] rounded-xl border border-amber-200/60 flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-600 to-orange-400 flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
                   {config.logoUrl ? (
-                    <img src={config.logoUrl} alt="logo" className="w-full h-full object-contain" />
+                    <img src={config.logoUrl} alt="logo" className="w-full h-full object-cover rounded-lg" />
                   ) : (
                     <Cake className="w-4 h-4 text-white" />
                   )}
@@ -469,6 +524,16 @@ export const StoreBrandingSettings: React.FC = () => {
         </div>
 
       </form>
+
+      {/* CỬA SỔ CĂN CHỈNH KHUNG ẢNH LOGO CHUẨN 1:1 THEO WEB */}
+      <LogoCropModal
+        isOpen={isCropModalOpen}
+        imageSrc={rawImageForCrop}
+        storeName={config.storeName}
+        slogan={config.slogan}
+        onClose={() => setIsCropModalOpen(false)}
+        onCropComplete={handleCropComplete}
+      />
 
     </div>
   );

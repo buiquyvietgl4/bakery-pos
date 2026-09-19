@@ -79,7 +79,7 @@ export default function Header() {
           <Link href="/" className="flex items-center gap-2 sm:gap-3 font-bold text-lg text-amber-950 group shrink-0">
             <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 flex items-center justify-center text-white shadow-lg shadow-amber-500/25 group-hover:scale-105 group-hover:shadow-amber-500/35 transition-all duration-300 shrink-0 overflow-hidden">
               {branding.logoUrl ? (
-                <img src={branding.logoUrl} alt={branding.storeName} className="w-full h-full object-contain p-0.5" />
+                <img src={branding.logoUrl} alt={branding.storeName} className="w-full h-full object-cover rounded-xl" />
               ) : (
                 <Cake className="w-4 h-4 sm:w-5 sm:h-5 drop-shadow-xs" />
               )}
