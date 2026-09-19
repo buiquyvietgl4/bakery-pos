@@ -3112,25 +3112,31 @@ export default function POSPage() {
       )}
 
       {/* ── THANH CHUYỂN TAB MOBILE (DÍNH Ở ĐỈNH MÀN HÌNH ĐIỆN THOẠI) ── */}
-      <div className="lg:hidden sticky top-0 flex items-center bg-white/95 backdrop-blur-md border-b border-zinc-200 p-2 gap-1.5 shadow-sm shrink-0 z-30 w-full">
+      <div className="lg:hidden sticky top-0 flex items-center bg-[#fbf7f2]/95 backdrop-blur-md border-b border-amber-900/10 px-2.5 py-2 gap-2 shadow-xs shrink-0 z-30 w-full overflow-x-auto scrollbar-none overscroll-x-contain">
         <button
           onClick={() => setMobileTab('menu')}
-          className={`flex-1 py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition ${
+          className={`shrink-0 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap active:scale-95 ${
             mobileTab === 'menu'
-              ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/25'
-              : 'text-zinc-600 hover:bg-zinc-100 bg-zinc-50'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-zinc-700 bg-white border border-stone-200/90 hover:bg-stone-50'
           }`}
         >
-          <Package className="w-4 h-4" />
-          <span>Thực Đơn ({filteredProducts.length})</span>
+          <Package className="w-3.5 h-3.5" />
+          <span>Thực Đơn</span>
+          <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+            mobileTab === 'menu' ? 'bg-amber-800 text-amber-100' : 'bg-stone-100 text-zinc-700'
+          }`}>
+            {filteredProducts.length}
+          </span>
         </button>
+
         {/* NÚT ĐẶT BÁNH TRỰC TIẾP TRÊN MOBILE */}
         <button
           onClick={() => {
             setBirthdayOrderProduct(null);
             setIsBirthdayOrderModalOpen(true);
           }}
-          className="flex-1 py-2 px-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition bg-pink-600 text-white shadow-sm shadow-pink-600/25 active:scale-95 cursor-pointer"
+          className="shrink-0 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition bg-pink-600 hover:bg-pink-700 text-white shadow-xs active:scale-95 cursor-pointer whitespace-nowrap"
         >
           <Cake className="w-3.5 h-3.5" />
           <span>Đặt Bánh</span>
@@ -3138,43 +3144,55 @@ export default function POSPage() {
 
         <button
           onClick={() => setMobileTab('cart')}
-          className={`flex-1 py-2 px-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition relative ${
+          className={`shrink-0 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap active:scale-95 relative ${
             mobileTab === 'cart'
-              ? 'bg-amber-600 text-white shadow-sm shadow-amber-600/25'
-              : 'text-zinc-600 hover:bg-zinc-100 bg-zinc-50'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-zinc-700 bg-white border border-stone-200/90 hover:bg-stone-50'
           }`}
         >
           <ShoppingCart className="w-3.5 h-3.5" />
           <span>Giỏ Hàng</span>
           {cart.length > 0 && (
             <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
-              mobileTab === 'cart' ? 'bg-white text-amber-600' : 'bg-rose-500 text-white'
+              mobileTab === 'cart' ? 'bg-white text-amber-600' : 'bg-rose-500 text-white animate-pulse'
             }`}>
               {cart.reduce((s, i) => s + i.quantity, 0)}
             </span>
           )}
         </button>
+
         {/* Nút Chờ Ship trên mobile */}
         <button
           type="button"
           onClick={() => setIsReadyShippingModalOpen(true)}
-          className={`flex-1 py-2 px-1 rounded-xl text-xs font-black flex items-center justify-center gap-1 transition relative ${
+          className={`shrink-0 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer whitespace-nowrap active:scale-95 ${
             readyShippingOrders.length > 0
-              ? 'bg-emerald-600 text-white shadow-sm shadow-emerald-600/25 ring-1 ring-emerald-300'
-              : 'text-zinc-700 bg-zinc-50 hover:bg-emerald-50 border border-zinc-200/80'
+              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs'
+              : 'text-zinc-700 bg-white border border-stone-200/90 hover:bg-emerald-50/60'
           }`}
           title="Đơn bánh chờ ship / giao (Bước 3)"
         >
           <Truck className="w-3.5 h-3.5" />
-          <span>Chờ Ship ({readyShippingOrders.length})</span>
+          <span>Chờ Ship</span>
+          {readyShippingOrders.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-white text-emerald-700 text-[10px] font-black">
+              {readyShippingOrders.length}
+            </span>
+          )}
         </button>
 
         <button
           onClick={() => setIsInvoiceHistoryOpen(true)}
-          className="flex-1 py-2 px-1.5 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-zinc-700 bg-zinc-50 hover:bg-amber-50 border border-zinc-200/80 transition"
+          className="shrink-0 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 text-zinc-700 bg-white hover:bg-amber-50/60 border border-stone-200/90 transition cursor-pointer whitespace-nowrap active:scale-95"
+          title="Xem lịch sử hóa đơn"
         >
           <Receipt className="w-3.5 h-3.5 text-amber-600" />
-          <span>Lịch Sử ({invoicesList.length})</span>
+          <span>Lịch Sử</span>
+          {invoicesList.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-stone-100 text-zinc-700 text-[10px] font-black">
+              {invoicesList.length}
+            </span>
+          )}
         </button>
 
         <button
@@ -3195,17 +3213,18 @@ export default function POSPage() {
             }
           }}
           disabled={isPosSyncing}
-          className="py-2 px-2 rounded-xl text-xs font-black flex items-center justify-center gap-1 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition shrink-0 disabled:opacity-50"
+          className="shrink-0 py-2 px-3 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 transition cursor-pointer whitespace-nowrap active:scale-95 disabled:opacity-50"
           title="Xóa cache và đồng bộ lại từ CSDL Cloud SQL"
         >
           <RefreshCw className={`w-3.5 h-3.5 text-emerald-600 ${isPosSyncing ? 'animate-spin' : ''}`} />
-          <span className="text-[11px]">{isPosSyncing ? 'Đang tải...' : 'Đồng Bộ'}</span>
+          <span>{isPosSyncing ? 'Đang tải...' : 'Đồng Bộ'}</span>
         </button>
+
+        <div className="w-2 shrink-0" />
       </div>
 
       {/* ── CỘT TRÁI: MENU SẢN PHẨM (Cuộn theo toàn trang tự nhiên) ── */}
       <div className={`flex-1 w-full lg:min-w-0 p-3 sm:p-6 ${mobileTab === 'cart' ? 'hidden lg:flex lg:flex-col' : 'flex flex-col'}`}>
-        {/* Top Controls: Search, Nút Đặt Bánh Kem & Két tiền ca */}
         <div className="space-y-4 mb-5">
           {/* ── BỐ CỤC MOBILE (DÀNH RIÊNG CHO ĐIỆN THOẠI < lg): TINH GỌN, KHOA HỌC, KHÔNG TRÙNG LẶP ── */}
           <div className="lg:hidden space-y-2.5">
