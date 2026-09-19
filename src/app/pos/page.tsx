@@ -1281,17 +1281,17 @@ export default function POSPage() {
           .from('orders')
           .select(orderFields)
           .order('created_at', { ascending: false })
-          .limit(30),
+          .limit(200),
         supabase
           .from('orders')
           .select(orderFields)
           .order('updated_at', { ascending: false })
-          .limit(30),
+          .limit(200),
         supabase
           .from('orders')
           .select(orderFields)
           .in('status', ['pending', 'preparing', 'ready'])
-          .limit(50),
+          .limit(100),
       ]);
 
       const sbOrders = new Map<string, any>();
