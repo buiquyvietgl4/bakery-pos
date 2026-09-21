@@ -20,7 +20,7 @@ import {
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
   Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet,
   Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings, ShieldCheck,
-  Home, KeyRound, RefreshCw, Barcode
+  Home, KeyRound, RefreshCw
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -3541,13 +3541,6 @@ export default function POSPage() {
                 )}
               </div>
 
-              {/* Huy hiệu máy quét mã vạch mobile */}
-              <div
-                title="Hệ thống tự động nhận diện súng quét mã vạch USB/Bluetooth"
-                className="flex items-center justify-center w-8 h-8 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 shrink-0 shadow-2xs"
-              >
-                <Barcode className="w-4 h-4 text-amber-700" />
-              </div>
 
               {/* Huy Hiệu Trạng Thái Chế Độ CSDL (Online Cloud vs Local SQL) */}
               <Link
@@ -3764,15 +3757,6 @@ export default function POSPage() {
               )}
             </div>
 
-            {/* Huy hiệu súng quét mã vạch desktop */}
-            <div
-              title="Súng quét mã vạch USB / Bluetooth / 2.4G đang kết nối và sẵn sàng quét bất kỳ lúc nào"
-              className="hidden xl:flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-amber-500/10 border border-amber-300/80 text-amber-900 text-xs font-bold shrink-0 shadow-2xs"
-            >
-              <Barcode className="w-4 h-4 text-amber-700" />
-              <span>Súng quét: Sẵn sàng</span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            </div>
 
             {/* NÚT TẠO ĐƠN ĐẶT BÁNH SINH NHẬT THEO CƠ CHẾ FLOWCHART MỚI */}
             <button
@@ -6562,26 +6546,7 @@ export default function POSPage() {
                     <span className="font-bold text-zinc-900">{shift.orderCount || 0} đơn</span>
                   </div>
                   <div className="flex justify-between items-center pt-1 border-t border-amber-200/60">
-                    <span className="text-zinc-600 flex items-center gap-1">
-                      <span>Tiền mặt đầu ca (vốn mở két):</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const val = prompt('Điều chỉnh tiền mặt đầu ca (vốn mở két):', String(shift.openingCash || 0));
-                          if (val !== null) {
-                            const newOpening = Math.max(0, parseInt(val.replace(/\D/g, '')) || 0);
-                            const updated = { ...shift, openingCash: newOpening };
-                            setShift(updated);
-                            saveCurrentShiftLocally(updated);
-                            saveCurrentShiftToDb(updated).catch(() => {});
-                          }
-                        }}
-                        className="text-[10px] text-amber-700 underline font-semibold hover:text-amber-800 ml-1 cursor-pointer"
-                        title="Bấm để chỉnh sửa vốn đầu ca nếu cần"
-                      >
-                        [Sửa vốn]
-                      </button>
-                    </span>
+                    <span className="text-zinc-600">Tiền mặt đầu ca (vốn mở két):</span>
                     <span className="font-bold text-zinc-900">{(shift.openingCash || 0).toLocaleString('vi-VN')}₫</span>
                   </div>
                   <div className="flex justify-between items-center text-emerald-700">
