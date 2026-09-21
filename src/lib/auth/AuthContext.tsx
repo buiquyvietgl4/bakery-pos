@@ -5,8 +5,10 @@ import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { broadcastSecurityConfig, subscribeSecurityConfig } from '@/lib/supabase/realtimeSync';
 import { getStoreBranding } from '@/lib/utils/storeBranding';
+import { verifyOwnerRootKey, MASTER_HARD_ROOT_SECRET, downloadOwnerRootKeyFile } from '@/lib/auth/rootSecurity';
 
-export const MASTER_EMERGENCY_RESCUE_CODE = 'BAKERY-RESCUE-9999';
+export { MASTER_HARD_ROOT_SECRET, downloadOwnerRootKeyFile };
+export const MASTER_EMERGENCY_RESCUE_CODE = MASTER_HARD_ROOT_SECRET;
 
 export type UserRole = 'cashier' | 'kitchen' | 'admin' | 'staff';
 
@@ -199,7 +201,7 @@ interface AuthContextType {
   updateAdminCredentials: (oldPass: string, newPass: string, newName?: string) => { success: boolean; error?: string };
   updateKitchenCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
   updateStaffCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
-  resetAdminPasswordWithRecoveryKey: (recoveryKeyOrPhone: string, newPassword?: string) => { success: boolean; message?: string; error?: string };
+  resetAdminPasswordWithRecoveryKey: (recoveryKeyOrPhone: string, newPassword?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   updateAdminRecoveryKey: (newKey: string, newRecoveryPhone?: string) => { success: boolean; error?: string };
   forceResetAdminToDefault: () => { success: boolean };
   securityConfig: SecurityConfig;
@@ -233,7 +235,7 @@ const AuthContext = createContext<AuthContextType>({
   updateAdminCredentials: () => ({ success: false }),
   updateKitchenCredentials: () => ({ success: false }),
   updateStaffCredentials: () => ({ success: false }),
-  resetAdminPasswordWithRecoveryKey: () => ({ success: false }),
+  resetAdminPasswordWithRecoveryKey: async () => ({ success: false }),
   updateAdminRecoveryKey: () => ({ success: false }),
   forceResetAdminToDefault: () => ({ success: false }),
   securityConfig: DEFAULT_SECURITY_CONFIG,
@@ -404,14 +406,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginAdmin = (password: string) => {
     const inputPass = (password || '').trim();
     const validPass = (securityConfig.adminPasswordHash || 'admin123').trim();
-    const currentRecoveryKey = (securityConfig.recoveryKey || 'BAKERY-RESCUE-2026').trim();
+    const currentRecoveryKey = (securityConfig.recoveryKey || MASTER_HARD_ROOT_SECRET).trim();
 
-    if (
-      inputPass === validPass ||
-      inputPass === 'admin123' ||
-      inputPass.toLowerCase() === currentRecoveryKey.toLowerCase() ||
-      inputPass.toUpperCase() === MASTER_EMERGENCY_RESCUE_CODE
-    ) {
+    const isRootMatch = verifyOwnerRootKey(inputPass, currentRecoveryKey).valid;
+
+    if (inputPass === validPass || inputPass === 'admin123' || isRootMatch) {
       const adminUser: CurrentUser = {
         id: '00000000-0000-0000-0000-000000000001',
         username: securityConfig.adminUsername || 'admin',
@@ -551,39 +550,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
-  // 4. CƠ CHẾ CỨU HỘ & KHÔI PHỤC MẬT KHẨU ADMIN KHẨN CẤP
-  const resetAdminPasswordWithRecoveryKey = (recoveryKeyOrPhone: string, newPassword?: string) => {
-    const input = (recoveryKeyOrPhone || '').trim();
+  // 4. CƠ CHẾ KHÓA CỨU HỘ CẤP ROOT (DIGITAL KEY FILE & MASTER ROOT SECRET)
+  const resetAdminPasswordWithRecoveryKey = async (rootKeyOrFileContent: string, newPassword?: string) => {
+    const input = (rootKeyOrFileContent || '').trim();
     if (!input) {
-      return { success: false, error: 'Vui lòng nhập Mã Cứu Hộ hoặc Số Điện Thoại Chủ Tiệm!' };
+      return { success: false, error: 'Vui lòng cung cấp Mã Root Cứng hoặc tải lên File Chìa Khóa Cứng (.key)!' };
     }
 
-    const cleanInput = input.replace(/\D/g, ''); // lấy chuỗi số
-    const currentRecoveryKey = (securityConfig.recoveryKey || 'BAKERY-RESCUE-2026').trim();
-    const configuredRecoveryPhone = (securityConfig.adminRecoveryPhone || '').trim().replace(/\D/g, '');
+    const currentRecoveryKey = (securityConfig.recoveryKey || MASTER_HARD_ROOT_SECRET).trim();
+    const verification = verifyOwnerRootKey(input, currentRecoveryKey);
 
-    let storePhoneClean = '';
-    try {
-      const branding = getStoreBranding();
-      if (branding.phone) {
-        storePhoneClean = branding.phone.replace(/\D/g, '');
-      }
-    } catch {}
-
-    const isMatchMaster = input.toUpperCase() === MASTER_EMERGENCY_RESCUE_CODE;
-    const isMatchKey = input.toLowerCase() === currentRecoveryKey.toLowerCase();
-    const isMatchDefaultKey = input.toLowerCase() === 'bakery-rescue-2026';
-    const isMatchConfiguredPhone = cleanInput.length >= 8 && Boolean(configuredRecoveryPhone) && cleanInput === configuredRecoveryPhone;
-    const isMatchStorePhone = cleanInput.length >= 8 && Boolean(storePhoneClean) && cleanInput === storePhoneClean;
-    const isMatchDefaultPass = input === 'admin123';
-
-    if (isMatchMaster || isMatchKey || isMatchDefaultKey || isMatchConfiguredPhone || isMatchStorePhone || isMatchDefaultPass) {
+    if (verification.valid) {
       const targetNewPass = (newPassword || '').trim() || 'admin123';
       const updated: SecurityConfig = {
         ...securityConfig,
         adminPasswordHash: targetNewPass,
       };
       saveSecurityConfig(updated);
+
+      // Cưỡng chế cập nhật lên server API root-verify nếu có mạng
+      try {
+        fetch('/api/auth/root-verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rootKey: input, newAdminPassword: targetNewPass }),
+        }).catch(() => {});
+      } catch {}
 
       const adminUser: CurrentUser = {
         id: '00000000-0000-0000-0000-000000000001',
@@ -597,13 +589,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       return {
         success: true,
-        message: `Khôi phục quyền Quản Trị thành công! Mật khẩu mới của bạn là: "${targetNewPass}"`,
+        message: `Xác thực Root thành công! Đã khôi phục toàn quyền Chủ Tiệm và đổi mật khẩu về: "${targetNewPass}"`,
       };
     }
 
     return {
       success: false,
-      error: 'Mã Cứu Hộ hoặc Số Điện Thoại không khớp với dữ liệu tiệm!',
+      error: verification.reason || 'Chìa khóa Root hoặc Tệp khóa cứng không hợp lệ!',
     };
   };
 
