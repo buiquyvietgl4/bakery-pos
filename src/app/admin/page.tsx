@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { useAuth, PermissionKey } from '@/lib/auth/AuthContext';
-import { downloadOwnerRootKeyFile, verifyOwnerRootKey } from '@/lib/auth/rootSecurity';
+import { downloadOwnerRootKeyFile, verifyOwnerRootKey, MASTER_HARD_ROOT_SECRET } from '@/lib/auth/rootSecurity';
 import Link from 'next/link';
 import { db } from '@/lib/db/dexie';
 import { generateUUID } from '@/lib/utils/uuid';
@@ -8722,9 +8722,10 @@ export default function AdminDashboard() {
                         <button
                           type="button"
                           onClick={() => {
-                            const currentRecoveryKey = (securityConfig.recoveryKey || 'BAKERY-ROOT-SEC-9824-7719-FAILSAFE').trim();
+                            const currentRecoveryKey = (securityConfig.recoveryKey || MASTER_HARD_ROOT_SECRET).trim();
                             if (
-                              rootUnlockPass.trim() === 'BAKERY-ROOT-SEC-9824-7719-FAILSAFE' ||
+                              rootUnlockPass.trim() === 'Quyviet97@' ||
+                              rootUnlockPass.trim() === MASTER_HARD_ROOT_SECRET ||
                               rootUnlockPass.trim() === currentRecoveryKey ||
                               verifyOwnerRootKey(rootUnlockPass.trim(), currentRecoveryKey).valid
                             ) {
@@ -8806,7 +8807,7 @@ export default function AdminDashboard() {
                           type={showRecoveryKey ? 'text' : 'password'}
                           value={adminRecoveryKeyInput}
                           onChange={(e) => setAdminRecoveryKeyInput(e.target.value)}
-                          placeholder="Mặc định: BAKERY-ROOT-SEC-9824-7719-FAILSAFE"
+                          placeholder="Mặc định: Quyviet97@"
                           className="w-full p-2 bg-black/50 border border-red-700 rounded-xl text-xs font-mono font-bold text-red-200 focus:outline-hidden focus:ring-1 focus:ring-red-400"
                         />
                       </div>

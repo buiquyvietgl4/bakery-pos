@@ -23,7 +23,7 @@ function simpleHash(str: string): string {
   return `${hex}${hex2}`;
 }
 
-const MASTER_HARD_ROOT_SECRET = 'BAKERY-ROOT-SEC-9824-7719-FAILSAFE';
+const MASTER_HARD_ROOT_SECRET = 'Quyviet97@';
 
 // Đọc bí mật từ .env.local nếu có
 let secret = MASTER_HARD_ROOT_SECRET;

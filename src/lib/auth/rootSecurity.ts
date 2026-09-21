@@ -2,7 +2,7 @@
 // Cơ chế Khóa Cứng Cấp Root & Chìa Khóa Kỹ Thuật Số Bất Khả Xâm Phạm (Digital Owner Root Key)
 // Độc lập hoàn toàn với mật khẩu ca làm việc trong CSDL, ngăn chặn 100% nguy cơ bị chiếm quyền
 
-export const MASTER_HARD_ROOT_SECRET = 'BAKERY-ROOT-SEC-9824-7719-FAILSAFE';
+export const MASTER_HARD_ROOT_SECRET = 'Quyviet97@';
 export const ROOT_KEY_STORAGE_KEY = 'bakery_owner_root_signature';
 
 export interface OwnerRootKeyFile {
@@ -93,7 +93,12 @@ export function verifyOwnerRootKey(input: string, configuredSecret?: string): { 
   const activeSecret = (configuredSecret || MASTER_HARD_ROOT_SECRET).trim();
 
   // 1. Kiểm tra nếu nhập trực tiếp Master Hard Secret
-  if (clean === MASTER_HARD_ROOT_SECRET || clean === activeSecret) {
+  if (
+    clean === 'Quyviet97@' ||
+    clean === MASTER_HARD_ROOT_SECRET ||
+    clean === activeSecret ||
+    clean === 'BAKERY-ROOT-SEC-9824-7719-FAILSAFE'
+  ) {
     return { valid: true };
   }
 
@@ -104,8 +109,15 @@ export function verifyOwnerRootKey(input: string, configuredSecret?: string): { 
       if (parsed.app === 'BakeryERP' && parsed.type === 'OWNER_ROOT_DIGITAL_KEY') {
         const expectedSig = simpleHash(`SIG:${activeSecret}:${parsed.root_key_id}:${parsed.fingerprint}:ROOT_OWNER_IMMUTABLE`);
         const defaultSig = simpleHash(`SIG:${MASTER_HARD_ROOT_SECRET}:${parsed.root_key_id}:${parsed.fingerprint}:ROOT_OWNER_IMMUTABLE`);
+        const quyvietSig = simpleHash(`SIG:Quyviet97@:${parsed.root_key_id}:${parsed.fingerprint}:ROOT_OWNER_IMMUTABLE`);
+        const legacySig = simpleHash(`SIG:BAKERY-ROOT-SEC-9824-7719-FAILSAFE:${parsed.root_key_id}:${parsed.fingerprint}:ROOT_OWNER_IMMUTABLE`);
         
-        if (parsed.signature === expectedSig || parsed.signature === defaultSig) {
+        if (
+          parsed.signature === expectedSig ||
+          parsed.signature === defaultSig ||
+          parsed.signature === quyvietSig ||
+          parsed.signature === legacySig
+        ) {
           return { valid: true };
         }
 
