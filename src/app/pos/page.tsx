@@ -2130,10 +2130,10 @@ export default function POSPage() {
       const stockAvailable = Math.min(cakeStock, orderQuantity);
       const needToMake = Math.max(0, orderQuantity - cakeStock);
 
-      // ── ĐƠN 1: ĐƠN CHÍNH (TỔNG SỐ LƯỢNG KHÁCH ĐẶT) ──
-      // Nếu đủ tồn hoặc tồn 1 phần: Nằm ở Bước 3 (Chờ Giao / Sẵn sàng)
-      // Nếu thiếu 1 phần (needToMake > 0): Có cờ bake_status = 'pending' khóa nút giao hàng lại chờ bếp làm xong!
-      const mainInitialStatus = (cakeStock > 0) ? 'ready' : 'pending';
+      // ── ĐƠN HÀNG DUY NHẤT: Chung hóa đơn với đơn gốc, không sinh hóa đơn mới! ──
+      // Nếu còn thiếu bánh cần làm thêm (needToMake > 0): Đơn BẮT BUỘC ở Bước 1 (pending) trong Bếp để thợ nướng bù!
+      // Khi thợ nướng xong thì đơn mới tự động chuyển sang Bước 3 (ready / Chờ ship)!
+      const mainInitialStatus = (needToMake > 0 || cakeStock < orderQuantity) ? 'pending' : (orderDeliveryType === 'takeaway' ? 'completed' : 'ready');
 
       const unifiedOrder: any = {
         id: localId,
@@ -2247,12 +2247,12 @@ export default function POSPage() {
         setOrderToast({
           id: String(Date.now()),
           title: isPartialStock 
-            ? `🎂 Đã Tách Đơn: ${stockAvailable} Cái Chờ Ship & ${needToMake} Cái Chuyển Bếp Làm!`
+            ? `🎂 Đơn #${orderNumber}: Sẵn ${stockAvailable}/${orderQuantity} cái • Bếp cần làm bù ${needToMake} cái!`
             : mainInitialStatus === 'ready' 
             ? '🎂 Đơn Bánh Sinh Nhật Có Sẵn (Chờ Ship/Giao)' 
             : '🎂 Bếp Đang Làm Bánh Sinh Nhật!',
           subtitle: isPartialStock
-            ? `Đơn ${orderNumber} chờ ship sẽ tự mở khóa khi bếp làm xong ${needToMake} cái`
+            ? `Đơn hiển thị tại Cột 1 Bếp để thợ nướng bù ${needToMake} cái trước khi chuyển giao`
             : mainInitialStatus === 'ready' 
             ? 'Đã chuyển sang bước 3 (Chờ giao/ship)' 
             : 'Đã chuyển đơn vào bếp thợ làm bánh',

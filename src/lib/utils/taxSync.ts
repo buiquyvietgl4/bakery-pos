@@ -639,6 +639,19 @@ export function generateS2aLedger(
 } {
   const activePolicy = policy || getTaxPolicyConfig();
   const taxGroups = activePolicy.tax_groups || TAX_BUSINESS_GROUPS;
+
+  const goodsGroup = taxGroups.find((g) => g.id === 1) || {
+    id: 1,
+    name: 'Phân phối, cung cấp hàng hóa (Bánh nhập về bán & Phụ kiện)',
+    vat_percent: 1.0,
+    pit_percent: 0.5,
+  };
+  const serviceGroup = taxGroups.find((g) => g.id === 2) || {
+    id: 2,
+    name: 'Dịch vụ, giao hàng tận nơi',
+    vat_percent: 5.0,
+    pit_percent: 2.0,
+  };
   const cakeGroup = taxGroups.find((g) => g.id === 3) || taxGroups[2] || {
     id: 3,
     name: 'Sản xuất, gia công, chế biến sản phẩm bánh & đồ uống tiệm bánh',
@@ -648,7 +661,7 @@ export function generateS2aLedger(
 
   const rows: S2aRowItem[] = [];
 
-  // Lặp qua từng đơn hàng - Mỗi đơn hàng là 1 giao dịch bán bánh thành phẩm trọn gói
+  // Lặp qua từng đơn hàng - Phân loại doanh thu theo nhóm thuế: Bánh nhập (1.5%) vs Bánh tự làm (4.5%)
   orders.forEach((order, orderIdx) => {
     // Bỏ qua đơn đã hủy nếu không phát sinh tiền
     if (order.status === 'cancelled') {
@@ -681,50 +694,119 @@ export function generateS2aLedger(
       return;
     }
 
-    // 2. Tìm tên bánh cụ thể từ đơn hàng hoặc items để ghi diễn giải rõ ràng
-    const rawItems = Array.isArray(order.items)
+    // 2. Danh sách món trong đơn hàng
+    const rawItems: any[] = Array.isArray(order.items)
       ? order.items.filter((it: any) => it && typeof it === 'object')
       : Array.isArray(order.order_items)
       ? order.order_items.filter((it: any) => it && typeof it === 'object')
       : [];
 
-    let mainCakeName = order.cake_name || '';
-    if (!mainCakeName && rawItems.length > 0) {
-      // Tìm sản phẩm bánh chính trong danh sách items
-      const cakeItem = rawItems.find((it: any) => {
-        const n = (it.product_name_snapshot || it.name || it.cake_name || '').toLowerCase();
-        return n.includes('bánh') || n.includes('cake') || n.includes('kem') || n.includes('mì');
-      }) || rawItems[0];
+    if (rawItems.length > 0) {
+      let importedSum = 0;
+      let serviceSum = 0;
+      let producedSum = 0;
+      const importedNames: string[] = [];
+      const producedNames: string[] = [];
 
-      mainCakeName = cakeItem.product_name_snapshot || cakeItem.name || cakeItem.cake_name || '';
-    }
+      rawItems.forEach((it: any) => {
+        const lineVal = Number(it.line_total ?? (Number(it.unit_price || 0) * Number(it.quantity || 1))) || 0;
+        const group = classifyItemTaxGroup(it);
+        const itName = it.product_name_snapshot || it.name || it.cake_name || 'Bánh';
 
-    let description = '';
-    if (mainCakeName) {
-      description = `Bán lẻ: ${mainCakeName} & phụ kiện trọn gói - Đơn ${voucherNo}`;
-    } else if (order.customer_name) {
-      description = `Bán lẻ bánh tiệm & phụ kiện (khách ${order.customer_name}) - Đơn ${voucherNo}`;
+        if (group === 1) {
+          importedSum += lineVal;
+          if (!importedNames.includes(itName)) importedNames.push(itName);
+        } else if (group === 2) {
+          serviceSum += lineVal;
+        } else {
+          producedSum += lineVal;
+          if (!producedNames.includes(itName)) producedNames.push(itName);
+        }
+      });
+
+      const itemsTotal = importedSum + serviceSum + producedSum;
+      const factor = itemsTotal > 0 ? (orderRevenue / itemsTotal) : 1;
+
+      const adjImported = Math.round(importedSum * factor);
+      const adjService = Math.round(serviceSum * factor);
+      const adjProduced = orderRevenue - adjImported - adjService;
+
+      // ── NHÓM 1: BÁNH NHẬP VỀ BÁN & PHỤ KIỆN (Thuế 1.5%: GTGT 1.0% + TNCN 0.5%) ──
+      if (adjImported > 0) {
+        const vat = Math.round((adjImported * goodsGroup.vat_percent) / 100);
+        const pit = Math.round((adjImported * goodsGroup.pit_percent) / 100);
+        rows.push({
+          id: `${order.id || orderIdx}-g1`,
+          voucher_no: voucherNo,
+          voucher_date: voucherDate,
+          raw_date: rawDate,
+          description: `Bán lẻ bánh nhập về bán (${importedNames.slice(0, 2).join(', ') || 'Bánh nhập'}) - Đơn ${voucherNo}`,
+          group_id: 1,
+          group_name: goodsGroup.name,
+          revenue: adjImported,
+          vat_amount: vat,
+          pit_amount: pit,
+          payment_method: paymentMethod,
+        });
+      }
+
+      // ── NHÓM 2: DỊCH VỤ SHIP BÁNH (Thuế 7.0%: GTGT 5.0% + TNCN 2.0%) ──
+      if (adjService > 0) {
+        const vat = Math.round((adjService * serviceGroup.vat_percent) / 100);
+        const pit = Math.round((adjService * serviceGroup.pit_percent) / 100);
+        rows.push({
+          id: `${order.id || orderIdx}-g2`,
+          voucher_no: voucherNo,
+          voucher_date: voucherDate,
+          raw_date: rawDate,
+          description: `Dịch vụ giao hàng tận nơi - Đơn ${voucherNo}`,
+          group_id: 2,
+          group_name: serviceGroup.name,
+          revenue: adjService,
+          vat_amount: vat,
+          pit_amount: pit,
+          payment_method: paymentMethod,
+        });
+      }
+
+      // ── NHÓM 3: BÁNH TỰ SẢN XUẤT / CHẾ BIẾN (Thuế 4.5%: GTGT 3.0% + TNCN 1.5%) ──
+      if (adjProduced > 0) {
+        const vat = Math.round((adjProduced * cakeGroup.vat_percent) / 100);
+        const pit = Math.round((adjProduced * cakeGroup.pit_percent) / 100);
+        rows.push({
+          id: `${order.id || orderIdx}-g3`,
+          voucher_no: voucherNo,
+          voucher_date: voucherDate,
+          raw_date: rawDate,
+          description: `Bán lẻ bánh tự sản xuất (${producedNames.slice(0, 2).join(', ') || order.cake_name || 'Bánh tiệm'}) - Đơn ${voucherNo}`,
+          group_id: 3,
+          group_name: cakeGroup.name,
+          revenue: adjProduced,
+          vat_amount: vat,
+          pit_amount: pit,
+          payment_method: paymentMethod,
+        });
+      }
     } else {
-      description = `Bán lẻ bánh kem, bánh thành phẩm kèm phụ kiện trọn gói - Đơn ${voucherNo}`;
+      // Đơn không có chi tiết món: Mặc định tính theo bánh tự sản xuất (Nhóm 3)
+      let mainCakeName = order.cake_name || (order.customer_name ? `Bánh tiệm (khách ${order.customer_name})` : 'Bánh thành phẩm');
+      const vatAmount = Math.round((orderRevenue * cakeGroup.vat_percent) / 100);
+      const pitAmount = Math.round((orderRevenue * cakeGroup.pit_percent) / 100);
+
+      rows.push({
+        id: `${order.id || orderIdx}`,
+        voucher_no: voucherNo,
+        voucher_date: voucherDate,
+        raw_date: rawDate,
+        description: `Bán lẻ bánh tiệm tự làm (${mainCakeName}) - Đơn ${voucherNo}`,
+        group_id: 3,
+        group_name: cakeGroup.name,
+        revenue: orderRevenue,
+        vat_amount: vatAmount,
+        pit_amount: pitAmount,
+        payment_method: paymentMethod,
+      });
     }
-
-    // 3. Gom 100% doanh thu đơn hàng vào Nhóm 3 (Sản xuất chế biến bánh)
-    const vatAmount = Math.round((orderRevenue * cakeGroup.vat_percent) / 100);
-    const pitAmount = Math.round((orderRevenue * cakeGroup.pit_percent) / 100);
-
-    rows.push({
-      id: `${order.id || orderIdx}`,
-      voucher_no: voucherNo,
-      voucher_date: voucherDate,
-      raw_date: rawDate,
-      description,
-      group_id: 3,
-      group_name: cakeGroup.name,
-      revenue: orderRevenue,
-      vat_amount: vatAmount,
-      pit_amount: pitAmount,
-      payment_method: paymentMethod,
-    });
   });
 
   // Tính tổng hợp theo các nhóm ngành nghề

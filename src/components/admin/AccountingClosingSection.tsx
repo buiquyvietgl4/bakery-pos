@@ -18,6 +18,7 @@ import {
   CLOSING_UPDATED_EVENT 
 } from '@/lib/utils/closingManager';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
+import { getShiftHistoryLocally, fetchShiftHistoryFromDb, ShiftRecord, EVENT_SHIFT_HISTORY_UPDATED } from '@/lib/utils/shiftSync';
 
 interface AccountingClosingSectionProps {
   orders: any[];
@@ -40,6 +41,9 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
   // Lịch sử các kỳ đã chốt
   const [closingRecords, setClosingRecords] = useState<AccountingClosingRecord[]>([]);
 
+  // Lịch sử ca bán hàng thực tế từ thu ngân
+  const [shiftHistory, setShiftHistory] = useState<ShiftRecord[]>(() => getShiftHistoryLocally());
+
   // Tiền mặt kiểm kê trong két
   const [actualCashInput, setActualCashInput] = useState<string>('');
   const [closingNotes, setClosingNotes] = useState<string>('');
@@ -51,13 +55,22 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
     fetchClosingRecordsFromDb().then((dbRecords) => {
       if (dbRecords && dbRecords.length > 0) setClosingRecords(dbRecords);
     }).catch(console.error);
+
+    setShiftHistory(getShiftHistoryLocally());
+    fetchShiftHistoryFromDb().then((dbShifts) => {
+      if (dbShifts && dbShifts.length > 0) setShiftHistory(dbShifts);
+    }).catch(console.error);
   };
 
   useEffect(() => {
     loadRecords();
     const handleUpdate = () => loadRecords();
     window.addEventListener(CLOSING_UPDATED_EVENT, handleUpdate);
-    return () => window.removeEventListener(CLOSING_UPDATED_EVENT, handleUpdate);
+    window.addEventListener(EVENT_SHIFT_HISTORY_UPDATED, handleUpdate);
+    return () => {
+      window.removeEventListener(CLOSING_UPDATED_EVENT, handleUpdate);
+      window.removeEventListener(EVENT_SHIFT_HISTORY_UPDATED, handleUpdate);
+    };
   }, []);
 
   // Xác định ngày tham chiếu theo loại kỳ
@@ -73,6 +86,19 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
   const currentMetrics = useMemo(() => {
     return calculateClosingMetrics(periodType, refDateStr, orders, expenses, spoilageLogs);
   }, [periodType, refDateStr, orders, expenses, spoilageLogs]);
+
+  // Tính toán số ca trong ngày đang chọn để đối soát
+  const shiftsInPeriod = useMemo(() => {
+    if (periodType !== 'day') return [];
+    return shiftHistory.filter((s) => {
+      const d = (s.endedAt || s.startedAt || s.createdAt || '').slice(0, 10);
+      return d === selectedDate;
+    });
+  }, [shiftHistory, periodType, selectedDate]);
+
+  const totalShiftClosingCash = useMemo(() => {
+    return shiftsInPeriod.reduce((sum, s) => sum + (s.closingCash || s.expectedCash || 0), 0);
+  }, [shiftsInPeriod]);
 
   // Kiểm tra xem kỳ hiện tại đã được chốt chưa
   const existingClosedRecord = useMemo(() => {
@@ -328,6 +354,56 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
             Hệ thống tính tiền mặt thu được: <b className="font-mono text-zinc-900">{currentMetrics.systemCash.toLocaleString('vi-VN')}₫</b>
           </div>
         </div>
+
+        {/* LIÊN KẾT ĐỐI SOÁT VỚI CA BÁN HÀNG CỦA THU NGÂN */}
+        {periodType === 'day' && (
+          <div className="p-3.5 rounded-xl bg-white border border-amber-200/90 shadow-2xs space-y-2">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="font-bold text-zinc-900">
+                  📋 Đối Soát Ca Bán Hàng Ngày {selectedDate.split('-').reverse().join('/')}:
+                </span>
+                {shiftsInPeriod.length > 0 ? (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-black text-[11px] border border-emerald-200">
+                    {shiftsInPeriod.length} ca đã chốt sổ
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium text-[11px]">
+                    Chưa có ca nào chốt sổ
+                  </span>
+                )}
+              </div>
+
+              {shiftsInPeriod.length > 0 && !existingClosedRecord && (
+                <button
+                  type="button"
+                  onClick={() => setActualCashInput(String(totalShiftClosingCash))}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition cursor-pointer flex items-center gap-1.5 self-start sm:self-auto active:scale-95"
+                  title="Tự động điền tổng tiền mặt thực tế thu ngân đã bàn giao vào ô kiểm két"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Áp dụng tiền ca bàn giao ({totalShiftClosingCash.toLocaleString('vi-VN')}₫)</span>
+                </button>
+              )}
+            </div>
+
+            {shiftsInPeriod.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 pt-1 text-[11px] text-zinc-600">
+                {shiftsInPeriod.map((s) => (
+                  <div key={s.id} className="p-2 rounded-lg bg-zinc-50 border border-zinc-200/80 flex items-center justify-between">
+                    <div>
+                      <span className="font-mono font-bold text-zinc-900">#{s.shiftCode || s.id.slice(0, 8)}</span>
+                      <span className="text-zinc-500 ml-1.5">({s.staffName})</span>
+                    </div>
+                    <span className="font-black text-amber-700 font-mono">
+                      {(s.closingCash || s.expectedCash || 0).toLocaleString('vi-VN')}₫
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">

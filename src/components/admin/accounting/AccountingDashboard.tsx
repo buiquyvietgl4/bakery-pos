@@ -341,7 +341,7 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
             }`}
           >
             <Lock className="w-3.5 h-3.5 text-amber-600" />
-            <span>Chốt Sổ Ca</span>
+            <span>Khóa Sổ Kỳ (Kế Toán)</span>
           </button>
         </div>
 

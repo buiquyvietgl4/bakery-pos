@@ -2604,7 +2604,14 @@ export default function KitchenPage() {
   };
 
   const pendingOrders = (orders || []).filter((o) => {
-    if (!o || o.status !== 'pending') return false;
+    if (!o) return false;
+    // 🛡️ BẢO VỆ CHẮC CHẮN: Đơn có bánh cần làm bù (need_bake_qty > 0 && bake_status !== 'done')
+    // Nếu chưa ở trạng thái preparing (đang làm) thì BẮT BUỘC nằm ở Cột 1 (Chờ làm) để thợ nướng bù!
+    if (o.need_bake_qty && o.need_bake_qty > 0 && o.bake_status !== 'done') {
+      if (o.status === 'preparing') return false;
+      return true;
+    }
+    if (o.status !== 'pending') return false;
     const pNum = o.parent_order_number || (o.order_number?.endsWith('-LAM') ? o.order_number.replace(/-LAM$/, '') : null);
     if (pNum) {
       const parent = orders.find((p) => p.order_number === pNum || p.id === pNum);
@@ -2625,6 +2632,11 @@ export default function KitchenPage() {
 
   const readyOrders = (orders || []).filter((o) => {
     if (!o || o.status !== 'ready') return false;
+    // 🛡️ Đơn đang thiếu bánh cần làm thêm (need_bake_qty > 0 && bake_status !== 'done')
+    // TUYỆT ĐỐI không cho xuất hiện ở Cột 3 Chờ ship cho đến khi thợ bếp nướng xong!
+    if (o.need_bake_qty && o.need_bake_qty > 0 && o.bake_status !== 'done') {
+      return false;
+    }
     // Đơn phụ bổ sung (-LAM) hoặc có parent_order_number sau khi nướng xong sẽ gộp vào đơn gốc,
     // TUYỆT ĐỐI không bao giờ xuất hiện thành 1 đơn giao riêng ở Cột 3!
     if (o.parent_order_number || o.order_number?.endsWith('-LAM') || o.notes?.includes('BỔ SUNG CHO ĐƠN')) {
@@ -3150,6 +3162,26 @@ export default function KitchenPage() {
                       )}
                     </div>
 
+                    {/* Banner cảnh báo thợ bếp cần làm bù bánh thiếu kho */}
+                    {order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done' && (
+                      <div className="px-3 py-2 rounded-xl bg-amber-500/20 border-2 border-amber-500 text-amber-200 text-xs font-bold space-y-1 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 font-black text-amber-300">
+                            <Flame className="w-4 h-4 text-amber-400 animate-bounce" />
+                            <span>CẦN NƯỚNG LÀM BÙ {order.need_bake_qty} CÁI</span>
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-amber-400 text-zinc-950 font-black">
+                            LÀM BÙ KHO
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-zinc-300 flex items-center justify-between">
+                          <span>Kho sẵn: <b className="text-emerald-400">{order.ready_stock_qty || 0} cái</b></span>
+                          <span>Cần nướng: <b className="text-amber-300 font-black">{order.need_bake_qty} cái</b></span>
+                          <span>Tổng: <b className="text-white">{order.orderQuantity || ((order.ready_stock_qty || 0) + order.need_bake_qty)} cái</b></span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Banner cảnh báo đơn làm lại từ đầu do báo hỏng */}
                     {order.remake_reason && (
                       <div className="px-2.5 py-1.5 rounded-xl bg-rose-950/90 border border-rose-600 text-rose-200 text-xs font-black flex items-center justify-between shadow-xs">
@@ -3552,12 +3584,19 @@ export default function KitchenPage() {
                             <button
                               onClick={() => handleUpdateStatus(order.id, 'pending', 'preparing')}
                               className={`w-full py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md cursor-pointer active:scale-95 ${
-                                isPreorder
+                                order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done'
+                                  ? 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30 ring-2 ring-amber-400'
+                                  : isPreorder
                                   ? 'bg-pink-600 hover:bg-pink-500 text-white shadow-pink-600/30'
                                   : 'bg-amber-600 hover:bg-amber-500 text-white shadow-amber-600/30'
                               }`}
                             >
-                              <Flame className="w-4 h-4" /> Bắt Đầu Nướng / Trang Trí
+                              <Flame className="w-4 h-4" />
+                              <span>
+                                {order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done'
+                                  ? `Bắt Đầu Nướng Làm Bù (${order.need_bake_qty} cái)`
+                                  : 'Bắt Đầu Nướng / Trang Trí'}
+                              </span>
                             </button>
                           </div>
                         </div>
@@ -3631,11 +3670,31 @@ export default function KitchenPage() {
                           <Clock className="w-3 h-3 text-blue-400" /> BÁNH ĐẶT TRƯỚC
                         </span>
                       ) : (
-                        <span className="text-[11px] text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded">
-                          {getElapsedMinutes(order.created_at)}p
+                        <span className="text-[11px] text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded flex items-center gap-1">
+                          <Clock className="w-3 h-3" /> {getElapsedMinutes(order.created_at)}p trước
                         </span>
                       )}
                     </div>
+
+                    {/* Banner cảnh báo thợ bếp cần làm bù bánh thiếu kho */}
+                    {order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done' && (
+                      <div className="px-3 py-2 rounded-xl bg-blue-950/80 border-2 border-blue-400 text-blue-200 text-xs font-bold space-y-1 shadow-sm">
+                        <div className="flex items-center justify-between">
+                          <span className="flex items-center gap-1.5 font-black text-blue-300">
+                            <Flame className="w-4 h-4 text-amber-400 animate-pulse" />
+                            <span>ĐANG NƯỚNG LÀM BÙ {order.need_bake_qty} CÁI</span>
+                          </span>
+                          <span className="text-[10px] px-2 py-0.5 rounded bg-blue-400 text-zinc-950 font-black">
+                            ĐANG NƯỚNG
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-zinc-300 flex items-center justify-between">
+                          <span>Kho sẵn: <b className="text-emerald-400">{order.ready_stock_qty || 0} cái</b></span>
+                          <span>Đang làm bù: <b className="text-amber-300 font-black">{order.need_bake_qty} cái</b></span>
+                          <span>Tổng: <b className="text-white">{order.orderQuantity || ((order.ready_stock_qty || 0) + order.need_bake_qty)} cái</b></span>
+                        </div>
+                      </div>
+                    )}
 
                     {cakeInfo.isBirthdayCake ? (
                       (() => {
@@ -3918,7 +3977,12 @@ export default function KitchenPage() {
                                 onClick={() => setConfirmDoneState({ isOpen: true, order, targetStep: 'ready' })}
                                 className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-blue-600/30 cursor-pointer active:scale-95"
                               >
-                                <CheckCircle2 className="w-4 h-4" /> Bánh Đã Xong / Sẵn Sàng
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>
+                                  {order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done'
+                                    ? `✓ Đã Nướng Xong Làm Bù (${order.need_bake_qty} cái) -> Chuyển Giao`
+                                    : 'Bánh Đã Xong / Sẵn Sàng'}
+                                </span>
                               </button>
                             </div>
                           </div>
@@ -4052,7 +4116,12 @@ export default function KitchenPage() {
                             onClick={() => setConfirmDoneState({ isOpen: true, order, targetStep: 'ready' })}
                             className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition shadow-md shadow-blue-600/30 cursor-pointer active:scale-95"
                           >
-                            <CheckCircle2 className="w-4 h-4" /> Bánh Đã Xong / Sẵn Sàng
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>
+                              {order.need_bake_qty && order.need_bake_qty > 0 && order.bake_status !== 'done'
+                                ? `✓ Đã Nướng Xong Làm Bù (${order.need_bake_qty} cái) -> Chuyển Giao`
+                                : 'Bánh Đã Xong / Sẵn Sàng'}
+                            </span>
                           </button>
                         </div>
                       </div>
@@ -4137,6 +4206,14 @@ export default function KitchenPage() {
                         {isPreorder ? (isShip ? '🚚 Chờ ship' : '🏪 Khách đến lấy') : 'Chờ giao quầy'}
                       </span>
                     </div>
+
+                    {/* Badge thông báo đã làm bù xong đủ số lượng */}
+                    {(order.bake_status === 'done' || order.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ')) && (
+                      <div className="px-2.5 py-1 rounded-lg bg-emerald-950/60 border border-emerald-500/50 text-emerald-300 text-[11px] font-bold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                        <span>Đã có đủ {order.orderQuantity || order.ready_stock_qty || 1} cái sẵn sàng giao (Đã nướng xong bù)</span>
+                      </div>
+                    )}
 
                     {/* 1. Tên bánh & Kích thước */}
                     {cakeInfo.isBirthdayCake ? (
