@@ -2472,6 +2472,39 @@ export default function AdminDashboard() {
     } catch {}
   };
 
+  const handleUpdateProductOrigin = async (productId: string, origin: 'produced' | 'imported') => {
+    const isImported = origin === 'imported';
+    const updated = products.map((p) => {
+      if (p.id !== productId) return p;
+      const currentCat = p.category || '';
+      const newCategory = isImported && (currentCat === 'Bánh kem & Bánh đặt' || currentCat === 'Bánh mì & Bánh tươi' || !currentCat)
+        ? 'Bánh nhập & Đóng gói'
+        : (!isImported && currentCat === 'Bánh nhập & Đóng gói' ? 'Bánh mì & Bánh tươi' : currentCat);
+      return {
+        ...p,
+        product_type: origin,
+        category: newCategory,
+        supplier_name: isImported ? (p.supplier_name || 'Hàng nhập ngoài') : p.supplier_name,
+      };
+    });
+    setProducts(updated);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bakery_products', JSON.stringify(updated));
+      window.dispatchEvent(new Event('bakery_products_updated'));
+    }
+    try {
+      const target = updated.find((p) => p.id === productId);
+      if (target) {
+        await persistProductToSupabase(target);
+      }
+      await db.products.update(productId, {
+        product_type: origin,
+        category: target?.category,
+      });
+      await broadcastProductChange({ action: 'update', product: target });
+    } catch {}
+  };
+
   // ── XỬ LÝ TẠO MỚI SẢN PHẨM BÁNH (HỖ TRỢ CẢ BÁNH TỰ LÀM & HÀNG NHẬP VỀ BÁN) ──
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -3762,22 +3795,22 @@ export default function AdminDashboard() {
                       </div>
                     )}
                     <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
-                      {/* NHÃN BÁNH THEO FLOWCHART: THƯỜNG / ĐẶT TRƯỚC / SINH NHẬT */}
+                      {/* NHÃN BÁNH THEO FLOWCHART: THƯỜNG / ĐẶT TRƯỚC / SINH NHẬT & THUẾ SUẤT */}
                       {p.cake_type_label === 'birthday' ? (
                         <span className="px-2 py-0.5 rounded-md bg-pink-600 text-white text-[10px] font-black shadow-xs flex items-center gap-1">
-                          🎂 Bánh Sinh Nhật
+                          🎂 Sinh Nhật (4.5%)
                         </span>
                       ) : (p.cake_type_label === 'pre_order' || p.is_preorder_only) ? (
                         <span className="px-2 py-0.5 rounded-md bg-amber-500 text-white text-[10px] font-black shadow-xs flex items-center gap-1">
-                          ⏳ Bánh Đặt Trước
+                          ⏳ Đặt Trước (4.5%)
                         </span>
                       ) : p.product_type === 'imported' ? (
                         <span className="px-2 py-0.5 rounded-md bg-blue-600 text-white text-[10px] font-bold shadow-xs flex items-center gap-1">
-                          📦 Hàng nhập
+                          📦 Hàng nhập (1.5%)
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-md bg-zinc-700 text-white text-[10px] font-bold shadow-xs">
-                          🥖 Bánh thường
+                          🥖 Bánh thường (4.5%)
                         </span>
                       )}
 
@@ -3813,7 +3846,7 @@ export default function AdminDashboard() {
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center flex-wrap gap-1.5">
                       <span className="text-[11px] font-bold text-zinc-400">{p.category}</span>
                       {/* CHỌN NHÃN BÁNH NHANH */}
                       <select
@@ -3826,10 +3859,24 @@ export default function AdminDashboard() {
                         <option value="pre_order">⏳ Đặt trước</option>
                         <option value="birthday">🎂 Sinh nhật</option>
                       </select>
+                      {/* PHÂN LOẠI NGUỒN GỐC & THUẾ SUẤT */}
+                      <select
+                        value={p.product_type === 'imported' ? 'imported' : 'produced'}
+                        onChange={(e) => handleUpdateProductOrigin(p.id, e.target.value as any)}
+                        className={`text-[10px] font-black rounded-md px-1.5 py-0.5 border cursor-pointer transition ${
+                          p.product_type === 'imported'
+                            ? 'bg-blue-50 text-blue-700 border-blue-300'
+                            : 'bg-amber-50 text-amber-800 border-amber-300'
+                        }`}
+                        title="Phân loại nguồn gốc để tính thuế: Bánh nhập 1.5% vs Tiệm làm 4.5%"
+                      >
+                        <option value="produced">🥖 Tiệm làm (4.5%)</option>
+                        <option value="imported">📦 Nhập bán (1.5%)</option>
+                      </select>
                     </div>
                     <button
                       onClick={() => handleDeleteProduct(p.id, p.name)}
-                      className="text-zinc-300 hover:text-rose-500 p-1 transition cursor-pointer"
+                      className="text-zinc-300 hover:text-rose-500 p-1 transition cursor-pointer shrink-0"
                       title="Xóa bánh khỏi thực đơn"
                     >
                       <Trash2 className="w-3.5 h-3.5" />

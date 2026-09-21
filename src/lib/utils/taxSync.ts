@@ -16,6 +16,7 @@ import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { parsePreorderFromNotes } from '@/lib/supabase/realtimeSync';
 import { pruneOrdersCache, MAX_CACHED_ORDERS } from '@/lib/utils/deliveryAlerts';
+import { isImportedProduct } from '@/lib/utils/productManager';
 
 export const TAX_CONFIG_KEY = 'bakery_tax_household_config';
 export const TAX_CONFIG_UPDATED_EVENT = 'bakery_tax_config_updated';
@@ -600,18 +601,30 @@ export function classifyItemTaxGroup(item: any): number {
     return 2;
   }
 
-  // Nhóm 1: Phụ kiện tiệc, nến, mũ, đồ chơi, pháo, phụ kiện
+  // Nhóm 1: Bánh nhập về bán & Hàng hóa thương mại mua đi bán lại nguyên trạng (Thuế 1.5% theo TT 40/2021/TT-BTC)
   if (
+    item.product_type === 'imported' ||
+    item.productType === 'imported' ||
+    item.product?.product_type === 'imported' ||
+    item.product?.productType === 'imported' ||
+    isImportedProduct(item) ||
+    isImportedProduct(item.product) ||
+    category.includes('bánh nhập') ||
+    category.includes('hàng nhập') ||
+    category.includes('nhập ngoài') ||
+    category.includes('đóng gói') ||
+    category.includes('resale') ||
     category.includes('phụ kiện') ||
     category.includes('bao bì') ||
+    category.includes('đồ uống đóng chai') ||
+    category.includes('nước ngọt') ||
     name.includes('nến') ||
     name.includes('mũ sinh nhật') ||
     name.includes('pháo') ||
     name.includes('đồ chơi') ||
     name.includes('dao dĩa') ||
     name.includes('hộp quà') ||
-    name.includes('thiệp') ||
-    item.product_type === 'imported'
+    name.includes('thiệp')
   ) {
     return 1;
   }
