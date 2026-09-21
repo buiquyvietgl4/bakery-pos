@@ -3480,31 +3480,21 @@ export default function POSPage() {
           </span>
         </button>
 
-        {/* 6. ĐỒNG BỘ SQL */}
+        {/* 6. CÀI ĐẶT */}
         <button
           type="button"
-          onClick={async () => {
-            setIsPosSyncing(true);
-            try {
-              clearProfileLocalData();
-              await syncOrdersFromSupabase();
-              await loadProducts();
-              await fetchCurrentShiftFromDb();
-              reloadOrdersData();
-              alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL thành công!');
-            } catch (e: any) {
-              alert('Lỗi: ' + (e?.message || e));
-            } finally {
-              setIsPosSyncing(false);
-            }
-          }}
-          disabled={isPosSyncing}
-          className="relative flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300/90 transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-          title="Xóa cache và đồng bộ lại từ CSDL Cloud SQL"
+          onClick={() => setIsMobileUtilityMenuOpen(true)}
+          className="relative flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl text-zinc-700 bg-white hover:bg-amber-50/60 border border-stone-200/90 transition-all active:scale-95 cursor-pointer"
+          title="Mở menu Cài Đặt (Máy In, Thông Báo, Đồng Bộ SQL)"
         >
-          <RefreshCw className={`w-4 h-4 text-emerald-600 ${isPosSyncing ? 'animate-spin' : ''}`} />
+          <div className="relative">
+            <Settings className="w-4 h-4 text-zinc-600" />
+            {soundEnabled && (
+              <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white" />
+            )}
+          </div>
           <span className="text-[10px] font-bold leading-tight mt-1 truncate w-full text-center">
-            {isPosSyncing ? 'Đang tải' : 'Đồng Bộ'}
+            Cài Đặt
           </span>
         </button>
       </div>
@@ -3551,18 +3541,7 @@ export default function POSPage() {
                 <span className="hidden xl:inline">{isLocalMode() ? 'Local SQL' : 'Cloud SQL'}</span>
               </Link>
 
-              {/* Nút Cài Đặt & Kết Nối Máy In Nhanh */}
-              <button
-                type="button"
-                onClick={() => setIsPrinterSettingsOpen(true)}
-                className="relative w-9 h-9 rounded-2xl bg-white border border-stone-200/90 flex items-center justify-center text-blue-600 shadow-2xs hover:bg-blue-50/60 active:scale-95 transition shrink-0 cursor-pointer"
-                title="Cài đặt máy in Bluetooth / USB"
-              >
-                <Printer className="w-4 h-4 text-blue-600" />
-                <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white"></span>
-              </button>
-
-              {/* Nút Menu Tiện Ích POS (Dropdown Bật/Tắt Chuông, Test PWA, Kho) */}
+              {/* Nút Menu Cài Đặt Hợp Nhất Trên Mobile */}
               <div className="relative shrink-0">
                 <button
                   type="button"
@@ -3570,41 +3549,50 @@ export default function POSPage() {
                   className={`w-9 h-9 rounded-2xl border flex items-center justify-center shadow-2xs transition active:scale-95 cursor-pointer ${
                     isMobileUtilityMenuOpen
                       ? 'bg-amber-600 border-amber-600 text-white'
-                      : 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900'
+                      : 'bg-white hover:bg-amber-50/60 border-stone-200/90 text-zinc-700'
                   }`}
-                  title="Cài đặt tiện ích & thông báo"
+                  title="Cài đặt hệ thống (Máy in, Thông báo, Đồng bộ SQL)"
                 >
-                  <Settings className={`w-4 h-4 ${isMobileUtilityMenuOpen ? 'rotate-90' : ''} transition-transform duration-200`} />
+                  <div className="relative">
+                    <Settings className={`w-4 h-4 ${isMobileUtilityMenuOpen ? 'rotate-90' : ''} transition-transform duration-200`} />
+                    {soundEnabled && (
+                      <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white" />
+                    )}
+                  </div>
                 </button>
 
-                {/* Dropdown Menu Tiện Ích */}
+                {/* Dropdown Menu Cài Đặt Mobile */}
                 {isMobileUtilityMenuOpen && (
                   <>
                     <div
                       className="fixed inset-0 z-40 bg-black/20 backdrop-blur-2xs"
                       onClick={() => setIsMobileUtilityMenuOpen(false)}
                     />
-                    <div className="absolute right-0 top-11 z-50 w-64 bg-white rounded-2xl border border-stone-200 shadow-xl p-1.5 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="absolute right-0 top-11 z-50 w-72 bg-white rounded-2xl border border-stone-200 shadow-2xl p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
                       <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-400 border-b border-stone-100 flex items-center justify-between">
-                        <span>Tiện Ích & Cài Đặt</span>
+                        <span>Cài Đặt & Thiết Bị</span>
                         <span className="text-[9px] text-amber-600 font-bold">POS Quầy</span>
                       </div>
 
-                      {/* Đặt Bánh Sinh Nhật Mới (BOM) */}
+                      {/* 1. Máy In Hóa Đơn & Tem */}
                       <button
                         type="button"
                         onClick={() => {
-                          setBirthdayOrderProduct(null);
-                          setIsBirthdayOrderModalOpen(true);
+                          setIsPrinterSettingsOpen(true);
                           setIsMobileUtilityMenuOpen(false);
                         }}
-                        className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl text-xs font-black text-rose-700 bg-rose-50/80 hover:bg-rose-100 transition cursor-pointer text-left border border-rose-200"
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-left transition cursor-pointer group"
                       >
-                        <Cake className="w-4 h-4 text-rose-600 animate-bounce" />
-                        <span>🎂 Đặt Bánh Sinh Nhật (BOM)</span>
+                        <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-105 transition shrink-0">
+                          <Printer className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-bold text-zinc-900 group-hover:text-blue-700">Máy In Hóa Đơn & Tem</div>
+                          <div className="text-[10px] text-zinc-500 truncate">Cài đặt Bluetooth, USB, khổ giấy</div>
+                        </div>
                       </button>
 
-                      {/* Cài Đặt & Thử Thông Báo */}
+                      {/* 2. Cài Đặt Báo & Âm Thanh */}
                       <button
                         type="button"
                         onClick={() => {
@@ -3612,26 +3600,61 @@ export default function POSPage() {
                           setIsNotifSettingsOpen(true);
                           setIsMobileUtilityMenuOpen(false);
                         }}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 hover:bg-amber-50 transition cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-amber-50 text-left transition cursor-pointer group"
                       >
-                        <div className="flex items-center gap-2">
-                          <Bell className="w-4 h-4 text-amber-600" />
-                          <span>Cài Đặt & Thử Thông Báo</span>
+                        <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 group-hover:scale-105 transition shrink-0 relative">
+                          <Bell className="w-4 h-4" />
+                          <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${soundEnabled ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          {soundEnabled ? (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-emerald-100 text-emerald-700 flex items-center gap-1">
-                              <Volume2 className="w-3 h-3 text-emerald-600" /> BẬT
-                            </span>
-                          ) : (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-zinc-100 text-zinc-500 flex items-center gap-1">
-                              <VolumeX className="w-3 h-3 text-zinc-400" /> TẮT
-                            </span>
-                          )}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-bold text-zinc-900 group-hover:text-amber-700 flex items-center gap-1">
+                            <span>Cài Đặt Báo & Âm Thanh</span>
+                            {soundEnabled ? (
+                              <Volume2 className="w-3 h-3 text-emerald-600" />
+                            ) : (
+                              <VolumeX className="w-3 h-3 text-zinc-400" />
+                            )}
+                          </div>
+                          <div className="text-[10px] text-zinc-500 truncate">Chuông báo lò, đơn giao, Telegram</div>
                         </div>
                       </button>
 
-                      {/* Quản Lý Kho Bánh Sẵn */}
+                      {/* 3. Đồng Bộ SQL (Xóa Cache) */}
+                      <button
+                        type="button"
+                        disabled={isPosSyncing}
+                        onClick={async () => {
+                          setIsMobileUtilityMenuOpen(false);
+                          try {
+                            setIsPosSyncing(true);
+                            clearProfileLocalData();
+                            await syncOrdersFromSupabase();
+                            await loadProducts();
+                            await fetchCurrentShiftFromDb();
+                            reloadOrdersData();
+                            alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL Cloud SQL thành công!');
+                          } catch (err: any) {
+                            alert('Lỗi đồng bộ: ' + (err?.message || err));
+                          } finally {
+                            setIsPosSyncing(false);
+                          }
+                        }}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-emerald-50 text-left transition cursor-pointer group disabled:opacity-50"
+                      >
+                        <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition shrink-0">
+                          <RefreshCw className={`w-4 h-4 ${isPosSyncing ? 'animate-spin' : ''}`} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-bold text-zinc-900 group-hover:text-emerald-700">
+                            {isPosSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ SQL (Xóa Cache)'}
+                          </div>
+                          <div className="text-[10px] text-zinc-500 truncate">Kéo lại món, ca và đơn mới nhất</div>
+                        </div>
+                      </button>
+
+                      <div className="my-1 border-t border-stone-100" />
+
+                      {/* 4. Kho Bánh Sẵn */}
                       <button
                         type="button"
                         onClick={() => {
@@ -3649,19 +3672,6 @@ export default function POSPage() {
                             {lowStockItems.length} sắp hết
                           </span>
                         )}
-                      </button>
-
-                      {/* Cài Đặt Máy In Bluetooth */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsPrinterSettingsOpen(true);
-                          setIsMobileUtilityMenuOpen(false);
-                        }}
-                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-blue-700 hover:bg-blue-50 transition cursor-pointer text-left border-t border-stone-100"
-                      >
-                        <Printer className="w-4 h-4 text-blue-600" />
-                        <span>Cài Đặt Máy In (Bluetooth/USB)</span>
                       </button>
                     </div>
                   </>
