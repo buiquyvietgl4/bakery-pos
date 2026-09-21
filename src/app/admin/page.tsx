@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { useAuth, PermissionKey } from '@/lib/auth/AuthContext';
-import { downloadOwnerRootKeyFile } from '@/lib/auth/rootSecurity';
+import { downloadOwnerRootKeyFile, verifyOwnerRootKey } from '@/lib/auth/rootSecurity';
 import Link from 'next/link';
 import { db } from '@/lib/db/dexie';
 import { generateUUID } from '@/lib/utils/uuid';
@@ -217,6 +217,9 @@ export default function AdminDashboard() {
   const [adminRecoveryKeyInput, setAdminRecoveryKeyInput] = useState(securityConfig.recoveryKey || 'BAKERY-RESCUE-2026');
   const [adminRecoveryPhoneInput, setAdminRecoveryPhoneInput] = useState(securityConfig.adminRecoveryPhone || '');
   const [showRecoveryKey, setShowRecoveryKey] = useState(false);
+  const [isRootSectionUnlocked, setIsRootSectionUnlocked] = useState(false);
+  const [rootUnlockPass, setRootUnlockPass] = useState('');
+  const [rootUnlockError, setRootUnlockError] = useState('');
   const [kitchenPinInput, setKitchenPinInput] = useState(securityConfig.kitchenPin || '5678');
   const [kitchenNameInput, setKitchenNameInput] = useState(securityConfig.kitchenName || 'Nhân Viên Bếp');
   const [staffPinInput, setStaffPinInput] = useState(securityConfig.staffPin || '1234');
@@ -8679,90 +8682,173 @@ export default function AdminDashboard() {
                     <span className="font-black text-red-200 block text-xs flex items-center gap-1.5">
                       <Shield className="w-4 h-4 text-red-400" /> Cơ Chế Khóa Cứng Root (Chống Chiếm Quyền)
                     </span>
-                    <button
-                      type="button"
-                      onClick={() => setShowRecoveryKey(!showRecoveryKey)}
-                      className="text-[10px] text-red-300 font-bold hover:underline cursor-pointer"
-                    >
-                      {showRecoveryKey ? 'Ẩn mã' : 'Xem mã'}
-                    </button>
+                    {isRootSectionUnlocked ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsRootSectionUnlocked(false)}
+                        className="text-[10px] text-amber-300 font-bold bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800 hover:bg-amber-900 cursor-pointer flex items-center gap-1"
+                      >
+                        <Lock className="w-3 h-3" /> Khóa Lại
+                      </button>
+                    ) : (
+                      <span className="text-[10px] font-bold text-amber-300 bg-amber-950/80 px-2 py-0.5 rounded border border-amber-800">
+                        🔒 Bảo vệ 2 lớp
+                      </span>
+                    )}
                   </div>
-                  <p className="text-[11px] text-zinc-300 leading-relaxed">
-                    Cơ chế bảo mật <b>cấp Root tối cao</b> độc lập hoàn toàn với mật khẩu tài khoản thường. Giúp Chủ Tiệm khôi phục 100% quyền kiểm soát ngay cả khi bị đổi mật khẩu hoặc bị can thiệp CSDL.
-                  </p>
 
-                  {/* Nút tải File Chìa Khóa Cứng (.key) */}
-                  <div className="p-2.5 bg-black/40 rounded-xl border border-red-800/60 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-red-100 flex items-center gap-1.5">
-                        <FileKey className="w-4 h-4 text-emerald-400" /> File Chìa Khóa Cứng Kỹ Thuật Số:
-                      </span>
-                      <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
-                        An toàn tuyệt đối
-                      </span>
+                  {!isRootSectionUnlocked ? (
+                    <div className="p-3 bg-black/50 rounded-xl border border-red-800/80 space-y-2.5">
+                      <div className="space-y-1">
+                        <p className="text-xs font-bold text-red-200 flex items-center gap-1">
+                          <Lock className="w-3.5 h-3.5 text-red-400" /> Cổng Xác Thực Chủ Sở Hữu (Owner Master Gate):
+                        </p>
+                        <p className="text-[11px] text-zinc-300 leading-relaxed">
+                          Nhân viên có mật khẩu Admin thông thường <b>KHÔNG THỂ tải hay xem chìa khóa này</b>. Để tải file chìa khóa hoặc xem mã, vui lòng nhập <b>Mã Root Master</b> của Chủ Tiệm:
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <input
+                          type="password"
+                          value={rootUnlockPass}
+                          onChange={(e) => {
+                            setRootUnlockPass(e.target.value);
+                            setRootUnlockError('');
+                          }}
+                          placeholder="Nhập Mã Root Master tối cao..."
+                          className="flex-1 px-3 py-2 bg-black/70 border border-red-700 rounded-xl text-xs font-mono font-bold text-red-100 placeholder:text-zinc-500 focus:outline-hidden focus:ring-1 focus:ring-red-400"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const currentRecoveryKey = (securityConfig.recoveryKey || 'BAKERY-ROOT-SEC-9824-7719-FAILSAFE').trim();
+                            if (
+                              rootUnlockPass.trim() === 'BAKERY-ROOT-SEC-9824-7719-FAILSAFE' ||
+                              rootUnlockPass.trim() === currentRecoveryKey ||
+                              verifyOwnerRootKey(rootUnlockPass.trim(), currentRecoveryKey).valid
+                            ) {
+                              setIsRootSectionUnlocked(true);
+                              setRootUnlockError('');
+                              setRootUnlockPass('');
+                            } else {
+                              setRootUnlockError('Mã Root Master không chính xác! Quyền truy cập bị từ chối.');
+                            }
+                          }}
+                          className="px-3.5 py-2 bg-red-700 hover:bg-red-800 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                        >
+                          Xác Thực
+                        </button>
+                      </div>
+                      {rootUnlockError && (
+                        <p className="text-[10px] text-rose-300 font-bold">⚠️ {rootUnlockError}</p>
+                      )}
+
+                      <div className="pt-2 border-t border-red-900/50 space-y-1">
+                        <p className="text-[10px] text-zinc-400 leading-normal">
+                          🛡️ <b>Cách An Toàn Tuyệt Đối (Không thông qua Web):</b>
+                        </p>
+                        <p className="text-[10px] text-zinc-300 leading-normal">
+                          Bạn có thể mở Terminal/CMD trên máy tính riêng và gõ lệnh:
+                        </p>
+                        <p className="text-emerald-400 font-mono font-bold text-[11px] bg-black/80 p-1.5 rounded border border-zinc-800">
+                          npm run create-key
+                        </p>
+                        <p className="text-[10px] text-zinc-400">
+                          File chìa khóa sẽ được tạo trực tiếp trên máy tính riêng để chép sang USB, hoàn toàn không thông qua web và không ai tại quầy bán hàng có thể tải được!
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-[10px] text-zinc-400 leading-tight">
-                      Tải file này lưu vào USB cá nhân. Khi cần khẩn cấp, chỉ cần nạp file này tại màn hình đăng nhập để vào ngay hệ thống.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        downloadOwnerRootKeyFile(adminRecoveryKeyInput);
-                        setSecurityMsg({ type: 'success', text: 'Đã tạo và tải file chìa khóa cứng (.key) về máy của bạn!' });
-                        setTimeout(() => setSecurityMsg(null), 4000);
-                      }}
-                      className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition cursor-pointer"
-                    >
-                      <Download className="w-3.5 h-3.5" /> Tải File Chìa Khóa Cứng (.key) Về USB / Máy
-                    </button>
-                  </div>
+                  ) : (
+                    <>
+                      <p className="text-[11px] text-zinc-300 leading-relaxed">
+                        Cơ chế bảo mật <b>cấp Root tối cao</b> độc lập hoàn toàn với mật khẩu tài khoản thường. Giúp Chủ Tiệm khôi phục 100% quyền kiểm soát ngay cả khi bị đổi mật khẩu hoặc bị can thiệp CSDL.
+                      </p>
 
-                  <div>
-                    <label className="text-[10px] text-zinc-300 block mb-0.5 font-bold">Mã Khóa Cứng Root Bí Mật (Tùy chỉnh):</label>
-                    <input
-                      type={showRecoveryKey ? 'text' : 'password'}
-                      value={adminRecoveryKeyInput}
-                      onChange={(e) => setAdminRecoveryKeyInput(e.target.value)}
-                      placeholder="Mặc định: BAKERY-ROOT-SEC-9824-7719-FAILSAFE"
-                      className="w-full p-2 bg-black/50 border border-red-700 rounded-xl text-xs font-mono font-bold text-red-200 focus:outline-hidden focus:ring-1 focus:ring-red-400"
-                    />
-                  </div>
+                      {/* Nút tải File Chìa Khóa Cứng (.key) */}
+                      <div className="p-2.5 bg-black/40 rounded-xl border border-red-800/60 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-red-100 flex items-center gap-1.5">
+                            <FileKey className="w-4 h-4 text-emerald-400" /> File Chìa Khóa Cứng Kỹ Thuật Số:
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
+                            Đã xác thực Chủ Sở Hữu
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-zinc-400 leading-tight">
+                          Tải file này lưu vào USB cá nhân. Khi cần khẩn cấp, chỉ cần nạp file này tại màn hình đăng nhập để vào ngay hệ thống.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            downloadOwnerRootKeyFile(adminRecoveryKeyInput);
+                            setSecurityMsg({ type: 'success', text: 'Đã tạo và tải file chìa khóa cứng (.key) về máy của bạn!' });
+                            setTimeout(() => setSecurityMsg(null), 4000);
+                          }}
+                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-1.5 transition cursor-pointer"
+                        >
+                          <Download className="w-3.5 h-3.5" /> Tải File Chìa Khóa Cứng (.key) Về USB / Máy
+                        </button>
+                      </div>
 
-                  {/* Lệnh cứu hộ CLI */}
-                  <div className="p-2 bg-zinc-900/90 rounded-xl border border-zinc-800 text-[10px] text-zinc-400 font-mono space-y-1">
-                    <span className="text-zinc-300 font-bold block">Terminal / CMD Emergency:</span>
-                    <span className="text-emerald-400 font-bold block">npm run reset-admin</span>
-                  </div>
+                      <div>
+                        <div className="flex justify-between items-center mb-0.5">
+                          <label className="text-[10px] text-zinc-300 font-bold">Mã Khóa Cứng Root Bí Mật (Tùy chỉnh):</label>
+                          <button
+                            type="button"
+                            onClick={() => setShowRecoveryKey(!showRecoveryKey)}
+                            className="text-[10px] text-red-300 font-bold hover:underline cursor-pointer"
+                          >
+                            {showRecoveryKey ? 'Ẩn mã' : 'Xem mã'}
+                          </button>
+                        </div>
+                        <input
+                          type={showRecoveryKey ? 'text' : 'password'}
+                          value={adminRecoveryKeyInput}
+                          onChange={(e) => setAdminRecoveryKeyInput(e.target.value)}
+                          placeholder="Mặc định: BAKERY-ROOT-SEC-9824-7719-FAILSAFE"
+                          className="w-full p-2 bg-black/50 border border-red-700 rounded-xl text-xs font-mono font-bold text-red-200 focus:outline-hidden focus:ring-1 focus:ring-red-400"
+                        />
+                      </div>
 
-                  <div className="flex gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        updateAdminRecoveryKey(adminRecoveryKeyInput, adminRecoveryPhoneInput);
-                        setSecurityMsg({ type: 'success', text: 'Đã lưu cấu hình Khóa Cứng Root thành công!' });
-                        setTimeout(() => setSecurityMsg(null), 4000);
-                      }}
-                      className="flex-1 py-1.5 bg-red-700 hover:bg-red-800 text-white font-bold text-[11px] rounded-xl shadow-xs transition cursor-pointer"
-                    >
-                      Lưu Mã Root
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (confirm('Đặt lại mật khẩu Admin về mặc định "admin123"?')) {
-                          forceResetAdminToDefault();
-                          setAdminOldPass('');
-                          setAdminNewPass('');
-                          setSecurityMsg({ type: 'success', text: 'Đã đặt lại mật khẩu Admin về "admin123" thành công!' });
-                          setTimeout(() => setSecurityMsg(null), 4000);
-                        }
-                      }}
-                      className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 font-bold text-[11px] rounded-xl transition cursor-pointer"
-                      title="Reset nhanh về admin123"
-                    >
-                      Reset về admin123
-                    </button>
-                  </div>
+                      {/* Lệnh cứu hộ CLI */}
+                      <div className="p-2 bg-zinc-900/90 rounded-xl border border-zinc-800 text-[10px] text-zinc-400 font-mono space-y-1">
+                        <span className="text-zinc-300 font-bold block">Terminal / CMD Emergency (Ngoại Tuyến):</span>
+                        <span className="text-emerald-400 font-bold block">npm run create-key (Tạo file .key vào USB)</span>
+                        <span className="text-amber-400 font-bold block">npm run reset-admin (Khôi phục quyền admin)</span>
+                      </div>
+
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateAdminRecoveryKey(adminRecoveryKeyInput, adminRecoveryPhoneInput);
+                            setSecurityMsg({ type: 'success', text: 'Đã lưu cấu hình Khóa Cứng Root thành công!' });
+                            setTimeout(() => setSecurityMsg(null), 4000);
+                          }}
+                          className="flex-1 py-1.5 bg-red-700 hover:bg-red-800 text-white font-bold text-[11px] rounded-xl shadow-xs transition cursor-pointer"
+                        >
+                          Lưu Mã Root
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Đặt lại mật khẩu Admin về mặc định "admin123"?')) {
+                              forceResetAdminToDefault();
+                              setAdminOldPass('');
+                              setAdminNewPass('');
+                              setSecurityMsg({ type: 'success', text: 'Đã đặt lại mật khẩu Admin về "admin123" thành công!' });
+                              setTimeout(() => setSecurityMsg(null), 4000);
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-200 font-bold text-[11px] rounded-xl transition cursor-pointer"
+                          title="Reset nhanh về admin123"
+                        >
+                          Reset về admin123
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>

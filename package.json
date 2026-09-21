@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "reset-admin": "npx tsx scripts/emergency_reset_admin.ts"
+    "reset-admin": "npx tsx scripts/emergency_reset_admin.ts",
+    "create-key": "npx tsx scripts/generate_owner_key.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",
