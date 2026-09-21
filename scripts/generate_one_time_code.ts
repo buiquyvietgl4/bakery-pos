@@ -24,8 +24,23 @@ try {
   }
 } catch {}
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+let activeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+let activeSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+// Ưu tiên đọc cấu hình CSDL nếu người dùng đã đổi URL trực tiếp từ giao diện POS
+try {
+  const profileFile = path.resolve(process.cwd(), '.active_database_profile.json');
+  if (fs.existsSync(profileFile)) {
+    const prof = JSON.parse(fs.readFileSync(profileFile, 'utf8'));
+    if (prof.url && prof.anonKey) {
+      activeSupabaseUrl = prof.url;
+      activeSupabaseAnonKey = prof.anonKey;
+    }
+  }
+} catch {}
+
+const SUPABASE_URL = activeSupabaseUrl;
+const SUPABASE_ANON_KEY = activeSupabaseAnonKey;
 
 const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
 const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';

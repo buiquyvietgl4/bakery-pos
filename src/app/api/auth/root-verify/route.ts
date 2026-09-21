@@ -5,8 +5,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MASTER_HARD_ROOT_SECRET } from '@/lib/auth/rootSecurity';
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
 
 const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
 const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';
@@ -14,8 +13,26 @@ const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';
 import fs from 'fs';
 import path from 'path';
 
+const PROFILE_FILE = path.join(process.cwd(), '.active_database_profile.json');
 const LOCAL_OTP_FILE = path.join(process.cwd(), '.local_emergency_otp.json');
 const SERVER_STATE_FILE = path.join(process.cwd(), '.local_sql_server_state.json');
+
+function getActiveSupabaseCredentials() {
+  let url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  let anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+  try {
+    if (fs.existsSync(PROFILE_FILE)) {
+      const prof = JSON.parse(fs.readFileSync(PROFILE_FILE, 'utf-8'));
+      if (prof.url && prof.anonKey) {
+        url = prof.url;
+        anonKey = prof.anonKey;
+      }
+    }
+  } catch {}
+
+  return { url, anonKey };
+}
 
 // Helper: Cập nhật mật khẩu vào file CSDL Local SQL (bakery_local_db.json) nếu đang chạy Local SQL
 function syncPasswordToLocalSqlFiles(newPassword: string) {
@@ -58,6 +75,7 @@ export async function POST(req: Request) {
     const serverSecret = (process.env.ROOT_ADMIN_KEY || process.env.ADMIN_ROOT_KEY || MASTER_HARD_ROOT_SECRET).trim();
     const targetPassword = (newAdminPassword || '').trim() || 'admin123';
     const isMasterMatch = cleanInput === 'Quyviet97@' || cleanInput === serverSecret;
+    const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = getActiveSupabaseCredentials();
 
     // ── BƯỚC 1: KIỂM TRA MÃ TRONG CSDL CỤC BỘ (LOCAL SQL / OFFLINE VAULT) ──
     let localVerified = false;

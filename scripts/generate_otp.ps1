@@ -12,6 +12,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $rootDir = Split-Path -Parent $scriptDir
 $envPath = Join-Path $rootDir ".env.local"
 $localOtpFile = Join-Path $rootDir ".local_emergency_otp.json"
+$profileFile = Join-Path $rootDir ".active_database_profile.json"
 
 # 1. Sinh mã OTP ngẫu nhiên ROOT-XXXX-YYYY
 $part1 = Get-Random -Minimum 1000 -Maximum 9999
@@ -20,7 +21,6 @@ $newOtp = "ROOT-$part1-$part2"
 $createdAt = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
 # 2. LUÔN LƯU VÀO CƠ SỞ DỮ LIỆU CỤC BỘ (LOCAL SQL / OFFLINE VAULT)
-# Đảm bảo dù không có mạng, đổi Supabase, hay chạy Local SQL thì mã vẫn hoạt động 100%!
 $localSaved = $false
 try {
     $localCfg = @{
@@ -64,21 +64,36 @@ try {
     $localSaved = $true
     Write-Host "✓ Đã đăng ký mã vào CSDL Cục Bộ (Local SQL / Offline Vault)" -ForegroundColor Green
 } catch {
-    Write-Host "⚠️ Cảnh báo: Không thể ghi file mã cục bộ: $_" -ForegroundColor Yellow
+    Write-Host "⚠️ Cảnh báo: Không thể ghi file mã cục bộ" -ForegroundColor Yellow
 }
 
-# 3. ĐỒNG BỘ LÊN CLOUD SUPABASE (NẾU CÓ CẤU HÌNH VÀ CÓ MẠNG)
+# 3. ĐỒNG BỘ LÊN CLOUD SUPABASE (TỰ ĐỘNG THEO URL POS HOẶC .env.local)
 $supabaseUrl = ""
 $supabaseAnonKey = ""
 
-if (Test-Path $envPath) {
-    Get-Content $envPath -Encoding UTF8 | ForEach-Object {
-        $line = $_.Trim()
-        if ($line -match "^NEXT_PUBLIC_SUPABASE_URL\s*=\s*(.+)$") {
-            $supabaseUrl = $matches[1].Trim("'`"")
+# Ưu tiên 1: Đọc từ .active_database_profile.json
+if (Test-Path $profileFile) {
+    try {
+        $profRaw = Get-Content $profileFile -Raw -Encoding UTF8
+        $profJson = $profRaw | ConvertFrom-Json
+        if ($profJson.url -and $profJson.anonKey) {
+            $supabaseUrl = $profJson.url
+            $supabaseAnonKey = $profJson.anonKey
         }
-        if ($line -match "^NEXT_PUBLIC_SUPABASE_ANON_KEY\s*=\s*(.+)$") {
-            $supabaseAnonKey = $matches[1].Trim("'`"")
+    } catch {}
+}
+
+# Ưu tiên 2: Fallback đọc từ .env.local
+if (-not $supabaseUrl -or -not $supabaseAnonKey) {
+    if (Test-Path $envPath) {
+        Get-Content $envPath -Encoding UTF8 | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -match "^NEXT_PUBLIC_SUPABASE_URL\s*=\s*(.+)$") {
+                $supabaseUrl = $matches[1].Trim("'`"")
+            }
+            if ($line -match "^NEXT_PUBLIC_SUPABASE_ANON_KEY\s*=\s*(.+)$") {
+                $supabaseAnonKey = $matches[1].Trim("'`"")
+            }
         }
     }
 }
@@ -91,7 +106,7 @@ if ($supabaseUrl -and $supabaseAnonKey) {
     }
 
     try {
-        $queryUrl = "$supabaseUrl/rest/v1/recipes?id=eq.00000000-0000-0000-0000-00000000000b&select=id,notes"
+        $queryUrl = "$supabaseUrl/rest/v1/recipes?id=eq.00000000-0000-0000-0000-00000000000b" + [char]38 + "select=id,notes"
         $response = Invoke-RestMethod -Uri $queryUrl -Headers $headers -Method Get -TimeoutSec 5
         
         $cfg = @{
@@ -167,9 +182,10 @@ Write-Host "`n══════════════════════
 Write-Host "👉 MÃ CỨU HỘ CỦA BẠN:   $newOtp" -ForegroundColor White
 Write-Host "══════════════════════════════════════════════════════════════════════`n" -ForegroundColor Yellow
 Write-Host "📋 ĐÃ TỰ ĐỘNG COPY MÃ VÀO BỘ NHỚ TẠM (CLIPBOARD). Bạn chỉ cần Ctrl+V để dán." -ForegroundColor Cyan
-Write-Host "`n🔒 ĐẶC ĐIỂM BẢO MẬT & ĐỘC LẬP CSDL:" -ForegroundColor Gray
-Write-Host "   ✓ Độc lập với CSDL: Hoạt động trơn tru cả trên Cloud Supabase lẫn Local SQL." -ForegroundColor Gray
-Write-Host "   ✓ Không sợ đổi SQL: Dù đổi URL Supabase hay ngắt mạng, mã vẫn chạy chuẩn xác." -ForegroundColor Gray
-Write-Host "   ✓ Mỗi mã chỉ dùng được DUY NHẤT 1 LẦN (Tự hủy ngay sau khi đăng nhập)." -ForegroundColor Gray
-Write-Host "   ✓ Chỉ máy tính đang có mã nguồn này mới có thể tạo ra mã!" -ForegroundColor Gray
+Write-Host "`n🔒 ĐẶC ĐIỂM BẢO MẬT VÀ ĐỘC LẬP CSDL:" -ForegroundColor Gray
+Write-Host "   - Độc lập với CSDL: Hoạt động trơn tru cả trên Cloud Supabase lẫn Local SQL." -ForegroundColor Gray
+Write-Host "   - Không sợ đổi SQL: Dù đổi URL Supabase hay ngắt mạng, mã vẫn chạy chuẩn xác." -ForegroundColor Gray
+Write-Host "   - Mỗi mã chỉ dùng được DUY NHẤT 1 LẦN (Tự hủy ngay sau khi đăng nhập)." -ForegroundColor Gray
+Write-Host "   - Chỉ máy tính đang có mã nguồn này mới có thể tạo ra mã!" -ForegroundColor Gray
 Write-Host "══════════════════════════════════════════════════════════════════════`n" -ForegroundColor Yellow
+

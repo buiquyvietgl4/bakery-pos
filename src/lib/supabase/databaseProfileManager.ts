@@ -206,6 +206,23 @@ export function setReconcileLocked(locked: boolean): void {
   }
 }
 
+// Helper: Đồng bộ cấu hình CSDL xuống file trên máy chủ để file TAO_MA_CUU_HO.bat luôn đọc được URL mới nhất
+function syncProfileToServer(profile: DatabaseProfile, activeProfileId: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    fetch('/api/system/database-profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: profile.url,
+        anonKey: profile.anonKey,
+        activeProfileId,
+        name: profile.name,
+      }),
+    }).catch(() => {});
+  } catch {}
+}
+
 /**
  * Lưu thông tin của một Profile CSDL
  */
@@ -233,6 +250,7 @@ export function saveDatabaseProfile(
   // Nếu profile vừa sửa chính là profile đang active, xử lý hướng dữ liệu
   if (config.activeProfileId === updatedProfile.id) {
     handleDataSyncAction(updatedProfile.id, syncAction);
+    syncProfileToServer(newProfile, config.activeProfileId);
   }
 
   localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
@@ -291,6 +309,10 @@ export function switchActiveEnvironment(
 
   // 4. Cập nhật activeProfileId
   config.activeProfileId = targetId;
+  const targetProf = config.profiles.find((p) => p.id === targetId);
+  if (targetProf) {
+    syncProfileToServer(targetProf, targetId);
+  }
   localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
   window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED, { detail: config }));
 
