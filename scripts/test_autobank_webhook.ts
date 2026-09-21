@@ -1,7 +1,8 @@
 // scripts/test_autobank_webhook.ts
 // Comprehensive Test Suite for Bakery ERP Universal Auto-Bank Webhook Gateway
 
-import { extractOrderCode, GET, POST } from '../src/app/api/payment/webhook/route';
+import { GET, POST } from '../src/app/api/payment/webhook/route';
+import { extractOrderCode } from '../src/lib/utils/orderCodeExtractor';
 import { NextRequest } from 'next/server';
 
 function assert(condition: boolean, msg: string) {

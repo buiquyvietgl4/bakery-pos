@@ -146,7 +146,7 @@ import {
   TransferApprovalPayload,
 } from '@/lib/supabase/realtimeSync';
 
-export const VIETQR_BANKS = [
+const VIETQR_BANKS = [
   { id: 'MB', name: 'MBBank (Ngân hàng Quân Đội)', short: 'MB' },
   { id: 'VCB', name: 'Vietcombank (Ngoại thương VN)', short: 'Vietcombank' },
   { id: 'TCB', name: 'Techcombank (Kỹ Thương)', short: 'Techcombank' },
