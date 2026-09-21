@@ -553,6 +553,10 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   let autobankConfig: any = null;
   let transferVerifyConfig: any = null;
   let notificationHistory: any[] = [];
+  let productMetadata: any = {};
+  let deletedProductIds: any[] = [];
+  let resolvedTransfers: any[] = [];
+  let ovenBatches: any[] = [];
 
   if (typeof window !== 'undefined') {
     try {
@@ -570,6 +574,14 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawTV) transferVerifyConfig = JSON.parse(rawTV);
       const rawNH = localStorage.getItem('bakery_notification_history');
       if (rawNH) notificationHistory = JSON.parse(rawNH);
+      const rawPM = localStorage.getItem('bakery_product_metadata');
+      if (rawPM) productMetadata = JSON.parse(rawPM);
+      const rawDP = localStorage.getItem('bakery_deleted_product_ids');
+      if (rawDP) deletedProductIds = JSON.parse(rawDP);
+      const rawRT = localStorage.getItem('bakery_resolved_transfers');
+      if (rawRT) resolvedTransfers = JSON.parse(rawRT);
+      const rawOB = localStorage.getItem('bakery_oven_batches');
+      if (rawOB) ovenBatches = JSON.parse(rawOB);
     } catch {}
   }
   printerConfig = getPrinterConfig();
@@ -712,6 +724,10 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     autobank_config: autobankConfig,
     transfer_verify_config: transferVerifyConfig,
     notification_history: notificationHistory,
+    product_metadata: productMetadata,
+    deleted_product_ids: deletedProductIds,
+    resolved_transfers: resolvedTransfers,
+    oven_batches: ovenBatches,
     settings: {
       vietqr: vietqrConfig,
       ewallet: ewalletConfig,

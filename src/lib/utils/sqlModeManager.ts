@@ -71,6 +71,10 @@ export const BAKERY_DATA_KEYS = [
   'bakery_autobank_config',
   'bakery_transfer_verification_config',
   'bakery_notification_history',
+  'bakery_product_metadata',
+  'bakery_deleted_product_ids',
+  'bakery_resolved_transfers',
+  'bakery_oven_batches',
 ];
 
 export const STORAGE_KEYS_BACKUP = BAKERY_DATA_KEYS;

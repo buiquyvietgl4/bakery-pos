@@ -6,6 +6,7 @@ import { formatPickupDateTime, parsePreorderFromNotes, parseOrderBakeShortage, s
 import { getDeliveryUrgency, isOrderCompletedOrCancelled, pruneOrdersCache, prunePreordersCache, MAX_CACHED_ORDERS, MAX_CACHED_PREORDERS } from '@/lib/utils/deliveryAlerts';
 import { sendTelegramOrderAlert, sendTelegramUrgentAlert } from '@/lib/utils/telegramNotify';
 import { soundManager } from '@/lib/utils/audioAlert';
+import { offlineSyncWorker } from './offlineSyncWorker';
 
 class AutoOrderWatcher {
   private knownOrders: Set<string> = new Set();
@@ -67,12 +68,16 @@ class AutoOrderWatcher {
       this.checkUrgentDeliveries();
     }, 15000);
 
+    // 6. Kích hoạt Background Worker tự động đẩy bù đơn hàng offline lên Supabase SQL
+    offlineSyncWorker.start();
+
     console.log('✅ AutoOrderWatcher started - Đang giám sát đơn hàng thực tế real-time');
   }
 
   public stop() {
     if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.urgentTimer) clearInterval(this.urgentTimer);
+    offlineSyncWorker.stop();
     if (this.unsubCrossSync) {
       this.unsubCrossSync();
       this.unsubCrossSync = null;

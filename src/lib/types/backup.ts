@@ -121,6 +121,10 @@ export interface BakeryBackupData {
   autobank_config?: any;
   transfer_verify_config?: any;
   notification_history?: any[];
+  product_metadata?: any;
+  deleted_product_ids?: any[];
+  resolved_transfers?: any[];
+  oven_batches?: any[];
   settings: {
     vietqr?: any;
     ewallet?: any;

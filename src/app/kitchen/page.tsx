@@ -14,8 +14,11 @@ import {
   cleanDisplayNotes,
   broadcastBakeApprovalRequest,
   broadcastBakeApprovalResolved,
-  parseOrderBakeShortage
+  parseOrderBakeShortage,
+  broadcastProductChange
 } from '@/lib/supabase/realtimeSync';
+import { persistProductToSupabase } from '@/lib/utils/productManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { 
   ChefHat, Clock, CheckCircle2, ArrowRight, Flame, Sparkles, 
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
@@ -725,6 +728,19 @@ export default function KitchenPage() {
         window.dispatchEvent(new CustomEvent('bakery_stocks_updated', {
           detail: { product_id: batch.product_id, added_qty: batch.quantity }
         }));
+
+        // 1. Tự động đồng bộ số tồn kho mới lên Supabase Cloud SQL & phát sóng đa thiết bị
+        const targetProd = updatedProducts.find((p: any) => 
+          (batch.product_id && p.id === batch.product_id) || 
+          (p.name && p.name.toLowerCase().trim() === batch.cake_name.toLowerCase().trim())
+        );
+        if (targetProd) {
+          persistProductToSupabase(targetProd).catch((e) => console.warn('Lỗi sync tồn kho bếp lên Supabase:', e));
+          broadcastProductChange({ action: 'update', product: targetProd }).catch(() => {});
+        }
+
+        // 2. Tự động đồng bộ vào file Local SQL trên máy tính
+        autoSyncToLocalSqlFolder().catch(() => {});
       } catch (err) {
         console.error('Lỗi cộng tồn kho từ mẻ bánh ra lò:', err);
       }
