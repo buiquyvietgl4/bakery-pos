@@ -56,6 +56,7 @@ export interface TaxAccountingSectionProps {
   ingredients: any[];
   cashflow: any[];
   adminName: string;
+  products?: any[];
 }
 
 export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
@@ -64,7 +65,26 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
   ingredients,
   cashflow,
   adminName,
+  products,
 }) => {
+  // ── DANH MỤC SẢN PHẨM PHỤC VỤ PHÂN LOẠI THUẾ THƯƠNG MẠI (1.5%) VS SẢN XUẤT (4.5%) ──
+  const [liveProducts, setLiveProducts] = useState<any[]>(() => {
+    if (Array.isArray(products) && products.length > 0) return products;
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_products');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    return [];
+  });
+
+  // Tự động đồng bộ liveProducts khi prop products từ admin cập nhật
+  useEffect(() => {
+    if (Array.isArray(products) && products.length > 0) {
+      setLiveProducts(products);
+    }
+  }, [products]);
   // ── THÔNG TIN HỘ KINH DOANH & ĐỒNG BỘ SQL TỰ ĐỘNG ──
   const [businessInfo, setBusinessInfo] = useState<HouseholdBusinessInfo>(() => getHouseholdBusinessInfo());
   const [isEditInfoModalOpen, setIsEditInfoModalOpen] = useState(false);
@@ -171,12 +191,21 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
     };
     window.addEventListener(TAX_AUTO_SYNC_EVENT, handleAutoSync);
 
+    const handleProductsUpdate = () => {
+      try {
+        const raw = localStorage.getItem('bakery_products');
+        if (raw) setLiveProducts(JSON.parse(raw));
+      } catch {}
+    };
+    window.addEventListener('bakery_products_updated', handleProductsUpdate);
+
     return () => {
       if (orderDebounceTimer) clearTimeout(orderDebounceTimer);
       window.removeEventListener(TAX_CONFIG_UPDATED_EVENT, handleUpdate);
       window.removeEventListener(TAX_POLICY_UPDATED_EVENT, handlePolicyUpdate);
       window.removeEventListener(TAX_AUTO_SYNC_EVENT, handleAutoSync);
       window.removeEventListener('bakery_orders_updated', handleOrdersUpdate);
+      window.removeEventListener('bakery_products_updated', handleProductsUpdate);
     };
   }, []);
 
@@ -277,15 +306,15 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
     });
   }, [liveOrders, startDateStr, endDateStr]);
 
-  // Sổ S2a-HKD: Doanh thu tất cả được gom vào bánh bán được kèm phụ kiện/ship trọn gói
+  // Sổ S2a-HKD: Tách bạch chuẩn xác Doanh thu Bánh nhập (1.5%) vs Bánh tiệm tự sản xuất (4.5%)
   const s2aData = useMemo(() => {
-    return generateS2aLedger(periodOrders, taxPolicy);
-  }, [periodOrders, taxPolicy]);
+    return generateS2aLedger(periodOrders, taxPolicy, liveProducts);
+  }, [periodOrders, taxPolicy, liveProducts]);
 
   // Dữ liệu Phụ lục Bảng kê Hoạt động kinh doanh 01-2/BK-HĐKD (Kho & 7 chỉ tiêu chi phí [24]-[30])
   const bkhdkdData = useMemo(() => {
-    return generate012BkHdkdData(ingredients, expenses, periodOrders, taxPolicy);
-  }, [ingredients, expenses, periodOrders, taxPolicy]);
+    return generate012BkHdkdData(ingredients, expenses, periodOrders, taxPolicy, liveProducts);
+  }, [ingredients, expenses, periodOrders, taxPolicy, liveProducts]);
 
   // Lọc tìm kiếm trên bảng sổ S2a
   const filteredRows = useMemo(() => {

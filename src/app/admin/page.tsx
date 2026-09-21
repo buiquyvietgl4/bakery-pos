@@ -3603,6 +3603,7 @@ export default function AdminDashboard() {
           ingredients={ingredients}
           cashflow={cashflow}
           adminName={adminNameInput || 'Chủ tiệm'}
+          products={products}
         />
       )}
 

@@ -485,6 +485,7 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
           cake_message,
           order_items (
             id,
+            product_id,
             product_name_snapshot,
             quantity,
             unit_price,
@@ -503,12 +504,26 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
           if (key) localByNumber.set(key, lo);
         });
 
-        // 1. Nguồn chân lý từ Supabase SQL (đầy đủ order_items chuẩn)
+        // 1. Nguồn chân lý từ Supabase SQL (đầy đủ order_items chuẩn, kết hợp metadata cục bộ)
         dbOrders.forEach((so) => {
           const key = String(so.order_number || so.id);
           const existing = localByNumber.get(key);
           const items = Array.isArray(so.order_items) && so.order_items.length > 0
-            ? so.order_items
+            ? so.order_items.map((soItem: any) => {
+                const existingItem = Array.isArray(existing?.items)
+                  ? existing.items.find((ei: any) =>
+                      (soItem.product_id && (ei.product_id === soItem.product_id || ei.product?.id === soItem.product_id || ei.id === soItem.product_id)) ||
+                      (soItem.product_name_snapshot && (ei.product_name_snapshot === soItem.product_name_snapshot || ei.name === soItem.product_name_snapshot || ei.product?.name === soItem.product_name_snapshot))
+                    )
+                  : null;
+                return {
+                  ...existingItem,
+                  ...soItem,
+                  product_type: existingItem?.product_type || existingItem?.product?.product_type || soItem.product_type,
+                  category: existingItem?.category || existingItem?.product?.category || soItem.category,
+                  supplier_name: existingItem?.supplier_name || existingItem?.product?.supplier_name || soItem.supplier_name,
+                };
+              })
             : (existing?.items || []);
 
           orderMap.set(key, {
@@ -573,24 +588,31 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
 }
 
 /**
- * Phân loại một mặt hàng vào Nhóm ngành nghề tính thuế
- * 1: Hàng hóa thương mại (phụ kiện, nến, mũ, đồ chơi, pháo, bánh nhập sẵn)
- * 2: Dịch vụ (phí ship, trang trí tiệc)
- * 3: Sản xuất chế biến (bánh kem sinh nhật, bánh mì, bánh ngọt làm tại tiệm, đồ uống)
+ * Phân loại một mặt hàng vào Nhóm ngành nghề tính thuế (Thông tư 40/2021/TT-BTC & NĐ 141/2026/NĐ-CP)
+ * 1: Phân phối, cung cấp hàng hóa (Phụ kiện, nến, mũ, bánh nhập về bán nguyên trạng) -> Thuế 1.5% (GTGT 1.0% + TNCN 0.5%)
+ * 2: Dịch vụ, giao hàng tận nơi (Phí ship, trang trí tiệc) -> Thuế 7.0% (GTGT 5.0% + TNCN 2.0%)
+ * 3: Sản xuất, chế biến thực phẩm (Bánh sinh nhật, bánh kem, bánh mì tươi nướng tại tiệm, đồ uống) -> Thuế 4.5% (GTGT 3.0% + TNCN 1.5%)
  * 4: Khác
  */
-export function classifyItemTaxGroup(item: any): number {
-  const name = (
+export function classifyItemTaxGroup(
+  item: any,
+  catalogOrLookup?: any[] | { byId?: Map<string, any>; byName?: Map<string, any> }
+): number {
+  if (!item) return 3;
+
+  const rawName = String(
     item.product_name_snapshot ||
     item.name ||
     item.product?.name ||
     item.cake_name ||
     item.title ||
     ''
-  ).toLowerCase();
-  const category = (item.category || item.product?.category || '').toLowerCase();
+  ).trim();
+  const name = rawName.toLowerCase();
 
-  // Nhóm 2: Dịch vụ / Phí Ship
+  let category = String(item.category || item.product?.category || '').toLowerCase();
+
+  // Nhóm 2: Dịch vụ / Phí Ship riêng
   if (
     name.includes('phí ship') ||
     name.includes('vận chuyển') ||
@@ -601,47 +623,140 @@ export function classifyItemTaxGroup(item: any): number {
     return 2;
   }
 
-  // Nhóm 1: Bánh nhập về bán & Hàng hóa thương mại mua đi bán lại nguyên trạng (Thuế 1.5% theo TT 40/2021/TT-BTC)
+  // Lớp 1: Kiểm tra thuộc tính trực tiếp trên item / item.product
   if (
     item.product_type === 'imported' ||
     item.productType === 'imported' ||
     item.product?.product_type === 'imported' ||
     item.product?.productType === 'imported' ||
     isImportedProduct(item) ||
-    isImportedProduct(item.product) ||
+    isImportedProduct(item.product)
+  ) {
+    return 1;
+  }
+
+  // Lớp 2: Tra cứu danh mục sản phẩm (Product Catalog Lookup theo ID hoặc Tên)
+  let matchedProduct: any = null;
+  if (catalogOrLookup) {
+    if (Array.isArray(catalogOrLookup)) {
+      const pId = item.product_id || item.id || item.product?.id;
+      matchedProduct = catalogOrLookup.find(
+        (p: any) => (pId && p.id === pId) || (rawName && p.name && p.name.toLowerCase().trim() === name)
+      );
+    } else {
+      const pId = item.product_id || item.id || item.product?.id;
+      if (pId && catalogOrLookup.byId) {
+        matchedProduct = catalogOrLookup.byId.get(pId);
+      }
+      if (!matchedProduct && name && catalogOrLookup.byName) {
+        matchedProduct = catalogOrLookup.byName.get(name);
+      }
+    }
+  } else if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_products');
+      if (raw) {
+        const list = JSON.parse(raw);
+        if (Array.isArray(list)) {
+          const pId = item.product_id || item.id || item.product?.id;
+          matchedProduct = list.find(
+            (p: any) => (pId && p.id === pId) || (rawName && p.name && p.name.toLowerCase().trim() === name)
+          );
+        }
+      }
+    } catch {}
+  }
+
+  if (matchedProduct) {
+    if (
+      matchedProduct.product_type === 'imported' ||
+      matchedProduct.productType === 'imported' ||
+      isImportedProduct(matchedProduct)
+    ) {
+      return 1;
+    }
+    if (matchedProduct.category) {
+      category = `${category} ${matchedProduct.category}`.toLowerCase();
+    }
+  }
+
+  // Lớp 3: Tra cứu bộ đệm metadata sản phẩm (bakery_product_metadata)
+  if (typeof window !== 'undefined') {
+    try {
+      const rawMeta = localStorage.getItem('bakery_product_metadata');
+      if (rawMeta) {
+        const metaMap = JSON.parse(rawMeta);
+        const pId = item.product_id || item.id || item.product?.id;
+        const meta = (pId && metaMap[pId]) || metaMap[name];
+        if (meta) {
+          if (meta.product_type === 'imported' || isImportedProduct(meta)) {
+            return 1;
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // Lớp 4: Kiểm tra danh mục (Category) có chứa từ khóa nhập bán / đóng gói / phụ kiện
+  if (
     category.includes('bánh nhập') ||
     category.includes('hàng nhập') ||
     category.includes('nhập ngoài') ||
+    category.includes('nhập về') ||
+    category.includes('nhập bán') ||
+    category.includes('nhập sẵn') ||
     category.includes('đóng gói') ||
     category.includes('resale') ||
     category.includes('phụ kiện') ||
     category.includes('bao bì') ||
     category.includes('đồ uống đóng chai') ||
     category.includes('nước ngọt') ||
-    name.includes('nến') ||
-    name.includes('mũ sinh nhật') ||
-    name.includes('pháo') ||
-    name.includes('đồ chơi') ||
-    name.includes('dao dĩa') ||
-    name.includes('hộp quà') ||
-    name.includes('thiệp')
+    category.includes('hàng hóa')
   ) {
     return 1;
   }
 
-  // Mặc định cho Tiệm Bánh: Bánh sinh nhật, bánh kem, bánh mì, đồ uống chế biến -> Nhóm 3 (Sản xuất chế biến)
+  // Lớp 5: Nhận diện thông minh qua Từ Khóa Tên Mặt Hàng (Bánh nhập khẩu, Harrys, Danisa, phụ kiện...)
+  if (
+    name.includes('nhập') ||
+    name.includes('nhập khẩu') ||
+    name.includes('nhập về') ||
+    name.includes('nhập bán') ||
+    name.includes('nhập ngoài') ||
+    name.includes('nhập sẵn') ||
+    name.includes('harrys') ||
+    name.includes('danisa') ||
+    name.includes('mochi') ||
+    name.includes('hộp thiếc') ||
+    name.includes('resale') ||
+    name.includes('nến') ||
+    name.includes('mũ sinh nhật') ||
+    name.includes('mũ tiệc') ||
+    name.includes('pháo') ||
+    name.includes('đồ chơi') ||
+    name.includes('dao dĩa') ||
+    name.includes('hộp quà') ||
+    name.includes('thiệp') ||
+    name.includes('băng rôn')
+  ) {
+    return 1;
+  }
+
+  // Mặc định cho Tiệm Bánh: Bánh sinh nhật, bánh kem, bánh mì, đồ uống pha chế -> Nhóm 3 (Sản xuất chế biến: Thuế 4.5%)
   return 3;
 }
 
 /**
  * Chuyển đổi danh sách đơn hàng POS thành Sổ chi tiết S2a-HKD
- * Theo yêu cầu tiệm bánh: Doanh thu tất cả được gom vào bánh bán được
- * (do tất cả phụ kiện, nến, mũ, phí ship đều đi kèm với bánh, tính thành 1 sản phẩm bánh hoàn chỉnh
- * thuộc Nhóm 3: Sản xuất, chế biến thực phẩm/bánh tiệm bánh để đơn giản hóa quá trình tính toán)
+ * Phân loại chính xác doanh thu theo từng nhóm ngành nghề tính thuế:
+ * - Nhóm 1: Bánh nhập về bán & Phụ kiện thương mại (Thuế 1.5%: GTGT 1.0% + TNCN 0.5%)
+ * - Nhóm 2: Dịch vụ giao hàng tận nơi (Thuế 7.0%: GTGT 5.0% + TNCN 2.0%)
+ * - Nhóm 3: Bánh tự sản xuất, chế biến tại tiệm (Thuế 4.5%: GTGT 3.0% + TNCN 1.5%)
  */
 export function generateS2aLedger(
   orders: any[],
-  policy?: TaxPolicyConfig
+  policy?: TaxPolicyConfig,
+  productsCatalog?: any[]
 ): {
   rows: S2aRowItem[];
   summary: S2aSummaryByGroup[];
@@ -652,6 +767,24 @@ export function generateS2aLedger(
 } {
   const activePolicy = policy || getTaxPolicyConfig();
   const taxGroups = activePolicy.tax_groups || TAX_BUSINESS_GROUPS;
+
+  let catalog = productsCatalog;
+  if (!catalog && typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_products');
+      if (raw) catalog = JSON.parse(raw);
+    } catch {}
+  }
+
+  const catalogById = new Map<string, any>();
+  const catalogByName = new Map<string, any>();
+  if (Array.isArray(catalog)) {
+    catalog.forEach((p: any) => {
+      if (p.id) catalogById.set(String(p.id), p);
+      if (p.name) catalogByName.set(String(p.name).toLowerCase().trim(), p);
+    });
+  }
+  const lookup = { byId: catalogById, byName: catalogByName };
 
   const goodsGroup = taxGroups.find((g) => g.id === 1) || {
     id: 1,
@@ -723,7 +856,7 @@ export function generateS2aLedger(
 
       rawItems.forEach((it: any) => {
         const lineVal = Number(it.line_total ?? (Number(it.unit_price || 0) * Number(it.quantity || 1))) || 0;
-        const group = classifyItemTaxGroup(it);
+        const group = classifyItemTaxGroup(it, lookup);
         const itName = it.product_name_snapshot || it.name || it.cake_name || 'Bánh';
 
         if (group === 1) {
@@ -801,19 +934,36 @@ export function generateS2aLedger(
         });
       }
     } else {
-      // Đơn không có chi tiết món: Mặc định tính theo bánh tự sản xuất (Nhóm 3)
-      let mainCakeName = order.cake_name || (order.customer_name ? `Bánh tiệm (khách ${order.customer_name})` : 'Bánh thành phẩm');
-      const vatAmount = Math.round((orderRevenue * cakeGroup.vat_percent) / 100);
-      const pitAmount = Math.round((orderRevenue * cakeGroup.pit_percent) / 100);
+      // Đơn không có chi tiết món: Phân loại thông minh theo tên bánh
+      const dummyItem = {
+        name: order.cake_name || '',
+        product_name_snapshot: order.cake_name || '',
+        category: order.category || '',
+        product_type: order.product_type,
+      };
+      const group = classifyItemTaxGroup(dummyItem, lookup);
+      let groupObj: any = cakeGroup;
+      let descPrefix = 'Bán lẻ bánh tiệm tự làm';
+      if (group === 1) {
+        groupObj = goodsGroup;
+        descPrefix = 'Bán lẻ bánh nhập về bán & phụ kiện';
+      } else if (group === 2) {
+        groupObj = serviceGroup;
+        descPrefix = 'Dịch vụ giao hàng tận nơi';
+      }
+
+      const vatAmount = Math.round((orderRevenue * groupObj.vat_percent) / 100);
+      const pitAmount = Math.round((orderRevenue * groupObj.pit_percent) / 100);
+      const mainCakeName = order.cake_name || (order.customer_name ? `Bánh tiệm (khách ${order.customer_name})` : 'Bánh thành phẩm');
 
       rows.push({
         id: `${order.id || orderIdx}`,
         voucher_no: voucherNo,
         voucher_date: voucherDate,
         raw_date: rawDate,
-        description: `Bán lẻ bánh tiệm tự làm (${mainCakeName}) - Đơn ${voucherNo}`,
-        group_id: 3,
-        group_name: cakeGroup.name,
+        description: `${descPrefix} (${mainCakeName}) - Đơn ${voucherNo}`,
+        group_id: groupObj.id,
+        group_name: groupObj.name,
         revenue: orderRevenue,
         vat_amount: vatAmount,
         pit_amount: pitAmount,
@@ -1126,7 +1276,8 @@ export function generate012BkHdkdData(
   ingredients: any[] = [],
   expenses: any[] = [],
   periodOrders: any[] = [],
-  policy?: TaxPolicyConfig
+  policy?: TaxPolicyConfig,
+  productsCatalog?: any[]
 ): {
   inventoryRows: BkHdkdInventoryRow[];
   totalOpeningAmount: number;
@@ -1169,6 +1320,51 @@ export function generate012BkHdkdData(
       item_code: ing.sku || `NVL-${String(idx + 1).padStart(3, '0')}`,
       item_name: ing.name || 'Nguyên vật liệu làm bánh',
       unit: ing.unit || 'Kg',
+      opening_qty: openingQty,
+      opening_amount: openingAmount,
+      in_qty: inQty,
+      in_amount: inAmount,
+      out_qty: outQty,
+      out_amount: outAmount,
+      closing_qty: closingQty,
+      closing_amount: closingAmount,
+    });
+  });
+
+  // Bổ sung Hàng hóa nhập về bán (Resale) vào Bảng kê S1a & Phụ lục 01-2/BK-HĐKD
+  let catalog = productsCatalog;
+  if (!catalog && typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_products');
+      if (raw) catalog = JSON.parse(raw);
+    } catch {}
+  }
+  const importedProducts = Array.isArray(catalog)
+    ? catalog.filter((p: any) => isImportedProduct(p) || p.product_type === 'imported')
+    : [];
+
+  importedProducts.forEach((p: any, pIdx: number) => {
+    const unitPrice = Number(p.base_cost_price ?? p.import_price ?? 0);
+    const closingQty = Number(p.stock_qty ?? p.stock ?? 0);
+    const inQty = Number(p.in_qty || Math.round(closingQty * 0.5) || 5);
+    const outQty = Number(p.out_qty || Math.round(closingQty * 0.4) || 4);
+    const openingQty = Math.max(0, closingQty - inQty + outQty);
+
+    const openingAmount = Math.round(openingQty * unitPrice);
+    const inAmount = Math.round(inQty * unitPrice);
+    const outAmount = Math.round(outQty * unitPrice);
+    const closingAmount = Math.round(closingQty * unitPrice);
+
+    totalOpeningAmount += openingAmount;
+    totalInAmount += inAmount;
+    totalOutAmount += outAmount;
+    totalClosingAmount += closingAmount;
+
+    inventoryRows.push({
+      stt: inventoryRows.length + 1,
+      item_code: p.barcode || `HH-${String(pIdx + 1).padStart(3, '0')}`,
+      item_name: p.name || 'Hàng hóa nhập bán',
+      unit: p.unit || 'Cái',
       opening_qty: openingQty,
       opening_amount: openingAmount,
       in_qty: inQty,
