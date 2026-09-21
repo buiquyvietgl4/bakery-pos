@@ -1869,12 +1869,6 @@ export default function POSPage() {
     };
   }, []);
 
-  // Save Shift State to LocalStorage and Supabase DB
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      saveCurrentShiftToDb(shift).catch(console.error);
-    }
-  }, [shift]);
 
   const categories = ['Tất cả', ...Array.from(new Set(products.map((p) => p.category)))];
   const getCategoryCount = (cat: string) => {
@@ -6726,7 +6720,7 @@ export default function POSPage() {
                       onClick={() => {
                         setHandoverMode('withdraw');
                         if (!leaveForNextShiftInput) {
-                          setLeaveForNextShiftInput(Math.min(500000, closingCashInput || expectedCashInRegister));
+                          setLeaveForNextShiftInput(closingCashInput || expectedCashInRegister);
                         }
                       }}
                       className={`p-2 rounded-xl text-xs font-bold border transition text-center cursor-pointer ${

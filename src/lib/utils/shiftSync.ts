@@ -36,7 +36,7 @@ export function generateShiftCode(existingCountToday: number = 0): string {
   return `CA-${dStr}-${seq}`;
 }
 
-export function createInitialShift(openingCash: number = 500000, openedBy: string = 'Thu Ngân'): ShiftState {
+export function createInitialShift(openingCash: number = 0, openedBy: string = 'Thu Ngân'): ShiftState {
   const now = new Date();
   return {
     id: `shift-${Date.now()}`,
@@ -51,7 +51,7 @@ export function createInitialShift(openingCash: number = 500000, openedBy: strin
   };
 }
 
-export const DEFAULT_SHIFT: ShiftState = createInitialShift(500000, 'Thu Ngân');
+export const DEFAULT_SHIFT: ShiftState = createInitialShift(0, 'Thu Ngân');
 
 // ══════════════════════════════════════════════════════════════════════════════
 // 1. QUẢN LÝ CA BÁN HÀNG HIỆN TẠI (CURRENT SHIFT & TIỀN KÉT)

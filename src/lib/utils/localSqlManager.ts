@@ -603,7 +603,7 @@ CREATE TABLE IF NOT EXISTS current_shift (
     id TEXT PRIMARY KEY,
     is_open BOOLEAN DEFAULT TRUE,
     opened_at TIMESTAMP,
-    opening_cash NUMERIC DEFAULT 500000,
+    opening_cash NUMERIC DEFAULT 0,
     cash_sales NUMERIC DEFAULT 0,
     transfer_sales NUMERIC DEFAULT 0,
     order_count INTEGER DEFAULT 0,
@@ -1049,7 +1049,7 @@ INSERT INTO bakery_bom_settings (id, version, target_food_cost_pct, cake_bases, 
 -- ----------------------------------------------------------------------------
 -- 20. BẢNG CA BÁN HÀNG HIỆN TẠI (CURRENT_SHIFT)
 -- ----------------------------------------------------------------------------
-INSERT INTO current_shift (id, is_open, opened_at, opening_cash, cash_sales, transfer_sales, order_count, updated_at) VALUES ('primary', ${sqlEscape(currentShift.isOpen ?? true)}, ${sqlEscape(currentShift.openedAt || new Date().toISOString())}, ${sqlEscape(currentShift.openingCash || 500000)}, ${sqlEscape(currentShift.cashSales || 0)}, ${sqlEscape(currentShift.transferSales || 0)}, ${sqlEscape(currentShift.orderCount || 0)}, ${sqlEscape(new Date().toISOString())}) ON CONFLICT(id) DO UPDATE SET is_open = EXCLUDED.is_open, opened_at = EXCLUDED.opened_at, opening_cash = EXCLUDED.opening_cash, cash_sales = EXCLUDED.cash_sales, transfer_sales = EXCLUDED.transfer_sales, order_count = EXCLUDED.order_count, updated_at = EXCLUDED.updated_at;
+INSERT INTO current_shift (id, is_open, opened_at, opening_cash, cash_sales, transfer_sales, order_count, updated_at) VALUES ('primary', ${sqlEscape(currentShift.isOpen ?? true)}, ${sqlEscape(currentShift.openedAt || new Date().toISOString())}, ${sqlEscape(currentShift.openingCash || 0)}, ${sqlEscape(currentShift.cashSales || 0)}, ${sqlEscape(currentShift.transferSales || 0)}, ${sqlEscape(currentShift.orderCount || 0)}, ${sqlEscape(new Date().toISOString())}) ON CONFLICT(id) DO UPDATE SET is_open = EXCLUDED.is_open, opened_at = EXCLUDED.opened_at, opening_cash = EXCLUDED.opening_cash, cash_sales = EXCLUDED.cash_sales, transfer_sales = EXCLUDED.transfer_sales, order_count = EXCLUDED.order_count, updated_at = EXCLUDED.updated_at;
 `;
   }
 
