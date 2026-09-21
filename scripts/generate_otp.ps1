@@ -84,6 +84,9 @@ if ($envMtime -ge $profMtime -and (Test-Path $envPath)) {
         if ($line -match "^NEXT_PUBLIC_SUPABASE_ANON_KEY\s*=\s*(.+)$") {
             $supabaseAnonKey = $matches[1].Trim("'`"")
         }
+        if ($line -match "^NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY\s*=\s*(.+)$" -and (-not $supabaseAnonKey)) {
+            $supabaseAnonKey = $matches[1].Trim("'`"")
+        }
     }
     if ((-not $supabaseUrl -or -not $supabaseAnonKey) -and (Test-Path $profileFile)) {
         try {
@@ -110,6 +113,9 @@ if ($envMtime -ge $profMtime -and (Test-Path $envPath)) {
                 $supabaseUrl = $matches[1].Trim("'`"")
             }
             if ($line -match "^NEXT_PUBLIC_SUPABASE_ANON_KEY\s*=\s*(.+)$") {
+                $supabaseAnonKey = $matches[1].Trim("'`"")
+            }
+            if ($line -match "^NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY\s*=\s*(.+)$" -and (-not $supabaseAnonKey)) {
                 $supabaseAnonKey = $matches[1].Trim("'`"")
             }
         }
@@ -206,5 +212,6 @@ Write-Host "   - Không sợ đổi SQL: Dù đổi URL Supabase hay ngắt mạ
 Write-Host "   - Mỗi mã chỉ dùng được DUY NHẤT 1 LẦN (Tự hủy ngay sau khi đăng nhập)." -ForegroundColor Gray
 Write-Host "   - Chỉ máy tính đang có mã nguồn này mới có thể tạo ra mã!" -ForegroundColor Gray
 Write-Host "══════════════════════════════════════════════════════════════════════`n" -ForegroundColor Yellow
+
 
 
