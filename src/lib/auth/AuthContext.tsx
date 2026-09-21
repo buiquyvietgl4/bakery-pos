@@ -550,53 +550,84 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
-  // 4. CƠ CHẾ KHÓA CỨU HỘ CẤP ROOT (DIGITAL KEY FILE & MASTER ROOT SECRET)
-  const resetAdminPasswordWithRecoveryKey = async (rootKeyOrFileContent: string, newPassword?: string) => {
-    const input = (rootKeyOrFileContent || '').trim();
+  // 4. CƠ CHẾ MÃ CỨU HỘ DÙNG 1 LẦN (SINGLE-USE OTP & MASTER ROOT SECRET)
+  const resetAdminPasswordWithRecoveryKey = async (codeOrKey: string, newPassword?: string) => {
+    const input = (codeOrKey || '').trim();
     if (!input) {
-      return { success: false, error: 'Vui lòng cung cấp Mã Root Cứng hoặc tải lên File Chìa Khóa Cứng (.key)!' };
+      return { success: false, error: 'Vui lòng cung cấp Mã Cứu Hộ Dùng 1 Lần!' };
     }
 
-    const currentRecoveryKey = (securityConfig.recoveryKey || MASTER_HARD_ROOT_SECRET).trim();
-    const verification = verifyOwnerRootKey(input, currentRecoveryKey);
+    const targetNewPass = (newPassword || '').trim() || 'admin123';
 
-    if (verification.valid) {
-      const targetNewPass = (newPassword || '').trim() || 'admin123';
-      const updated: SecurityConfig = {
-        ...securityConfig,
-        adminPasswordHash: targetNewPass,
-      };
-      saveSecurityConfig(updated);
+    // 1. Gọi API server /api/auth/root-verify để kiểm tra mã 1 lần và tự hủy mã trong CSDL
+    try {
+      const res = await fetch('/api/auth/root-verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rootKey: input, newAdminPassword: targetNewPass }),
+      });
+      const data = await res.json();
 
-      // Cưỡng chế cập nhật lên server API root-verify nếu có mạng
-      try {
-        fetch('/api/auth/root-verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rootKey: input, newAdminPassword: targetNewPass }),
-        }).catch(() => {});
-      } catch {}
+      if (res.ok && data.success) {
+        const updated: SecurityConfig = {
+          ...securityConfig,
+          adminPasswordHash: targetNewPass,
+        };
+        saveSecurityConfig(updated);
 
-      const adminUser: CurrentUser = {
-        id: '00000000-0000-0000-0000-000000000001',
-        username: securityConfig.adminUsername || 'admin',
-        name: securityConfig.adminName || 'Chủ Tiệm (Admin)',
-        role: 'admin',
-        email: 'admin@tiembanh.local',
-      };
-      saveCurrentUser(adminUser);
-      setIsLoginModalOpen(false);
+        const adminUser: CurrentUser = {
+          id: '00000000-0000-0000-0000-000000000001',
+          username: securityConfig.adminUsername || 'admin',
+          name: securityConfig.adminName || 'Chủ Tiệm (Admin)',
+          role: 'admin',
+          email: 'admin@tiembanh.local',
+        };
+        saveCurrentUser(adminUser);
+        setIsLoginModalOpen(false);
+
+        return {
+          success: true,
+          message: data.message || `Xác thực thành công! Mật khẩu Admin đã được đặt lại về: "${targetNewPass}"`,
+        };
+      } else {
+        return {
+          success: false,
+          error: data.error || 'Mã cứu hộ không hợp lệ hoặc đã hết hạn!',
+        };
+      }
+    } catch (apiErr) {
+      // Fallback ngoại tuyến: Nếu hoàn toàn mất mạng, kiểm tra Master Key
+      const currentRecoveryKey = (securityConfig.recoveryKey || MASTER_HARD_ROOT_SECRET).trim();
+      const verification = verifyOwnerRootKey(input, currentRecoveryKey);
+
+      if (verification.valid) {
+        const updated: SecurityConfig = {
+          ...securityConfig,
+          adminPasswordHash: targetNewPass,
+        };
+        saveSecurityConfig(updated);
+
+        const adminUser: CurrentUser = {
+          id: '00000000-0000-0000-0000-000000000001',
+          username: securityConfig.adminUsername || 'admin',
+          name: securityConfig.adminName || 'Chủ Tiệm (Admin)',
+          role: 'admin',
+          email: 'admin@tiembanh.local',
+        };
+        saveCurrentUser(adminUser);
+        setIsLoginModalOpen(false);
+
+        return {
+          success: true,
+          message: `Xác thực Master thành công! Đã khôi phục toàn quyền Chủ Tiệm và đổi mật khẩu về: "${targetNewPass}"`,
+        };
+      }
 
       return {
-        success: true,
-        message: `Xác thực Root thành công! Đã khôi phục toàn quyền Chủ Tiệm và đổi mật khẩu về: "${targetNewPass}"`,
+        success: false,
+        error: 'Lỗi kết nối máy chủ xác thực mã. Vui lòng kiểm tra lại kết nối mạng!',
       };
     }
-
-    return {
-      success: false,
-      error: verification.reason || 'Chìa khóa Root hoặc Tệp khóa cứng không hợp lệ!',
-    };
   };
 
   const updateAdminRecoveryKey = (newKey: string, newRecoveryPhone?: string) => {

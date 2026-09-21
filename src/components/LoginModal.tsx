@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth, UserRole } from '@/lib/auth/AuthContext';
-import { Shield, ChefHat, ShoppingCart, Lock, KeyRound, X, Check, Delete, ArrowRight, FileKey, UploadCloud } from 'lucide-react';
+import { Shield, ChefHat, ShoppingCart, Lock, KeyRound, X, Check, Delete, ArrowRight } from 'lucide-react';
 
 export default function LoginModal() {
   const {
@@ -28,23 +28,6 @@ export default function LoginModal() {
   const [rescueKeyInput, setRescueKeyInput] = useState('');
   const [newAdminPassInput, setNewAdminPassInput] = useState('');
   const [rescueSuccessMsg, setRescueSuccessMsg] = useState('');
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [selectedFileName, setSelectedFileName] = useState<string>('');
-
-  const handleKeyFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSelectedFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const content = event.target?.result as string;
-      if (content) {
-        setRescueKeyInput(content);
-        setErrorMsg('');
-      }
-    };
-    reader.readAsText(file);
-  };
 
   useEffect(() => {
     if (isLoginModalOpen) {
@@ -462,64 +445,33 @@ export default function LoginModal() {
         {activeTab === 'admin' && (
           isRecoveringAdmin ? (
             <form onSubmit={handleRescueSubmit} className="space-y-3.5">
-              <div className="p-3 bg-red-950 text-white rounded-2xl border border-red-800 space-y-1.5 shadow-inner">
-                <p className="font-black flex items-center gap-1.5 text-red-200 text-xs">
-                  <Shield className="w-4 h-4 text-red-400" /> CƠ CHẾ KHÓA CỨNG CẤP ROOT (CHỦ TIỆM)
+              <div className="p-3 bg-amber-50/90 rounded-2xl border border-amber-200 text-xs text-amber-950 space-y-1">
+                <p className="font-black flex items-center gap-1.5 text-amber-900 text-xs">
+                  <Shield className="w-4 h-4 text-amber-600" /> CỨU HỘ ADMIN BẰNG MÃ 1 LẦN (OTP)
                 </p>
-                <p className="text-[11px] text-zinc-300 leading-relaxed">
-                  Cơ chế bảo vệ tối cao <b>chống chiếm quyền hệ thống</b>. Sử dụng <b>File Chìa Khóa Cứng (.key)</b> lưu trên USB hoặc <b>Khóa Root Bí Mật</b> để mở khóa khẩn cấp độc lập với CSDL.
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Nhập mã cứu hộ được tạo trực tiếp từ máy tính chứa mã nguồn gốc (chạy file <b>TAO_MA_CUU_HO.bat</b>). <b>Mỗi mã chỉ có hiệu lực dùng 1 lần duy nhất</b> và sẽ tự động hủy ngay sau khi đăng nhập.
                 </p>
               </div>
 
-              {/* Tùy chọn 1: Nạp File Chìa Khóa Cứng */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-xs">
-                  <label className="font-bold text-zinc-800">Cách 1: Nạp File Chìa Khóa Cứng (.key)</label>
-                  <span className="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
-                    Khuyên dùng
-                  </span>
-                </div>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept=".key,.json,.txt"
-                  onChange={handleKeyFileUpload}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`w-full p-3 rounded-xl border-2 border-dashed flex items-center justify-center gap-2 text-xs font-bold transition cursor-pointer ${
-                    selectedFileName
-                      ? 'border-emerald-500 bg-emerald-50 text-emerald-800'
-                      : 'border-zinc-300 bg-zinc-50 hover:bg-zinc-100 text-zinc-700'
-                  }`}
-                >
-                  <FileKey className={`w-4 h-4 ${selectedFileName ? 'text-emerald-600' : 'text-zinc-500'}`} />
-                  {selectedFileName ? (
-                    <span className="truncate">Đã nạp chìa khóa: <b>{selectedFileName}</b> ✅</span>
-                  ) : (
-                    <span>📁 Bấm chọn file <b>bakery-owner-root.key</b> từ USB / Máy</span>
-                  )}
-                </button>
-              </div>
-
-              {/* Tùy chọn 2: Nhập Mã Khóa Cứng Root Master */}
+              {/* Ô nhập Mã Dùng 1 Lần */}
               <div className="space-y-1">
-                <label className="text-xs font-bold text-zinc-700">Cách 2: Hoặc Nhập Mã Khóa Cứng Root Master</label>
+                <label className="text-xs font-bold text-zinc-700">Mã Cứu Hộ Dùng 1 Lần *</label>
                 <div className="relative">
                   <input
-                    type="password"
+                    type="text"
+                    required
+                    autoFocus
                     value={rescueKeyInput}
-                    onChange={(e) => {
-                      setRescueKeyInput(e.target.value);
-                      setSelectedFileName('');
-                    }}
-                    placeholder="Dán mã Root hoặc nội dung khóa cứng..."
-                    className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-red-500"
+                    onChange={(e) => setRescueKeyInput(e.target.value)}
+                    placeholder="Nhập mã 1 lần (ví dụ: ROOT-8492-3105)..."
+                    className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                   />
-                  <KeyRound className="w-4 h-4 text-zinc-400 absolute right-3.5 top-3" />
+                  <KeyRound className="w-4 h-4 text-amber-500 absolute right-3.5 top-3" />
                 </div>
+                <p className="text-[10px] text-zinc-400 italic">
+                  💡 Gợi ý: Mở máy tính chứa mã nguồn gốc của bạn, nhấp đúp file <span className="font-mono text-zinc-700 font-bold">TAO_MA_CUU_HO.bat</span> để nhận mã 1 lần.
+                </p>
               </div>
 
               {/* Đặt lại mật khẩu mới */}
@@ -530,7 +482,7 @@ export default function LoginModal() {
                   value={newAdminPassInput}
                   onChange={(e) => setNewAdminPassInput(e.target.value)}
                   placeholder="Để trống sẽ tự động đặt về: admin123"
-                  className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-xs font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-red-500"
+                  className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-xs font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 />
               </div>
 
@@ -556,9 +508,9 @@ export default function LoginModal() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-2 py-2.5 rounded-xl bg-red-700 hover:bg-red-800 text-white text-xs font-bold shadow-md shadow-red-700/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="flex-2 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
-                  <Shield className="w-4 h-4" /> Kích Hoạt Khóa Cứng Root
+                  <Shield className="w-4 h-4" /> Xác Thực & Khôi Phục Admin
                 </button>
               </div>
             </form>
@@ -602,15 +554,15 @@ export default function LoginModal() {
                 </div>
               </div>
 
-              {/* Nút kích hoạt khóa cứng Root */}
+              {/* Nút kích hoạt khóa cứu hộ 1 lần */}
               <div className="flex justify-end pt-0.5">
                 <button
                   type="button"
                   onClick={() => { setIsRecoveringAdmin(true); setErrorMsg(''); }}
-                  className="text-[11px] font-bold text-red-700 hover:text-red-800 hover:underline flex items-center gap-1 cursor-pointer"
+                  className="text-[11px] font-bold text-amber-700 hover:text-amber-800 hover:underline flex items-center gap-1 cursor-pointer"
                 >
-                  <Shield className="w-3.5 h-3.5 text-red-600" />
-                  <span>🛡️ Kích hoạt Khóa Cứng Root (Chủ Tiệm khôi phục quyền)</span>
+                  <Shield className="w-3.5 h-3.5 text-amber-600" />
+                  <span>🆘 Quên mật khẩu? Khôi phục bằng Mã Cứu Hộ 1 Lần</span>
                 </button>
               </div>
 
