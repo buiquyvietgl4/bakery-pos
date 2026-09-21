@@ -27,10 +27,14 @@ try {
 let activeSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 let activeSupabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// Ưu tiên đọc cấu hình CSDL nếu người dùng đã đổi URL trực tiếp từ giao diện POS
+// So sánh thời gian sửa đổi: Nếu người dùng sửa tay .env.local thì ưu tiên .env.local, nếu đổi từ POS UI thì ưu tiên profileFile
 try {
+  const envPath = path.resolve(process.cwd(), '.env.local');
   const profileFile = path.resolve(process.cwd(), '.active_database_profile.json');
-  if (fs.existsSync(profileFile)) {
+  const envMtime = fs.existsSync(envPath) ? fs.statSync(envPath).mtimeMs : 0;
+  const profMtime = fs.existsSync(profileFile) ? fs.statSync(profileFile).mtimeMs : 0;
+
+  if (profMtime > envMtime && fs.existsSync(profileFile)) {
     const prof = JSON.parse(fs.readFileSync(profileFile, 'utf8'));
     if (prof.url && prof.anonKey) {
       activeSupabaseUrl = prof.url;

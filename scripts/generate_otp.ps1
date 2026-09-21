@@ -67,25 +67,43 @@ try {
     Write-Host "⚠️ Cảnh báo: Không thể ghi file mã cục bộ" -ForegroundColor Yellow
 }
 
-# 3. ĐỒNG BỘ LÊN CLOUD SUPABASE (TỰ ĐỘNG THEO URL POS HOẶC .env.local)
+# 3. ĐỒNG BỘ LÊN CLOUD SUPABASE (TỰ ĐỘNG NHẬN DIỆN KHI THAY LINK TRONG .env.local HOẶC TRÊN POS)
 $supabaseUrl = ""
 $supabaseAnonKey = ""
 
-# Ưu tiên 1: Đọc từ .active_database_profile.json
-if (Test-Path $profileFile) {
-    try {
-        $profRaw = Get-Content $profileFile -Raw -Encoding UTF8
-        $profJson = $profRaw | ConvertFrom-Json
-        if ($profJson.url -and $profJson.anonKey) {
-            $supabaseUrl = $profJson.url
-            $supabaseAnonKey = $profJson.anonKey
-        }
-    } catch {}
-}
+$envMtime = if (Test-Path $envPath) { (Get-Item $envPath).LastWriteTimeUtc } else { [DateTime]::MinValue }
+$profMtime = if (Test-Path $profileFile) { (Get-Item $profileFile).LastWriteTimeUtc } else { [DateTime]::MinValue }
 
-# Ưu tiên 2: Fallback đọc từ .env.local
-if (-not $supabaseUrl -or -not $supabaseAnonKey) {
-    if (Test-Path $envPath) {
+if ($envMtime -ge $profMtime -and (Test-Path $envPath)) {
+    # Người dùng vừa sửa link thủ công trong file .env.local -> Ưu tiên nạp từ .env.local
+    Get-Content $envPath -Encoding UTF8 | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -match "^NEXT_PUBLIC_SUPABASE_URL\s*=\s*(.+)$") {
+            $supabaseUrl = $matches[1].Trim("'`"")
+        }
+        if ($line -match "^NEXT_PUBLIC_SUPABASE_ANON_KEY\s*=\s*(.+)$") {
+            $supabaseAnonKey = $matches[1].Trim("'`"")
+        }
+    }
+    if ((-not $supabaseUrl -or -not $supabaseAnonKey) -and (Test-Path $profileFile)) {
+        try {
+            $profJson = (Get-Content $profileFile -Raw -Encoding UTF8) | ConvertFrom-Json
+            if (-not $supabaseUrl) { $supabaseUrl = $profJson.url }
+            if (-not $supabaseAnonKey) { $supabaseAnonKey = $profJson.anonKey }
+        } catch {}
+    }
+} else {
+    # Người dùng vừa đổi URL từ giao diện POS -> Ưu tiên nạp từ .active_database_profile.json
+    if (Test-Path $profileFile) {
+        try {
+            $profJson = (Get-Content $profileFile -Raw -Encoding UTF8) | ConvertFrom-Json
+            if ($profJson.url -and $profJson.anonKey) {
+                $supabaseUrl = $profJson.url
+                $supabaseAnonKey = $profJson.anonKey
+            }
+        } catch {}
+    }
+    if ((-not $supabaseUrl -or -not $supabaseAnonKey) -and (Test-Path $envPath)) {
         Get-Content $envPath -Encoding UTF8 | ForEach-Object {
             $line = $_.Trim()
             if ($line -match "^NEXT_PUBLIC_SUPABASE_URL\s*=\s*(.+)$") {
@@ -188,4 +206,5 @@ Write-Host "   - Không sợ đổi SQL: Dù đổi URL Supabase hay ngắt mạ
 Write-Host "   - Mỗi mã chỉ dùng được DUY NHẤT 1 LẦN (Tự hủy ngay sau khi đăng nhập)." -ForegroundColor Gray
 Write-Host "   - Chỉ máy tính đang có mã nguồn này mới có thể tạo ra mã!" -ForegroundColor Gray
 Write-Host "══════════════════════════════════════════════════════════════════════`n" -ForegroundColor Yellow
+
 

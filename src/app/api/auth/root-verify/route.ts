@@ -22,7 +22,11 @@ function getActiveSupabaseCredentials() {
   let anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
   try {
-    if (fs.existsSync(PROFILE_FILE)) {
+    const envFile = path.join(process.cwd(), '.env.local');
+    const envMtime = fs.existsSync(envFile) ? fs.statSync(envFile).mtimeMs : 0;
+    const profMtime = fs.existsSync(PROFILE_FILE) ? fs.statSync(PROFILE_FILE).mtimeMs : 0;
+
+    if (profMtime > envMtime && fs.existsSync(PROFILE_FILE)) {
       const prof = JSON.parse(fs.readFileSync(PROFILE_FILE, 'utf-8'));
       if (prof.url && prof.anonKey) {
         url = prof.url;
