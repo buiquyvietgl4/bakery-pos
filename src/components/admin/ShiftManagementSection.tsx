@@ -111,8 +111,9 @@ export const ShiftManagementSection: React.FC<Props> = ({ adminName }) => {
 
     return history.filter((item) => {
       // 1. Lọc theo trạng thái chênh lệch
-      if (statusFilter === 'discrepancy' && item.difference === 0) return false;
-      if (statusFilter === 'balanced' && item.difference !== 0) return false;
+      const diff = Math.round(Number(item.difference || 0));
+      if (statusFilter === 'discrepancy' && diff === 0) return false;
+      if (statusFilter === 'balanced' && diff !== 0) return false;
 
       // 2. Lọc theo nhân viên
       if (staffFilter !== 'all' && item.staffName !== staffFilter) return false;
@@ -159,11 +160,11 @@ export const ShiftManagementSection: React.FC<Props> = ({ adminName }) => {
       totalTransferSales += Number(item.transferSales || 0);
       totalRevenue += Number(item.totalRevenue || (item.cashSales + item.transferSales));
       totalExpectedCash += Number(item.expectedCash || 0);
-      totalClosingCash += Number(item.closingCash || 0);
-      totalDifference += Number(item.difference || 0);
+      const diff = Math.round(Number(item.difference || 0));
+      totalDifference += diff;
 
-      if (item.difference === 0) balancedCount++;
-      else if (item.difference < 0) shortageCount++;
+      if (diff === 0) balancedCount++;
+      else if (diff < 0) shortageCount++;
       else surplusCount++;
     });
 
@@ -430,7 +431,7 @@ export const ShiftManagementSection: React.FC<Props> = ({ adminName }) => {
                   : 'bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200/60'
               }`}
             >
-              Lệch quỹ ({history.filter((h) => h.difference !== 0).length})
+              Lệch quỹ ({history.filter((h) => Math.round(Number(h.difference || 0)) !== 0).length})
             </button>
             <button
               type="button"
@@ -441,7 +442,7 @@ export const ShiftManagementSection: React.FC<Props> = ({ adminName }) => {
                   : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200/60'
               }`}
             >
-              Khớp chuẩn ({history.filter((h) => h.difference === 0).length})
+              Khớp chuẩn ({history.filter((h) => Math.round(Number(h.difference || 0)) === 0).length})
             </button>
           </div>
         </div>
@@ -519,9 +520,10 @@ export const ShiftManagementSection: React.FC<Props> = ({ adminName }) => {
                 </tr>
               ) : (
                 filteredHistory.map((item) => {
-                  const isBalanced = item.difference === 0;
-                  const isSurplus = item.difference > 0;
-                  const isShortage = item.difference < 0;
+                  const diff = Math.round(Number(item.difference || 0));
+                  const isBalanced = diff === 0;
+                  const isSurplus = diff > 0;
+                  const isShortage = diff < 0;
 
                   return (
                     <tr key={item.id} className="hover:bg-amber-50/40 transition">
@@ -579,16 +581,16 @@ export const ShiftManagementSection: React.FC<Props> = ({ adminName }) => {
                         {isBalanced ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-bold">
                             <CheckCircle2 className="w-3 h-3" />
-                            <span>Khớp 100%</span>
+                            <span>Khớp chuẩn 100%</span>
                           </span>
                         ) : isShortage ? (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 border border-rose-300 text-xs font-black animate-pulse">
                             <AlertTriangle className="w-3 h-3" />
-                            <span>Thiếu {formatVnd(Math.abs(item.difference))}</span>
+                            <span>Thiếu {formatVnd(Math.abs(diff))}</span>
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 text-xs font-bold">
-                            <span>Thừa +{formatVnd(item.difference)}</span>
+                            <span>Thừa +{formatVnd(diff)}</span>
                           </span>
                         )}
                       </td>

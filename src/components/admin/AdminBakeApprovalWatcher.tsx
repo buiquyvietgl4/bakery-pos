@@ -12,6 +12,7 @@ import {
   BakeApprovalPayload,
   parseOrderBakeShortage
 } from '@/lib/supabase/realtimeSync';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { 
   Bell, Shield, CheckCircle2, XCircle, X, Clock, Cake, 
   AlertTriangle, ChefHat, Sparkles 
@@ -261,6 +262,11 @@ export default function AdminBakeApprovalWatcher() {
         resolved_by: user?.name || 'Chủ Tiệm (Admin)',
       });
 
+      // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+      try {
+        autoSyncToLocalSqlFolder().catch(() => {});
+      } catch {}
+
       window.dispatchEvent(new Event('bakery_orders_updated'));
       soundManager.playNewOrderChime();
 
@@ -311,6 +317,11 @@ export default function AdminBakeApprovalWatcher() {
         action: 'rejected',
         resolved_by: user?.name || 'Chủ Tiệm (Admin)',
       });
+
+      // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+      try {
+        autoSyncToLocalSqlFolder().catch(() => {});
+      } catch {}
 
       window.dispatchEvent(new Event('bakery_orders_updated'));
 

@@ -273,6 +273,7 @@ CREATE TABLE IF NOT EXISTS orders (
     cake_order_spec TEXT,
     bake_approval_status TEXT,
     reference_image_url TEXT,
+    transfer_proof_image TEXT,
     created_by TEXT,
     store_id TEXT,
     shift_id TEXT,
@@ -654,6 +655,28 @@ CREATE TABLE IF NOT EXISTS delivery_alert_config (
     enable_shipping_sound BOOLEAN DEFAULT TRUE,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS oven_batches (
+    id TEXT PRIMARY KEY,
+    recipe_id TEXT,
+    product_id TEXT,
+    cake_name TEXT,
+    quantity NUMERIC DEFAULT 1,
+    unit TEXT DEFAULT 'cái',
+    bake_temp NUMERIC DEFAULT 190,
+    duration_seconds NUMERIC DEFAULT 1200,
+    started_at BIGINT,
+    ends_at BIGINT,
+    status TEXT DEFAULT 'baking',
+    notified BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS resolved_transfers (
+    order_number TEXT PRIMARY KEY,
+    resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    resolved_by TEXT DEFAULT 'Admin'
+);
 `;
 }
 
@@ -736,6 +759,7 @@ ${generateSchemaSql()}
 `;
   if (Array.isArray(data?.orders) && data.orders.length > 0) {
     for (const o of data.orders) {
+      const subtotal = o.subtotal ?? (o.total_amount || o.totalPrice || 0);
       const discount = o.discount_amount ?? o.discountAmount ?? 0;
       const finalAmt = o.final_amount ?? o.finalAmount ?? o.total_amount ?? o.totalPrice ?? 0;
       const totalCogs = o.total_cogs ?? o.totalCogs ?? 0;
@@ -752,9 +776,9 @@ ${generateSchemaSql()}
       const readyStock = o.ready_stock_qty ?? 0;
       const parentOrder = o.parent_order_number ?? null;
       const specStr = o.cake_order_spec ? JSON.stringify(o.cake_order_spec) : null;
-      const subtotal = o.subtotal ?? (o.total_amount || o.totalPrice || 0);
+      const proofImg = o.transfer_proof_image || o.transferProofImage || null;
 
-      sql += `INSERT INTO orders (id, local_id, order_number, order_type, status, subtotal, discount_amount, discount_pct, total_amount, final_amount, total_cogs, deposit_amount, remaining_amount, shipping_fee, payment_status, payment_method, notes, customer_name, customer_phone, cake_name, cake_message, delivery_method, shipping_address, preorder_pickup_at, bake_status, need_bake_qty, ready_stock_qty, parent_order_number, cake_order_spec, bake_approval_status, reference_image_url, created_by, store_id, shift_id, sync_status, is_offline, created_at, updated_at) VALUES (${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(o.local_id || o.localId || o.id)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.order_type || o.orderType || 'takeaway')}, ${sqlEscape(o.status)}, ${sqlEscape(subtotal)}, ${sqlEscape(discount)}, ${sqlEscape(o.discount_pct ?? o.discountPct ?? 0)}, ${sqlEscape(o.total_amount || o.totalPrice || 0)}, ${sqlEscape(finalAmt)}, ${sqlEscape(totalCogs)}, ${sqlEscape(depositAmt)}, ${sqlEscape(remainAmt)}, ${sqlEscape(shipFee)}, ${sqlEscape(payStatus)}, ${sqlEscape(payMethod)}, ${sqlEscape(o.notes)}, ${sqlEscape(o.customer_name || o.customerName)}, ${sqlEscape(o.customer_phone || o.customerPhone)}, ${sqlEscape(cakeName)}, ${sqlEscape(cakeMsg)}, ${sqlEscape(o.delivery_method || o.deliveryMethod || 'pickup')}, ${sqlEscape(o.shipping_address || o.shippingAddress)}, ${sqlEscape(preorderPickup)}, ${sqlEscape(bakeStatus)}, ${sqlEscape(needBake)}, ${sqlEscape(readyStock)}, ${sqlEscape(parentOrder)}, ${sqlEscape(specStr)}, ${sqlEscape(o.bake_approval_status || o.bakeApprovalStatus)}, ${sqlEscape(o.reference_image_url || o.referenceImageUrl)}, ${sqlEscape(o.created_by || o.createdBy)}, ${sqlEscape(o.store_id || o.storeId)}, ${sqlEscape(o.shift_id || o.shiftId)}, ${sqlEscape(o.sync_status || 'synced')}, ${sqlEscape(o.is_offline ?? false)}, ${sqlEscape(o.created_at || o.createdAt || new Date().toISOString())}, ${sqlEscape(o.updated_at || o.updatedAt || new Date().toISOString())});
+      sql += `INSERT INTO orders (id, local_id, order_number, order_type, status, subtotal, discount_amount, discount_pct, total_amount, final_amount, total_cogs, deposit_amount, remaining_amount, shipping_fee, payment_status, payment_method, notes, customer_name, customer_phone, cake_name, cake_message, delivery_method, shipping_address, preorder_pickup_at, bake_status, need_bake_qty, ready_stock_qty, parent_order_number, cake_order_spec, bake_approval_status, reference_image_url, transfer_proof_image, created_by, store_id, shift_id, sync_status, is_offline, created_at, updated_at) VALUES (${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(o.local_id || o.localId || o.id)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.order_type || o.orderType || 'takeaway')}, ${sqlEscape(o.status)}, ${sqlEscape(subtotal)}, ${sqlEscape(discount)}, ${sqlEscape(o.discount_pct ?? o.discountPct ?? 0)}, ${sqlEscape(o.total_amount || o.totalPrice || 0)}, ${sqlEscape(finalAmt)}, ${sqlEscape(totalCogs)}, ${sqlEscape(depositAmt)}, ${sqlEscape(remainAmt)}, ${sqlEscape(shipFee)}, ${sqlEscape(payStatus)}, ${sqlEscape(payMethod)}, ${sqlEscape(o.notes)}, ${sqlEscape(o.customer_name || o.customerName)}, ${sqlEscape(o.customer_phone || o.customerPhone)}, ${sqlEscape(cakeName)}, ${sqlEscape(cakeMsg)}, ${sqlEscape(o.delivery_method || o.deliveryMethod || 'pickup')}, ${sqlEscape(o.shipping_address || o.shippingAddress)}, ${sqlEscape(preorderPickup)}, ${sqlEscape(bakeStatus)}, ${sqlEscape(needBake)}, ${sqlEscape(readyStock)}, ${sqlEscape(parentOrder)}, ${sqlEscape(specStr)}, ${sqlEscape(o.bake_approval_status || o.bakeApprovalStatus)}, ${sqlEscape(o.reference_image_url || o.referenceImageUrl)}, ${sqlEscape(proofImg)}, ${sqlEscape(o.created_by || o.createdBy)}, ${sqlEscape(o.store_id || o.storeId)}, ${sqlEscape(o.shift_id || o.shiftId)}, ${sqlEscape(o.sync_status || 'synced')}, ${sqlEscape(o.is_offline ?? false)}, ${sqlEscape(o.created_at || o.createdAt || new Date().toISOString())}, ${sqlEscape(o.updated_at || o.updatedAt || new Date().toISOString())});
 `;
       if (Array.isArray(o.items)) {
         for (const item of o.items) {
@@ -1124,6 +1148,39 @@ INSERT INTO transfer_verify_config (id, mode, skip_for_admin, alert_sound, auto_
     }
   }
 
+  // ----------------------------------------------------------------------------
+  // 24. BẢNG MẺ NƯỚNG LÒ BẾP (OVEN_BATCHES)
+  // ----------------------------------------------------------------------------
+  const ovenBatches = data?.oven_batches || data?.bakery_oven_batches || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_oven_batches') || '[]') : []);
+  if (Array.isArray(ovenBatches) && ovenBatches.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 24. BẢNG MẺ NƯỚNG LÒ BẾP (OVEN_BATCHES)
+-- ----------------------------------------------------------------------------
+`;
+    for (const ob of ovenBatches) {
+      sql += `INSERT INTO oven_batches (id, recipe_id, product_id, cake_name, quantity, unit, bake_temp, duration_seconds, started_at, ends_at, status, notified, created_at) VALUES (${sqlEscape(ob.id)}, ${sqlEscape(ob.recipe_id || ob.recipeId)}, ${sqlEscape(ob.product_id || ob.productId)}, ${sqlEscape(ob.cake_name || ob.cakeName)}, ${sqlEscape(ob.quantity || 1)}, ${sqlEscape(ob.unit || 'cái')}, ${sqlEscape(ob.bake_temp || ob.bakeTemp || 190)}, ${sqlEscape(ob.duration_seconds || ob.durationSeconds || 1200)}, ${sqlEscape(ob.started_at || ob.startedAt || Date.now())}, ${sqlEscape(ob.ends_at || ob.endsAt || Date.now())}, ${sqlEscape(ob.status || 'baking')}, ${sqlEscape(ob.notified ?? false)}, ${sqlEscape(new Date(ob.started_at || Date.now()).toISOString())});\n`;
+    }
+  }
+
+  // ----------------------------------------------------------------------------
+  // 25. BẢNG DANH SÁCH ĐƠN ĐÃ DUYỆT CHUYỂN KHOẢN (RESOLVED_TRANSFERS)
+  // ----------------------------------------------------------------------------
+  const resolvedTransfers = data?.resolved_transfers || data?.bakery_resolved_transfers || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_resolved_transfers') || '[]') : []);
+  if (Array.isArray(resolvedTransfers) && resolvedTransfers.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 25. BẢNG DANH SÁCH ĐƠN ĐÃ DUYỆT CHUYỂN KHOẢN (RESOLVED_TRANSFERS)
+-- ----------------------------------------------------------------------------
+`;
+    for (const rt of resolvedTransfers) {
+      const orderNum = typeof rt === 'string' ? rt : (rt.order_number || rt.orderNumber);
+      if (orderNum) {
+        sql += `INSERT INTO resolved_transfers (order_number, resolved_at, resolved_by) VALUES (${sqlEscape(orderNum)}, ${sqlEscape(new Date().toISOString())}, 'Admin');\n`;
+      }
+    }
+  }
+
   return sql;
 }
 
@@ -1374,9 +1431,11 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
       localSnapshot['bakery_notification_history'] = JSON.stringify(notifHistory);
     }
 
-    const prodMeta = data.product_metadata || data.bakery_product_metadata;
+    const prodMeta = data.product_metadata || data.bakery_product_metadata || data.bakery_product_metadata_map;
     if (prodMeta) {
-      localSnapshot['bakery_product_metadata'] = typeof prodMeta === 'string' ? prodMeta : JSON.stringify(prodMeta);
+      const metaStr = typeof prodMeta === 'string' ? prodMeta : JSON.stringify(prodMeta);
+      localSnapshot['bakery_product_metadata'] = metaStr;
+      localSnapshot['bakery_product_metadata_map'] = metaStr;
     }
 
     const delIds = data.deleted_product_ids || data.bakery_deleted_product_ids;

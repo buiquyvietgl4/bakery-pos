@@ -55,8 +55,65 @@ export function getDeletedProductIds(): Set<string> {
   return new Set();
 }
 
+export const DB_ROW_DELETED_PRODUCTS_ID = '00000000-0000-0000-0000-000000000021';
+export const DB_ROW_DELETED_PRODUCTS_NAME = 'SYS_CONFIG_DELETED_PRODUCTS';
+
 /**
- * Đánh dấu một sản phẩm bánh đã bị xóa vào danh sách đen vĩnh viễn trong LocalStorage.
+ * Đồng bộ danh sách đen sản phẩm đã xóa lên Supabase SQL
+ */
+export async function syncDeletedProductIdsToDb(deletedIds: string[]): Promise<void> {
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    await supabase.from('recipes').upsert({
+      id: DB_ROW_DELETED_PRODUCTS_ID,
+      name: DB_ROW_DELETED_PRODUCTS_NAME,
+      yield_qty: 1,
+      yield_unit: 'config',
+      cost_per_unit: 0,
+      total_material_cost: 0,
+      notes: JSON.stringify(deletedIds),
+      is_active: false,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+  } catch (err) {
+    console.warn('Lỗi syncDeletedProductIdsToDb:', err);
+  }
+}
+
+/**
+ * Tải danh sách sản phẩm đã xóa từ Supabase SQL
+ */
+export async function fetchDeletedProductIdsFromDb(): Promise<string[]> {
+  if (isLocalMode()) return [];
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return [];
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_DELETED_PRODUCTS_ID},name.eq.${DB_ROW_DELETED_PRODUCTS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed)) {
+        if (typeof window !== 'undefined') {
+          const localSet = getDeletedProductIds();
+          parsed.forEach((id) => localSet.add(String(id).toLowerCase().trim()));
+          localStorage.setItem(BAKERY_DELETED_PRODUCT_IDS_KEY, JSON.stringify(Array.from(localSet)));
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi fetchDeletedProductIdsFromDb:', err);
+  }
+  return [];
+}
+
+/**
+ * Đánh dấu một sản phẩm bánh đã bị xóa vào danh sách đen vĩnh viễn trong LocalStorage & Supabase.
  */
 export function markProductAsDeleted(id: string, name?: string): void {
   if (typeof window === 'undefined') return;
@@ -78,6 +135,9 @@ export function markProductAsDeleted(id: string, name?: string): void {
         localStorage.setItem(BAKERY_STOCKS_KEY, JSON.stringify(stockMap));
       }
     } catch {}
+
+    // Đồng bộ lên Supabase Cloud SQL để chặn sản phẩm hồi sinh trên mọi thiết bị
+    syncDeletedProductIdsToDb(arr).catch(() => {});
   } catch (e) {
     console.warn('Lỗi ghi bakery_deleted_product_ids:', e);
   }
@@ -234,7 +294,8 @@ export async function deleteProductEverywhere(
   return { success: true, method };
 }
 
-export const BAKERY_PRODUCT_METADATA_KEY = 'bakery_product_metadata_map';
+export const BAKERY_PRODUCT_METADATA_KEY = 'bakery_product_metadata';
+export const BAKERY_PRODUCT_METADATA_LEGACY_KEY = 'bakery_product_metadata_map';
 
 /**
  * Đóng gói metadata sản phẩm vào URL ảnh (sử dụng hash #meta=...) để truyền an toàn qua Supabase
@@ -275,7 +336,7 @@ export function decodeProductWithMeta(product: any): any {
   // 2. Thử lấy từ local metadata storage nếu có
   if (typeof window !== 'undefined' && product.id) {
     try {
-      const rawMetaMap = localStorage.getItem(BAKERY_PRODUCT_METADATA_KEY);
+      const rawMetaMap = localStorage.getItem(BAKERY_PRODUCT_METADATA_KEY) || localStorage.getItem(BAKERY_PRODUCT_METADATA_LEGACY_KEY);
       if (rawMetaMap) {
         const metaMap = JSON.parse(rawMetaMap);
         const localMeta = metaMap[product.id] || (product.name ? metaMap[String(product.name).toLowerCase().trim()] : null);
@@ -321,11 +382,13 @@ export function decodeProductWithMeta(product: any): any {
 export function saveProductMetadata(id: string, name: string, meta: any): void {
   if (typeof window === 'undefined') return;
   try {
-    const raw = localStorage.getItem(BAKERY_PRODUCT_METADATA_KEY);
+    const raw = localStorage.getItem(BAKERY_PRODUCT_METADATA_KEY) || localStorage.getItem(BAKERY_PRODUCT_METADATA_LEGACY_KEY);
     const map = raw ? JSON.parse(raw) : {};
     if (id) map[id] = meta;
     if (name) map[name.toLowerCase().trim()] = meta;
-    localStorage.setItem(BAKERY_PRODUCT_METADATA_KEY, JSON.stringify(map));
+    const serialized = JSON.stringify(map);
+    localStorage.setItem(BAKERY_PRODUCT_METADATA_KEY, serialized);
+    localStorage.setItem(BAKERY_PRODUCT_METADATA_LEGACY_KEY, serialized);
   } catch {}
 }
 

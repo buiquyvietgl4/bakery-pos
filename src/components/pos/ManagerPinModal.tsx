@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, Lock, X, Delete, AlertCircle, KeyRound } from 'lucide-react';
@@ -40,6 +40,12 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
   const getTargetPin = () => {
     if (typeof window !== 'undefined') {
       try {
+        const secRaw = localStorage.getItem('bakery_security_config');
+        if (secRaw) {
+          const sec = JSON.parse(secRaw);
+          if (sec?.adminPin && String(sec.adminPin).trim()) return String(sec.adminPin).trim();
+          if (sec?.staffPin && String(sec.staffPin).trim()) return String(sec.staffPin).trim();
+        }
         const saved = localStorage.getItem('bakery_admin_pin');
         if (saved && saved.trim()) return saved.trim();
       } catch {}

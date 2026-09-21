@@ -70,6 +70,11 @@ export async function fetchClosingRecordsFromDb(): Promise<AccountingClosingReco
 export async function saveClosingRecordsToDb(
   records: AccountingClosingRecord[]
 ): Promise<{ success: boolean; error?: string }> {
+  // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+  try {
+    autoSyncToLocalSqlFolder().catch(() => {});
+  } catch {}
+
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { success: true };
   }

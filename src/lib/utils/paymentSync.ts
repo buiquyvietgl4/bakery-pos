@@ -3,6 +3,7 @@
 import { supabase } from '@/lib/supabase/client';
 import { broadcastVietqrConfig, broadcastEwalletConfig } from '@/lib/supabase/realtimeSync';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 export interface VietqrConfig {
   bankId: string;
@@ -145,6 +146,11 @@ export async function saveVietqrConfigToDb(
     // 1. Lưu cục bộ
     saveVietqrConfigLocally(fullConfig);
 
+    // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+    try {
+      autoSyncToLocalSqlFolder().catch(() => {});
+    } catch {}
+
     if (isLocalMode()) {
       return { success: true };
     }
@@ -274,6 +280,11 @@ export async function saveEwalletConfigToDb(
 
     // 1. Lưu cục bộ
     saveEwalletConfigLocally(fullConfig);
+
+    // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+    try {
+      autoSyncToLocalSqlFolder().catch(() => {});
+    } catch {}
 
     if (isLocalMode()) {
       return { success: true };
@@ -424,6 +435,11 @@ export async function saveAutoBankConfigToDb(
   };
 
   saveAutoBankConfigLocally(fullConfig);
+
+  // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+  try {
+    autoSyncToLocalSqlFolder().catch(() => {});
+  } catch {}
 
   if (isLocalMode() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
     return { success: true };
@@ -625,6 +641,11 @@ export async function saveTransferVerificationConfigToDb(
   };
 
   saveTransferVerificationConfigLocally(fullConfig);
+
+  // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+  try {
+    autoSyncToLocalSqlFolder().catch(() => {});
+  } catch {}
 
   // Lưu đồng thời bảng AutoBank webhook để đảm bảo tương thích ngược
   if (fullConfig.webhook) {

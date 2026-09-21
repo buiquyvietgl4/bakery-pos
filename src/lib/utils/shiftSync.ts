@@ -19,7 +19,7 @@ export const STORAGE_KEY_SHIFT_HISTORY = 'bakery_shift_history';
 export const SYS_CONFIG_CURRENT_SHIFT = '00000000-0000-0000-0000-000000000012';
 export const SYS_CONFIG_CURRENT_SHIFT_NAME = 'SYS_CONFIG_CURRENT_SHIFT';
 
-export const SYS_CONFIG_SHIFT_HISTORY = '00000000-0000-0000-0000-000000000013';
+export const SYS_CONFIG_SHIFT_HISTORY = '00000000-0000-0000-0000-000000000030';
 export const SYS_CONFIG_SHIFT_HISTORY_NAME = 'SYS_CONFIG_SHIFT_HISTORY';
 
 export const EVENT_CURRENT_SHIFT_UPDATED = 'bakery_current_shift_updated';
@@ -71,13 +71,23 @@ export function getCurrentShiftLocally(): ShiftState {
           shiftCode: parsed.shiftCode || generateShiftCode(0),
           isOpen: parsed.isOpen ?? true,
           openedAt: parsed.openedAt || new Date().toISOString(),
-          openingCash: Number(parsed.openingCash ?? 500000),
+          openingCash: Number(parsed.openingCash !== undefined ? parsed.openingCash : 0),
           cashSales: Number(parsed.cashSales ?? 0),
           transferSales: Number(parsed.transferSales ?? 0),
           orderCount: Number(parsed.orderCount ?? 0),
           openedBy: parsed.openedBy || 'Thu Ngân',
           notes: parsed.notes,
         };
+      }
+
+      // Nếu chưa có ca hiện tại trong localStorage, kế thừa số dư bàn giao từ ca gần nhất
+      const history = getShiftHistoryLocally();
+      if (history.length > 0) {
+        const last = history[0];
+        const lastCash = last.transferredToNextShift !== undefined ? Number(last.transferredToNextShift) : Number(last.closingCash || 0);
+        const inheritedShift = createInitialShift(lastCash, last.staffName || 'Thu Ngân');
+        saveCurrentShiftLocally(inheritedShift);
+        return inheritedShift;
       }
     } catch (e) {
       console.warn('Lỗi đọc ca bán hàng cục bộ:', e);
@@ -127,7 +137,7 @@ export async function fetchCurrentShiftFromDb(): Promise<ShiftState> {
             shiftCode: parsed.shiftCode || fallback.shiftCode || generateShiftCode(0),
             isOpen: parsed.isOpen ?? true,
             openedAt: parsed.openedAt || fallback.openedAt,
-            openingCash: Number(parsed.openingCash ?? 500000),
+            openingCash: Number(parsed.openingCash !== undefined ? parsed.openingCash : fallback.openingCash),
             cashSales: Number(parsed.cashSales ?? 0),
             transferSales: Number(parsed.transferSales ?? 0),
             orderCount: Number(parsed.orderCount ?? 0),
@@ -216,7 +226,39 @@ export function getShiftHistoryLocally(): ShiftRecord[] {
       const raw = localStorage.getItem(STORAGE_KEY_SHIFT_HISTORY);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          // Lọc nghiêm ngặt: Phải là bản ghi ca bán hàng thực sự (có shiftCode hoặc openingCash/closingCash)
+          // Loại bỏ các object thông báo hay cấu hình khác bị ghi đè nhầm
+          const valid = parsed
+            .filter(
+              (item: any) =>
+                item &&
+                typeof item === 'object' &&
+                !item.type?.includes('notif') &&
+                !item.channel &&
+                (item.shiftCode || item.openingCash !== undefined || item.closingCash !== undefined)
+            )
+            .map((item: any) => {
+              const diff = Math.round(Number(item.difference ?? 0));
+              return {
+                ...item,
+                difference: diff,
+                expectedCash: Math.round(Number(item.expectedCash ?? 0)),
+                closingCash: Math.round(Number(item.closingCash ?? 0)),
+                openingCash: Math.round(Number(item.openingCash ?? 0)),
+                cashSales: Math.round(Number(item.cashSales ?? 0)),
+                transferSales: Math.round(Number(item.transferSales ?? 0)),
+                totalRevenue: Math.round(Number(item.totalRevenue ?? (Number(item.cashSales || 0) + Number(item.transferSales || 0)))),
+                status: diff === 0 ? 'balanced' : diff > 0 ? 'surplus' : 'shortage',
+              };
+            });
+
+          // Nếu có item rác bị lọc bỏ, đồng bộ lại localStorage cho sạch sẽ
+          if (valid.length !== parsed.length) {
+            localStorage.setItem(STORAGE_KEY_SHIFT_HISTORY, JSON.stringify(valid));
+          }
+          return valid;
+        }
       }
     } catch (e) {
       console.warn('Lỗi đọc lịch sử giao ca cục bộ:', e);
@@ -259,8 +301,32 @@ export async function fetchShiftHistoryFromDb(): Promise<ShiftRecord[]> {
       try {
         const parsed = JSON.parse(data.notes);
         if (Array.isArray(parsed)) {
-          saveShiftHistoryLocally(parsed);
-          return parsed;
+          const valid = parsed
+            .filter(
+              (item: any) =>
+                item &&
+                typeof item === 'object' &&
+                !item.type?.includes('notif') &&
+                !item.channel &&
+                (item.shiftCode || item.openingCash !== undefined || item.closingCash !== undefined)
+            )
+            .map((item: any) => {
+              const diff = Math.round(Number(item.difference ?? 0));
+              return {
+                ...item,
+                difference: diff,
+                expectedCash: Math.round(Number(item.expectedCash ?? 0)),
+                closingCash: Math.round(Number(item.closingCash ?? 0)),
+                openingCash: Math.round(Number(item.openingCash ?? 0)),
+                cashSales: Math.round(Number(item.cashSales ?? 0)),
+                transferSales: Math.round(Number(item.transferSales ?? 0)),
+                totalRevenue: Math.round(Number(item.totalRevenue ?? (Number(item.cashSales || 0) + Number(item.transferSales || 0)))),
+                status: diff === 0 ? 'balanced' : diff > 0 ? 'surplus' : 'shortage',
+              };
+            });
+
+          saveShiftHistoryLocally(valid);
+          return valid;
         }
       } catch (parseErr) {
         console.warn('Lỗi parse JSON SYS_CONFIG_SHIFT_HISTORY:', parseErr);

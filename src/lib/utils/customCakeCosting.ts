@@ -12,6 +12,7 @@ import {
   CakeAddonOption,
 } from '@/lib/constants/cakeCostingData';
 import { supabase } from '@/lib/supabase/client';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 export const CAKE_COSTING_KEY = 'bakery_cake_costing_config';
 export const CAKE_COSTING_UPDATED_EVENT = 'bakery_cake_costing_updated';
@@ -57,6 +58,11 @@ export function saveCakeCostingConfig(config: CustomCakeCostingConfig): void {
   } catch (err) {
     console.warn('[CakeCosting] Lỗi lưu cấu hình local:', err);
   }
+
+  // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+  try {
+    autoSyncToLocalSqlFolder().catch(() => {});
+  } catch {}
 
   // Đồng bộ lên Supabase nếu online
   if (typeof navigator !== 'undefined' && navigator.onLine) {

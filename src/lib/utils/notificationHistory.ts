@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 export type NotificationType =
   | 'new_order'
@@ -136,6 +137,11 @@ export function getNotificationHistory(): NotificationLogItem[] {
  * Lưu danh sách thông báo lên Supabase Cloud SQL
  */
 export async function saveNotificationHistoryToDb(list: NotificationLogItem[]): Promise<void> {
+  // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
+  try {
+    autoSyncToLocalSqlFolder().catch(() => {});
+  } catch {}
+
   if (isLocalMode()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 

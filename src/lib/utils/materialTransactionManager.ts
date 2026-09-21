@@ -9,7 +9,7 @@ import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 const STORAGE_KEY = 'bakery_material_transactions';
 export const MATERIAL_TRANSACTION_EVENT = 'bakery_material_transactions_updated';
 
-const DB_ROW_MATERIAL_TRANSACTIONS_ID = '00000000-0000-0000-0000-000000000014';
+const DB_ROW_MATERIAL_TRANSACTIONS_ID = '00000000-0000-0000-0000-000000000031';
 const DB_ROW_MATERIAL_TRANSACTIONS_NAME = 'SYS_CONFIG_MATERIAL_TRANSACTIONS';
 
 /**

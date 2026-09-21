@@ -23,10 +23,11 @@ class OfflineSyncWorker {
     // 2. Kích hoạt tức thì khi trình duyệt có mạng trở lại
     window.addEventListener('online', this.handleOnline);
 
-    // 3. Chạy 1 vòng quét khởi động sau 3 giây
+    // 3. Chạy 1 vòng quét khởi động sau 1.5 giây
     setTimeout(() => {
+      this.notifyQueueChanged();
       this.flushPendingOrders();
-    }, 3000);
+    }, 1500);
 
     console.log('🚀 OfflineSyncWorker started - Sẵn sàng tự động đẩy bù đơn offline lên Supabase SQL');
   }
@@ -46,6 +47,50 @@ class OfflineSyncWorker {
     console.log('🌐 Kết nối mạng phục hồi - Kích hoạt đẩy bù đơn hàng offline ngay lập tức');
     this.flushPendingOrders();
   };
+
+  /**
+   * Đếm số lượng đơn hàng đang tồn trong hàng đợi offline chưa được đồng bộ
+   */
+  public async getPendingOrdersCount(): Promise<number> {
+    if (typeof window === 'undefined') return 0;
+    try {
+      let dexieCount = 0;
+      try {
+        dexieCount = await db.orders
+          .filter((o: any) => o.sync_status === 'pending' || o.is_offline === true)
+          .count();
+      } catch {}
+
+      let localCount = 0;
+      try {
+        const raw = localStorage.getItem('bakery_orders');
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) {
+            localCount = arr.filter((o: any) => o.sync_status === 'pending' || o.is_offline === true).length;
+          }
+        }
+      } catch {}
+
+      return Math.max(dexieCount, localCount);
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Phát thông báo cập nhật số lượng đơn trong hàng đợi offline cho Header và toàn hệ thống
+   */
+  public notifyQueueChanged(count?: number) {
+    if (typeof window === 'undefined') return;
+    if (typeof count === 'number') {
+      window.dispatchEvent(new CustomEvent('bakery_offline_queue_changed', { detail: { count } }));
+    } else {
+      this.getPendingOrdersCount().then((c) => {
+        window.dispatchEvent(new CustomEvent('bakery_offline_queue_changed', { detail: { count: c } }));
+      });
+    }
+  }
 
   /**
    * Quét và đẩy toàn bộ các đơn hàng chưa đồng bộ lên Supabase Cloud SQL
@@ -98,9 +143,11 @@ class OfflineSyncWorker {
 
       const ordersToSync = Array.from(pendingMap.values());
       if (ordersToSync.length === 0) {
+        this.notifyQueueChanged(0);
         return { syncedCount: 0, errors: [] };
       }
 
+      this.notifyQueueChanged(ordersToSync.length);
       console.log(`⏳ Tìm thấy ${ordersToSync.length} đơn hàng offline đang chờ đẩy lên Supabase SQL...`);
 
       let hasLocalChanges = false;
@@ -158,6 +205,7 @@ class OfflineSyncWorker {
       console.warn('Lỗi trong chu kỳ OfflineSyncWorker:', err);
     } finally {
       this.isSyncing = false;
+      this.notifyQueueChanged();
     }
 
     return { syncedCount, errors };

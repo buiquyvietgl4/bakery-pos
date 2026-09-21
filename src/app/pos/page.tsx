@@ -20,7 +20,7 @@ import {
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
   Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet,
   Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings, ShieldCheck,
-  Home, KeyRound, RefreshCw
+  Home, KeyRound, RefreshCw, Barcode
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -59,6 +59,7 @@ import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { ManagerPinModal } from '@/components/pos/ManagerPinModal';
 import {
   getCurrentShiftLocally,
+  saveCurrentShiftLocally,
   fetchCurrentShiftFromDb,
   saveCurrentShiftToDb,
   closeShiftAndOpenNew,
@@ -214,6 +215,9 @@ export default function POSPage() {
   const [shiftHandoverNotes, setShiftHandoverNotes] = useState<string>('');
   const [isClosingShift, setIsClosingShift] = useState(false);
   const [shiftSuccessMsg, setShiftSuccessMsg] = useState<string | null>(null);
+  const [lastClosedShift, setLastClosedShift] = useState<ShiftRecord | null>(null);
+  const [handoverMode, setHandoverMode] = useState<'keep_all' | 'withdraw'>('keep_all');
+  const [leaveForNextShiftInput, setLeaveForNextShiftInput] = useState<number>(0);
 
   // Cấu hình Giờ Cảnh Báo Giao Hàng
   const [deliveryAlertConfig, setDeliveryAlertConfig] = useState<DeliveryAlertConfig>(() => getDeliveryAlertConfig());
@@ -1969,6 +1973,86 @@ export default function POSPage() {
     });
   };
 
+  // Hardware Barcode Scanner Listener:
+  // Tự động nhận diện tín hiệu từ súng quét mã vạch vật lý USB / Bluetooth / 2.4G
+  // Máy quét gửi chuỗi ký tự dồn dập (< 80ms giữa các phím) và kết thúc bằng phím Enter
+  const barcodeBufferRef = useRef<{ chars: string[]; lastTime: number }>({ chars: [], lastTime: 0 });
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Bỏ qua nếu các phím chức năng hệ thống đang giữ (Ctrl, Alt, Meta)
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+
+      const now = Date.now();
+      const interval = now - barcodeBufferRef.current.lastTime;
+      barcodeBufferRef.current.lastTime = now;
+
+      // Nếu khoảng cách giữa 2 phím > 120ms (tốc độ gõ người bình thường), xóa buffer
+      if (interval > 120) {
+        barcodeBufferRef.current.chars = [];
+      }
+
+      if (e.key === 'Enter') {
+        const scannedCode = barcodeBufferRef.current.chars.join('').trim();
+        barcodeBufferRef.current.chars = [];
+
+        // Mã vạch tiêu chuẩn tối thiểu 3 ký tự
+        if (scannedCode.length >= 3) {
+          // Tìm bánh có barcode hoặc ID/SKU trùng khớp
+          const matchedProduct = products.find((p) => {
+            if (!p.is_active) return false;
+            const pCode = (p.barcode || '').trim().toLowerCase();
+            const pId = (p.id || '').trim().toLowerCase();
+            const sCode = scannedCode.toLowerCase();
+            return (pCode && pCode === sCode) || pId === sCode;
+          });
+
+          if (matchedProduct) {
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Nếu ô input nào đó đang focus và bị máy quét điền dính chuỗi, reset nếu là ô tìm kiếm
+            const activeEl = document.activeElement as HTMLElement | null;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+              if (activeEl.getAttribute('placeholder')?.includes('Tìm') || (activeEl as HTMLInputElement).value?.includes(scannedCode)) {
+                setSearchQuery('');
+                (activeEl as HTMLInputElement).value = '';
+                activeEl.blur();
+              }
+            }
+
+            // Phát âm bíp thành công và thêm ngay vào giỏ hàng
+            soundManager.playBarcodeScanSuccess();
+            addToCart(matchedProduct, true);
+            setCartToast({
+              name: `📦 [Mã vạch] ${matchedProduct.name}`,
+              qty: 1,
+              time: Date.now(),
+            });
+            return;
+          } else {
+            // Không tìm thấy sản phẩm có mã vạch này
+            soundManager.playBarcodeScanError();
+            setCartToast({
+              name: `⚠️ Không tìm thấy mã vạch: "${scannedCode}"`,
+              qty: 0,
+              time: Date.now(),
+            });
+          }
+        }
+        return;
+      }
+
+      // Chỉ lưu các ký tự đơn
+      if (e.key && e.key.length === 1) {
+        barcodeBufferRef.current.chars.push(e.key);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [products]);
+
   const updateQuantity = (productId: string, delta: number) => {
     // Chặn tăng số lượng quá tồn kho nếu là hàng nhập ngoài
     if (delta > 0) {
@@ -2610,13 +2694,18 @@ export default function POSPage() {
         } catch {}
       }
 
-      // 2. Cập nhật tiền ca bán (chỉ tính số tiền thu ngay lúc này)
-      setShift((prev) => ({
-        ...prev,
-        orderCount: prev.orderCount + 1,
-        cashSales: effectivePaymentMethod === 'cash' ? prev.cashSales + dueNow : prev.cashSales,
-        transferSales: effectivePaymentMethod !== 'cash' ? prev.transferSales + dueNow : prev.transferSales,
-      }));
+      // 2. Cập nhật tiền ca bán (chỉ tính số tiền thu ngay lúc này) và lưu vĩnh viễn vào CSDL
+      setShift((prev) => {
+        const updated: ShiftState = {
+          ...prev,
+          orderCount: (prev.orderCount || 0) + 1,
+          cashSales: effectivePaymentMethod === 'cash' ? (prev.cashSales || 0) + dueNow : (prev.cashSales || 0),
+          transferSales: effectivePaymentMethod !== 'cash' ? (prev.transferSales || 0) + dueNow : (prev.transferSales || 0),
+        };
+        saveCurrentShiftLocally(updated);
+        saveCurrentShiftToDb(updated).catch(() => {});
+        return updated;
+      });
 
       // 2.5. Tự động trừ số lượng tồn kho của các sản phẩm bánh đã bán
       setProducts((prev) => {
@@ -3107,14 +3196,19 @@ export default function POSPage() {
 
       setPreordersList((prev) => [unifiedPreorder, ...prev]);
 
-      // 2. Cập nhật tiền ca bán từ tiền cọc
+      // 2. Cập nhật tiền ca bán từ tiền cọc và lưu vĩnh viễn vào CSDL
       if (depositAmount > 0) {
-        setShift((prev) => ({
-          ...prev,
-          orderCount: prev.orderCount + 1,
-          cashSales: preorderForm.paymentMethod === 'cash' ? prev.cashSales + depositAmount : prev.cashSales,
-          transferSales: preorderForm.paymentMethod !== 'cash' ? prev.transferSales + depositAmount : prev.transferSales,
-        }));
+        setShift((prev) => {
+          const updated: ShiftState = {
+            ...prev,
+            orderCount: (prev.orderCount || 0) + 1,
+            cashSales: preorderForm.paymentMethod === 'cash' ? (prev.cashSales || 0) + depositAmount : (prev.cashSales || 0),
+            transferSales: preorderForm.paymentMethod !== 'cash' ? (prev.transferSales || 0) + depositAmount : (prev.transferSales || 0),
+          };
+          saveCurrentShiftLocally(updated);
+          saveCurrentShiftToDb(updated).catch(() => {});
+          return updated;
+        });
       }
 
       // 3. Đóng modal và tạo phiếu hẹn/Hóa đơn cọc
@@ -3434,7 +3528,7 @@ export default function POSPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Tìm bánh nhanh (Bông lan, Mousse...)"
+                  placeholder="Tìm bánh nhanh hoặc quét mã..."
                   className="w-full pl-10 pr-8 py-2 rounded-2xl bg-white border border-stone-200/90 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25 focus:border-amber-500 transition-all shadow-2xs"
                 />
                 {searchQuery && (
@@ -3445,6 +3539,14 @@ export default function POSPage() {
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}
+              </div>
+
+              {/* Huy hiệu máy quét mã vạch mobile */}
+              <div
+                title="Hệ thống tự động nhận diện súng quét mã vạch USB/Bluetooth"
+                className="flex items-center justify-center w-8 h-8 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 shrink-0 shadow-2xs"
+              >
+                <Barcode className="w-4 h-4 text-amber-700" />
               </div>
 
               {/* Huy Hiệu Trạng Thái Chế Độ CSDL (Online Cloud vs Local SQL) */}
@@ -3660,6 +3762,16 @@ export default function POSPage() {
                   <X className="w-4 h-4" />
                 </button>
               )}
+            </div>
+
+            {/* Huy hiệu súng quét mã vạch desktop */}
+            <div
+              title="Súng quét mã vạch USB / Bluetooth / 2.4G đang kết nối và sẵn sàng quét bất kỳ lúc nào"
+              className="hidden xl:flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-amber-500/10 border border-amber-300/80 text-amber-900 text-xs font-bold shrink-0 shadow-2xs"
+            >
+              <Barcode className="w-4 h-4 text-amber-700" />
+              <span>Súng quét: Sẵn sàng</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             </div>
 
             {/* NÚT TẠO ĐƠN ĐẶT BÁNH SINH NHẬT THEO CƠ CHẾ FLOWCHART MỚI */}
@@ -6450,7 +6562,26 @@ export default function POSPage() {
                     <span className="font-bold text-zinc-900">{shift.orderCount || 0} đơn</span>
                   </div>
                   <div className="flex justify-between items-center pt-1 border-t border-amber-200/60">
-                    <span className="text-zinc-600">Tiền mặt đầu ca (vốn mở két):</span>
+                    <span className="text-zinc-600 flex items-center gap-1">
+                      <span>Tiền mặt đầu ca (vốn mở két):</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = prompt('Điều chỉnh tiền mặt đầu ca (vốn mở két):', String(shift.openingCash || 0));
+                          if (val !== null) {
+                            const newOpening = Math.max(0, parseInt(val.replace(/\D/g, '')) || 0);
+                            const updated = { ...shift, openingCash: newOpening };
+                            setShift(updated);
+                            saveCurrentShiftLocally(updated);
+                            saveCurrentShiftToDb(updated).catch(() => {});
+                          }
+                        }}
+                        className="text-[10px] text-amber-700 underline font-semibold hover:text-amber-800 ml-1 cursor-pointer"
+                        title="Bấm để chỉnh sửa vốn đầu ca nếu cần"
+                      >
+                        [Sửa vốn]
+                      </button>
+                    </span>
                     <span className="font-bold text-zinc-900">{(shift.openingCash || 0).toLocaleString('vi-VN')}₫</span>
                   </div>
                   <div className="flex justify-between items-center text-emerald-700">
@@ -6548,6 +6679,76 @@ export default function POSPage() {
                   </div>
                 )}
 
+                {/* Lựa chọn số tiền bàn giao sang ca sau */}
+                <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2">
+                  <div className="text-xs font-bold text-zinc-900 flex items-center justify-between">
+                    <span>Số tiền để lại két bàn giao ca sau:</span>
+                    <span className="text-[11px] font-semibold text-amber-800">
+                      {handoverMode === 'keep_all'
+                        ? 'Chuyển 100% tiền két sang ca sau'
+                        : `Để lại ${(leaveForNextShiftInput || 0).toLocaleString('vi-VN')}₫`}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHandoverMode('keep_all')}
+                      className={`p-2 rounded-xl text-xs font-bold border transition text-center cursor-pointer ${
+                        handoverMode === 'keep_all'
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                          : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+                      }`}
+                    >
+                      <div>Chuyển toàn bộ két</div>
+                      <div className="text-[10px] opacity-90 mt-0.5 font-mono font-normal">
+                        {(closingCashInput || expectedCashInRegister).toLocaleString('vi-VN')}₫
+                      </div>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHandoverMode('withdraw');
+                        if (!leaveForNextShiftInput) {
+                          setLeaveForNextShiftInput(Math.min(500000, closingCashInput || expectedCashInRegister));
+                        }
+                      }}
+                      className={`p-2 rounded-xl text-xs font-bold border transition text-center cursor-pointer ${
+                        handoverMode === 'withdraw'
+                          ? 'bg-amber-600 text-white border-amber-600 shadow-2xs'
+                          : 'bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50'
+                      }`}
+                    >
+                      <div>Rút nộp chủ / két</div>
+                      <div className="text-[10px] opacity-90 mt-0.5 font-normal">
+                        Để lại số tiền lẻ tùy ý
+                      </div>
+                    </button>
+                  </div>
+
+                  {handoverMode === 'withdraw' && (
+                    <div className="pt-2 border-t border-amber-200/80 space-y-1.5 animate-in fade-in">
+                      <div className="flex justify-between items-center text-xs font-medium text-zinc-700">
+                        <span>Tiền để lại két cho ca sau:</span>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={formatCurrencyInput(leaveForNextShiftInput)}
+                          onFocus={(e) => e.target.select()}
+                          onChange={(e) => setLeaveForNextShiftInput(parseCurrencyInput(e.target.value))}
+                          className="w-36 px-2.5 py-1 text-right bg-white border border-amber-300 rounded-lg font-bold font-mono text-zinc-900 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          placeholder="Số tiền để lại..."
+                        />
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-stone-600 bg-white/90 p-2 rounded-lg border border-amber-100 font-semibold">
+                        <span>Tiền rút ra nộp chủ tiệm / két sắt:</span>
+                        <span className="text-emerald-700 font-bold font-mono">
+                          {Math.max(0, (closingCashInput || expectedCashInRegister) - leaveForNextShiftInput).toLocaleString('vi-VN')}₫
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Ghi chú giải trình / bàn giao */}
                 <div className="space-y-1">
                   <label className="text-[11px] font-bold text-zinc-700">
@@ -6562,11 +6763,24 @@ export default function POSPage() {
                   />
                 </div>
 
-                {/* Thông báo kết quả chốt ca thành công */}
+                {/* Thông báo kết quả chốt ca thành công & nút In phiếu ca tuỳ chọn */}
                 {shiftSuccessMsg && (
-                  <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2 animate-in fade-in">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                    <span>{shiftSuccessMsg}</span>
+                  <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center justify-between gap-2 animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{shiftSuccessMsg}</span>
+                    </div>
+                    {lastClosedShift && (
+                      <button
+                        type="button"
+                        onClick={() => printShiftHandoverReceipt(lastClosedShift, branding)}
+                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold flex items-center gap-1 transition cursor-pointer shrink-0 shadow-sm"
+                        title="Bấm để in phiếu chốt ca vừa xong"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>In Phiếu Ca</span>
+                      </button>
+                    )}
                   </div>
                 )}
 
@@ -6622,17 +6836,24 @@ export default function POSPage() {
                       }
                       setIsClosingShift(true);
                       try {
+                        const transferredToNextShift = handoverMode === 'withdraw'
+                          ? leaveForNextShiftInput
+                          : (closingCashInput || expectedCashInRegister);
+
                         const { closedShift, newShift } = await closeShiftAndOpenNew({
                           closingCash: closingCashInput,
                           staffName: user?.name || 'Thu Ngân',
                           notes: shiftHandoverNotes,
+                          transferredToNextShift,
                         });
-                        setShiftSuccessMsg(`Đã chốt sổ ca #${closedShift.shiftCode} thành công và đồng bộ lên CSDL SQL!`);
-                        printShiftHandoverReceipt(closedShift, branding);
+                        setLastClosedShift(closedShift);
+                        setShiftSuccessMsg(`Đã chốt sổ ca #${closedShift.shiftCode} thành công! Ca mới mở với vốn ${(newShift.openingCash || 0).toLocaleString('vi-VN')}₫.`);
+                        // Không tự động in đè lên trình duyệt, chỉ in khi người dùng bấm nút [In Phiếu Ca]
                         setShift(newShift);
                         setClosingCashInput(newShift.openingCash);
                         setShiftHandoverNotes('');
-                        setTimeout(() => setShiftSuccessMsg(null), 5000);
+                        setHandoverMode('keep_all');
+                        setTimeout(() => setShiftSuccessMsg(null), 15000);
                       } catch (err: any) {
                         alert('Lỗi chốt ca: ' + (err?.message || err));
                       } finally {

@@ -449,6 +449,17 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     try {
       const rawO = localStorage.getItem('bakery_orders');
       if (rawO) orders = JSON.parse(rawO);
+      const rawPo = localStorage.getItem('bakery_preorders');
+      if (rawPo) {
+        const poList = JSON.parse(rawPo);
+        if (Array.isArray(poList)) {
+          poList.forEach((po: any) => {
+            if (!orders.some((o) => o.order_number === po.order_number || o.id === po.id)) {
+              orders.push(po);
+            }
+          });
+        }
+      }
     } catch {}
   }
 
@@ -574,7 +585,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawTV) transferVerifyConfig = JSON.parse(rawTV);
       const rawNH = localStorage.getItem('bakery_notification_history');
       if (rawNH) notificationHistory = JSON.parse(rawNH);
-      const rawPM = localStorage.getItem('bakery_product_metadata');
+      const rawPM = localStorage.getItem('bakery_product_metadata') || localStorage.getItem('bakery_product_metadata_map');
       if (rawPM) productMetadata = JSON.parse(rawPM);
       const rawDP = localStorage.getItem('bakery_deleted_product_ids');
       if (rawDP) deletedProductIds = JSON.parse(rawDP);

@@ -15,7 +15,11 @@ import {
   broadcastBakeApprovalRequest,
   broadcastBakeApprovalResolved,
   parseOrderBakeShortage,
-  broadcastProductChange
+  broadcastProductChange,
+  saveOvenBatchesToDb,
+  fetchOvenBatchesFromDb,
+  broadcastOvenBatches,
+  OVEN_BATCHES_SYNC_EVENT
 } from '@/lib/supabase/realtimeSync';
 import { persistProductToSupabase } from '@/lib/utils/productManager';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
@@ -300,6 +304,37 @@ export default function KitchenPage() {
     }
     return [];
   });
+
+  // Đồng bộ mẻ nướng lò từ CSDL Supabase và giữa các thiết bị
+  useEffect(() => {
+    fetchOvenBatchesFromDb().then((batches) => {
+      if (Array.isArray(batches) && batches.length > 0) {
+        setOvenBatches(batches);
+      }
+    }).catch(console.error);
+
+    const handleBatchesSync = (e: any) => {
+      if (e.detail && Array.isArray(e.detail)) {
+        setOvenBatches(e.detail);
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'bakery_oven_batches' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) setOvenBatches(parsed);
+        } catch {}
+      }
+    };
+
+    window.addEventListener(OVEN_BATCHES_SYNC_EVENT, handleBatchesSync);
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener(OVEN_BATCHES_SYNC_EVENT, handleBatchesSync);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // ── ĐIỀU HƯỚNG TAB TRÊN ĐIỆN THOẠI (KDS MOBILE TABS) ──
   const [kdsMobileTab, setKdsMobileTab] = useState<'pending' | 'preparing' | 'ready' | 'all'>('pending');
@@ -622,6 +657,9 @@ export default function KitchenPage() {
         localStorage.setItem('bakery_oven_batches', JSON.stringify(updated));
       } catch {}
     }
+    saveOvenBatchesToDb(updated).catch(() => {});
+    broadcastOvenBatches(updated).catch(() => {});
+    autoSyncToLocalSqlFolder().catch(() => {});
 
     soundManager.playNewOrderChime();
     phoneNotificationService.triggerOrderNotification({
@@ -754,6 +792,9 @@ export default function KitchenPage() {
         localStorage.setItem('bakery_oven_batches', JSON.stringify(remainingBatches));
       } catch {}
     }
+    saveOvenBatchesToDb(remainingBatches).catch(() => {});
+    broadcastOvenBatches(remainingBatches).catch(() => {});
+    autoSyncToLocalSqlFolder().catch(() => {});
 
     soundManager.playNewOrderChime();
     phoneNotificationService.triggerOrderNotification({

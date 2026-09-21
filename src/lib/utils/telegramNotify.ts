@@ -8,6 +8,7 @@ import {
 } from '@/lib/supabase/realtimeSync';
 import { addNotificationLog } from './notificationHistory';
 import { isOrderCompletedOrCancelled } from './deliveryAlerts';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 
 export interface TelegramConfig {
   enabled: boolean;
@@ -157,6 +158,11 @@ export async function saveTelegramConfigToDb(
 
     // 4. Phát sóng Realtime cho toàn bộ các thiết bị (POS, KDS, ĐT, Laptop) đang mở
     await broadcastTelegramConfig(fullConfig);
+
+    // 5. Tự động ghi vào Local SQL nếu đang chạy Local Mode
+    try {
+      autoSyncToLocalSqlFolder().catch(() => {});
+    } catch {}
 
     return { success: true };
   } catch (err: any) {

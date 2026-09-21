@@ -336,6 +336,59 @@ class AudioManager {
   public playSuccessTone() {
     this.playPaymentSuccessChime();
   }
+
+  /**
+   * Âm bíp quét mã vạch thành công (Standard POS Barcode Beep)
+   * Tần số cao trong trẻo 1800Hz, ngân ngắn 75ms
+   */
+  public playBarcodeScanSuccess() {
+    if (!this.soundEnabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1800, now);
+      gain.gain.setValueAtTime(0, now);
+      gain.gain.linearRampToValueAtTime(0.3, now + 0.005);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + 0.085);
+    } catch (e) {
+      console.warn('Barcode sound error:', e);
+    }
+  }
+
+  /**
+   * Âm bíp lỗi quét mã vạch (Không tìm thấy sản phẩm hoặc lỗi tồn kho)
+   */
+  public playBarcodeScanError() {
+    if (!this.soundEnabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      [0, 0.12].forEach((offset) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(320, now + offset);
+        gain.gain.setValueAtTime(0, now + offset);
+        gain.gain.linearRampToValueAtTime(0.2, now + offset + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.09);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.1);
+      });
+    } catch (e) {
+      console.warn('Barcode sound error:', e);
+    }
+  }
 }
 
 export const soundManager = new AudioManager();

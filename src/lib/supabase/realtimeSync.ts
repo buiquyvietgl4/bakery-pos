@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { cleanCakeNameAndSize, splitRespectingParentheses } from '@/lib/utils/customCakeCosting';
 
 export interface SyncOrderPayload {
@@ -960,6 +961,7 @@ export async function savePendingTransferToDb(payload: TransferApprovalPayload):
         const updated = [payload, ...list];
         localStorage.setItem('bakery_pending_transfers', JSON.stringify(updated));
       }
+      autoSyncToLocalSqlFolder().catch(() => {});
     } catch {}
   }
 
@@ -1015,6 +1017,7 @@ export async function removePendingTransferFromDb(orderNumber: string): Promise<
       if (!resList.includes(orderNumber)) {
         resList.push(orderNumber);
         localStorage.setItem('bakery_resolved_transfers', JSON.stringify(resList.slice(-100)));
+        saveResolvedTransfersToDb(resList).catch(() => {});
       }
       const raw = localStorage.getItem('bakery_pending_transfers');
       if (raw) {
@@ -1022,6 +1025,7 @@ export async function removePendingTransferFromDb(orderNumber: string): Promise<
         const updated = list.filter((p) => p.order_number !== orderNumber);
         localStorage.setItem('bakery_pending_transfers', JSON.stringify(updated));
       }
+      autoSyncToLocalSqlFolder().catch(() => {});
     } catch {}
   }
 
@@ -1275,6 +1279,9 @@ export async function syncOrderToSupabase(
     if (order.notes) {
       updatePayload.notes = order.notes;
     }
+    if (order.transfer_proof_image && !String(updatePayload.notes || '').includes('[PROOF_IMG:')) {
+      updatePayload.notes = `${updatePayload.notes || ''}\n[PROOF_IMG:${order.transfer_proof_image}]`.trim();
+    }
 
     const { data: updatedRows, error: updateErr } = await supabase
       .from('orders')
@@ -1301,11 +1308,16 @@ export async function syncOrderToSupabase(
 
     // 2. Nếu đơn chưa có trong Supabase (0 dòng cập nhật), tiến hành INSERT đơn lên Supabase
     if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
+      let initialNotes = order.notes || '';
+      if (order.transfer_proof_image && !initialNotes.includes('[PROOF_IMG:')) {
+        initialNotes = `${initialNotes}\n[PROOF_IMG:${order.transfer_proof_image}]`.trim();
+      }
+
       const orderPayload: any = {
         order_number: orderNum,
         order_type: order.order_type || (order.preorder_pickup_at || order.pickupDateTime ? 'preorder' : 'takeaway'),
         status: nextStatus,
-        notes: order.notes || '',
+        notes: initialNotes,
         subtotal: Number(order.subtotal || order.total_amount || order.totalPrice || 0),
         total_amount: Number(order.total_amount || order.totalPrice || 0),
         discount_amount: Number(order.discount_amount ?? order.discountAmount ?? 0),
@@ -1354,6 +1366,17 @@ export async function syncOrderToSupabase(
             const qty = Number(it.quantity || 1);
             const unitCost = Number(it.unit_cost ?? it.unitCost ?? it.cost ?? it.product?.base_cost_price ?? 0);
             const pId = it.product_id || it.productId || it.product?.id || null;
+
+            // Tự động gắn tag phân loại thuế cố định vĩnh viễn vào ghi chú của món
+            const isImported = it.product_type === 'imported' || 
+              (it.category && String(it.category).toLowerCase().includes('nhập')) ||
+              (it.supplier_name && !it.bom_preset_id);
+            const taxTag = isImported ? '[Hàng nhập 1.5%]' : '[Bánh tiệm 4.5%]';
+            let itemNotes = (it.notes || '').trim();
+            if (!itemNotes.includes('[Hàng nhập 1.5%]') && !itemNotes.includes('[Bánh tiệm 4.5%]')) {
+              itemNotes = `${taxTag} ${itemNotes}`.trim();
+            }
+
             return {
               order_id: insertedOrder.id,
               product_id: isValidUUID(pId) ? pId : null,
@@ -1361,7 +1384,7 @@ export async function syncOrderToSupabase(
               quantity: qty,
               unit_price: unitPrice,
               unit_cost: unitCost,
-              notes: it.notes || '',
+              notes: itemNotes,
             };
           });
 
@@ -1695,4 +1718,153 @@ export function parseOrderBakeShortage(order: any): OrderBakeShortageInfo {
     bakeStatus,
     isDoneBake: isExplicitlyDone,
   };
+}
+
+// ── ĐỒNG BỘ MẺ NƯỚNG LÒ BẾP (OVEN BATCHES) ĐA THIẾT BỊ ──
+export const DB_ROW_OVEN_BATCHES_ID = '00000000-0000-0000-0000-000000000022';
+export const DB_ROW_OVEN_BATCHES_NAME = 'SYS_CONFIG_OVEN_BATCHES';
+export const OVEN_BATCHES_SYNC_EVENT = 'bakery_oven_batches_synced';
+
+export async function saveOvenBatchesToDb(batches: any[]): Promise<void> {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('bakery_oven_batches', JSON.stringify(batches));
+    } catch {}
+  }
+
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+  try {
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_OVEN_BATCHES_ID,
+        name: DB_ROW_OVEN_BATCHES_NAME,
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: JSON.stringify(batches.slice(0, 50)),
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi saveOvenBatchesToDb:', err);
+  }
+}
+
+export async function fetchOvenBatchesFromDb(): Promise<any[]> {
+  if (isLocalMode()) {
+    return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_oven_batches') || '[]') : [];
+  }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_oven_batches') || '[]') : [];
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_OVEN_BATCHES_ID},name.eq.${DB_ROW_OVEN_BATCHES_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed)) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bakery_oven_batches', JSON.stringify(parsed));
+          window.dispatchEvent(new CustomEvent(OVEN_BATCHES_SYNC_EVENT, { detail: parsed }));
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi fetchOvenBatchesFromDb:', err);
+  }
+  return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_oven_batches') || '[]') : [];
+}
+
+export async function broadcastOvenBatches(batches: any[]): Promise<void> {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'oven_batches_updated',
+        payload: {
+          batches,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi broadcastOvenBatches:', err);
+  }
+}
+
+// ── ĐỒNG BỘ DANH SÁCH ĐƠN ĐÃ DUYỆT CHUYỂN KHOẢN (RESOLVED TRANSFERS) ──
+export const DB_ROW_RESOLVED_TRANSFERS_ID = '00000000-0000-0000-0000-000000000023';
+export const DB_ROW_RESOLVED_TRANSFERS_NAME = 'SYS_CONFIG_RESOLVED_TRANSFERS';
+
+export async function saveResolvedTransfersToDb(resolvedList: string[]): Promise<void> {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('bakery_resolved_transfers', JSON.stringify(resolvedList.slice(-150)));
+    } catch {}
+  }
+
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+  try {
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_RESOLVED_TRANSFERS_ID,
+        name: DB_ROW_RESOLVED_TRANSFERS_NAME,
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: JSON.stringify(resolvedList.slice(-150)),
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi saveResolvedTransfersToDb:', err);
+  }
+}
+
+export async function fetchResolvedTransfersFromDb(): Promise<string[]> {
+  if (isLocalMode()) return [];
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_RESOLVED_TRANSFERS_ID},name.eq.${DB_ROW_RESOLVED_TRANSFERS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed)) {
+        if (typeof window !== 'undefined') {
+          const raw = localStorage.getItem('bakery_resolved_transfers');
+          const localList: string[] = raw ? JSON.parse(raw) : [];
+          const merged = Array.from(new Set([...localList, ...parsed])).slice(-150);
+          localStorage.setItem('bakery_resolved_transfers', JSON.stringify(merged));
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi fetchResolvedTransfersFromDb:', err);
+  }
+  return [];
 }

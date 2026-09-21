@@ -11,6 +11,7 @@ import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 import { autoOrderWatcher } from '@/lib/supabase/autoOrderWatcher';
 import { getUnreadNotificationCount, subscribeNotificationHistory } from '@/lib/utils/notificationHistory';
 import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { offlineSyncWorker } from '@/lib/supabase/offlineSyncWorker';
 
 export default function Header() {
   const pathname = usePathname();
@@ -20,6 +21,8 @@ export default function Header() {
   const [isNotifSettingsOpen, setIsNotifSettingsOpen] = useState(false);
   const [notifModalTab, setNotifModalTab] = useState<'history' | 'pwa' | 'telegram' | 'kiosk'>('history');
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
+  const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(0);
+  const [isFlushingQueue, setIsFlushingQueue] = useState<boolean>(false);
   const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
   const { user, isAdmin, isKitchen, isCashier, canAccessKitchen, canAccessAdmin, logout, openLoginModal } = useAuth();
 
@@ -49,6 +52,19 @@ export default function Header() {
       setNotifPermission(phoneNotificationService.getPermission());
       localStorage.removeItem('bakery_auto_demo_enabled');
       autoOrderWatcher.start();
+      offlineSyncWorker.start();
+
+      // Đếm và cập nhật số đơn chờ đẩy offline
+      offlineSyncWorker.getPendingOrdersCount().then(setPendingOfflineCount);
+      const handleOfflineQueue = (e: any) => {
+        if (typeof e?.detail?.count === 'number') {
+          setPendingOfflineCount(e.detail.count);
+        } else {
+          offlineSyncWorker.getPendingOrdersCount().then(setPendingOfflineCount);
+        }
+      };
+      window.addEventListener('bakery_offline_queue_changed', handleOfflineQueue);
+      window.addEventListener('bakery_orders_updated', handleOfflineQueue);
 
       // Lắng nghe số thông báo chưa đọc
       const updateUnread = () => {
@@ -60,6 +76,8 @@ export default function Header() {
       return () => {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
+        window.removeEventListener('bakery_offline_queue_changed', handleOfflineQueue);
+        window.removeEventListener('bakery_orders_updated', handleOfflineQueue);
         unsubHistory();
       };
     }
@@ -262,8 +280,31 @@ export default function Header() {
               </>
             )}
 
-            {/* Online / Offline Badge */}
-            {isOnline ? (
+            {/* Offline Sync Queue & Live Sync Badge */}
+            {pendingOfflineCount > 0 ? (
+              <div className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-black bg-amber-100/90 text-amber-900 border border-amber-300 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
+                <span>{pendingOfflineCount} đơn chờ đẩy</span>
+                <button
+                  type="button"
+                  disabled={isFlushingQueue}
+                  onClick={async () => {
+                    setIsFlushingQueue(true);
+                    try {
+                      await offlineSyncWorker.flushPendingOrders();
+                      const c = await offlineSyncWorker.getPendingOrdersCount();
+                      setPendingOfflineCount(c);
+                    } finally {
+                      setIsFlushingQueue(false);
+                    }
+                  }}
+                  className="px-1.5 py-0.5 rounded bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-[9px] sm:text-[10px] font-black cursor-pointer shadow-2xs transition shrink-0"
+                  title="Bấm để đẩy ngay các đơn hàng offline lên Supabase SQL"
+                >
+                  {isFlushingQueue ? 'Đang đẩy...' : 'Đẩy ngay'}
+                </button>
+              </div>
+            ) : isOnline ? (
               <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
