@@ -5,7 +5,8 @@ import {
   X, Bell, Send, CheckCircle2, AlertCircle, Smartphone, HelpCircle,
   Sparkles, Database, Trash2, RefreshCw, Radio, Check, ShieldCheck,
   History, Clock, CheckCheck, ExternalLink, Cake, Flame, Inbox, Package,
-  AlertTriangle, MessageSquare, Settings, ArrowLeft, Eye, Volume2, VolumeX
+  AlertTriangle, MessageSquare, Settings, ArrowLeft, Eye, Volume2, VolumeX,
+  Timer, Truck
 } from 'lucide-react';
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerModal';
@@ -40,17 +41,30 @@ import {
 } from '@/lib/utils/notificationHistory';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
+import {
+  DeliveryAlertConfig,
+  DEFAULT_DELIVERY_ALERT_CONFIG,
+  getDeliveryAlertConfig,
+  fetchDeliveryAlertConfigFromDb,
+  saveDeliveryAlertConfigToDb,
+} from '@/lib/utils/deliveryAlerts';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  defaultTab?: 'history' | 'sound' | 'pwa' | 'telegram' | 'kiosk';
+  defaultTab?: 'history' | 'sound' | 'alert_timing' | 'pwa' | 'telegram' | 'kiosk';
 }
 
 export default function NotificationSettingsModal({ isOpen, onClose, defaultTab }: Props) {
-  // Tab: 'history' (Lịch sử xem lại) | 'sound' (Âm báo & Thử) | 'pwa' | 'telegram' | 'kiosk'
-  const [activeTab, setActiveTab] = useState<'history' | 'sound' | 'pwa' | 'telegram' | 'kiosk'>(defaultTab || 'history');
+  // Tab: 'history' (Lịch sử xem lại) | 'sound' (Âm báo & Thử) | 'alert_timing' (Giờ Bếp/Ship) | 'pwa' | 'telegram' | 'kiosk'
+  const [activeTab, setActiveTab] = useState<'history' | 'sound' | 'alert_timing' | 'pwa' | 'telegram' | 'kiosk'>(defaultTab || 'history');
   const [soundEnabled, setSoundEnabled] = useState<boolean>(() => soundManager.isEnabled());
+
+  // Cấu hình Giờ cảnh báo giao hàng (Bếp & Quầy POS)
+  const [alertConfig, setAlertConfig] = useState<DeliveryAlertConfig>(() => getDeliveryAlertConfig());
+  const [isSavingAlertConfig, setIsSavingAlertConfig] = useState(false);
+  const [alertConfigSavedSuccess, setAlertConfigSavedSuccess] = useState(false);
+  const [alertConfigError, setAlertConfigError] = useState<string | null>(null);
 
   // Lịch sử thông báo states
   const [historyList, setHistoryList] = useState<NotificationLogItem[]>([]);
@@ -124,6 +138,13 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
 
       // 3. Tải PWA Web Push status
       refreshPushStatus();
+
+      // 4. Tải Cấu hình Giờ Cảnh Báo Giao Hàng (Bếp & Quầy POS)
+      fetchDeliveryAlertConfigFromDb()
+        .then((cfg) => {
+          if (cfg) setAlertConfig(cfg);
+        })
+        .catch((err) => console.warn('Lỗi load alert config:', err));
 
       return () => {
         unsubNotif();
@@ -417,6 +438,27 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
     }
   };
 
+  // ── XỬ LÝ CẤU HÌNH GIỜ CẢNH BÁO BẾP & QUẦY ──
+  const handleSaveAlertConfig = async () => {
+    setIsSavingAlertConfig(true);
+    setAlertConfigError(null);
+    setAlertConfigSavedSuccess(false);
+
+    try {
+      const res = await saveDeliveryAlertConfigToDb(alertConfig, 'admin');
+      if (res.success) {
+        setAlertConfigSavedSuccess(true);
+        setTimeout(() => setAlertConfigSavedSuccess(false), 4000);
+      } else {
+        setAlertConfigError(res.error || 'Lỗi khi lưu lên cơ sở dữ liệu SQL');
+      }
+    } catch (err: any) {
+      setAlertConfigError(err.message || 'Lỗi kết nối cơ sở dữ liệu');
+    } finally {
+      setIsSavingAlertConfig(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[10000000] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="relative w-full max-w-2xl bg-[#fbf7f2] border border-amber-200 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
@@ -485,7 +527,7 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
 
         {/* Thanh chọn kênh cài đặt: CHỈ HIỆN KHI Ở CHẾ ĐỘ CÀI ĐẶT (Tiết kiệm 100% không gian khi đang xem Lịch sử) */}
         {activeTab !== 'history' && (
-          <div className="grid grid-cols-4 gap-1.5 p-2 bg-amber-100/70 border-b border-amber-200/80 shrink-0">
+          <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5 p-2 bg-amber-100/70 border-b border-amber-200/80 shrink-0">
             {/* Kênh 1: Âm Báo & Thử */}
             <button
               type="button"
@@ -507,7 +549,21 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
               )}
             </button>
 
-            {/* Kênh 2: Telegram */}
+            {/* Kênh 2: Giờ Báo Bếp/Ship */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('alert_timing')}
+              className={`py-2 px-1 sm:px-2 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1 cursor-pointer ${
+                activeTab === 'alert_timing'
+                  ? 'bg-orange-600 text-white shadow-xs font-black'
+                  : 'text-orange-950 hover:bg-orange-100/70 bg-white/50 border border-orange-200/60'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5 shrink-0 text-orange-600" />
+              <span className="truncate">Giờ Bếp/Ship</span>
+            </button>
+
+            {/* Kênh 3: Telegram */}
             <button
               type="button"
               onClick={() => setActiveTab('telegram')}
@@ -524,7 +580,7 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
               )}
             </button>
 
-            {/* Kênh 3: PWA */}
+            {/* Kênh 4: PWA */}
             <button
               type="button"
               onClick={() => setActiveTab('pwa')}
@@ -538,7 +594,7 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
               <span className="truncate">PWA Push</span>
             </button>
 
-            {/* Kênh 4: Kiosk Sáng */}
+            {/* Kênh 5: Kiosk Sáng */}
             <button
               type="button"
               onClick={() => setActiveTab('kiosk')}
@@ -1443,6 +1499,250 @@ export default function NotificationSettingsModal({ isOpen, onClose, defaultTab 
               <p className="text-[11px] text-zinc-600 bg-amber-50/70 p-2.5 rounded-xl border border-amber-200/60 leading-relaxed">
                 💡 <b>Mẹo cho tiệm bánh:</b> Bật chế độ này khi cắm sạc điện thoại hoặc máy tính bảng đặt tại quầy/bếp. Màn hình sẽ luôn mở, chuông báo Đing-Đoong và danh sách đơn mới sẽ luôn sẵn sàng 24/7 mà không sợ máy rơi vào chế độ ngủ!
               </p>
+            </div>
+          )}
+
+          {/* ════════ TAB: CÀI ĐẶT GIỜ BÁO BẾP & QUẦY SHIP ════════ */}
+          {activeTab === 'alert_timing' && (
+            <div className="space-y-4">
+              {/* Header Tab */}
+              <div className="bg-gradient-to-br from-amber-50 to-orange-50/60 rounded-2xl p-4 border border-amber-200/80 shadow-xs">
+                <div className="flex items-center gap-2.5 mb-1.5">
+                  <div className="w-8 h-8 rounded-xl bg-orange-600 text-white flex items-center justify-center font-black shadow-xs">
+                    <Clock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-black text-amber-950 text-sm sm:text-base">
+                      Cài Đặt Thời Gian Cảnh Báo Bếp & Quầy Ship
+                    </h4>
+                    <p className="text-[11px] text-zinc-600">
+                      Tùy chỉnh thời gian báo trước để Bếp làm bánh kịp tiến độ và Quầy đóng gói chuẩn bị giao đồ
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* KHỐI 1: BÁO BẾP LÀM BÁNH GẤP */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-amber-200/80 shadow-xs space-y-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-red-100 text-red-700 flex items-center justify-center font-black">
+                      <Flame className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-zinc-900 text-sm">
+                          1. Cảnh Báo Cho Bếp Làm Bánh
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-black">
+                          Mặc định: 60 phút
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500">
+                        Cảnh báo khẩn cấp nếu đơn <b>chưa vào Phần 3 (Sẵn sàng giao)</b> trong Bếp
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Kitchen Alert */}
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.kitchenAlertEnabled}
+                      onChange={(e) =>
+                        setAlertConfig((prev) => ({ ...prev, kitchenAlertEnabled: e.target.checked }))
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-orange-600"></div>
+                  </label>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-bold text-zinc-700">
+                      Báo trước giờ giao (phút):
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={5}
+                        max={360}
+                        value={alertConfig.kitchenLeadMinutes}
+                        onChange={(e) =>
+                          setAlertConfig((prev) => ({
+                            ...prev,
+                            kitchenLeadMinutes: Math.max(1, parseInt(e.target.value) || 0),
+                          }))
+                        }
+                        className="w-20 px-2.5 py-1 text-right text-xs font-black rounded-lg border border-amber-300 bg-amber-50/50 text-amber-950 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      />
+                      <span className="text-zinc-600 font-medium text-xs">phút</span>
+                    </div>
+                  </div>
+
+                  {/* Preset chips */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] text-zinc-500 font-medium">Gợi ý nhanh:</span>
+                    {[30, 45, 60, 90, 120].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setAlertConfig((prev) => ({ ...prev, kitchenLeadMinutes: m }))}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          alertConfig.kitchenLeadMinutes === m
+                            ? 'bg-orange-600 text-white shadow-xs'
+                            : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-200'
+                        }`}
+                      >
+                        {m === 60 ? '60p (1 tiếng)' : m === 120 ? '120p (2 tiếng)' : `${m} phút`}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="text-[11px] text-zinc-600 bg-red-50/70 p-2.5 rounded-xl border border-red-200/60 leading-relaxed">
+                    🔔 <b>Quy tắc hoạt động:</b> Khi đơn đặt trước có thời gian hẹn còn dưới{' '}
+                    <b>{alertConfig.kitchenLeadMinutes} phút</b> và trạng thái <b>chưa hoàn thành sang Phần 3 (Sẵn Sàng Giao)</b>, màn hình Bếp sẽ chuyển thẻ đơn sang màu đỏ báo động kèm âm thanh nhắc nhở thợ bánh làm ngay!
+                  </p>
+                </div>
+              </div>
+
+              {/* KHỐI 2: BÁO QUẦY POS & SHIPPER */}
+              <div className="bg-white rounded-2xl p-4 sm:p-5 border border-amber-200/80 shadow-xs space-y-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-black">
+                      <Truck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-zinc-900 text-sm">
+                          2. Cảnh Báo Quầy POS & Chuẩn Bị Ship
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-black">
+                          Mặc định: 30 phút
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-zinc-500">
+                        Cảnh báo quầy thu ngân & shipper kiểm tra đóng gói, gọi xe hoặc giao cho khách
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Shipping Alert */}
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={alertConfig.shippingAlertEnabled}
+                      onChange={(e) =>
+                        setAlertConfig((prev) => ({ ...prev, shippingAlertEnabled: e.target.checked }))
+                      }
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                  </label>
+                </div>
+
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-bold text-zinc-700">
+                      Báo trước giờ giao (phút):
+                    </label>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={5}
+                        max={180}
+                        value={alertConfig.shippingLeadMinutes}
+                        onChange={(e) =>
+                          setAlertConfig((prev) => ({
+                            ...prev,
+                            shippingLeadMinutes: Math.max(1, parseInt(e.target.value) || 0),
+                          }))
+                        }
+                        className="w-20 px-2.5 py-1 text-right text-xs font-black rounded-lg border border-blue-300 bg-blue-50/50 text-blue-950 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-zinc-600 font-medium text-xs">phút</span>
+                    </div>
+                  </div>
+
+                  {/* Preset chips */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] text-zinc-500 font-medium">Gợi ý nhanh:</span>
+                    {[15, 20, 30, 45, 60].map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => setAlertConfig((prev) => ({ ...prev, shippingLeadMinutes: m }))}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                          alertConfig.shippingLeadMinutes === m
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200 border border-zinc-200'
+                        }`}
+                      >
+                        {m === 30 ? '30p (Mặc định)' : m === 60 ? '60p (1 tiếng)' : `${m} phút`}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="text-[11px] text-zinc-600 bg-blue-50/70 p-2.5 rounded-xl border border-blue-200/60 leading-relaxed">
+                    📦 <b>Quy tắc hoạt động:</b> Trước giờ hẹn giao{' '}
+                    <b>{alertConfig.shippingLeadMinutes} phút</b>, màn hình POS sẽ bật banner cảnh báo đơn hẹn giao sắp đến hạn để thu ngân kiểm tra đóng gói kèm nến, muỗng, đĩa và chuẩn bị bàn giao.
+                  </p>
+                </div>
+              </div>
+
+              {/* Trạng thái đồng bộ SQL 2 chế độ */}
+              <div className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs">
+                <div className="flex items-center gap-2 text-amber-900 font-bold">
+                  <Database className="w-4 h-4 text-amber-600" />
+                  <span>Đồng bộ 2 Chế Độ SQL:</span>
+                </div>
+                <span className="text-[11px] font-semibold text-emerald-800 bg-emerald-100/80 px-2.5 py-1 rounded-lg border border-emerald-300 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span>Cloud SQL & Local SQL File</span>
+                </span>
+              </div>
+
+              {/* Nút Hành Động: Lưu SQL & Đặt lại mặc định */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleSaveAlertConfig}
+                  disabled={isSavingAlertConfig}
+                  className="px-4 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-700 text-white text-xs font-black shadow-sm transition cursor-pointer flex items-center gap-2 disabled:opacity-50 active:scale-95"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSavingAlertConfig ? 'animate-spin' : ''}`} />
+                  <span>{isSavingAlertConfig ? 'Đang lưu SQL...' : 'Lưu & Đồng Bộ Lên SQL'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAlertConfig({ ...DEFAULT_DELIVERY_ALERT_CONFIG });
+                  }}
+                  className="px-3.5 py-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border border-zinc-200 text-xs font-bold transition cursor-pointer"
+                >
+                  Khôi Phục Mặc Định
+                </button>
+              </div>
+
+              {/* Thông báo kết quả lưu */}
+              {alertConfigSavedSuccess && (
+                <div className="p-3 rounded-xl text-xs bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-2 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>
+                    Đã lưu cấu hình giờ cảnh báo lên cơ sở dữ liệu SQL và phát sóng Realtime đến toàn bộ màn hình Bếp & Quầy POS!
+                  </span>
+                </div>
+              )}
+
+              {alertConfigError && (
+                <div className="p-3 rounded-xl text-xs bg-rose-50 text-rose-800 border border-rose-200 flex items-center gap-2 animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{alertConfigError}</span>
+                </div>
+              )}
             </div>
           )}
         </div>

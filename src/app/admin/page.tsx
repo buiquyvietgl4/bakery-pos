@@ -100,6 +100,7 @@ import { AccountingDashboard } from '@/components/admin/accounting/AccountingDas
 import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSection';
 import CustomSqlConfigSection from '@/components/admin/CustomSqlConfigSection';
 import LocalSqlConfigSection from '@/components/admin/LocalSqlConfigSection';
+import { ShiftManagementSection } from '@/components/admin/ShiftManagementSection';
 import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
@@ -195,7 +196,7 @@ export default function AdminDashboard() {
     setAllPermissionsForRole,
     resetPermissionsToDefault,
   } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'tax_accounting' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'transfer_verification' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'tax_accounting' | 'shifts' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'transfer_verification' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
 
   // ── PHÂN HỆ XÁC THỰC CHUYỂN KHOẢN (3 CHẾ ĐỘ & QUẢN TRỊ DUYỆT CK) ──
   const [transferVerifyConfig, setTransferVerifyConfig] = useState<TransferVerificationConfig>(() => getTransferVerificationConfig());
@@ -3476,6 +3477,7 @@ export default function AdminDashboard() {
               // Nhóm 1: Tài chính & Thuế
               { id: 'overview', label: 'Kế Toán & P&L', icon: BarChart3, group: 'finance' },
               { id: 'tax_accounting', label: 'Sổ Sách Thuế (TT 88)', icon: FileSpreadsheet, group: 'finance' },
+              { id: 'shifts', label: 'Giao Ca & Két Quầy', icon: Wallet, group: 'finance' },
               // Nhóm 2: Vận hành & Kho
               { id: 'images', label: 'Quản Lý Bánh & Ảnh', icon: Cake, group: 'operations' },
               { id: 'inventory', label: 'Kho & Vật Tư', icon: Package, group: 'operations' },
@@ -3563,6 +3565,11 @@ export default function AdminDashboard() {
           cashflow={cashflow}
           adminName={adminNameInput || 'Chủ tiệm'}
         />
+      )}
+
+      {/* ── TAB MỚI: QUẢN LÝ GIAO CA & KÉT QUẦY ── */}
+      {activeTab === 'shifts' && (
+        <ShiftManagementSection adminName={adminNameInput || 'Chủ tiệm'} />
       )}
 
       {/* ── TAB 2: QUẢN LÝ BÁNH & THÊM MỚI SẢN PHẨM ── */}

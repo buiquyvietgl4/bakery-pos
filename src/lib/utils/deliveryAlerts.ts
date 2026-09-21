@@ -1,4 +1,173 @@
 // src/lib/utils/deliveryAlerts.ts
+// Quản lý cảnh báo giờ giao cho Bếp KDS và Quầy POS (Linh hoạt tùy chỉnh thời gian báo trước)
+
+import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { broadcastDeliveryAlertConfig } from '@/lib/supabase/realtimeSync';
+import {
+  DeliveryAlertConfig,
+  DEFAULT_DELIVERY_ALERT_CONFIG,
+} from '@/lib/types/deliveryAlert';
+
+export type { DeliveryAlertConfig };
+export { DEFAULT_DELIVERY_ALERT_CONFIG };
+
+export const STORAGE_KEY_DELIVERY_ALERT = 'bakery_delivery_alert_config';
+export const SYS_CONFIG_DELIVERY_ALERT = '00000000-0000-0000-0000-000000000014';
+export const SYS_CONFIG_DELIVERY_ALERT_NAME = 'SYS_CONFIG_DELIVERY_ALERT';
+export const EVENT_DELIVERY_ALERT_CONFIG_UPDATED = 'bakery_delivery_alert_config_updated';
+
+/**
+ * Lấy cấu hình thời gian cảnh báo từ LocalStorage
+ */
+export function getDeliveryAlertConfig(): DeliveryAlertConfig {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY_DELIVERY_ALERT);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return {
+          kitchenLeadMinutes: Math.max(5, Number(parsed.kitchenLeadMinutes ?? DEFAULT_DELIVERY_ALERT_CONFIG.kitchenLeadMinutes)),
+          shippingLeadMinutes: Math.max(5, Number(parsed.shippingLeadMinutes ?? DEFAULT_DELIVERY_ALERT_CONFIG.shippingLeadMinutes)),
+          enableKitchenSound: parsed.enableKitchenSound ?? DEFAULT_DELIVERY_ALERT_CONFIG.enableKitchenSound,
+          enableShippingSound: parsed.enableShippingSound ?? DEFAULT_DELIVERY_ALERT_CONFIG.enableShippingSound,
+          updatedAt: parsed.updatedAt,
+          updatedBy: parsed.updatedBy,
+        };
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc cấu hình cảnh báo giao hàng:', e);
+    }
+  }
+  return DEFAULT_DELIVERY_ALERT_CONFIG;
+}
+
+/**
+ * Lưu cấu hình cảnh báo vào LocalStorage và bắn event
+ */
+export function saveDeliveryAlertConfigLocally(config: DeliveryAlertConfig): void {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY_DELIVERY_ALERT, JSON.stringify(config));
+      window.dispatchEvent(new CustomEvent(EVENT_DELIVERY_ALERT_CONFIG_UPDATED, { detail: config }));
+    } catch (e) {
+      console.warn('Lỗi lưu cấu hình cảnh báo giao hàng cục bộ:', e);
+    }
+  }
+}
+
+/**
+ * Tải cấu hình cảnh báo từ Cloud Supabase SQL
+ */
+export async function fetchDeliveryAlertConfigFromDb(): Promise<DeliveryAlertConfig> {
+  const fallback = getDeliveryAlertConfig();
+  if (isLocalMode()) return fallback;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return fallback;
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${SYS_CONFIG_DELIVERY_ALERT},name.eq.${SYS_CONFIG_DELIVERY_ALERT_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      try {
+        const parsed = JSON.parse(data.notes);
+        if (parsed && typeof parsed === 'object') {
+          const loadedConfig: DeliveryAlertConfig = {
+            kitchenLeadMinutes: Math.max(5, Number(parsed.kitchenLeadMinutes ?? fallback.kitchenLeadMinutes)),
+            shippingLeadMinutes: Math.max(5, Number(parsed.shippingLeadMinutes ?? fallback.shippingLeadMinutes)),
+            enableKitchenSound: parsed.enableKitchenSound ?? fallback.enableKitchenSound,
+            enableShippingSound: parsed.enableShippingSound ?? fallback.enableShippingSound,
+            updatedAt: parsed.updatedAt,
+            updatedBy: parsed.updatedBy,
+          };
+          saveDeliveryAlertConfigLocally(loadedConfig);
+          return loadedConfig;
+        }
+      } catch (parseErr) {
+        console.warn('Lỗi parse JSON SYS_CONFIG_DELIVERY_ALERT:', parseErr);
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi fetchDeliveryAlertConfigFromDb:', err);
+  }
+
+  return fallback;
+}
+
+/**
+ * Lưu cấu hình cảnh báo lên SQL (cả Cloud Supabase và Local SQL)
+ */
+export async function saveDeliveryAlertConfigToDb(
+  config: DeliveryAlertConfig,
+  updatedBy: string = 'admin'
+): Promise<{ success: boolean; error?: string }> {
+  const fullConfig: DeliveryAlertConfig = {
+    ...config,
+    kitchenLeadMinutes: Math.max(5, Number(config.kitchenLeadMinutes || 60)),
+    shippingLeadMinutes: Math.max(5, Number(config.shippingLeadMinutes || 30)),
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
+
+  saveDeliveryAlertConfigLocally(fullConfig);
+
+  // 1. Chế độ Local SQL: Ghi đĩa cục bộ
+  if (isLocalMode()) {
+    autoSyncToLocalSqlFolder().catch(() => {});
+    return { success: true };
+  }
+
+  // 2. Chế độ Offline tạm thời
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return { success: true };
+  }
+
+  // 3. Chế độ Cloud Supabase SQL
+  try {
+    const notesContent = JSON.stringify(fullConfig);
+    const { error: upsertErr } = await supabase.from('recipes').upsert(
+      {
+        id: SYS_CONFIG_DELIVERY_ALERT,
+        name: SYS_CONFIG_DELIVERY_ALERT_NAME,
+        yield_qty: 1,
+        yield_unit: 'cấu hình',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+
+    if (upsertErr) {
+      await supabase.from('recipes').delete().or(`id.eq.${SYS_CONFIG_DELIVERY_ALERT},name.eq.${SYS_CONFIG_DELIVERY_ALERT_NAME}`);
+      await supabase.from('recipes').insert({
+        id: SYS_CONFIG_DELIVERY_ALERT,
+        name: SYS_CONFIG_DELIVERY_ALERT_NAME,
+        yield_qty: 1,
+        yield_unit: 'cấu hình',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    // Phát sóng Realtime cho toàn bộ thiết bị
+    broadcastDeliveryAlertConfig(fullConfig).catch(() => {});
+    return { success: true };
+  } catch (err: any) {
+    console.warn('Lỗi saveDeliveryAlertConfigToDb:', err);
+    return { success: false, error: err?.message || 'Lỗi lưu cấu hình cảnh báo' };
+  }
+}
 
 export type UrgencyLevel = 'overdue' | 'due_soon' | 'upcoming' | 'completed' | 'unknown';
 
@@ -9,16 +178,13 @@ export interface UrgencyInfo {
   badgeText: string;
   badgeColorClass: string;
   borderClass: string;
-  isUrgent: boolean; // true nếu quá hạn hoặc cần giao trong 60 phút
+  isUrgent: boolean; // Khẩn cấp chung (quá hạn hoặc rơi vào mốc cảnh báo)
+  isKitchenUrgent: boolean; // Cảnh báo Bếp: Còn <= kitchenLeadMinutes và đơn chưa vào Phần 3 (chưa ready)
+  isShippingUrgent: boolean; // Cảnh báo Quầy: Còn <= shippingLeadMinutes để chuẩn bị giao đồ
 }
 
 /**
  * Phân tích chuỗi ngày giờ hẹn giao sang đối tượng Date chuẩn
- * Hỗ trợ linh hoạt các định dạng:
- * - "17:30 ngày 2026-09-08" (từ form đặt bánh POS)
- * - "17:30 ngày mai (08/09)" hoặc "17:30 hôm nay"
- * - "17:30 ngày 08/09/2026"
- * - ISO string: "2026-09-08T17:30:00.000Z"
  */
 export function parsePickupDate(pickupStr?: string): Date | null {
   if (!pickupStr || typeof pickupStr !== 'string') return null;
@@ -84,7 +250,6 @@ export function parsePickupDate(pickupStr?: string): Date | null {
 
 /**
  * Kiểm tra xem đơn hàng đã được giao thành công hoặc đã hủy hay chưa.
- * Hỗ trợ đa dạng các định dạng dữ liệu (status, delivery_status, ghi chú tiếng Việt, cờ delivered...).
  */
 export function isOrderCompletedOrCancelled(orderOrStatus?: any): boolean {
   if (!orderOrStatus) return false;
@@ -147,12 +312,13 @@ export function isOrderCompletedOrCancelled(orderOrStatus?: any): boolean {
 }
 
 /**
- * Tính toán mức độ khẩn cấp của đơn hàng dựa trên thời gian hẹn giao
+ * Tính toán mức độ khẩn cấp của đơn hàng dựa trên thời gian hẹn giao và cấu hình mốc giờ
  */
 export function getDeliveryUrgency(
   pickupAt?: string,
   statusOrOrder?: string | any,
-  referenceNow: Date = new Date()
+  referenceNow: Date = new Date(),
+  customConfig?: DeliveryAlertConfig
 ): UrgencyInfo {
   const isDone = isOrderCompletedOrCancelled(statusOrOrder);
   if (isDone) {
@@ -168,6 +334,8 @@ export function getDeliveryUrgency(
       badgeColorClass: 'bg-emerald-100 text-emerald-800 border-emerald-200',
       borderClass: 'border-zinc-200',
       isUrgent: false,
+      isKitchenUrgent: false,
+      isShippingUrgent: false,
     };
   }
 
@@ -181,13 +349,33 @@ export function getDeliveryUrgency(
       badgeColorClass: 'bg-zinc-100 text-zinc-600 border-zinc-200',
       borderClass: 'border-zinc-200',
       isUrgent: false,
+      isKitchenUrgent: false,
+      isShippingUrgent: false,
     };
   }
+
+  const alertCfg = customConfig || getDeliveryAlertConfig();
+  const kitchenLead = alertCfg.kitchenLeadMinutes || 60;
+  const shippingLead = alertCfg.shippingLeadMinutes || 30;
 
   const diffMs = target.getTime() - referenceNow.getTime();
   const minutesLeft = Math.round(diffMs / 60000);
 
-  if (minutesLeft < 0) {
+  // Kiểm tra đơn đã vào Phần 3: Sẵn Sàng Giao (status === 'ready') chưa
+  const statusStr = typeof statusOrOrder === 'string'
+    ? statusOrOrder.toLowerCase().trim()
+    : String(statusOrOrder?.status || '').toLowerCase().trim();
+  const isAlreadyInReadyStage = statusStr === 'ready';
+
+  const isOverdue = minutesLeft < 0;
+  // Bếp cần làm gấp: Quá hạn HOẶC còn <= kitchenLeadMinutes MÀ CHƯA VÀO CỘT 3
+  const isKitchenUrgent = isOverdue || (minutesLeft <= kitchenLead && !isAlreadyInReadyStage);
+  // Quầy cần chuẩn bị giao: Quá hạn HOẶC còn <= shippingLeadMinutes
+  const isShippingUrgent = isOverdue || minutesLeft <= shippingLead;
+  // Khẩn cấp chung: Bếp gấp, hoặc Quầy gấp, hoặc Quá hạn
+  const isUrgent = isOverdue || isKitchenUrgent || isShippingUrgent;
+
+  if (isOverdue) {
     const overdueMins = Math.abs(minutesLeft);
     const timeStr = overdueMins >= 60 
       ? `${Math.floor(overdueMins / 60)}h${overdueMins % 60 > 0 ? `${overdueMins % 60}p` : ''}` 
@@ -200,17 +388,32 @@ export function getDeliveryUrgency(
       badgeColorClass: 'bg-rose-600 text-white border-rose-700 shadow-xs animate-pulse',
       borderClass: 'border-rose-500 ring-2 ring-rose-400/50 bg-rose-50/40',
       isUrgent: true,
+      isKitchenUrgent: true,
+      isShippingUrgent: true,
     };
-  } else if (minutesLeft <= 60) {
+  } else if (minutesLeft <= Math.max(kitchenLead, shippingLead)) {
     const timeStr = minutesLeft === 0 ? 'ngay bây giờ' : `${minutesLeft} phút`;
+    let badge = `⚠️ CẦN GIAO TRONG ${timeStr}!`;
+    if (isKitchenUrgent && !isAlreadyInReadyStage) {
+      badge = `🚨 BẾP LÀM GẤP: CÒN ${timeStr}!`;
+    } else if (isShippingUrgent) {
+      badge = `📦 CHUẨN BỊ GIAO: CÒN ${timeStr}!`;
+    }
+
     return {
       level: 'due_soon',
       minutesLeft,
       formattedRemaining: `Còn ${timeStr}`,
-      badgeText: `⚠️ CẦN GIAO TRONG ${timeStr}!`,
-      badgeColorClass: 'bg-amber-500 text-white border-amber-600 shadow-xs font-black',
-      borderClass: 'border-amber-500 ring-2 ring-amber-400/50 bg-amber-50/30',
-      isUrgent: true,
+      badgeText: badge,
+      badgeColorClass: isKitchenUrgent && !isAlreadyInReadyStage
+        ? 'bg-rose-600 text-white border-rose-700 shadow-xs font-black animate-pulse'
+        : 'bg-amber-500 text-white border-amber-600 shadow-xs font-black',
+      borderClass: isKitchenUrgent && !isAlreadyInReadyStage
+        ? 'border-rose-500 ring-2 ring-rose-400/50 bg-rose-50/30'
+        : 'border-amber-500 ring-2 ring-amber-400/50 bg-amber-50/30',
+      isUrgent,
+      isKitchenUrgent,
+      isShippingUrgent,
     };
   } else {
     const hours = Math.floor(minutesLeft / 60);
@@ -226,30 +429,82 @@ export function getDeliveryUrgency(
       badgeColorClass: 'bg-blue-50 text-blue-700 border-blue-200',
       borderClass: 'border-zinc-200',
       isUrgent: false,
+      isKitchenUrgent: false,
+      isShippingUrgent: false,
     };
   }
 }
 
 /**
- * Lấy danh sách các đơn khẩn cấp (sắp giao trong 60 phút hoặc đã quá hạn)
+ * Lấy danh sách các đơn khẩn cấp (cần làm gấp cho bếp hoặc cần ship cho quầy)
  */
-export function getUrgentPreorders<T = any>(orders: T[], referenceNow: Date = new Date()): T[] {
+export function getUrgentPreorders<T = any>(
+  orders: T[],
+  referenceNow: Date = new Date(),
+  config?: DeliveryAlertConfig
+): T[] {
   if (!Array.isArray(orders)) return [];
+  const cfg = config || getDeliveryAlertConfig();
   return orders.filter((o: any) => {
     if (!o) return false;
     if (isOrderCompletedOrCancelled(o)) return false;
     const pickup = o.preorder_pickup_at || o.pickupDateTime || o.pickup_time;
     if (!pickup) return false;
-    const urgency = getDeliveryUrgency(pickup, o, referenceNow);
+    const urgency = getDeliveryUrgency(pickup, o, referenceNow, cfg);
     return urgency.isUrgent;
+  });
+}
+
+/**
+ * Lấy danh sách các đơn BẾP CẦN LÀM GẤP (chưa vào Cột 3 Chờ giao và sát giờ)
+ */
+export function getKitchenUrgentPreorders<T = any>(
+  orders: T[],
+  referenceNow: Date = new Date(),
+  config?: DeliveryAlertConfig
+): T[] {
+  if (!Array.isArray(orders)) return [];
+  const cfg = config || getDeliveryAlertConfig();
+  return orders.filter((o: any) => {
+    if (!o) return false;
+    if (isOrderCompletedOrCancelled(o)) return false;
+    const pickup = o.preorder_pickup_at || o.pickupDateTime || o.pickup_time;
+    if (!pickup) return false;
+    const urgency = getDeliveryUrgency(pickup, o, referenceNow, cfg);
+    return urgency.isKitchenUrgent;
+  });
+}
+
+/**
+ * Lấy danh sách các đơn QUẦY CẦN CHUẨN BỊ GIAO ĐỒ (sát giờ ship)
+ */
+export function getShippingUrgentPreorders<T = any>(
+  orders: T[],
+  referenceNow: Date = new Date(),
+  config?: DeliveryAlertConfig
+): T[] {
+  if (!Array.isArray(orders)) return [];
+  const cfg = config || getDeliveryAlertConfig();
+  return orders.filter((o: any) => {
+    if (!o) return false;
+    if (isOrderCompletedOrCancelled(o)) return false;
+    const pickup = o.preorder_pickup_at || o.pickupDateTime || o.pickup_time;
+    if (!pickup) return false;
+    const urgency = getDeliveryUrgency(pickup, o, referenceNow, cfg);
+    return urgency.isShippingUrgent;
   });
 }
 
 /**
  * Sắp xếp danh sách đơn đặt bánh: Đơn quá hạn & sắp giao lên đầu tiên
  */
-export function sortPreordersByUrgency<T = any>(orders: T[], referenceNow: Date = new Date()): T[] {
+export function sortPreordersByUrgency<T = any>(
+  orders: T[],
+  referenceNow: Date = new Date(),
+  config?: DeliveryAlertConfig
+): T[] {
   if (!Array.isArray(orders)) return [];
+  const cfg = config || getDeliveryAlertConfig();
   return [...orders].sort((a: any, b: any) => {
     const isDoneA = isOrderCompletedOrCancelled(a);
     const isDoneB = isOrderCompletedOrCancelled(b);
@@ -259,8 +514,8 @@ export function sortPreordersByUrgency<T = any>(orders: T[], referenceNow: Date 
     const pickupA = a?.preorder_pickup_at || a?.pickupDateTime;
     const pickupB = b?.preorder_pickup_at || b?.pickupDateTime;
 
-    const urgA = getDeliveryUrgency(pickupA, a, referenceNow);
-    const urgB = getDeliveryUrgency(pickupB, b, referenceNow);
+    const urgA = getDeliveryUrgency(pickupA, a, referenceNow, cfg);
+    const urgB = getDeliveryUrgency(pickupB, b, referenceNow, cfg);
 
     return urgA.minutesLeft - urgB.minutesLeft;
   });

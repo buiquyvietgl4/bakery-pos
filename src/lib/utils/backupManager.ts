@@ -548,6 +548,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
 
   let pendingTransfers: any[] = [];
   let currentShift: any = null;
+  let shiftHistory: any[] = [];
+  let deliveryAlertConfig: any = null;
   let autobankConfig: any = null;
   let transferVerifyConfig: any = null;
   let notificationHistory: any[] = [];
@@ -558,6 +560,10 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawPT) pendingTransfers = JSON.parse(rawPT);
       const rawCS = localStorage.getItem('bakery_current_shift');
       if (rawCS) currentShift = JSON.parse(rawCS);
+      const rawSH = localStorage.getItem('bakery_shift_history');
+      if (rawSH) shiftHistory = JSON.parse(rawSH);
+      const rawDA = localStorage.getItem('bakery_delivery_alert_config');
+      if (rawDA) deliveryAlertConfig = JSON.parse(rawDA);
       const rawAB = localStorage.getItem('bakery_autobank_config');
       if (rawAB) autobankConfig = JSON.parse(rawAB);
       const rawTV = localStorage.getItem('bakery_transfer_verification_config');
@@ -701,6 +707,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     security_config: securityConfig,
     pending_transfers: pendingTransfers,
     current_shift: currentShift,
+    shifts: shiftHistory,
+    delivery_alert_config: deliveryAlertConfig,
     autobank_config: autobankConfig,
     transfer_verify_config: transferVerifyConfig,
     notification_history: notificationHistory,

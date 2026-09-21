@@ -309,16 +309,23 @@ CREATE TABLE IF NOT EXISTS payments (
 
 CREATE TABLE IF NOT EXISTS shifts (
     id TEXT PRIMARY KEY,
+    shift_code TEXT,
     staff_id TEXT,
+    staff_name TEXT,
     store_id TEXT,
     started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     ended_at TIMESTAMP,
     opening_cash NUMERIC DEFAULT 0,
-    closing_cash NUMERIC,
+    cash_sales NUMERIC DEFAULT 0,
+    transfer_sales NUMERIC DEFAULT 0,
+    total_revenue NUMERIC DEFAULT 0,
+    order_count INTEGER DEFAULT 0,
     expected_cash NUMERIC DEFAULT 0,
+    closing_cash NUMERIC,
     cash_difference NUMERIC DEFAULT 0,
     status TEXT DEFAULT 'open',
     notes TEXT,
+    transferred_to_next_shift NUMERIC DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -635,6 +642,15 @@ CREATE TABLE IF NOT EXISTS notification_history (
     url TEXT,
     extra_details TEXT,
     channel TEXT
+);
+
+CREATE TABLE IF NOT EXISTS delivery_alert_config (
+    id TEXT PRIMARY KEY,
+    kitchen_lead_minutes INTEGER DEFAULT 60,
+    shipping_lead_minutes INTEGER DEFAULT 30,
+    enable_kitchen_sound BOOLEAN DEFAULT TRUE,
+    enable_shipping_sound BOOLEAN DEFAULT TRUE,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 `;
 }
@@ -1007,7 +1023,59 @@ INSERT INTO bakery_bom_settings (id, version, target_food_cost_pct, cake_bases, 
 -- ----------------------------------------------------------------------------
 -- 20. BẢNG CA BÁN HÀNG HIỆN TẠI (CURRENT_SHIFT)
 -- ----------------------------------------------------------------------------
-INSERT INTO current_shift (id, is_open, opened_at, opening_cash, cash_sales, transfer_sales, order_count, updated_at) VALUES ('primary', ${sqlEscape(currentShift.isOpen ?? true)}, ${sqlEscape(currentShift.openedAt || new Date().toISOString())}, ${sqlEscape(currentShift.openingCash || 500000)}, ${sqlEscape(currentShift.cashSales || 0)}, ${sqlEscape(currentShift.transferSales || 0)}, ${sqlEscape(currentShift.orderCount || 0)}, ${sqlEscape(new Date().toISOString())});
+INSERT INTO current_shift (id, is_open, opened_at, opening_cash, cash_sales, transfer_sales, order_count, updated_at) VALUES ('primary', ${sqlEscape(currentShift.isOpen ?? true)}, ${sqlEscape(currentShift.openedAt || new Date().toISOString())}, ${sqlEscape(currentShift.openingCash || 500000)}, ${sqlEscape(currentShift.cashSales || 0)}, ${sqlEscape(currentShift.transferSales || 0)}, ${sqlEscape(currentShift.orderCount || 0)}, ${sqlEscape(new Date().toISOString())}) ON CONFLICT(id) DO UPDATE SET is_open = EXCLUDED.is_open, opened_at = EXCLUDED.opened_at, opening_cash = EXCLUDED.opening_cash, cash_sales = EXCLUDED.cash_sales, transfer_sales = EXCLUDED.transfer_sales, order_count = EXCLUDED.order_count, updated_at = EXCLUDED.updated_at;
+`;
+  }
+
+  // ----------------------------------------------------------------------------
+  // 20b. BẢNG LỊCH SỬ GIAO CA & KIỂM KÉT (SHIFTS)
+  // ----------------------------------------------------------------------------
+  const shiftList = data?.shifts || data?.shift_history || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_shift_history') || '[]') : []);
+  if (Array.isArray(shiftList) && shiftList.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 20b. BẢNG LỊCH SỬ GIAO CA & KIỂM KÉT (SHIFTS)
+-- ----------------------------------------------------------------------------
+`;
+    for (const sh of shiftList) {
+      const shId = sh.id || `shift-${Math.random().toString(36).substr(2, 9)}`;
+      const shCode = sh.shiftCode || sh.shift_code || shId;
+      const staffName = sh.staffName || sh.staff_name || 'Thu Ngân';
+      const staffId = sh.staffId || sh.staff_id || 'staff-1';
+      const storeId = sh.storeId || sh.store_id || 'primary';
+      const startedAt = sh.startedAt || sh.started_at || new Date().toISOString();
+      const endedAt = sh.endedAt || sh.ended_at || new Date().toISOString();
+      const opCash = sh.openingCash ?? sh.opening_cash ?? 0;
+      const cSales = sh.cashSales ?? sh.cash_sales ?? 0;
+      const tSales = sh.transferSales ?? sh.transfer_sales ?? 0;
+      const totRev = sh.totalRevenue ?? sh.total_revenue ?? (cSales + tSales);
+      const oCount = sh.orderCount ?? sh.order_count ?? 0;
+      const expCash = sh.expectedCash ?? sh.expected_cash ?? (opCash + cSales);
+      const clCash = sh.closingCash ?? sh.closing_cash ?? expCash;
+      const diff = sh.difference ?? sh.cash_difference ?? (clCash - expCash);
+      const st = sh.status || (diff === 0 ? 'balanced' : diff > 0 ? 'surplus' : 'shortage');
+      const nt = sh.notes || null;
+      const transNext = sh.transferredToNextShift ?? sh.transferred_to_next_shift ?? clCash;
+      const crAt = sh.createdAt || sh.created_at || endedAt;
+
+      sql += `INSERT INTO shifts (id, shift_code, staff_id, staff_name, store_id, started_at, ended_at, opening_cash, cash_sales, transfer_sales, total_revenue, order_count, expected_cash, closing_cash, cash_difference, status, notes, transferred_to_next_shift, created_at) VALUES (${sqlEscape(shId)}, ${sqlEscape(shCode)}, ${sqlEscape(staffId)}, ${sqlEscape(staffName)}, ${sqlEscape(storeId)}, ${sqlEscape(startedAt)}, ${sqlEscape(endedAt)}, ${sqlEscape(opCash)}, ${sqlEscape(cSales)}, ${sqlEscape(tSales)}, ${sqlEscape(totRev)}, ${sqlEscape(oCount)}, ${sqlEscape(expCash)}, ${sqlEscape(clCash)}, ${sqlEscape(diff)}, ${sqlEscape(st)}, ${sqlEscape(nt)}, ${sqlEscape(transNext)}, ${sqlEscape(crAt)}) ON CONFLICT(id) DO UPDATE SET shift_code = EXCLUDED.shift_code, staff_name = EXCLUDED.staff_name, ended_at = EXCLUDED.ended_at, closing_cash = EXCLUDED.closing_cash, cash_difference = EXCLUDED.cash_difference, status = EXCLUDED.status, notes = EXCLUDED.notes;\n`;
+    }
+  }
+
+  // ----------------------------------------------------------------------------
+  // 20c. BẢNG CẤU HÌNH GIỜ CẢNH BÁO GIAO HÀNG & BẾP (DELIVERY_ALERT_CONFIG)
+  // ----------------------------------------------------------------------------
+  const alertConfig = data?.delivery_alert_config || data?.delivery_alert || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_delivery_alert_config') || '{}') : {});
+  if (alertConfig && (alertConfig.kitchenLeadMinutes || alertConfig.kitchen_lead_minutes)) {
+    const kLead = alertConfig.kitchenLeadMinutes ?? alertConfig.kitchen_lead_minutes ?? 60;
+    const sLead = alertConfig.shippingLeadMinutes ?? alertConfig.shipping_lead_minutes ?? 30;
+    const kSound = alertConfig.enableKitchenSound ?? alertConfig.enable_kitchen_sound ?? true;
+    const sSound = alertConfig.enableShippingSound ?? alertConfig.enable_shipping_sound ?? true;
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 20c. BẢNG CẤU HÌNH GIỜ CẢNH BÁO GIAO HÀNG & BẾP (DELIVERY_ALERT_CONFIG)
+-- ----------------------------------------------------------------------------
+INSERT INTO delivery_alert_config (id, kitchen_lead_minutes, shipping_lead_minutes, enable_kitchen_sound, enable_shipping_sound, updated_at) VALUES ('primary', ${sqlEscape(kLead)}, ${sqlEscape(sLead)}, ${sqlEscape(kSound)}, ${sqlEscape(sSound)}, ${sqlEscape(new Date().toISOString())}) ON CONFLICT(id) DO UPDATE SET kitchen_lead_minutes = EXCLUDED.kitchen_lead_minutes, shipping_lead_minutes = EXCLUDED.shipping_lead_minutes, enable_kitchen_sound = EXCLUDED.enable_kitchen_sound, enable_shipping_sound = EXCLUDED.enable_shipping_sound, updated_at = EXCLUDED.updated_at;
 `;
   }
 
@@ -1279,6 +1347,16 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
       localSnapshot['bakery_current_shift'] = JSON.stringify(currentShift);
     }
 
+    const shiftHistory = data.shifts || data.shift_history || data.bakery_shift_history;
+    if (Array.isArray(shiftHistory)) {
+      localSnapshot['bakery_shift_history'] = JSON.stringify(shiftHistory);
+    }
+
+    const deliveryAlertCfg = data.delivery_alert_config || data.delivery_alert || data.bakery_delivery_alert_config;
+    if (deliveryAlertCfg) {
+      localSnapshot['bakery_delivery_alert_config'] = JSON.stringify(deliveryAlertCfg);
+    }
+
     const autobank = data.autobank_config || data.bakery_autobank_config || data.settings?.autobank;
     if (autobank) {
       localSnapshot['bakery_autobank_config'] = JSON.stringify(autobank);
@@ -1362,8 +1440,10 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let tax_household_config: any = null;
     let tax_policy_config: any = null;
     let full_cake_bom_config: any = null;
-    let pending_transfers: any[] = [];
+    let pendingTransfers: any[] = [];
     let current_shift: any = null;
+    let shift_history: any[] = [];
+    let delivery_alert_config: any = null;
     let autobank_config: any = null;
     let transfer_verify_config: any = null;
     let notification_history: any[] = [];
@@ -1411,8 +1491,10 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if ((row.name === 'SYS_CONFIG_CAKE_BOM' || row.name === 'SYS_CONFIG_BAKERY_BOM' || row.name === 'SYS_CONFIG_FULL_BOM') && !full_cake_bom_config) {
             full_cake_bom_config = parsed;
           }
-          if (row.name === 'SYS_CONFIG_PENDING_TRANSFERS' && Array.isArray(parsed)) pending_transfers = parsed;
+          if (row.name === 'SYS_CONFIG_PENDING_TRANSFERS' && Array.isArray(parsed)) pendingTransfers = parsed;
           if (row.name === 'SYS_CONFIG_CURRENT_SHIFT') current_shift = parsed;
+          if (row.name === 'SYS_CONFIG_SHIFT_HISTORY' && Array.isArray(parsed)) shift_history = parsed;
+          if (row.name === 'SYS_CONFIG_DELIVERY_ALERT') delivery_alert_config = parsed;
           if (row.name === 'SYS_CONFIG_AUTOBANK') autobank_config = parsed;
           if (row.name === 'SYS_CONFIG_TRANSFER_VERIFY') transfer_verify_config = parsed;
           if (row.name === 'SYS_CONFIG_NOTIFICATION_HISTORY' && Array.isArray(parsed)) notification_history = parsed;
@@ -1471,8 +1553,10 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       tax_household_config,
       tax_policy_config,
       bakery_bom_settings: full_cake_bom_config,
-      pending_transfers,
+      pending_transfers: pendingTransfers,
       current_shift,
+      shifts: shift_history,
+      delivery_alert_config,
       autobank_config,
       transfer_verify_config,
       notification_history,

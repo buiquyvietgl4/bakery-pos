@@ -116,6 +116,8 @@ export interface BakeryBackupData {
   security_config?: any;
   pending_transfers?: any[];
   current_shift?: any;
+  shifts?: any[];
+  delivery_alert_config?: any;
   autobank_config?: any;
   transfer_verify_config?: any;
   notification_history?: any[];

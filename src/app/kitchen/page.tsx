@@ -25,9 +25,16 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useAuth } from '@/lib/auth/AuthContext';
-import { soundManager } from '@/lib/utils/audioAlert';
-import { phoneNotificationService } from '@/lib/utils/phoneNotification';
-import { getDeliveryUrgency, getUrgentPreorders, sortPreordersByUrgency, isOrderCompletedOrCancelled } from '@/lib/utils/deliveryAlerts';
+import { 
+  getDeliveryUrgency, 
+  getUrgentPreorders, 
+  sortPreordersByUrgency, 
+  isOrderCompletedOrCancelled,
+  getDeliveryAlertConfig,
+  fetchDeliveryAlertConfigFromDb,
+  DeliveryAlertConfig,
+  EVENT_DELIVERY_ALERT_CONFIG_UPDATED
+} from '@/lib/utils/deliveryAlerts';
 import { 
   sendTelegramReadyForShipAlert, 
   sendTelegramDeliveredSuccessAlert, 
@@ -36,6 +43,8 @@ import {
   sendTelegramDischargedAlert
 } from '@/lib/utils/telegramNotify';
 import { triggerServerPush } from '@/lib/utils/webPushManager';
+import { soundManager } from '@/lib/utils/audioAlert';
+import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 import NotificationSettingsModal from '@/components/NotificationSettingsModal';
 import { getUnreadNotificationCount, subscribeNotificationHistory } from '@/lib/utils/notificationHistory';
 import { DEFAULT_BAKERY_RECIPES, DEFAULT_BAKERY_PRODUCTS, BakeryRecipe } from '@/lib/constants/bakeryData';
@@ -295,9 +304,27 @@ export default function KitchenPage() {
   // ── ÂM BÁO & CẢNH BÁO ĐƠN GẤP & TELEGRAM ──
   const [soundEnabled, setSoundEnabled] = useState(() => soundManager.isEnabled());
   const [isNotifSettingsOpen, setIsNotifSettingsOpen] = useState<boolean>(false);
-  const [notifModalTab, setNotifModalTab] = useState<'history' | 'pwa' | 'telegram' | 'kiosk'>('history');
+  const [notifModalTab, setNotifModalTab] = useState<'history' | 'sound' | 'alert_timing' | 'pwa' | 'telegram' | 'kiosk'>('history');
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
   const [currentTime, setCurrentTime] = useState(() => new Date());
+
+  // ── CẤU HÌNH GIỜ CẢNH BÁO BẾP & QUẦY SHIP ──
+  const [deliveryAlertConfig, setDeliveryAlertConfig] = useState<DeliveryAlertConfig>(() => getDeliveryAlertConfig());
+
+  useEffect(() => {
+    fetchDeliveryAlertConfigFromDb().then((cfg) => {
+      if (cfg) setDeliveryAlertConfig(cfg);
+    }).catch(console.error);
+
+    const handleAlertCfgUpdated = (e: any) => {
+      if (e.detail) setDeliveryAlertConfig(e.detail);
+      else setDeliveryAlertConfig(getDeliveryAlertConfig());
+    };
+    window.addEventListener(EVENT_DELIVERY_ALERT_CONFIG_UPDATED, handleAlertCfgUpdated);
+    return () => {
+      window.removeEventListener(EVENT_DELIVERY_ALERT_CONFIG_UPDATED, handleAlertCfgUpdated);
+    };
+  }, []);
 
   // Lắng nghe số lượng thông báo chưa đọc trong hệ thống
   useEffect(() => {
@@ -399,15 +426,16 @@ export default function KitchenPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Lọc các đơn cần làm gấp trong 60 phút hoặc đã quá hạn
+  // Lọc các đơn cần làm bánh gấp (theo cấu hình giờ và đơn chưa vào Phần 3 Sẵn sàng giao)
   const urgentOrders = useMemo(() => {
     return (orders || []).filter((o) => {
       if (!o || isOrderCompletedOrCancelled(o)) return false;
       const pickup = o.preorder_pickup_at || o.pickupDateTime;
       if (!pickup) return false;
-      return getDeliveryUrgency(pickup, o, currentTime).isUrgent;
+      const urg = getDeliveryUrgency(pickup, o, currentTime);
+      return urg.isKitchenUrgent;
     });
-  }, [orders, currentTime]);
+  }, [orders, currentTime, deliveryAlertConfig]);
 
   // Cảnh báo âm thanh & thông báo tin nhắn khi phát hiện có đơn mới rơi vào trạng thái khẩn cấp
   useEffect(() => {
@@ -2900,10 +2928,20 @@ export default function KitchenPage() {
             </div>
             <div>
               <h2 className="font-black text-sm sm:text-base text-rose-100 flex items-center gap-2">
-                <span>🚨 CẢNH BÁO BẾP: CÓ {urgentOrders.length} ĐƠN CẦN GIAO GẤP TRONG 60 PHÚT HOẶC ĐÃ QUÁ HẠN!</span>
+                <span>🚨 CẢNH BÁO BẾP: CÓ {urgentOrders.length} ĐƠN CẦN LÀM GẤP TRONG {deliveryAlertConfig.kitchenLeadMinutes} PHÚT HOẶC ĐÃ QUÁ HẠN!</span>
               </h2>
               <p className="text-xs text-rose-200/90">
-                Các đơn hàng có viền đỏ nhấp nháy bên dưới cần được thợ ưu tiên hoàn thành và đóng hộp ngay để kịp giờ giao khách!
+                Các đơn hàng có viền đỏ nhấp nháy cần được thợ ưu tiên làm bánh và hoàn thành sang Phần 3 ngay để kịp giờ giao!{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotifModalTab('alert_timing');
+                    setIsNotifSettingsOpen(true);
+                  }}
+                  className="underline hover:text-white font-bold ml-1 cursor-pointer"
+                >
+                  (Đổi giờ báo: {deliveryAlertConfig.kitchenLeadMinutes}p)
+                </button>
               </p>
             </div>
           </div>

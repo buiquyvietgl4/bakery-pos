@@ -357,6 +357,30 @@ function ensureSyncChannel() {
           });
         }
       })
+      .on('broadcast', { event: 'current_shift_updated' }, ({ payload }: any) => {
+        if (payload?.shift && typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('bakery_current_shift', JSON.stringify(payload.shift));
+            window.dispatchEvent(new CustomEvent('bakery_current_shift_updated', { detail: payload.shift }));
+          } catch {}
+        }
+      })
+      .on('broadcast', { event: 'shift_history_updated' }, ({ payload }: any) => {
+        if (payload?.history && typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('bakery_shift_history', JSON.stringify(payload.history));
+            window.dispatchEvent(new CustomEvent('bakery_shift_history_updated', { detail: payload.history }));
+          } catch {}
+        }
+      })
+      .on('broadcast', { event: 'delivery_alert_config_updated' }, ({ payload }: any) => {
+        if (payload?.config && typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('bakery_delivery_alert_config', JSON.stringify(payload.config));
+            window.dispatchEvent(new CustomEvent('bakery_delivery_alert_config_updated', { detail: payload.config }));
+          } catch {}
+        }
+      })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
@@ -635,6 +659,72 @@ export async function broadcastRecipeChange(action: 'create' | 'update' | 'delet
     }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastRecipeChange:', err);
+  }
+}
+
+/**
+ * Phát sóng cập nhật ca bán hàng hiện tại (Shift) tới mọi thiết bị
+ */
+export async function broadcastShiftUpdated(shift: any) {
+  if (isLocalMode()) return;
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'current_shift_updated',
+        payload: {
+          shift,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastShiftUpdated:', err);
+  }
+}
+
+/**
+ * Phát sóng cập nhật danh sách lịch sử giao ca (Shift History) tới mọi thiết bị
+ */
+export async function broadcastShiftHistoryUpdated(history: any[]) {
+  if (isLocalMode()) return;
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'shift_history_updated',
+        payload: {
+          history,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastShiftHistoryUpdated:', err);
+  }
+}
+
+/**
+ * Phát sóng cập nhật cấu hình thời gian cảnh báo giờ giao (Bếp & Quầy POS)
+ */
+export async function broadcastDeliveryAlertConfig(config: any) {
+  if (isLocalMode()) return;
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'delivery_alert_config_updated',
+        payload: {
+          config,
+          updated_at: new Date().toISOString(),
+        },
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastDeliveryAlertConfig:', err);
   }
 }
 

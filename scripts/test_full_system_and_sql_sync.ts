@@ -329,6 +329,32 @@ const sampleTestData: any = {
       channel: 'in_app',
     },
   ],
+  // Quản lý ca bàn giao & kiểm két và Cấu hình giờ cảnh báo giao hàng
+  shifts: [
+    {
+      id: 'shift-001',
+      shift_code: 'CA-20260919-01',
+      cashier_name: 'Thu Ngân Lan',
+      opened_at: '2026-09-19T06:00:00.000Z',
+      closed_at: '2026-09-19T14:00:00.000Z',
+      opening_cash: 500000,
+      cash_sales: 3200000,
+      transfer_sales: 1850000,
+      total_sales: 5050000,
+      expected_cash: 3700000,
+      actual_cash: 3700000,
+      difference_amount: 0,
+      status: 'balanced',
+      notes: 'Khớp tiền 100%, bàn giao chìa khóa cho ca chiều',
+      order_count: 32,
+    },
+  ],
+  delivery_alert_config: {
+    kitchenLeadMinutes: 60,
+    shippingLeadMinutes: 30,
+    kitchenAlertEnabled: true,
+    shippingAlertEnabled: true,
+  },
 };
 
 let passCount = 0;
@@ -387,6 +413,7 @@ async function runAllTests() {
     'autobank_config',
     'transfer_verify_config',
     'notification_history',
+    'delivery_alert_config',
   ];
 
   for (const table of requiredTables) {
@@ -407,6 +434,8 @@ async function runAllTests() {
   assert(masterSql.includes('INSERT INTO autobank_config'), 'Có câu lệnh INSERT INTO autobank_config (GAP #4 Resolved)');
   assert(masterSql.includes('INSERT INTO transfer_verify_config'), 'Có câu lệnh INSERT INTO transfer_verify_config (GAP #5 Resolved)');
   assert(masterSql.includes('INSERT INTO notification_history'), 'Có câu lệnh INSERT INTO notification_history (GAP #2 Resolved)');
+  assert(masterSql.includes('INSERT INTO shifts'), 'Có câu lệnh INSERT INTO shifts (Lịch sử giao ca & quỹ)');
+  assert(masterSql.includes('INSERT INTO delivery_alert_config'), 'Có câu lệnh INSERT INTO delivery_alert_config (Cài đặt giờ báo Bếp/Ship)');
 
   // Kiểm tra chạy thực tế trên SQLite Engine
   if (DatabaseSync) {
@@ -428,6 +457,12 @@ async function runAllTests() {
 
       const notifRows = db.prepare('SELECT count(*) as cnt FROM notification_history').get() as any;
       assert(notifRows.cnt === 1, 'SQLite thực thi: notification_history lưu đúng thông báo');
+
+      const shiftHistRows = db.prepare('SELECT count(*) as cnt FROM shifts').get() as any;
+      assert(shiftHistRows.cnt === 1, 'SQLite thực thi: Bảng shifts có đúng 1 bản ghi giao ca');
+
+      const alertCfgRows = db.prepare('SELECT kitchen_lead_minutes, shipping_lead_minutes FROM delivery_alert_config').get() as any;
+      assert(alertCfgRows.kitchen_lead_minutes === 60 && alertCfgRows.shipping_lead_minutes === 30, 'SQLite thực thi: delivery_alert_config nạp đúng 60p và 30p');
 
       db.close();
       assert(true, 'SQLite Engine: 100% cú pháp SQL hợp lệ, không có lỗi runtime');
@@ -452,6 +487,8 @@ async function runAllTests() {
   assert(!!mockStorage['bakery_autobank_config'], 'Khôi phục bakery_autobank_config vào localStorage (GAP #4)');
   assert(!!mockStorage['bakery_transfer_verification_config'], 'Khôi phục bakery_transfer_verification_config vào localStorage (GAP #5)');
   assert(!!mockStorage['bakery_notification_history'], 'Khôi phục bakery_notification_history vào localStorage (GAP #2)');
+  assert(!!mockStorage['bakery_shift_history'], 'Khôi phục bakery_shift_history vào localStorage');
+  assert(!!mockStorage['bakery_delivery_alert_config'], 'Khôi phục bakery_delivery_alert_config vào localStorage');
 
   // ── NHÓM 4: ĐỒNG BỘ KHÓA DỮ LIỆU TRÊN CÁC PROFILE & SQL MODE MANAGERS ──
   console.log('\n━━━ NHÓM 4: DATA KEYS COVERAGE TRÊN SQL MODE & DB PROFILE ━━━');
@@ -461,6 +498,8 @@ async function runAllTests() {
     'bakery_autobank_config',
     'bakery_transfer_verification_config',
     'bakery_notification_history',
+    'bakery_shift_history',
+    'bakery_delivery_alert_config',
   ];
 
   for (const k of essentialKeys) {
@@ -491,16 +530,16 @@ async function runAllTests() {
   // ── NHÓM 6: ĐÁNH GIÁ RỦI RO & BẢO ĐẢM DỮ LIỆU TOÀN DIỆN ──
   console.log('\n━━━ NHÓM 6: ĐÁNH GIÁ RỦI RO & BẢO ĐẢM TOÀN DIỆN ━━━');
   assert(
-    requiredTables.length >= 29,
-    `Hệ thống Local SQL hiện hỗ trợ ${requiredTables.length} bảng cấu trúc dữ liệu toàn diện (≥ 29 bảng)`
+    requiredTables.length >= 30,
+    `Hệ thống Local SQL hiện hỗ trợ ${requiredTables.length} bảng cấu trúc dữ liệu toàn diện (≥ 30 bảng)`
   );
   assert(
-    SQL_MODE_KEYS.length >= 31,
-    `Hệ thống sqlModeManager quản lý ${SQL_MODE_KEYS.length} keys dữ liệu (≥ 31 keys)`
+    SQL_MODE_KEYS.length >= 33,
+    `Hệ thống sqlModeManager quản lý ${SQL_MODE_KEYS.length} keys dữ liệu (≥ 33 keys)`
   );
   assert(
-    DB_PROFILE_KEYS.length >= 29,
-    `Hệ thống databaseProfileManager quản lý ${DB_PROFILE_KEYS.length} keys dữ liệu (≥ 29 keys)`
+    DB_PROFILE_KEYS.length >= 31,
+    `Hệ thống databaseProfileManager quản lý ${DB_PROFILE_KEYS.length} keys dữ liệu (≥ 31 keys)`
   );
 
   console.log('\n' + '═'.repeat(66));

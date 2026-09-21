@@ -47,6 +47,10 @@ import {
   prunePreordersCache,
   MAX_CACHED_ORDERS,
   MAX_CACHED_PREORDERS,
+  getDeliveryAlertConfig,
+  fetchDeliveryAlertConfigFromDb,
+  DeliveryAlertConfig,
+  EVENT_DELIVERY_ALERT_CONFIG_UPDATED,
 } from '@/lib/utils/deliveryAlerts';
 import { sendTelegramOrderAlert, sendTelegramDeliveredSuccessAlert } from '@/lib/utils/telegramNotify';
 import { triggerServerPush } from '@/lib/utils/webPushManager';
@@ -57,8 +61,14 @@ import {
   getCurrentShiftLocally,
   fetchCurrentShiftFromDb,
   saveCurrentShiftToDb,
+  closeShiftAndOpenNew,
+  getShiftHistoryLocally,
+  fetchShiftHistoryFromDb,
+  printShiftHandoverReceipt,
   EVENT_CURRENT_SHIFT_UPDATED,
+  EVENT_SHIFT_HISTORY_UPDATED,
 } from '@/lib/utils/shiftSync';
+import { ShiftState, ShiftRecord } from '@/lib/types/shift';
 import { printHtml } from '@/lib/utils/printHelper';
 import { SpoilageLog, SPOILAGE_REASONS } from '@/lib/types/spoilage';
 import {
@@ -125,15 +135,6 @@ interface CartItem {
   product: CachedProduct;
   quantity: number;
   notes?: string;
-}
-
-interface ShiftState {
-  isOpen: boolean;
-  openedAt: string | null;
-  openingCash: number;
-  cashSales: number;
-  transferSales: number;
-  orderCount: number;
 }
 
 interface PreorderFormData {
@@ -206,22 +207,53 @@ export default function POSPage() {
   
   // Shift Management State
   const [shift, setShift] = useState<ShiftState>(() => getCurrentShiftLocally());
+  const [shiftHistory, setShiftHistory] = useState<ShiftRecord[]>(() => getShiftHistoryLocally());
+  const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
+  const [shiftModalTab, setShiftModalTab] = useState<'handover' | 'history'>('handover');
+  const [closingCashInput, setClosingCashInput] = useState<number>(0);
+  const [shiftHandoverNotes, setShiftHandoverNotes] = useState<string>('');
+  const [isClosingShift, setIsClosingShift] = useState(false);
+  const [shiftSuccessMsg, setShiftSuccessMsg] = useState<string | null>(null);
+
+  // Cấu hình Giờ Cảnh Báo Giao Hàng
+  const [deliveryAlertConfig, setDeliveryAlertConfig] = useState<DeliveryAlertConfig>(() => getDeliveryAlertConfig());
 
   useEffect(() => {
     fetchCurrentShiftFromDb().then((dbShift) => {
       if (dbShift) setShift(dbShift);
+    });
+    fetchShiftHistoryFromDb().then((hist) => {
+      if (hist) setShiftHistory(hist);
     });
 
     const handleShiftUpdated = (e: any) => {
       if (e?.detail) setShift(e.detail);
       else setShift(getCurrentShiftLocally());
     };
+    const handleHistoryUpdated = (e: any) => {
+      if (e?.detail) setShiftHistory(e.detail);
+      else setShiftHistory(getShiftHistoryLocally());
+    };
+
     window.addEventListener(EVENT_CURRENT_SHIFT_UPDATED, handleShiftUpdated);
-    return () => window.removeEventListener(EVENT_CURRENT_SHIFT_UPDATED, handleShiftUpdated);
+    window.addEventListener(EVENT_SHIFT_HISTORY_UPDATED, handleHistoryUpdated);
+    return () => {
+      window.removeEventListener(EVENT_CURRENT_SHIFT_UPDATED, handleShiftUpdated);
+      window.removeEventListener(EVENT_SHIFT_HISTORY_UPDATED, handleHistoryUpdated);
+    };
   }, []);
 
-  const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
-  const [closingCashInput, setClosingCashInput] = useState<number>(0);
+  useEffect(() => {
+    fetchDeliveryAlertConfigFromDb().then((cfg) => {
+      if (cfg) setDeliveryAlertConfig(cfg);
+    });
+    const handleAlertCfgUpdated = (e: any) => {
+      if (e.detail) setDeliveryAlertConfig(e.detail);
+      else setDeliveryAlertConfig(getDeliveryAlertConfig());
+    };
+    window.addEventListener(EVENT_DELIVERY_ALERT_CONFIG_UPDATED, handleAlertCfgUpdated);
+    return () => window.removeEventListener(EVENT_DELIVERY_ALERT_CONFIG_UPDATED, handleAlertCfgUpdated);
+  }, []);
 
   // Normal Checkout Modal State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -625,7 +657,7 @@ export default function POSPage() {
 
   // ── NOTIFICATION SETTINGS MODAL STATE ──
   const [isNotifSettingsOpen, setIsNotifSettingsOpen] = useState(false);
-  const [notifModalTab, setNotifModalTab] = useState<'sound' | 'history' | 'pwa' | 'telegram' | 'kiosk'>('sound');
+  const [notifModalTab, setNotifModalTab] = useState<'sound' | 'history' | 'alert_timing' | 'pwa' | 'telegram' | 'kiosk'>('sound');
 
   // Đồng bộ trạng thái loa chuông toàn cục khi có thay đổi
   useEffect(() => {
@@ -814,10 +846,10 @@ export default function POSPage() {
     return () => clearInterval(timer);
   }, []);
 
-  // Lọc các đơn đặt bánh khẩn cấp (cần giao trong 60 phút hoặc quá hạn)
+  // Lọc các đơn đặt bánh khẩn cấp (cần giao trong thời gian lead hoặc quá hạn)
   const urgentPreorders = useMemo(() => {
     return getUrgentPreorders(preordersList, currentTime);
-  }, [preordersList, currentTime]);
+  }, [preordersList, currentTime, deliveryAlertConfig]);
 
   // Lọc các đơn đặt bánh CHƯA GIAO (loại bỏ đơn đã hoàn thành hoặc đã hủy)
   const undeliveredPreorders = useMemo(() => {
@@ -6348,101 +6380,389 @@ export default function POSPage() {
       {/* ── MODAL 3: QUẢN LÝ CA BÁN HÀNG & KIỂM KÉT ── */}
       {isShiftModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-md w-full p-4 sm:p-6 shadow-2xl max-h-[90dvh] overflow-y-auto overscroll-contain space-y-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl max-h-[92dvh] overflow-y-auto overscroll-contain space-y-4">
+            {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2">
-                <Wallet className="w-5 h-5 text-amber-600" />
-                <h3 className="font-black text-lg text-zinc-900">Quản Lý Ca Bán Hàng</h3>
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center">
+                  <Wallet className="w-4 h-4 text-amber-700" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base sm:text-lg text-zinc-900">Quản Lý Ca & Kiểm Két Quầy</h3>
+                  <p className="text-[11px] text-zinc-500">Đồng bộ 2 chiều CSDL SQL & In phiếu bàn giao ca 80mm</p>
+                </div>
               </div>
-              <button onClick={() => setIsShiftModalOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+              <button
+                type="button"
+                onClick={() => setIsShiftModalOpen(false)}
+                className="text-zinc-400 hover:text-zinc-600 p-1 rounded-lg hover:bg-zinc-100 transition cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-2.5 text-xs text-zinc-700 bg-zinc-50 p-4 rounded-2xl border border-zinc-200/80">
-              <div className="flex justify-between">
-                <span>Thu ngân phụ trách:</span>
-                <span className="font-bold text-zinc-900">{user.name}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Số đơn đã bán trong ca:</span>
-                <span className="font-bold text-zinc-900">{shift.orderCount} đơn</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Tiền mặt đầu ca (vốn mở ca):</span>
-                <span className="font-bold">{(shift.openingCash || 0).toLocaleString('vi-VN')}₫</span>
-              </div>
-              <div className="flex justify-between text-emerald-600">
-                <span>Doanh thu tiền mặt bán được:</span>
-                <span className="font-bold">+{(shift.cashSales || 0).toLocaleString('vi-VN')}₫</span>
-              </div>
-              <div className="flex justify-between text-blue-600">
-                <span>Doanh thu chuyển khoản/MoMo:</span>
-                <span className="font-bold">+{(shift.transferSales || 0).toLocaleString('vi-VN')}₫</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t border-zinc-200 font-black text-sm text-zinc-900">
-                <span>Tiền mặt lý thuyết trong két:</span>
-                <span className="text-amber-600">{(expectedCashInRegister || 0).toLocaleString('vi-VN')}₫</span>
-              </div>
+            {/* Tab Selector */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-zinc-100 rounded-2xl border border-zinc-200">
+              <button
+                type="button"
+                onClick={() => setShiftModalTab('handover')}
+                className={`py-2 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  shiftModalTab === 'handover'
+                    ? 'bg-white text-amber-800 shadow-xs font-black'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <Banknote className="w-3.5 h-3.5" />
+                <span>Kiểm Két & Chốt Ca</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShiftModalTab('history')}
+                className={`py-2 px-3 rounded-xl font-bold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  shiftModalTab === 'history'
+                    ? 'bg-white text-amber-800 shadow-xs font-black'
+                    : 'text-zinc-600 hover:text-zinc-900'
+                }`}
+              >
+                <History className="w-3.5 h-3.5" />
+                <span>Lịch Sử Giao Ca ({shiftHistory.length})</span>
+              </button>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-800">
-                Tiền mặt thực tế đếm được cuối ca:
-              </label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={formatCurrencyInput(closingCashInput)}
-                onFocus={(e) => e.target.select()}
-                onChange={(e) => setClosingCashInput(parseCurrencyInput(e.target.value))}
-                placeholder="Nhập số tiền đếm trong két..."
-                className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-base font-black text-zinc-900"
-              />
-            </div>
+            {/* TAB 1: KIỂM KÉT & CHỐT CA */}
+            {shiftModalTab === 'handover' && (
+              <div className="space-y-3.5 animate-in fade-in duration-150">
+                {/* Thông tin ca hiện tại */}
+                <div className="space-y-2 text-xs text-zinc-700 bg-amber-50/60 p-3.5 sm:p-4 rounded-2xl border border-amber-200/80">
+                  <div className="flex justify-between items-center">
+                    <span className="text-zinc-500">Thu ngân ca hiện tại:</span>
+                    <span className="font-bold text-zinc-900">{user.name}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-zinc-500">Giờ bắt đầu mở ca:</span>
+                    <span className="font-mono font-bold text-zinc-800">
+                      {shift.openedAt ? new Date(shift.openedAt).toLocaleTimeString('vi-VN') + ' ' + new Date(shift.openedAt).toLocaleDateString('vi-VN') : 'Mới mở ca'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-zinc-500">Số đơn đã bán trong ca:</span>
+                    <span className="font-bold text-zinc-900">{shift.orderCount || 0} đơn</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t border-amber-200/60">
+                    <span className="text-zinc-600">Tiền mặt đầu ca (vốn mở két):</span>
+                    <span className="font-bold text-zinc-900">{(shift.openingCash || 0).toLocaleString('vi-VN')}₫</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-700">
+                    <span>Doanh thu tiền mặt (+):</span>
+                    <span className="font-bold">+{(shift.cashSales || 0).toLocaleString('vi-VN')}₫</span>
+                  </div>
+                  <div className="flex justify-between items-center text-blue-700">
+                    <span>Doanh thu chuyển khoản/Ví (+):</span>
+                    <span className="font-bold">+{(shift.transferSales || 0).toLocaleString('vi-VN')}₫</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-2 border-t border-amber-200 font-black text-sm text-zinc-950">
+                    <span>Tiền mặt lý thuyết trong két (=):</span>
+                    <span className="text-amber-700 font-mono text-base">{(expectedCashInRegister || 0).toLocaleString('vi-VN')}₫</span>
+                  </div>
+                </div>
 
-            {closingCashInput > 0 && (
-              <div className={`p-3 rounded-xl text-xs font-bold flex items-center justify-between ${
-                shiftCashDifference === 0 
-                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' 
-                  : shiftCashDifference > 0
-                  ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                  : 'bg-rose-50 text-rose-700 border border-rose-200'
-              }`}>
-                <span>Chênh lệch két (Lệch quỹ):</span>
-                <span>
-                  {shiftCashDifference > 0 ? `Thừa +${(shiftCashDifference || 0).toLocaleString('vi-VN')}₫` : shiftCashDifference < 0 ? `Thiếu ${(shiftCashDifference || 0).toLocaleString('vi-VN')}₫` : 'Khớp 100%'}
-                </span>
+                {/* Nhập tiền thực tế đếm được */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <label className="font-black text-zinc-900">
+                      Tiền mặt thực tế đếm được trong két:
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setClosingCashInput(expectedCashInRegister)}
+                      className="text-[11px] font-bold text-amber-700 hover:underline cursor-pointer"
+                    >
+                      Điền số lý thuyết
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={formatCurrencyInput(closingCashInput)}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setClosingCashInput(parseCurrencyInput(e.target.value))}
+                    placeholder="Nhập số tiền đếm trong két..."
+                    className="w-full px-3.5 py-2.5 bg-white border border-amber-300 rounded-xl text-lg font-black text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 font-mono"
+                  />
+
+                  {/* Nút bấm cộng tiền nhanh */}
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {[50000, 100000, 200000, 500000, 1000000].map((amt) => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setClosingCashInput((prev) => (prev || 0) + amt)}
+                        className="px-2 py-1 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 text-[11px] font-bold rounded-lg transition cursor-pointer active:scale-95"
+                      >
+                        +{amt >= 1000000 ? `${amt / 1000000}tr` : `${amt / 1000}k`}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setClosingCashInput(0)}
+                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold rounded-lg transition cursor-pointer"
+                    >
+                      Xóa số
+                    </button>
+                  </div>
+                </div>
+
+                {/* Cảnh báo chênh lệch két */}
+                {closingCashInput > 0 && (
+                  <div
+                    className={`p-3 rounded-2xl text-xs font-bold flex items-center justify-between border ${
+                      shiftCashDifference === 0
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                        : shiftCashDifference > 0
+                        ? 'bg-blue-50 text-blue-800 border-blue-300'
+                        : 'bg-rose-50 text-rose-800 border-rose-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      {shiftCashDifference === 0 ? (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                      )}
+                      <span>
+                        {shiftCashDifference === 0
+                          ? 'Két khớp 100% (Không lệch quỹ)'
+                          : shiftCashDifference > 0
+                          ? 'Thừa quỹ tiền mặt (+)'
+                          : 'Thiếu quỹ tiền mặt (-)'}
+                      </span>
+                    </div>
+                    <span className="font-mono text-sm font-black">
+                      {shiftCashDifference > 0
+                        ? `+${(shiftCashDifference || 0).toLocaleString('vi-VN')}₫`
+                        : shiftCashDifference < 0
+                        ? `${(shiftCashDifference || 0).toLocaleString('vi-VN')}₫`
+                        : '0₫'}
+                    </span>
+                  </div>
+                )}
+
+                {/* Ghi chú giải trình / bàn giao */}
+                <div className="space-y-1">
+                  <label className="text-[11px] font-bold text-zinc-700">
+                    Ghi chú giải trình lệch quỹ / Bàn giao ca sau:
+                  </label>
+                  <input
+                    type="text"
+                    value={shiftHandoverNotes}
+                    onChange={(e) => setShiftHandoverNotes(e.target.value)}
+                    placeholder="Ví dụ: Đã bù 20k tiền lẻ, bàn giao chìa khóa..."
+                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                {/* Thông báo kết quả chốt ca thành công */}
+                {shiftSuccessMsg && (
+                  <div className="p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-xl flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{shiftSuccessMsg}</span>
+                  </div>
+                )}
+
+                {/* Nút hành động */}
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-zinc-100">
+                  <button
+                    type="button"
+                    onClick={() => setIsShiftModalOpen(false)}
+                    className="px-4 py-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 transition cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+
+                  {/* Nút In Phiếu Kiểm Két Tạm (80mm) */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const diff = (closingCashInput || expectedCashInRegister) - expectedCashInRegister;
+                      const draftRecord: ShiftRecord = {
+                        id: 'draft-' + Date.now(),
+                        shiftCode: shift.shiftCode || 'KIEM-KET',
+                        staffName: user?.name || 'Thu Ngân',
+                        startedAt: shift.openedAt,
+                        endedAt: new Date().toISOString(),
+                        openingCash: shift.openingCash || 0,
+                        cashSales: shift.cashSales || 0,
+                        transferSales: shift.transferSales || 0,
+                        totalRevenue: (shift.cashSales || 0) + (shift.transferSales || 0),
+                        expectedCash: expectedCashInRegister,
+                        closingCash: closingCashInput || expectedCashInRegister,
+                        difference: diff,
+                        status: diff === 0 ? 'balanced' : diff > 0 ? 'surplus' : 'shortage',
+                        notes: shiftHandoverNotes || 'Phiếu kiểm kê két quầy giữa ca',
+                        orderCount: shift.orderCount || 0,
+                        createdAt: new Date().toISOString(),
+                      };
+                      printShiftHandoverReceipt(draftRecord, branding);
+                    }}
+                    className="px-3.5 py-2.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                    title="In phiếu kiểm kê két hiện tại ra giấy nhiệt 80mm mà không chốt ca"
+                  >
+                    <Printer className="w-3.5 h-3.5 text-zinc-600" />
+                    <span>In Phiếu Kiểm Két</span>
+                  </button>
+
+                  {/* Nút Chốt Ca & Mở Ca Mới */}
+                  <button
+                    type="button"
+                    disabled={isClosingShift}
+                    onClick={async () => {
+                      if (closingCashInput <= 0 && !confirm('Tiền mặt thực tế trong két là 0₫ hoặc bạn chưa nhập. Bạn có chắc muốn chốt ca với 0₫?')) {
+                        return;
+                      }
+                      setIsClosingShift(true);
+                      try {
+                        const { closedShift, newShift } = await closeShiftAndOpenNew({
+                          closingCash: closingCashInput,
+                          staffName: user?.name || 'Thu Ngân',
+                          notes: shiftHandoverNotes,
+                        });
+                        setShiftSuccessMsg(`Đã chốt sổ ca #${closedShift.shiftCode} thành công và đồng bộ lên CSDL SQL!`);
+                        printShiftHandoverReceipt(closedShift, branding);
+                        setShift(newShift);
+                        setClosingCashInput(newShift.openingCash);
+                        setShiftHandoverNotes('');
+                        setTimeout(() => setShiftSuccessMsg(null), 5000);
+                      } catch (err: any) {
+                        alert('Lỗi chốt ca: ' + (err?.message || err));
+                      } finally {
+                        setIsClosingShift(false);
+                      }
+                    }}
+                    className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black shadow-md shadow-amber-600/30 transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 active:scale-95"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isClosingShift ? 'animate-spin' : ''}`} />
+                    <span>{isClosingShift ? 'Đang chốt...' : 'Chốt Ca & Mở Ca Mới'}</span>
+                  </button>
+                </div>
               </div>
             )}
 
-            <div className="flex gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setIsShiftModalOpen(false)}
-                className="flex-1 py-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50"
-              >
-                Đóng
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  alert(`Đã chốt sổ ca bán thành công! Tiền mặt kết chuyển: ${(closingCashInput || 0).toLocaleString('vi-VN')}₫`);
-                  setShift({
-                    isOpen: true,
-                    openedAt: new Date().toISOString(),
-                    openingCash: closingCashInput,
-                    cashSales: 0,
-                    transferSales: 0,
-                    orderCount: 0,
-                  });
-                  setIsShiftModalOpen(false);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30"
-              >
-                Chốt Ca & Mở Ca Mới
-              </button>
-            </div>
+            {/* TAB 2: LỊCH SỬ GIAO CA */}
+            {shiftModalTab === 'history' && (
+              <div className="space-y-3 animate-in fade-in duration-150">
+                {shiftHistory.length === 0 ? (
+                  <div className="p-8 text-center bg-zinc-50 rounded-2xl border border-zinc-200 text-zinc-400 space-y-2">
+                    <History className="w-8 h-8 mx-auto text-zinc-300" />
+                    <p className="text-xs font-semibold">Chưa có ca bán nào được chốt sổ.</p>
+                    <p className="text-[11px] text-zinc-400">
+                      Khi thu ngân bấm "Chốt Ca & Mở Ca Mới", toàn bộ dữ liệu kiểm két và chênh lệch quỹ sẽ được lưu trữ tại đây và đồng bộ lên cả Cloud & Local SQL.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-[55vh] overflow-y-auto pr-1">
+                    {shiftHistory.map((rec) => {
+                      const isBalanced = rec.status === 'balanced' || rec.difference === 0;
+                      const isSurplus = rec.status === 'surplus' || rec.difference > 0;
+
+                      return (
+                        <div
+                          key={rec.id}
+                          className="p-3.5 rounded-2xl bg-zinc-50 hover:bg-amber-50/30 border border-zinc-200 transition space-y-2 text-xs"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-black text-zinc-900">
+                                  #{rec.shiftCode || rec.id.slice(0, 8)}
+                                </span>
+                                <span
+                                  className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${
+                                    isBalanced
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                      : isSurplus
+                                      ? 'bg-blue-50 text-blue-700 border-blue-300'
+                                      : 'bg-rose-50 text-rose-700 border-rose-300'
+                                  }`}
+                                >
+                                  {isBalanced
+                                    ? 'Khớp 100%'
+                                    : isSurplus
+                                    ? `Thừa +${(rec.difference || 0).toLocaleString('vi-VN')}₫`
+                                    : `Thiếu ${(rec.difference || 0).toLocaleString('vi-VN')}₫`}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-zinc-500 mt-0.5">
+                                Thu ngân: <b className="text-zinc-800">{rec.staffName}</b> •{' '}
+                                {rec.endedAt
+                                  ? new Date(rec.endedAt).toLocaleTimeString('vi-VN') +
+                                    ' ' +
+                                    new Date(rec.endedAt).toLocaleDateString('vi-VN')
+                                  : 'Chưa đóng ca'}
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => printShiftHandoverReceipt(rec, branding)}
+                              className="px-2.5 py-1.5 rounded-xl bg-white hover:bg-zinc-100 border border-zinc-200 text-zinc-700 font-bold text-xs flex items-center gap-1 transition cursor-pointer shadow-2xs active:scale-95"
+                              title="In lại phiếu giao ca nhiệt 80mm"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-amber-600" />
+                              <span>In Lại</span>
+                            </button>
+                          </div>
+
+                          {/* Thông số tài chính */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-zinc-200/60 text-[11px]">
+                            <div>
+                              <span className="text-zinc-500 block">Vốn đầu:</span>
+                              <span className="font-bold text-zinc-800">
+                                {(rec.openingCash || 0).toLocaleString('vi-VN')}₫
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block">DT Tiền mặt:</span>
+                              <span className="font-bold text-emerald-700">
+                                +{(rec.cashSales || 0).toLocaleString('vi-VN')}₫
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block">Tiền lý thuyết:</span>
+                              <span className="font-bold text-zinc-800">
+                                {(rec.expectedCash || 0).toLocaleString('vi-VN')}₫
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-zinc-500 block">Thực đếm:</span>
+                              <span className="font-black text-amber-700 font-mono">
+                                {(rec.closingCash || 0).toLocaleString('vi-VN')}₫
+                              </span>
+                            </div>
+                          </div>
+
+                          {rec.notes && (
+                            <p className="text-[11px] text-zinc-600 italic bg-white p-2 rounded-xl border border-zinc-200/70">
+                              💬 {rec.notes}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <div className="pt-2 border-t border-zinc-100 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setIsShiftModalOpen(false)}
+                    className="px-4 py-2 rounded-xl bg-zinc-900 text-white font-bold text-xs hover:bg-zinc-800 transition cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

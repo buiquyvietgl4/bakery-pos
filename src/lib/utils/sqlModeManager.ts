@@ -66,6 +66,8 @@ export const BAKERY_DATA_KEYS = [
   'bakery_tax_policy_config',
   'bakery_pending_transfers',
   'bakery_current_shift',
+  'bakery_shift_history',
+  'bakery_delivery_alert_config',
   'bakery_autobank_config',
   'bakery_transfer_verification_config',
   'bakery_notification_history',
