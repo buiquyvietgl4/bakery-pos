@@ -20,7 +20,7 @@ import {
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
   Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet,
   Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings, ShieldCheck,
-  Home, KeyRound, RefreshCw
+  Home, KeyRound, RefreshCw, ChevronDown
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -218,6 +218,7 @@ export default function POSPage() {
   const [lastClosedShift, setLastClosedShift] = useState<ShiftRecord | null>(null);
   const [handoverMode, setHandoverMode] = useState<'keep_all' | 'withdraw'>('keep_all');
   const [leaveForNextShiftInput, setLeaveForNextShiftInput] = useState<number>(0);
+  const [isSettingsDropdownOpen, setIsSettingsDropdownOpen] = useState(false);
 
   // Cấu hình Giờ Cảnh Báo Giao Hàng
   const [deliveryAlertConfig, setDeliveryAlertConfig] = useState<DeliveryAlertConfig>(() => getDeliveryAlertConfig());
@@ -3827,68 +3828,119 @@ export default function POSPage() {
               </span>
             </button>
 
-            {/* NÚT ĐỒNG BỘ CLOUD SQL TỨC THÌ TRÊN DESKTOP POS */}
-            <button
-              type="button"
-              onClick={async () => {
-                setIsPosSyncing(true);
-                try {
-                  clearProfileLocalData();
-                  await syncOrdersFromSupabase();
-                  await loadProducts();
-                  await fetchCurrentShiftFromDb();
-                  reloadOrdersData();
-                  alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL Cloud SQL thành công!');
-                } catch (err: any) {
-                  alert('Lỗi đồng bộ: ' + (err?.message || err));
-                } finally {
-                  setIsPosSyncing(false);
-                }
-              }}
-              disabled={isPosSyncing}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-emerald-50 border border-emerald-300 hover:border-emerald-500 text-xs font-bold text-emerald-800 shadow-2xs hover:shadow-xs transition hover:bg-emerald-100/70 cursor-pointer disabled:opacity-50"
-              title="Xóa cache trình duyệt và kéo lại thực đơn, đơn hàng mới nhất từ Cloud SQL"
-            >
-              <RefreshCw className={`w-4 h-4 text-emerald-600 ${isPosSyncing ? 'animate-spin' : ''}`} />
-              <span className="hidden md:inline">{isPosSyncing ? 'Đang tải...' : 'Đồng Bộ SQL'}</span>
-            </button>
+            {/* MENU CÀI ĐẶT HỢP NHẤT (Máy In, Thông Báo & Âm Thanh, Đồng Bộ SQL) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setIsSettingsDropdownOpen(!isSettingsDropdownOpen)}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-amber-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-amber-50/40 cursor-pointer"
+                title="Cài đặt hệ thống: Máy in, Âm thanh thông báo, Đồng bộ SQL"
+              >
+                <div className="relative">
+                  <Settings className="w-4 h-4 text-amber-700" />
+                  {soundEnabled && (
+                    <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white" />
+                  )}
+                </div>
+                <span>Cài Đặt</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 ${isSettingsDropdownOpen ? 'rotate-180' : ''}`} />
+              </button>
 
-            {/* Nút Cài Đặt & Kiểm Tra Máy In (Bluetooth, USB, iPhone, Android) */}
-            <button
-              type="button"
-              onClick={() => setIsPrinterSettingsOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-blue-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-blue-50/60 cursor-pointer"
-              title="Cài đặt & kiểm tra kết nối máy in Bluetooth, USB, iPhone, Android"
-            >
-              <Printer className="w-4 h-4 text-blue-600" />
-              <span className="hidden sm:inline">Máy In</span>
-            </button>
+              {/* Dropdown Menu */}
+              {isSettingsDropdownOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setIsSettingsDropdownOpen(false)}
+                  />
+                  <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-white border border-stone-200 shadow-2xl p-2 z-50 animate-in fade-in-50 zoom-in-95">
+                    <div className="px-3 py-1.5 text-[11px] font-black text-zinc-400 uppercase tracking-wider border-b border-stone-100 mb-1">
+                      Cài Đặt Tiệm & Thiết Bị
+                    </div>
 
-            {/* Nút Cài Đặt & Kiểm Tra Thông Báo Gọn Gàng */}
-            <button
-              type="button"
-              onClick={() => {
-                setNotifModalTab('sound');
-                setIsNotifSettingsOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-amber-400 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-amber-50/50 cursor-pointer"
-              title="Cài đặt thông báo: Âm báo chuông, PWA Web Push, Bot Telegram & Thử thông báo"
-            >
-              <div className="relative">
-                <Bell className="w-4 h-4 text-amber-600" />
-                <span
-                  className={`absolute -top-1 -right-1 w-2 h-2 rounded-full ring-1 ring-white ${
-                    soundEnabled ? 'bg-emerald-500' : 'bg-zinc-400'
-                  }`}
-                />
-              </div>
-              <span className="hidden sm:inline">Cài Đặt Báo</span>
-              {soundEnabled ? (
-                <Volume2 className="w-3.5 h-3.5 text-emerald-600 hidden md:inline" />
-              ) : (
-                <VolumeX className="w-3.5 h-3.5 text-zinc-400 hidden md:inline" />
+                    {/* 1. Máy In */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSettingsDropdownOpen(false);
+                        setIsPrinterSettingsOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-left transition cursor-pointer group"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-105 transition shrink-0">
+                        <Printer className="w-4 h-4" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-zinc-900 group-hover:text-blue-700">Máy In Hóa Đơn & Tem</div>
+                        <div className="text-[10px] text-zinc-500 truncate">Cài đặt Bluetooth, USB, khổ giấy</div>
+                      </div>
+                    </button>
+
+                    {/* 2. Cài Đặt Báo */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsSettingsDropdownOpen(false);
+                        setNotifModalTab('sound');
+                        setIsNotifSettingsOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-amber-50 text-left transition cursor-pointer group"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 group-hover:scale-105 transition shrink-0 relative">
+                        <Bell className="w-4 h-4" />
+                        <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${soundEnabled ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-zinc-900 group-hover:text-amber-700 flex items-center gap-1">
+                          <span>Cài Đặt Báo & Âm Thanh</span>
+                          {soundEnabled ? (
+                            <Volume2 className="w-3 h-3 text-emerald-600" />
+                          ) : (
+                            <VolumeX className="w-3 h-3 text-zinc-400" />
+                          )}
+                        </div>
+                        <div className="text-[10px] text-zinc-500 truncate">Chuông báo lò, đơn giao, Telegram</div>
+                      </div>
+                    </button>
+
+                    <div className="my-1 border-t border-stone-100" />
+
+                    {/* 3. Đồng Bộ SQL */}
+                    <button
+                      type="button"
+                      disabled={isPosSyncing}
+                      onClick={async () => {
+                        setIsSettingsDropdownOpen(false);
+                        try {
+                          setIsPosSyncing(true);
+                          clearProfileLocalData();
+                          await syncOrdersFromSupabase();
+                          await loadProducts();
+                          await fetchCurrentShiftFromDb();
+                          reloadOrdersData();
+                          alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL Cloud SQL thành công!');
+                        } catch (err: any) {
+                          alert('Lỗi đồng bộ: ' + (err?.message || err));
+                        } finally {
+                          setIsPosSyncing(false);
+                        }
+                      }}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-emerald-50 text-left transition cursor-pointer group disabled:opacity-50"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition shrink-0">
+                        <RefreshCw className={`w-4 h-4 ${isPosSyncing ? 'animate-spin' : ''}`} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-bold text-zinc-900 group-hover:text-emerald-700">
+                          {isPosSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ SQL (Xóa Cache)'}
+                        </div>
+                        <div className="text-[10px] text-zinc-500 truncate">Kéo lại món, ca và đơn mới nhất</div>
+                      </div>
+                    </button>
+                  </div>
+                </>
               )}
-            </button>
+            </div>
 
             {/* Shift Trigger Button */}
             <button
