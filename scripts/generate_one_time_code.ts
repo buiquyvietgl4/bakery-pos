@@ -42,76 +42,105 @@ async function main() {
   console.log('║       HỆ THỐNG BAKERY POS: TẠO MÃ CỨU HỘ ADMIN DÙNG 1 LẦN DUY NHẤT   ║');
   console.log('╚══════════════════════════════════════════════════════════════════════╝\n');
 
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-    console.error('❌ LỖI: Không tìm thấy thông tin kết nối CSDL trong .env.local!');
-    console.error('   Chỉ máy tính có mã nguồn gốc và file cấu hình mới tạo được mã.');
-    return;
-  }
-
-  const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  try {
+    const localOtpFile = path.resolve(process.cwd(), '.local_emergency_otp.json');
   const newOtp = generateRandomOtp();
   const createdAt = new Date().toISOString();
 
+  // 1. Luôn lưu vào CSDL Local (.local_emergency_otp.json)
   try {
-    console.log('1. Đang kết nối Cloud CSDL để đăng ký mã cứu hộ 1 lần...');
-    const { data } = await supabase
-      .from('recipes')
-      .select('id, notes')
-      .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
-      .limit(1)
-      .maybeSingle();
-
-    let cfg: any = {};
-    if (data?.notes) {
+    let localCfg: any = { active_otp_codes: [], used_otp_codes: [] };
+    if (fs.existsSync(localOtpFile)) {
       try {
-        cfg = JSON.parse(data.notes);
+        localCfg = JSON.parse(fs.readFileSync(localOtpFile, 'utf8'));
       } catch {}
     }
+    if (!Array.isArray(localCfg.active_otp_codes)) localCfg.active_otp_codes = [];
+    if (!Array.isArray(localCfg.used_otp_codes)) localCfg.used_otp_codes = [];
 
-    if (!Array.isArray(cfg.active_otp_codes)) {
-      cfg.active_otp_codes = [];
-    }
-    if (!Array.isArray(cfg.used_otp_codes)) {
-      cfg.used_otp_codes = [];
-    }
-
-    // Thêm mã mới vào danh sách mã còn hiệu lực (chưa dùng)
-    cfg.active_otp_codes.push({
+    localCfg.active_otp_codes.push({
       code: newOtp,
       created_at: createdAt,
       used: false,
     });
-
-    // Giữ tối đa 20 mã gần nhất để tránh phình dữ liệu
-    if (cfg.active_otp_codes.length > 20) {
-      cfg.active_otp_codes = cfg.active_otp_codes.slice(-20);
+    if (localCfg.active_otp_codes.length > 20) {
+      localCfg.active_otp_codes = localCfg.active_otp_codes.slice(-20);
     }
-    if (cfg.used_otp_codes.length > 50) {
-      cfg.used_otp_codes = cfg.used_otp_codes.slice(-50);
+    localCfg.updated_at = createdAt;
+    fs.writeFileSync(localOtpFile, JSON.stringify(localCfg, null, 2), 'utf8');
+    console.log('✓ Đã đăng ký mã vào CSDL Cục Bộ (Local SQL / Offline Vault)');
+  } catch (localErr: any) {
+    console.warn('⚠️ Không thể ghi file mã cục bộ:', localErr.message);
+  }
+
+  // 2. Đồng bộ lên Supabase nếu có thông tin kết nối và có mạng
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+    try {
+      console.log('Đang kết nối Cloud Supabase để đồng bộ mã...');
+      const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      const { data } = await supabase
+        .from('recipes')
+        .select('id, notes')
+        .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
+        .limit(1)
+        .maybeSingle();
+
+      let cfg: any = {};
+      if (data?.notes) {
+        try {
+          cfg = JSON.parse(data.notes);
+        } catch {}
+      }
+
+      if (!Array.isArray(cfg.active_otp_codes)) {
+        cfg.active_otp_codes = [];
+      }
+      if (!Array.isArray(cfg.used_otp_codes)) {
+        cfg.used_otp_codes = [];
+      }
+
+      cfg.active_otp_codes.push({
+        code: newOtp,
+        created_at: createdAt,
+        used: false,
+      });
+
+      if (cfg.active_otp_codes.length > 20) {
+        cfg.active_otp_codes = cfg.active_otp_codes.slice(-20);
+      }
+      if (cfg.used_otp_codes.length > 50) {
+        cfg.used_otp_codes = cfg.used_otp_codes.slice(-50);
+      }
+
+      cfg.updated_at = createdAt;
+
+      const { error: upsertErr } = await supabase.from('recipes').upsert(
+        {
+          id: DB_ROW_SECURITY_ID,
+          name: DB_ROW_SECURITY_NAME,
+          yield_qty: 1,
+          yield_unit: 'chiếc',
+          cost_per_unit: 0,
+          total_material_cost: 0,
+          notes: JSON.stringify(cfg),
+          is_active: false,
+        },
+        { onConflict: 'id' }
+      );
+
+      if (upsertErr) {
+        console.warn('⚠️ Không thể đồng bộ Supabase:', upsertErr.message);
+      } else {
+        console.log('✓ Đã đồng bộ mã lên Cloud Supabase thành công');
+      }
+    } catch (syncErr: any) {
+      console.warn('ℹ️ Chạy ngoại tuyến / không kết nối được Supabase:', syncErr.message);
     }
+  } else {
+    console.log('ℹ️ Chế độ không có Supabase Cloud: Đã kích hoạt mã trên CSDL Local SQL.');
+  }
 
-    cfg.updated_at = createdAt;
-
-    const { error: upsertErr } = await supabase.from('recipes').upsert(
-      {
-        id: DB_ROW_SECURITY_ID,
-        name: DB_ROW_SECURITY_NAME,
-        yield_qty: 1,
-        yield_unit: 'chiếc',
-        cost_per_unit: 0,
-        total_material_cost: 0,
-        notes: JSON.stringify(cfg),
-        is_active: false,
-      },
-      { onConflict: 'id' }
-    );
-
-    if (upsertErr) {
-      console.error('❌ Lỗi khi đăng ký mã lên Supabase:', upsertErr.message);
-      return;
-    }
-
-    // Tự động sao chép mã vào Clipboard của Windows nếu được
+  // Tự động sao chép mã vào Clipboard của Windows nếu được
     try {
       if (process.platform === 'win32') {
         execSync(`echo | set /p="${newOtp}" | clip`);

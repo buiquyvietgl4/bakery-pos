@@ -47,4 +47,6 @@ test_*.mjs
 SQL backup/
 *.bakery.json
 config.yml
+.local_emergency_otp.json
+.local_sql_server_state.json
 
