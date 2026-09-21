@@ -189,6 +189,8 @@ export default function AdminDashboard() {
     updateAdminCredentials,
     updateKitchenCredentials,
     updateStaffCredentials,
+    updateAdminRecoveryKey,
+    forceResetAdminToDefault,
     securityConfig,
     resetSecurityDefaults,
     permissions,
@@ -211,6 +213,9 @@ export default function AdminDashboard() {
   const [adminOldPass, setAdminOldPass] = useState('');
   const [adminNewPass, setAdminNewPass] = useState('');
   const [adminNameInput, setAdminNameInput] = useState(securityConfig.adminName);
+  const [adminRecoveryKeyInput, setAdminRecoveryKeyInput] = useState(securityConfig.recoveryKey || 'BAKERY-RESCUE-2026');
+  const [adminRecoveryPhoneInput, setAdminRecoveryPhoneInput] = useState(securityConfig.adminRecoveryPhone || '');
+  const [showRecoveryKey, setShowRecoveryKey] = useState(false);
   const [kitchenPinInput, setKitchenPinInput] = useState(securityConfig.kitchenPin || '5678');
   const [kitchenNameInput, setKitchenNameInput] = useState(securityConfig.kitchenName || 'Nhân Viên Bếp');
   const [staffPinInput, setStaffPinInput] = useState(securityConfig.staffPin || '1234');
@@ -8665,6 +8670,74 @@ export default function AdminDashboard() {
                   >
                     Lưu Mật Khẩu Admin Mới
                   </button>
+                </div>
+
+                {/* CƠ CHẾ CỨU HỘ & KHÔI PHỤC QUYỀN ADMIN KHẨN CẤP */}
+                <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-amber-950 block text-xs flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-amber-700" /> Mã Cứu Hộ Dự Phòng (Recovery Key):
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowRecoveryKey(!showRecoveryKey)}
+                      className="text-[10px] text-amber-800 font-bold hover:underline cursor-pointer"
+                    >
+                      {showRecoveryKey ? 'Ẩn mã' : 'Xem mã'}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-amber-800 leading-tight">
+                    Mã bí mật dùng để khôi phục quyền Admin và mở khóa ngay lập tức nếu lỡ quên hoặc bị đổi mật khẩu.
+                  </p>
+                  <div>
+                    <label className="text-[10px] text-zinc-600 block mb-0.5">Mã cứu hộ tùy chỉnh:</label>
+                    <input
+                      type={showRecoveryKey ? 'text' : 'password'}
+                      value={adminRecoveryKeyInput}
+                      onChange={(e) => setAdminRecoveryKeyInput(e.target.value)}
+                      placeholder="Mặc định: BAKERY-RESCUE-2026"
+                      className="w-full p-2 bg-white border border-amber-300 rounded-xl text-xs font-mono font-bold text-amber-950"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-zinc-600 block mb-0.5">SĐT Hotline Dự Phòng Cứu Hộ:</label>
+                    <input
+                      type="text"
+                      value={adminRecoveryPhoneInput}
+                      onChange={(e) => setAdminRecoveryPhoneInput(e.target.value)}
+                      placeholder="Để trống sẽ dùng Hotline quán..."
+                      className="w-full p-2 bg-white border border-amber-300 rounded-xl text-xs font-mono text-zinc-800"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        updateAdminRecoveryKey(adminRecoveryKeyInput, adminRecoveryPhoneInput);
+                        setSecurityMsg({ type: 'success', text: 'Đã lưu cấu hình Mã Cứu Hộ Admin thành công!' });
+                        setTimeout(() => setSecurityMsg(null), 4000);
+                      }}
+                      className="flex-1 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold text-[11px] rounded-xl shadow-xs transition cursor-pointer"
+                    >
+                      Lưu Mã Cứu Hộ
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm('Đặt lại mật khẩu Admin về mặc định "admin123"?')) {
+                          forceResetAdminToDefault();
+                          setAdminOldPass('');
+                          setAdminNewPass('');
+                          setSecurityMsg({ type: 'success', text: 'Đã đặt lại mật khẩu Admin về "admin123" thành công!' });
+                          setTimeout(() => setSecurityMsg(null), 4000);
+                        }
+                      }}
+                      className="px-2.5 py-1.5 bg-white hover:bg-zinc-50 border border-zinc-300 text-zinc-700 font-bold text-[11px] rounded-xl transition cursor-pointer"
+                      title="Reset nhanh về admin123"
+                    >
+                      Reset về admin123
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "reset-admin": "npx tsx scripts/emergency_reset_admin.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",

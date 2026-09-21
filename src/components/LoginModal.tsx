@@ -13,6 +13,7 @@ export default function LoginModal() {
     loginKitchen,
     loginCashier,
     loginStaff,
+    resetAdminPasswordWithRecoveryKey,
     user,
     securityConfig,
   } = useAuth();
@@ -21,6 +22,12 @@ export default function LoginModal() {
   const [adminPassword, setAdminPassword] = useState('');
   const [pinInput, setPinInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  // Trạng thái khôi phục mật khẩu Admin khẩn cấp
+  const [isRecoveringAdmin, setIsRecoveringAdmin] = useState(false);
+  const [rescueKeyInput, setRescueKeyInput] = useState('');
+  const [newAdminPassInput, setNewAdminPassInput] = useState('');
+  const [rescueSuccessMsg, setRescueSuccessMsg] = useState('');
 
   useEffect(() => {
     if (isLoginModalOpen) {
@@ -31,6 +38,10 @@ export default function LoginModal() {
       setAdminPassword('');
       setPinInput('');
       setErrorMsg('');
+      setIsRecoveringAdmin(false);
+      setRescueKeyInput('');
+      setNewAdminPassInput('');
+      setRescueSuccessMsg('');
     }
   }, [isLoginModalOpen, loginTargetRole]);
 
@@ -42,6 +53,21 @@ export default function LoginModal() {
     const res = loginAdmin(adminPassword);
     if (!res.success) {
       setErrorMsg(res.error || 'Mật khẩu Chủ Tiệm không đúng');
+    }
+  };
+
+  const handleRescueSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
+    setRescueSuccessMsg('');
+    const res = resetAdminPasswordWithRecoveryKey(rescueKeyInput, newAdminPassInput);
+    if (res.success) {
+      setRescueSuccessMsg(res.message || 'Khôi phục quyền Quản Trị thành công! Đang vào hệ thống...');
+      setTimeout(() => {
+        closeLoginModal();
+      }, 1200);
+    } else {
+      setErrorMsg(res.error || 'Mã Cứu Hộ hoặc Số Điện Thoại không khớp với dữ liệu tiệm!');
     }
   };
 
@@ -413,67 +439,150 @@ export default function LoginModal() {
 
         {/* TAB 3: ADMIN LOGIN */}
         {activeTab === 'admin' && (
-          <form onSubmit={handleAdminSubmit} className="space-y-4">
-            <div className="p-3 bg-rose-50/70 rounded-2xl border border-rose-200 text-xs text-rose-950 space-y-1">
-              <p className="font-bold flex items-center gap-1 text-rose-800">
-                👑 Quyền Chủ Tiệm (Toàn quyền hệ thống):
-              </p>
-              <p className="text-[11px] text-rose-900 leading-relaxed">
-                Toàn quyền truy cập cả 3 phân hệ: Quầy Bán Hàng (POS), Bếp Bánh (KDS), và Quản Trị & Kế Toán Doanh Thu.
-              </p>
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-700">Tài khoản Admin:</label>
-              <input
-                type="text"
-                disabled
-                value="admin (Chủ Tiệm)"
-                className="w-full px-3.5 py-2.5 bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-600 cursor-not-allowed"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <div className="flex justify-between items-center text-xs">
-                <label className="font-bold text-zinc-700">Mật khẩu Quản Trị:</label>
-                <span className="text-[10px] text-zinc-500 font-mono font-bold">Mặc định: admin123</span>
+          isRecoveringAdmin ? (
+            <form onSubmit={handleRescueSubmit} className="space-y-3.5">
+              <div className="p-3 bg-amber-50/90 rounded-2xl border border-amber-200 text-xs text-amber-950 space-y-1">
+                <p className="font-black flex items-center gap-1.5 text-amber-900 text-xs">
+                  <Shield className="w-4 h-4 text-amber-600" /> Cứu Hộ & Khôi Phục Mật Khẩu Admin
+                </p>
+                <p className="text-[11px] text-amber-800 leading-relaxed">
+                  Dành cho trường hợp <b>quên mật khẩu</b> hoặc <b>bị đổi mật khẩu</b>. Nhập Mã Cứu Hộ hoặc Số Điện Thoại Quán để lấy lại quyền và đặt lại mật khẩu mới.
+                </p>
               </div>
-              <div className="relative">
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-700">Mã Cứu Hộ hoặc SĐT Quán *</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={rescueKeyInput}
+                    onChange={(e) => setRescueKeyInput(e.target.value)}
+                    placeholder="Nhập mã cứu hộ hoặc SĐT tiệm..."
+                    className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-xs font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                  />
+                  <KeyRound className="w-4 h-4 text-amber-500 absolute right-3.5 top-3" />
+                </div>
+                <p className="text-[10px] text-zinc-400 italic">
+                  💡 Gợi ý: Mã mặc định hệ thống là <span className="font-mono text-zinc-700 font-bold">BAKERY-RESCUE-2026</span> hoặc Master Key <span className="font-mono text-zinc-700 font-bold">BAKERY-RESCUE-9999</span>
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-700">Mật khẩu mới muốn đặt:</label>
                 <input
                   type="password"
-                  required
-                  autoFocus
-                  value={adminPassword}
-                  onChange={(e) => setAdminPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu admin..."
-                  className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-sm font-black text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500"
+                  value={newAdminPassInput}
+                  onChange={(e) => setNewAdminPassInput(e.target.value)}
+                  placeholder="Để trống sẽ tự đặt về: admin123"
+                  className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-xs font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 />
-                <KeyRound className="w-4 h-4 text-zinc-400 absolute right-3.5 top-3" />
               </div>
-            </div>
 
-            {errorMsg && (
-              <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-1.5">
-                <span>⚠️ {errorMsg}</span>
+              {rescueSuccessMsg && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center gap-1.5 animate-in fade-in">
+                  <span>✅ {rescueSuccessMsg}</span>
+                </div>
+              )}
+
+              {errorMsg && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-1.5">
+                  <span>⚠️ {errorMsg}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setIsRecoveringAdmin(false); setErrorMsg(''); }}
+                  className="flex-1 py-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
+                >
+                  Quay Lại
+                </button>
+                <button
+                  type="submit"
+                  className="flex-2 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Check className="w-4 h-4" /> Khôi Phục & Vào Admin
+                </button>
               </div>
-            )}
+            </form>
+          ) : (
+            <form onSubmit={handleAdminSubmit} className="space-y-4">
+              <div className="p-3 bg-rose-50/70 rounded-2xl border border-rose-200 text-xs text-rose-950 space-y-1">
+                <p className="font-bold flex items-center gap-1 text-rose-800">
+                  👑 Quyền Chủ Tiệm (Toàn quyền hệ thống):
+                </p>
+                <p className="text-[11px] text-rose-900 leading-relaxed">
+                  Toàn quyền truy cập cả 3 phân hệ: Quầy Bán Hàng (POS), Bếp Bánh (KDS), và Quản Trị & Kế Toán Doanh Thu.
+                </p>
+              </div>
 
-            <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={closeLoginModal}
-                className="flex-1 py-3 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
-              >
-                Hủy
-              </button>
-              <button
-                type="submit"
-                className="flex-2 py-3 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-md shadow-rose-700/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
-              >
-                <Check className="w-4 h-4" /> Đăng Nhập Quản Trị
-              </button>
-            </div>
-          </form>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-zinc-700">Tài khoản Admin:</label>
+                <input
+                  type="text"
+                  disabled
+                  value="admin (Chủ Tiệm)"
+                  className="w-full px-3.5 py-2.5 bg-zinc-100 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-600 cursor-not-allowed"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-center text-xs">
+                  <label className="font-bold text-zinc-700">Mật khẩu Quản Trị:</label>
+                  <span className="text-[10px] text-zinc-500 font-mono font-bold">Mặc định: admin123</span>
+                </div>
+                <div className="relative">
+                  <input
+                    type="password"
+                    required
+                    autoFocus
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu admin..."
+                    className="w-full px-3.5 py-2.5 bg-white border border-zinc-300 rounded-xl text-sm font-black text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500"
+                  />
+                  <KeyRound className="w-4 h-4 text-zinc-400 absolute right-3.5 top-3" />
+                </div>
+              </div>
+
+              {/* Nút cứu hộ khi quên mật khẩu */}
+              <div className="flex justify-end pt-0.5">
+                <button
+                  type="button"
+                  onClick={() => { setIsRecoveringAdmin(true); setErrorMsg(''); }}
+                  className="text-[11px] font-bold text-rose-700 hover:text-rose-800 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Shield className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Quên mật khẩu? Khôi phục quyền Admin</span>
+                </button>
+              </div>
+
+              {errorMsg && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-1.5">
+                  <span>⚠️ {errorMsg}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={closeLoginModal}
+                  className="flex-1 py-3 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex-2 py-3 rounded-xl bg-rose-700 hover:bg-rose-800 text-white text-xs font-bold shadow-md shadow-rose-700/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Check className="w-4 h-4" /> Đăng Nhập Quản Trị
+                </button>
+              </div>
+            </form>
+          )
         )}
       </div>
     </div>

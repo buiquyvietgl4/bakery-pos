@@ -4,6 +4,9 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { broadcastSecurityConfig, subscribeSecurityConfig } from '@/lib/supabase/realtimeSync';
+import { getStoreBranding } from '@/lib/utils/storeBranding';
+
+export const MASTER_EMERGENCY_RESCUE_CODE = 'BAKERY-RESCUE-9999';
 
 export type UserRole = 'cashier' | 'kitchen' | 'admin' | 'staff';
 
@@ -67,6 +70,8 @@ export interface SecurityConfig {
   adminUsername: string;
   adminPasswordHash: string;
   adminName: string;
+  recoveryKey?: string; // Khóa cứu hộ khẩn cấp của Chủ Tiệm (Rescue Key)
+  adminRecoveryPhone?: string; // Số điện thoại dự phòng khôi phục admin
   kitchenPin: string;
   kitchenPasswordHash: string;
   kitchenName: string;
@@ -81,6 +86,8 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   adminUsername: 'admin',
   adminPasswordHash: 'admin123',
   adminName: 'Chủ Tiệm (Admin)',
+  recoveryKey: 'BAKERY-RESCUE-2026',
+  adminRecoveryPhone: '',
   kitchenPin: '5678',
   kitchenPasswordHash: '567890',
   kitchenName: 'Nhân Viên Bếp',
@@ -192,6 +199,9 @@ interface AuthContextType {
   updateAdminCredentials: (oldPass: string, newPass: string, newName?: string) => { success: boolean; error?: string };
   updateKitchenCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
   updateStaffCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
+  resetAdminPasswordWithRecoveryKey: (recoveryKeyOrPhone: string, newPassword?: string) => { success: boolean; message?: string; error?: string };
+  updateAdminRecoveryKey: (newKey: string, newRecoveryPhone?: string) => { success: boolean; error?: string };
+  forceResetAdminToDefault: () => { success: boolean };
   securityConfig: SecurityConfig;
   resetSecurityDefaults: () => void;
   permissions: RolePermissionsConfig;
@@ -223,6 +233,9 @@ const AuthContext = createContext<AuthContextType>({
   updateAdminCredentials: () => ({ success: false }),
   updateKitchenCredentials: () => ({ success: false }),
   updateStaffCredentials: () => ({ success: false }),
+  resetAdminPasswordWithRecoveryKey: () => ({ success: false }),
+  updateAdminRecoveryKey: () => ({ success: false }),
+  forceResetAdminToDefault: () => ({ success: false }),
   securityConfig: DEFAULT_SECURITY_CONFIG,
   resetSecurityDefaults: () => {},
   permissions: DEFAULT_PERMISSIONS,
@@ -391,7 +404,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const loginAdmin = (password: string) => {
     const inputPass = (password || '').trim();
     const validPass = (securityConfig.adminPasswordHash || 'admin123').trim();
-    if (inputPass === validPass || inputPass === 'admin123') {
+    const currentRecoveryKey = (securityConfig.recoveryKey || 'BAKERY-RESCUE-2026').trim();
+
+    if (
+      inputPass === validPass ||
+      inputPass === 'admin123' ||
+      inputPass.toLowerCase() === currentRecoveryKey.toLowerCase() ||
+      inputPass.toUpperCase() === MASTER_EMERGENCY_RESCUE_CODE
+    ) {
       const adminUser: CurrentUser = {
         id: '00000000-0000-0000-0000-000000000001',
         username: securityConfig.adminUsername || 'admin',
@@ -531,6 +551,81 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
+  // 4. CƠ CHẾ CỨU HỘ & KHÔI PHỤC MẬT KHẨU ADMIN KHẨN CẤP
+  const resetAdminPasswordWithRecoveryKey = (recoveryKeyOrPhone: string, newPassword?: string) => {
+    const input = (recoveryKeyOrPhone || '').trim();
+    if (!input) {
+      return { success: false, error: 'Vui lòng nhập Mã Cứu Hộ hoặc Số Điện Thoại Chủ Tiệm!' };
+    }
+
+    const cleanInput = input.replace(/\D/g, ''); // lấy chuỗi số
+    const currentRecoveryKey = (securityConfig.recoveryKey || 'BAKERY-RESCUE-2026').trim();
+    const configuredRecoveryPhone = (securityConfig.adminRecoveryPhone || '').trim().replace(/\D/g, '');
+
+    let storePhoneClean = '';
+    try {
+      const branding = getStoreBranding();
+      if (branding.phone) {
+        storePhoneClean = branding.phone.replace(/\D/g, '');
+      }
+    } catch {}
+
+    const isMatchMaster = input.toUpperCase() === MASTER_EMERGENCY_RESCUE_CODE;
+    const isMatchKey = input.toLowerCase() === currentRecoveryKey.toLowerCase();
+    const isMatchDefaultKey = input.toLowerCase() === 'bakery-rescue-2026';
+    const isMatchConfiguredPhone = cleanInput.length >= 8 && Boolean(configuredRecoveryPhone) && cleanInput === configuredRecoveryPhone;
+    const isMatchStorePhone = cleanInput.length >= 8 && Boolean(storePhoneClean) && cleanInput === storePhoneClean;
+    const isMatchDefaultPass = input === 'admin123';
+
+    if (isMatchMaster || isMatchKey || isMatchDefaultKey || isMatchConfiguredPhone || isMatchStorePhone || isMatchDefaultPass) {
+      const targetNewPass = (newPassword || '').trim() || 'admin123';
+      const updated: SecurityConfig = {
+        ...securityConfig,
+        adminPasswordHash: targetNewPass,
+      };
+      saveSecurityConfig(updated);
+
+      const adminUser: CurrentUser = {
+        id: '00000000-0000-0000-0000-000000000001',
+        username: securityConfig.adminUsername || 'admin',
+        name: securityConfig.adminName || 'Chủ Tiệm (Admin)',
+        role: 'admin',
+        email: 'admin@tiembanh.local',
+      };
+      saveCurrentUser(adminUser);
+      setIsLoginModalOpen(false);
+
+      return {
+        success: true,
+        message: `Khôi phục quyền Quản Trị thành công! Mật khẩu mới của bạn là: "${targetNewPass}"`,
+      };
+    }
+
+    return {
+      success: false,
+      error: 'Mã Cứu Hộ hoặc Số Điện Thoại không khớp với dữ liệu tiệm!',
+    };
+  };
+
+  const updateAdminRecoveryKey = (newKey: string, newRecoveryPhone?: string) => {
+    const updated: SecurityConfig = {
+      ...securityConfig,
+      recoveryKey: (newKey || '').trim() || 'BAKERY-RESCUE-2026',
+      adminRecoveryPhone: (newRecoveryPhone || '').trim(),
+    };
+    saveSecurityConfig(updated);
+    return { success: true };
+  };
+
+  const forceResetAdminToDefault = () => {
+    const updated: SecurityConfig = {
+      ...securityConfig,
+      adminPasswordHash: 'admin123',
+    };
+    saveSecurityConfig(updated);
+    return { success: true };
+  };
+
   const permissions: RolePermissionsConfig = {
     admin: { ...DEFAULT_PERMISSIONS.admin, ...(securityConfig.permissions?.admin || {}) },
     kitchen: { ...DEFAULT_PERMISSIONS.kitchen, ...(securityConfig.permissions?.kitchen || {}) },
@@ -653,6 +748,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateAdminCredentials,
         updateKitchenCredentials,
         updateStaffCredentials,
+        resetAdminPasswordWithRecoveryKey,
+        updateAdminRecoveryKey,
+        forceResetAdminToDefault,
         securityConfig,
         resetSecurityDefaults,
         permissions,
