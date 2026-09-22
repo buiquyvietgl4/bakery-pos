@@ -3508,7 +3508,7 @@ export default function AdminDashboard() {
           }`}
         >
           <BookOpen className="w-4 h-4" />
-          <span>BOM Bánh Bán Lẻ &amp; Bán Thành Phẩm</span>
+          <span>BOM Bán Lẻ</span>
         </button>
 
         <button
@@ -3524,11 +3524,11 @@ export default function AdminDashboard() {
           }`}
         >
           <Sparkles className="w-4 h-4" />
-          <span>Định Mức Bánh Sinh Nhật (Size &amp; Phụ Kiện)</span>
+          <span>BOM Sinh Nhật</span>
         </button>
       </div>
       <div className="text-[11px] text-zinc-400 font-medium px-2">
-        Quản lý định mức nguyên liệu &amp; công thức tính giá vốn
+        Định mức &amp; giá vốn
       </div>
     </div>
   );
@@ -3549,7 +3549,7 @@ export default function AdminDashboard() {
           }`}
         >
           <ShieldCheck className="w-4 h-4" />
-          <span>Duyệt Chuyển Khoản</span>
+          <span>Duyệt GD</span>
           {adminPendingTransfers.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse shadow-xs">
               {adminPendingTransfers.length}
@@ -3570,7 +3570,7 @@ export default function AdminDashboard() {
           }`}
         >
           <QrCode className="w-4 h-4" />
-          <span>Cài Đặt VietQR Ngân Hàng</span>
+          <span>VietQR</span>
         </button>
 
         <button
@@ -3586,11 +3586,11 @@ export default function AdminDashboard() {
           }`}
         >
           <Wallet className="w-4 h-4" />
-          <span>Ví Điện Tử (MoMo, ZaloPay)</span>
+          <span>Ví Điện Tử</span>
         </button>
       </div>
       <div className="text-[11px] text-zinc-400 font-medium px-2">
-        Quản lý tài khoản ngân hàng, ví điện tử &amp; phê duyệt giao dịch chuyển khoản
+        Ngân hàng, ví &amp; duyệt GD
       </div>
     </div>
   );
@@ -3611,7 +3611,7 @@ export default function AdminDashboard() {
           }`}
         >
           <Building2 className="w-4 h-4" />
-          <span>Tên &amp; Logo Tiệm</span>
+          <span>Thương Hiệu</span>
         </button>
 
         <button
@@ -3627,7 +3627,7 @@ export default function AdminDashboard() {
           }`}
         >
           <Shield className="w-4 h-4" />
-          <span>Bảo Mật &amp; Phân Quyền</span>
+          <span>Bảo Mật</span>
         </button>
 
         <button
@@ -3643,7 +3643,7 @@ export default function AdminDashboard() {
           }`}
         >
           <Database className="w-4 h-4" />
-          <span>CSDL &amp; Sao Lưu SQL</span>
+          <span>Dữ Liệu</span>
         </button>
 
         <button
@@ -3653,11 +3653,11 @@ export default function AdminDashboard() {
           title="Cài đặt máy in hóa đơn & tem nhãn bánh (Bluetooth, USB, khổ giấy)"
         >
           <Printer className="w-4 h-4 text-blue-600" />
-          <span>Máy In Hóa Đơn &amp; Tem</span>
+          <span>Máy In</span>
         </button>
       </div>
       <div className="text-[11px] text-zinc-400 font-medium px-2">
-        Cấu hình thương hiệu, bảo mật tài khoản &amp; đồng bộ dữ liệu
+        Logo, bảo mật &amp; sao lưu
       </div>
     </div>
   );
@@ -3745,17 +3745,17 @@ export default function AdminDashboard() {
           >
             {[
               // Nhóm 1: Tài chính & Thuế
-              { id: 'overview', label: 'Kế Toán & P&L', icon: BarChart3, group: 'finance' },
-              { id: 'tax_accounting', label: 'Sổ Sách Thuế (TT 88)', icon: FileSpreadsheet, group: 'finance' },
-              { id: 'shifts', label: 'Giao Ca & Két Quầy', icon: Wallet, group: 'finance' },
+              { id: 'overview', label: 'Tài Chính', icon: BarChart3, group: 'finance' },
+              { id: 'tax_accounting', label: 'Thuế & Sổ Sách', icon: FileSpreadsheet, group: 'finance' },
+              { id: 'shifts', label: 'Ca & Két', icon: Wallet, group: 'finance' },
               // Nhóm 2: Vận hành & Kho
-              { id: 'images', label: 'Quản Lý Bánh & Ảnh', icon: Cake, group: 'operations' },
-              { id: 'inventory', label: 'Kho & Vật Tư', icon: Package, group: 'operations' },
-              { id: 'bom', label: 'Công Thức (BOM)', icon: BookOpen, group: 'operations' },
+              { id: 'images', label: 'Bánh & Ảnh', icon: Cake, group: 'operations' },
+              { id: 'inventory', label: 'Kho', icon: Package, group: 'operations' },
+              { id: 'bom', label: 'BOM', icon: BookOpen, group: 'operations' },
               // Nhóm 3: Thanh toán
-              { id: 'payment', label: 'Thanh Toán & Chuyển Khoản', icon: ShieldCheck, group: 'payment' },
+              { id: 'payment', label: 'Thanh Toán', icon: ShieldCheck, group: 'payment' },
               // Nhóm 4: Hệ thống
-              { id: 'system', label: 'Cài Đặt Hệ Thống', icon: Settings, group: 'system' },
+              { id: 'system', label: 'Hệ Thống', icon: Settings, group: 'system' },
             ].map((tab, idx, arr) => {
               const Icon = tab.icon;
               const hasPendingTransfers = tab.id === 'payment' && adminPendingTransfers.length > 0;
