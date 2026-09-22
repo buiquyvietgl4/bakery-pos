@@ -191,6 +191,8 @@ export default function POSPage() {
     id: number;
     startX: number;
     startY: number;
+    midX: number;
+    midY: number;
     endX: number;
     endY: number;
     name: string;
@@ -215,10 +217,16 @@ export default function POSPage() {
     const startX = clientX !== undefined && clientX > 0 ? clientX : window.innerWidth / 2;
     const startY = clientY !== undefined && clientY > 0 ? clientY : window.innerHeight / 2;
 
+    // Tính điểm đỉnh uốn cong mềm mại của quỹ đạo parabol (cao hơn 70px)
+    const midX = Math.round(startX + (endX - startX) * 0.52);
+    const midY = Math.round(Math.min(startY, endY) - 70);
+
     const newItem = {
       id: Date.now() + Math.random(),
       startX,
       startY,
+      midX,
+      midY,
       endX,
       endY,
       name: product?.name || 'Bánh',
@@ -227,16 +235,17 @@ export default function POSPage() {
 
     setFlyingItems((prev) => [...prev, newItem]);
 
+    // Kích hoạt rung nảy giỏ hàng và bừng sáng tổng tiền ngay khi hạt chạm giỏ (670ms)
     setTimeout(() => {
       setCartBumping(true);
       setTotalPulsing(true);
-      setTimeout(() => setCartBumping(false), 500);
-      setTimeout(() => setTotalPulsing(false), 700);
-    }, 550);
+      setTimeout(() => setCartBumping(false), 550);
+      setTimeout(() => setTotalPulsing(false), 650);
+    }, 670);
 
     setTimeout(() => {
       setFlyingItems((prev) => prev.filter((it) => it.id !== newItem.id));
-    }, 700);
+    }, 860);
   };
 
   useEffect(() => {
@@ -4288,10 +4297,10 @@ export default function POSPage() {
 
         {/* Nút Xem Giỏ Hàng nổi cố định trên Mobile & Tablet khi đang chọn món */}
         {cart.length > 0 && mobileTab === 'menu' && (
-          <div id="pos-cart-mobile-target" className={`lg:hidden fixed bottom-3 left-3 right-3 z-50 shadow-2xl animate-in slide-in-from-bottom duration-200 transition-transform ${cartBumping ? 'animate-cart-jiggle' : ''}`}>
+          <div id="pos-cart-mobile-target" className={`lg:hidden fixed bottom-3 left-3 right-3 z-50 shadow-2xl animate-in slide-in-from-bottom duration-200 transition-transform ${cartBumping ? 'animate-cart-bounce' : ''}`}>
             <button
               onClick={() => setMobileTab('cart')}
-              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 text-white font-black text-sm shadow-xl shadow-amber-900/25 flex items-center justify-between transition active:scale-98 cursor-pointer ring-2 ring-white/30 animate-shimmer"
+              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 text-white font-black text-sm shadow-xl shadow-amber-900/25 flex items-center justify-between transition active:scale-98 cursor-pointer ring-2 ring-white/30 animate-shimmer-smooth"
             >
               <div className="flex items-center gap-2.5">
                 <span className={`w-8 h-8 rounded-xl bg-white text-amber-600 flex items-center justify-center text-xs font-black shadow-xs ${cartBumping ? 'animate-pop-scale' : ''}`}>
@@ -4325,11 +4334,14 @@ export default function POSPage() {
             </button>
             <div
               id="pos-cart-target"
-              className={`w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 transition-transform ${
-                cartBumping ? 'animate-cart-jiggle' : ''
+              className={`w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 transition-transform relative ${
+                cartBumping ? 'animate-cart-bounce' : ''
               }`}
             >
               <ShoppingCart className="w-4 h-4" />
+              {cartBumping && (
+                <span className="absolute -inset-2.5 rounded-full border-2 border-amber-400 bg-amber-400/20 animate-spark-aura pointer-events-none" />
+              )}
             </div>
             <div>
               <h2 className="font-black text-amber-950 text-sm sm:text-base leading-none">Đơn Bán Tại Quầy</h2>
@@ -4656,7 +4668,7 @@ export default function POSPage() {
               setIsCheckoutOpen(true);
             }}
             className={`w-full py-3.5 rounded-2xl text-white font-black text-sm sm:text-base shadow-xl disabled:opacity-50 disabled:pointer-events-none transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${
-              cart.length > 0 ? 'animate-shimmer' : ''
+              cart.length > 0 ? 'animate-shimmer-smooth' : ''
             } ${
               cart.some(
                 (item) =>
@@ -9116,31 +9128,30 @@ export default function POSPage() {
         </div>
       )}
 
-      {/* Overlay hiệu ứng hạt bay vào giỏ hàng (Fly to Cart) */}
-      {flyingItems.map((item) => {
-        const dx = item.endX - item.startX;
-        const dy = item.endY - item.startY;
-        return (
-          <div
-            key={item.id}
-            style={{
-              left: `${item.startX}px`,
-              top: `${item.startY}px`,
-              '--tx': `${dx}px`,
-              '--ty': `${dy}px`,
-            } as React.CSSProperties}
-            className="fixed pointer-events-none z-[99999] animate-fly-particle flex items-center justify-center"
-          >
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 text-white shadow-2xl shadow-amber-900/50 flex items-center justify-center p-1.5 border-2 border-white overflow-hidden ring-4 ring-amber-400/40">
-              {item.image ? (
-                <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded-xl" />
-              ) : (
-                <span className="text-2xl drop-shadow-sm">🍰</span>
-              )}
-            </div>
+      {/* Overlay hiệu ứng hạt bay vào giỏ hàng 3D mượt mà (60fps GPU-Accelerated) */}
+      {flyingItems.map((item) => (
+        <div
+          key={item.id}
+          style={{
+            '--sx': `${item.startX}px`,
+            '--sy': `${item.startY}px`,
+            '--mx': `${item.midX}px`,
+            '--my': `${item.midY}px`,
+            '--ex': `${item.endX}px`,
+            '--ey': `${item.endY}px`,
+          } as React.CSSProperties}
+          className="animate-fly-smooth flex items-center justify-center"
+        >
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 text-white shadow-[0_12px_36px_rgba(217,119,6,0.65)] flex items-center justify-center p-1.5 border-2 border-white ring-4 ring-amber-400/60 relative">
+            {item.image ? (
+              <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded-xl" />
+            ) : (
+              <span className="text-3xl drop-shadow-sm">🍰</span>
+            )}
+            <div className="absolute -inset-1.5 rounded-2xl bg-amber-400/40 blur-xs -z-10" />
           </div>
-        );
-      })}
+        </div>
+      ))}
 
     </div>
   );

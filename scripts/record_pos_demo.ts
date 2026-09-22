@@ -7,29 +7,16 @@ const CHROME_PATH = 'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrom
 const ARTIFACTS_DIR = 'C:\\Users\\H\\.gemini\\antigravity\\brain\\60b78812-4fb4-4b45-a7e5-90bb596df1a5';
 const FRAMES_DIR = path.join(__dirname, 'temp_frames');
 const OUTPUT_VIDEO = path.join(ARTIFACTS_DIR, 'demo_pos_animations.mp4');
+const OUTPUT_GIF = path.join(ARTIFACTS_DIR, 'demo_pos_animations.gif');
 const BASE_URL = 'http://localhost:3001';
 
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function smoothMouseMove(page: any, startX: number, startY: number, endX: number, endY: number, steps = 18) {
-  for (let i = 1; i <= steps; i++) {
-    const t = i / steps;
-    const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-    const curX = Math.round(startX + (endX - startX) * ease);
-    const curY = Math.round(startY + (endY - startY) * ease);
-    await page.evaluate((x: number, y: number) => {
-      if ((window as any).__moveCursor) (window as any).__moveCursor(x, y);
-    }, curX, curY);
-    await page.mouse.move(curX, curY);
-    await sleep(20);
-  }
-}
-
 async function record() {
-  console.log('🚀 Bắt đầu kịch bản quay video demo hiệu ứng POS sống động...');
-  
+  console.log('🚀 Bắt đầu ghi hình bản demo POS Animation 60FPS siêu mượt...');
+
   if (fs.existsSync(FRAMES_DIR)) {
     fs.rmSync(FRAMES_DIR, { recursive: true, force: true });
   }
@@ -39,7 +26,13 @@ async function record() {
     executablePath: CHROME_PATH,
     headless: true,
     defaultViewport: { width: 1400, height: 900, deviceScaleFactor: 1 },
-    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu=false']
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--enable-accelerated-2d-canvas',
+      '--enable-gpu-rasterization',
+      '--disable-gpu-vsync=false',
+    ]
   });
 
   const page = await browser.newPage();
@@ -48,14 +41,14 @@ async function record() {
   await page.goto(`${BASE_URL}/pos`, { waitUntil: 'networkidle2', timeout: 30000 });
 
   // Thiết lập auth Admin
-  await page.evaluate(() => {
+  await page.evaluate(`(() => {
     localStorage.setItem('bakery_current_user', JSON.stringify({
       id: 'admin-demo',
       username: 'admin',
       name: 'Chủ Tiệm (Admin)',
       role: 'admin'
     }));
-  });
+  })()`);
 
   await page.reload({ waitUntil: 'networkidle2' });
   await sleep(1500);
@@ -68,49 +61,92 @@ async function record() {
     await sleep(1500);
   }
 
-  // Dọn dẹp các banner push notification để không che màn hình
-  await page.evaluate(() => {
+  // Dọn dẹp các banner push notification
+  await page.evaluate(`(() => {
     document.querySelectorAll('div').forEach((d) => {
-      if (d.textContent?.includes('Bật Thông Báo Khi Tắt Màn Hình')) {
+      if (d.textContent && d.textContent.indexOf('Bật Thông Báo Khi Tắt Màn Hình') !== -1) {
         d.remove();
       }
     });
-  });
+  })()`);
 
-  // Tiêm con trỏ chuột ảo sắc nét và sống động
-  await page.evaluate(() => {
+  // Tiêm con trỏ chuột mượt mà 60fps qua requestAnimationFrame và ticker giữ compositor luôn hoạt động
+  await page.evaluate(`(() => {
+    // 1. Ticker 60fps giữ Chrome compositor liên tục xuất frame mượt mà
+    const tickerCanvas = document.createElement('canvas');
+    tickerCanvas.width = 2;
+    tickerCanvas.height = 2;
+    tickerCanvas.style.cssText = 'position:fixed;top:0;left:0;opacity:0.01;pointer-events:none;z-index:9999999;';
+    document.body.appendChild(tickerCanvas);
+    const ctx = tickerCanvas.getContext('2d');
+    let tickCount = 0;
+    function keepCompositorAlive() {
+      tickCount++;
+      if (ctx) {
+        ctx.fillStyle = tickCount % 2 === 0 ? 'rgba(0,0,0,0.01)' : 'rgba(255,255,255,0.01)';
+        ctx.fillRect(0, 0, 2, 2);
+      }
+      requestAnimationFrame(keepCompositorAlive);
+    }
+    requestAnimationFrame(keepCompositorAlive);
+
+    // 2. Con trỏ chuột ảo rực rỡ cao cấp
     const cursor = document.createElement('div');
     cursor.id = 'virtual-cursor';
-    cursor.style.position = 'fixed';
-    cursor.style.width = '24px';
-    cursor.style.height = '24px';
-    cursor.style.borderRadius = '50%';
-    cursor.style.backgroundColor = 'rgba(245, 158, 11, 0.9)';
-    cursor.style.border = '2.5px solid #ffffff';
-    cursor.style.boxShadow = '0 0 14px rgba(217, 119, 6, 0.7), 0 4px 8px rgba(0,0,0,0.35)';
-    cursor.style.pointerEvents = 'none';
-    cursor.style.zIndex = '9999999';
-    cursor.style.transform = 'translate(-50%, -50%)';
-    cursor.style.transition = 'transform 0.12s ease-out, background-color 0.15s ease';
+    cursor.style.cssText = 'position:fixed;width:26px;height:26px;border-radius:50%;background:radial-gradient(circle at 35% 35%, #fbbf24, #d97706);border:2.5px solid #ffffff;box-shadow:0 0 16px rgba(217, 119, 6, 0.75), 0 4px 8px rgba(0,0,0,0.3);pointer-events:none;z-index:99999999;transform:translate(-50%, -50%);will-change:transform, left, top;';
     document.body.appendChild(cursor);
 
-    (window as any).__moveCursor = (x: number, y: number) => {
-      cursor.style.left = `${x}px`;
-      cursor.style.top = `${y}px`;
+    let curX = 400;
+    let curY = 300;
+    cursor.style.left = curX + 'px';
+    cursor.style.top = curY + 'px';
+
+    window.__glideCursorTo = function(destX, destY, duration) {
+      if (!duration) duration = 400;
+      return new Promise(function(resolve) {
+        var startX = curX;
+        var startY = curY;
+        var startTime = performance.now();
+
+        function step(now) {
+          var elapsed = now - startTime;
+          var progress = Math.min(elapsed / duration, 1);
+          var ease = progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+          curX = startX + (destX - startX) * ease;
+          curY = startY + (destY - startY) * ease;
+          cursor.style.left = curX + 'px';
+          cursor.style.top = curY + 'px';
+
+          if (progress < 1) {
+            requestAnimationFrame(step);
+          } else {
+            curX = destX;
+            curY = destY;
+            cursor.style.left = curX + 'px';
+            cursor.style.top = curY + 'px';
+            resolve();
+          }
+        }
+
+        requestAnimationFrame(step);
+      });
     };
 
-    (window as any).__clickCursor = () => {
-      cursor.style.transform = 'translate(-50%, -50%) scale(0.6)';
-      cursor.style.backgroundColor = 'rgba(217, 119, 6, 1)';
-      setTimeout(() => {
+    window.__clickCursorFeedback = function() {
+      cursor.style.transform = 'translate(-50%, -50%) scale(0.65)';
+      cursor.style.filter = 'brightness(1.2)';
+      setTimeout(function() {
         cursor.style.transform = 'translate(-50%, -50%) scale(1)';
-        cursor.style.backgroundColor = 'rgba(245, 158, 11, 0.9)';
-      }, 180);
+        cursor.style.filter = 'none';
+      }, 160);
     };
-  });
+  })()`);
 
-  // Khởi tạo CDP Session Screencast
-  console.log('🎥 Bắt đầu Screencast ghi lại khung hình (CDP)...');
+  // Bắt đầu CDP Screencast
+  console.log('🎥 Bắt đầu Screencast (CDP)...');
   const client = await page.target().createCDPSession();
 
   let frameIndex = 0;
@@ -142,161 +178,111 @@ async function record() {
     everyNthFrame: 1,
   });
 
-  let curX = 400;
-  let curY = 300;
-  await page.evaluate((x: number, y: number) => (window as any).__moveCursor?.(x, y), curX, curY);
-
-  console.log('🎬 Cảnh 1: Hiển thị giỏ hàng ban đầu (Floating basket animation)...');
+  console.log('🎬 Cảnh 1: Chiêm ngưỡng giỏ hàng ban đầu (Floating Slow)...');
   await sleep(1500);
 
-  // Lấy các card sản phẩm
+  // Lấy các thẻ sản phẩm
   const productCards = await page.$$('.group.bg-white.rounded-3xl');
   console.log(`Tìm thấy ${productCards.length} sản phẩm trên quầy`);
 
-  if (productCards.length >= 3) {
-    // CẢNH 2: Thêm món thứ 1
-    console.log('🎬 Cảnh 2: Thêm món 1 -> Hiệu ứng Hạt Bánh Bay (Fly-to-Cart) & Rung Giỏ (Cart Jiggle)...');
-    const box1 = await productCards[0].boundingBox();
-    if (box1) {
-      const targetX = box1.x + box1.width / 2;
-      const targetY = box1.y + box1.height / 2;
-      await smoothMouseMove(page, curX, curY, targetX, targetY, 20);
-      curX = targetX;
-      curY = targetY;
-      await sleep(300);
+  async function clickProductWithGlide(index: number, label: string) {
+    console.log(`🎬 Di chuột và thêm món: ${label}...`);
+    const card = productCards[index];
+    const box = await card.boundingBox();
+    if (box) {
+      const targetX = Math.round(box.x + box.width / 2);
+      const targetY = Math.round(box.y + box.height / 2);
 
-      await page.evaluate(() => (window as any).__clickCursor?.());
-      await page.mouse.click(curX, curY);
-      await sleep(1400); // Ngắm hạt bánh bay hình cầu vồng và giỏ rung
-    }
+      // Lướt chuột mượt mà 60fps đến sản phẩm
+      await page.evaluate(`window.__glideCursorTo(${targetX}, ${targetY}, 480)`);
+      await sleep(250);
 
-    // CẢNH 3: Thêm món thứ 2
-    console.log('🎬 Cảnh 3: Thêm món 2 -> Slide-in Right & Glow Pulse tổng tiền...');
-    const box2 = await productCards[1].boundingBox();
-    if (box2) {
-      const targetX = box2.x + box2.width / 2;
-      const targetY = box2.y + box2.height / 2;
-      await smoothMouseMove(page, curX, curY, targetX, targetY, 20);
-      curX = targetX;
-      curY = targetY;
-      await sleep(300);
+      // Hiệu ứng bấm chuột và trigger click thực tế
+      await page.evaluate(`window.__clickCursorFeedback()`);
+      await page.mouse.click(targetX, targetY);
 
-      await page.evaluate(() => (window as any).__clickCursor?.());
-      await page.mouse.click(curX, curY);
-      await sleep(1400);
-    }
-
-    // CẢNH 4: Thêm món thứ 3
-    console.log('🎬 Cảnh 4: Thêm món 3 -> Tích luỹ giỏ hàng...');
-    const box3 = await productCards[2].boundingBox();
-    if (box3) {
-      const targetX = box3.x + box3.width / 2;
-      const targetY = box3.y + box3.height / 2;
-      await smoothMouseMove(page, curX, curY, targetX, targetY, 20);
-      curX = targetX;
-      curY = targetY;
-      await sleep(300);
-
-      await page.evaluate(() => (window as any).__clickCursor?.());
-      await page.mouse.click(curX, curY);
-      await sleep(1400);
+      // Chờ trọn vẹn quỹ đạo parabol bay 680ms + rung giỏ squash 550ms + trượt slide-in 420ms
+      await sleep(1500);
     }
   }
 
-  // CẢNH 5: Tăng số lượng trong giỏ
-  console.log('🎬 Cảnh 5: Bấm nút tăng số lượng trong giỏ -> Xem Pop-scale và Total Glow Pulse...');
+  if (productCards.length >= 3) {
+    // Cảnh 2: Thêm món thứ 1
+    await clickProductWithGlide(0, 'Món 1 - Cốt Bánh Bắp Phô Mai 20cm');
+
+    // Cảnh 3: Thêm món thứ 2
+    await clickProductWithGlide(1, 'Món 2 - Cốt Bánh Bông Lan Vani 18cm');
+
+    // Cảnh 4: Thêm món thứ 3
+    await clickProductWithGlide(2, 'Món 3 - Sốt Phô Mai Trứng Muối');
+  }
+
+  // Cảnh 5: Di chuyển mượt mà sang giỏ hàng bấm tăng số lượng (+)
+  console.log('🎬 Cảnh 5: Thao tác tăng số lượng trong giỏ hàng...');
   const cartPlusBtn = await page.$('[data-testid="pos-cart-plus-btn"]');
   if (cartPlusBtn) {
     const plusBox = await cartPlusBtn.boundingBox();
     if (plusBox) {
-      const targetX = plusBox.x + plusBox.width / 2;
-      const targetY = plusBox.y + plusBox.height / 2;
-      await smoothMouseMove(page, curX, curY, targetX, targetY, 20);
-      curX = targetX;
-      curY = targetY;
-      await sleep(400);
+      const targetX = Math.round(plusBox.x + plusBox.width / 2);
+      const targetY = Math.round(plusBox.y + plusBox.height / 2);
 
-      // Click tăng lần 1
-      await page.evaluate(() => (window as any).__clickCursor?.());
-      await page.mouse.click(curX, curY);
-      await sleep(700);
+      await page.evaluate(`window.__glideCursorTo(${targetX}, ${targetY}, 550)`);
+      await sleep(350);
 
-      // Click tăng lần 2
-      await page.evaluate(() => (window as any).__clickCursor?.());
-      await page.mouse.click(curX, curY);
+      // Bấm tăng lần 1
+      await page.evaluate(`window.__clickCursorFeedback()`);
+      await page.mouse.click(targetX, targetY);
+      await sleep(750);
+
+      // Bấm tăng lần 2
+      await page.evaluate(`window.__clickCursorFeedback()`);
+      await page.mouse.click(targetX, targetY);
       await sleep(1000);
     }
   }
 
-  // CẢNH 6: Di chuột đến nút "Thanh Toán Ngay" có hiệu ứng Shimmer
-  console.log('🎬 Cảnh 6: Chiêm ngưỡng hiệu ứng Button Shimmer trên nút Thanh Toán...');
+  // Cảnh 6: Di chuột sang nút "Thanh Toán Ngay" ngắm vệt sáng Shimmer
+  console.log('🎬 Cảnh 6: Chiêm ngưỡng hiệu ứng Luxury Shimmer trên nút Thanh Toán...');
   const checkoutBtn = await page.$('#pos-checkout-btn');
   if (checkoutBtn) {
     const payBox = await checkoutBtn.boundingBox();
     if (payBox) {
-      const targetX = payBox.x + payBox.width / 2;
-      const targetY = payBox.y + payBox.height / 2;
-      await smoothMouseMove(page, curX, curY, targetX, targetY, 25);
-      curX = targetX;
-      curY = targetY;
-      await sleep(1600); // Ngắm hiệu ứng vệt sáng kim loại shimmer lướt qua nút
+      const targetX = Math.round(payBox.x + payBox.width / 2);
+      const targetY = Math.round(payBox.y + payBox.height / 2);
 
-      // Click nút Thanh Toán
+      await page.evaluate(`window.__glideCursorTo(${targetX}, ${targetY}, 600)`);
+      await sleep(1800); // Ngắm vệt sáng kim loại sang trọng lướt qua nút
+
+      // Cảnh 7: Bấm mở modal thanh toán
       console.log('🎬 Cảnh 7: Bấm mở modal thanh toán...');
-      await page.evaluate(() => (window as any).__clickCursor?.());
-      await page.mouse.click(curX, curY);
-      await sleep(2500); // Giữ modal thanh toán mở để kết thúc video đẹp mắt
+      await page.evaluate(`window.__clickCursorFeedback()`);
+      await page.mouse.click(targetX, targetY);
+      await sleep(2500); // Giữ modal hiển thị đẹp mắt
     }
   }
 
-  // Hoàn tất quay
+  // Kết thúc ghi hình
   console.log('⏹️ Dừng Screencast...');
   isRecording = false;
   await client.send('Page.stopScreencast');
   await browser.close();
 
-  console.log(`📸 Đã thu được tổng cộng ${frames.length} frames!`);
+  console.log(`📸 Thu được ${frames.length} frames mượt mà!`);
 
-  if (frames.length === 0) {
-    throw new Error('Không thu được frame nào từ Screencast!');
-  }
+  // Ghép video MP4 30FPS mượt mà tuyệt đối từ chuỗi frame (zero jitter)
+  console.log(`🎞️ Đang render video MP4 30FPS siêu mượt -> ${OUTPUT_VIDEO}...`);
+  const ffmpegVideoCmd = `ffmpeg -y -framerate 30 -i "frame_%05d.jpg" -c:v libx264 -pix_fmt yuv420p -crf 18 -preset slow -movflags +faststart "${OUTPUT_VIDEO}"`;
+  execSync(ffmpegVideoCmd, { cwd: FRAMES_DIR, stdio: 'inherit' });
 
-  // Tạo file concat.txt với timestamp thực tế
-  console.log('📝 Đang tạo file cấu hình timing khung hình (ffconcat)...');
-  const concatFile = path.join(FRAMES_DIR, 'concat.txt');
-  let concatLines = 'ffconcat version 1.0\n';
+  // Xuất GIF mượt mà 24FPS
+  console.log(`🖼️ Đang xuất ảnh động GIF 24FPS -> ${OUTPUT_GIF}...`);
+  const ffmpegGifCmd = `ffmpeg -y -i "${OUTPUT_VIDEO}" -vf "fps=24,scale=760:-1:flags=lanczos,split[s0][s1];[s0]palettegen=max_colors=192[p];[s1][p]paletteuse=dither=bayer" "${OUTPUT_GIF}"`;
+  execSync(ffmpegGifCmd, { cwd: FRAMES_DIR, stdio: 'inherit' });
 
-  for (let i = 0; i < frames.length; i++) {
-    let duration = 0.04; // mặc định 25fps
-    if (i < frames.length - 1) {
-      const diff = frames[i + 1].timestamp - frames[i].timestamp;
-      // Giới hạn duration tối thiểu và tối đa hợp lý
-      duration = Math.min(Math.max(diff, 0.016), 0.2);
-    }
-    concatLines += `file '${frames[i].fileName}'\n`;
-    concatLines += `duration ${duration.toFixed(4)}\n`;
-  }
-  // Thêm frame cuối
-  concatLines += `file '${frames[frames.length - 1].fileName}'\n`;
-
-  fs.writeFileSync(concatFile, concatLines);
-
-  // Ghép video bằng FFmpeg với concat demuxer
-  console.log(`🎞️ Đang ghép video bằng FFmpeg -> ${OUTPUT_VIDEO}...`);
-  const ffmpegCmd = `ffmpeg -y -f concat -safe 0 -i concat.txt -c:v libx264 -pix_fmt yuv420p -movflags +faststart "${OUTPUT_VIDEO}"`;
-  execSync(ffmpegCmd, { cwd: FRAMES_DIR, stdio: 'inherit' });
-
-  if (fs.existsSync(OUTPUT_VIDEO)) {
-    const stats = fs.statSync(OUTPUT_VIDEO);
-    console.log(`✅ Thành công tạo video demo POS Animation!`);
-    console.log(`📁 Dung lượng: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-    console.log(`📍 Đường dẫn: ${OUTPUT_VIDEO}`);
-  } else {
-    throw new Error('File video không tồn tại sau khi chạy ffmpeg!');
-  }
+  console.log('🎉 Hoàn tất xuất Video và GIF demo siêu mượt!');
 }
 
 record().catch((err) => {
-  console.error('❌ Lỗi khi quay video demo:', err);
+  console.error('❌ Lỗi khi quay video:', err);
   process.exit(1);
 });

@@ -89,132 +89,159 @@ input[type="time"]::-webkit-date-and-time-value {
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   BỘ HIỆU ỨNG ANIMATION POS SỐNG ĐỘNG (60FPS GPU-ACCELERATED)
+   BỘ HIỆU ỨNG ANIMATION POS CAO CẤP (60FPS GPU-ACCELERATED)
    ═══════════════════════════════════════════════════════════════ */
 
-/* 1. Hiệu ứng rung nảy giỏ hàng khi nhận món (Cart Jiggle) */
-@keyframes cartJiggle {
-  0% { transform: scale(1) rotate(0deg); }
-  20% { transform: scale(1.25) rotate(-10deg); }
-  40% { transform: scale(1.2) rotate(10deg); }
-  60% { transform: scale(1.1) rotate(-5deg); }
-  80% { transform: scale(1.05) rotate(3deg); }
-  100% { transform: scale(1) rotate(0deg); }
+/* 1. Squash & Stretch Cart Bounce (Nguyên lý Disney #1) */
+@keyframes cartSquashBounce {
+  0% { transform: scale(1, 1); }
+  22% { transform: scale(1.35, 0.72) translateY(3px); }
+  45% { transform: scale(0.84, 1.25) translateY(-5px); }
+  68% { transform: scale(1.1, 0.94) translateY(2px); }
+  85% { transform: scale(0.97, 1.03) translateY(-1px); }
+  100% { transform: scale(1, 1) translateY(0); }
 }
 
-.animate-cart-jiggle {
-  animation: cartJiggle 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+.animate-cart-bounce {
+  animation: cartSquashBounce 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  transform-origin: center bottom;
+  will-change: transform;
 }
 
-/* 2. Hiệu ứng vệt sáng lấp lánh (Button Shimmer Sheen) */
-@keyframes btnShimmer {
-  0% { transform: translateX(-150%) skewX(-20deg); }
-  50%, 100% { transform: translateX(250%) skewX(-20deg); }
+/* 2. Vệt sáng kim loại cao cấp mượt mà (Luxury Shimmer) */
+@keyframes btnShimmerSmooth {
+  0% { transform: translateX(-140%) skewX(-20deg); }
+  45%, 100% { transform: translateX(240%) skewX(-20deg); }
 }
 
-.animate-shimmer {
+.animate-shimmer-smooth {
   position: relative;
   overflow: hidden;
 }
 
-.animate-shimmer::after {
+.animate-shimmer-smooth::after {
   content: '';
   position: absolute;
-  top: 0;
-  left: 0;
-  width: 40%;
+  inset: 0;
+  width: 100%;
   height: 100%;
   background: linear-gradient(
-    90deg,
-    rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.45) 50%,
-    rgba(255, 255, 255, 0) 100%
+    105deg,
+    transparent 15%,
+    rgba(255, 255, 255, 0.12) 32%,
+    rgba(255, 255, 255, 0.6) 50%,
+    rgba(255, 255, 255, 0.12) 68%,
+    transparent 85%
   );
-  animation: btnShimmer 3.2s infinite ease-in-out;
+  animation: btnShimmerSmooth 2.8s infinite cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
 }
 
 /* 3. Hiệu ứng bồng bềnh lơ lửng cho giỏ hàng rỗng (Float Slow) */
 @keyframes floatSlow {
   0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-8px); }
+  50% { transform: translateY(-9px); }
 }
 
 .animate-float-slow {
-  animation: floatSlow 3s ease-in-out infinite;
+  animation: floatSlow 3.2s ease-in-out infinite;
 }
 
-/* 4. Hiệu ứng nảy số lượng / nút bấm (Pop Scale) */
-@keyframes popScale {
-  0% { transform: scale(0.85); }
-  50% { transform: scale(1.18); }
+/* 4. Hiệu ứng nảy lò xo số lượng (Spring Pop Scale) */
+@keyframes popScaleSpring {
+  0% { transform: scale(0.7); }
+  45% { transform: scale(1.28); }
+  72% { transform: scale(0.94); }
   100% { transform: scale(1); }
 }
 
 .animate-pop-scale {
-  animation: popScale 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  animation: popScaleSpring 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+  will-change: transform;
 }
 
-/* 5. Hiệu ứng trượt êm vào từ bên phải (Slide In Right) */
-@keyframes slideInRight {
+/* 5. Hiệu ứng trượt êm vào từ bên phải kèm ánh sáng ấm (Slide In Right) */
+@keyframes itemSlideInRight {
   0% {
     opacity: 0;
-    transform: translateX(25px) scale(0.96);
+    transform: translate3d(35px, 0, 0) scale(0.94);
+    background-color: rgba(254, 243, 199, 0.7);
+  }
+  60% {
+    transform: translate3d(-3px, 0, 0) scale(1.01);
+    background-color: rgba(254, 243, 199, 0.4);
   }
   100% {
     opacity: 1;
-    transform: translateX(0) scale(1);
+    transform: translate3d(0, 0, 0) scale(1);
+    background-color: rgba(250, 250, 249, 0.95);
   }
 }
 
 .animate-slide-in-right {
-  animation: slideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: itemSlideInRight 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
 }
 
-/* 6. Hiệu ứng bừng sáng tổng tiền khi thay đổi */
-@keyframes glowPulse {
-  0%, 100% { filter: drop-shadow(0 0 0 rgba(217, 119, 6, 0)); }
-  50% { filter: drop-shadow(0 0 10px rgba(217, 119, 6, 0.6)); }
+/* 6. Hiệu ứng bừng sáng lò xo tổng tiền khi thay đổi */
+@keyframes totalSpringPulse {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.12); color: #d97706; filter: drop-shadow(0 0 10px rgba(217, 119, 6, 0.6)); }
+  70% { transform: scale(0.96); }
+  100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(217, 119, 6, 0)); }
 }
 
 .animate-glow-pulse {
-  animation: glowPulse 0.6s ease-in-out;
+  display: inline-block;
+  animation: totalSpringPulse 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  will-change: transform;
 }
 
-/* 7. Pháo hoa ăn mừng khi thanh toán thành công (Confetti Burst) */
-@keyframes confettiFall {
+/* 7. Hiệu ứng nổ hoa lửa hào quang khi hạt tiếp đất (Cart Spark Aura) */
+@keyframes cartSparkAura {
+  0% { transform: scale(0.4); opacity: 0; }
+  30% { transform: scale(1.2); opacity: 0.9; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.animate-spark-aura {
+  animation: cartSparkAura 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+}
+
+/* 8. Hiệu ứng hạt bánh bay hình cầu vồng 3D siêu mượt (Fly to Cart Arc) */
+@keyframes flyToCartArc {
   0% {
-    transform: translateY(0) rotate(0deg) scale(1);
+    transform: translate3d(var(--sx), var(--sy), 0) scale(0.6) rotate(0deg);
+    opacity: 0.1;
+  }
+  12% {
+    transform: translate3d(var(--sx), calc(var(--sy) - 20px), 0) scale(1.22) rotate(-6deg);
     opacity: 1;
   }
-  100% {
-    transform: translateY(120px) rotate(360deg) scale(0.4);
-    opacity: 0;
-  }
-}
-
-.animate-confetti-particle {
-  animation: confettiFall 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
-}
-
-/* 8. Hiệu ứng hạt bánh bay vào giỏ hàng (Fly to Cart) */
-@keyframes flyParticle {
-  0% {
-    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+  48% {
+    transform: translate3d(var(--mx), var(--my), 0) scale(1.08) rotate(10deg);
     opacity: 1;
   }
-  50% {
-    transform: translate(calc(-50% + var(--tx) * 0.65), calc(-50% + var(--ty) * 0.35 - 75px)) scale(1.05) rotate(180deg);
+  82% {
+    transform: translate3d(var(--ex), var(--ey), 0) scale(0.55) rotate(-4deg);
     opacity: 0.95;
   }
   100% {
-    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.2) rotate(360deg);
+    transform: translate3d(var(--ex), var(--ey), 0) scale(0.12) rotate(0deg);
     opacity: 0;
   }
 }
 
-.animate-fly-particle {
-  animation: flyParticle 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+.animate-fly-smooth {
+  position: fixed;
+  left: 0;
+  top: 0;
+  margin-left: -32px;
+  margin-top: -32px;
+  will-change: transform, opacity;
+  animation: flyToCartArc 0.82s cubic-bezier(0.22, 0.9, 0.32, 1) forwards;
+  pointer-events: none;
+  z-index: 999999;
 }
 
 
