@@ -248,15 +248,7 @@ const AuthContext = createContext<AuthContextType>({
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [securityConfig, setSecurityConfig] = useState<SecurityConfig>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('bakery_security_config');
-        if (saved) return { ...DEFAULT_SECURITY_CONFIG, ...JSON.parse(saved) };
-      } catch {}
-    }
-    return DEFAULT_SECURITY_CONFIG;
-  });
+  const [securityConfig, setSecurityConfig] = useState<SecurityConfig>(DEFAULT_SECURITY_CONFIG);
 
   // Helper: lưu cấu hình bảo mật vào Local SQL (qua API server-side)
   const saveSecurityConfigToLocalSql = useCallback(async (cfg: SecurityConfig) => {
@@ -292,6 +284,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Fetch cấu hình bảo mật: Cloud SQL → Local SQL → localStorage
   useEffect(() => {
     (async () => {
+      // 0. Nạp trước từ localStorage ngay khi mount
+      if (typeof window !== 'undefined') {
+        try {
+          const saved = localStorage.getItem('bakery_security_config');
+          if (saved) setSecurityConfig(prev => ({ ...prev, ...JSON.parse(saved) }));
+        } catch {}
+      }
       // 1. Thử Cloud SQL trước
       const cloudCfg = await fetchSecurityConfigFromDb();
       if (cloudCfg) {
@@ -303,7 +302,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (localCfg) {
         setSecurityConfig(prev => ({ ...prev, ...localCfg }));
       }
-      // 3. Nếu cả 2 đều fail → giữ nguyên giá trị từ localStorage (đã init ở useState)
     })().catch(console.error);
   }, [fetchSecurityConfigFromLocalSql]);
 
@@ -355,15 +353,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  const [user, setUserState] = useState<CurrentUser | null>(() => {
+  const [user, setUserState] = useState<CurrentUser | null>(null);
+
+  // Nạp user từ localStorage sau khi component đã mount trên client
+  useEffect(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('bakery_current_user');
-        if (saved) return JSON.parse(saved);
+        if (saved) setUserState(JSON.parse(saved));
       } catch {}
     }
-    return null;
-  });
+  }, []);
 
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginTargetRole, setLoginTargetRole] = useState<UserRole>('cashier');

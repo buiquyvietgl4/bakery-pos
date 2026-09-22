@@ -470,10 +470,9 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
         .from('orders')
         .select(`
           id, order_number, order_type, status, created_at, updated_at,
-          preorder_pickup_at, subtotal, total_amount, total_cogs, notes, customer_name,
-          customer_phone, cake_message, delivery_method, shipping_address, shipping_fee,
-          deposit_amount, remaining_amount,
-          order_items (id, product_name_snapshot, quantity, unit_price, unit_cost, line_cost, product_type, supplier_name, notes)
+          preorder_pickup_at, subtotal, discount_amount, discount_pct, total_amount, total_cogs,
+          notes, customer_name, customer_phone, cake_message,
+          order_items (id, product_name_snapshot, quantity, unit_price, unit_cost, line_total, line_cost, notes)
         `)
         .order('created_at', { ascending: false })
         .limit(500);
@@ -484,6 +483,21 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
             (o) => o.order_number === dbo.order_number || o.id === dbo.id
           );
           if (!exists) {
+            let notesObj: any = {};
+            try {
+              if (dbo.notes && typeof dbo.notes === 'string') {
+                if (dbo.notes.startsWith('{') && dbo.notes.endsWith('}')) {
+                  notesObj = JSON.parse(dbo.notes);
+                } else {
+                  const jsonMatch = dbo.notes.match(/\{[\s\S]*\}/);
+                  if (jsonMatch) notesObj = JSON.parse(jsonMatch[0]);
+                }
+              }
+            } catch {}
+
+            const isShip = notesObj.delivery_method === 'shipping' || (dbo.notes && typeof dbo.notes === 'string' && dbo.notes.includes('[Giao hàng]'));
+            const deliveryMethod = isShip ? 'shipping' : 'pickup';
+
             orders.unshift({
               id: dbo.id,
               order_number: dbo.order_number || `DH-${dbo.id.slice(0, 6)}`,
@@ -498,13 +512,16 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
               total_amount: Number(dbo.total_amount || 0),
               subtotal: Number(dbo.subtotal || 0),
               total_cogs: Number(dbo.total_cogs || 0),
-              deposit_amount: Number(dbo.deposit_amount || 0),
-              remaining_amount: Number(dbo.remaining_amount || 0),
-              shipping_fee: Number(dbo.shipping_fee || 0),
-              shipping_address: dbo.shipping_address,
-              delivery_method: dbo.delivery_method,
+              deposit_amount: Number(notesObj.deposit_amount || 0),
+              remaining_amount: Number(notesObj.remaining_amount || 0),
+              shipping_fee: Number(notesObj.shipping_fee || 0),
+              shipping_address: notesObj.shipping_address || '',
+              delivery_method: deliveryMethod,
               notes: dbo.notes,
-              items: dbo.order_items || [],
+              items: (dbo.order_items || []).map((it: any) => ({
+                ...it,
+                product_type: (it.notes && it.notes.includes('[Hàng nhập')) ? 'imported' : 'produced',
+              })),
             });
           }
         });

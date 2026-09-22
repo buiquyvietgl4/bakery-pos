@@ -48,6 +48,7 @@ import {
   MAX_CACHED_ORDERS,
   MAX_CACHED_PREORDERS,
   getDeliveryAlertConfig,
+  DEFAULT_DELIVERY_ALERT_CONFIG,
   fetchDeliveryAlertConfigFromDb,
   DeliveryAlertConfig,
   EVENT_DELIVERY_ALERT_CONFIG_UPDATED,
@@ -58,6 +59,7 @@ import { CakeStickerModal, CakeStickerData } from '@/components/pos/CakeStickerM
 import { OrderDetailModal } from '@/components/kitchen/OrderDetailModal';
 import { ManagerPinModal } from '@/components/pos/ManagerPinModal';
 import {
+  DEFAULT_SHIFT,
   getCurrentShiftLocally,
   saveCurrentShiftLocally,
   fetchCurrentShiftFromDb,
@@ -171,23 +173,7 @@ interface PreorderFormData {
 export default function POSPage() {
   const { user, isAdmin, securityConfig, openLoginModal } = useAuth();
   const [mobileTab, setMobileTab] = useState<'menu' | 'cart'>('menu');
-  const [products, setProducts] = useState<CachedProduct[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const saved = localStorage.getItem('bakery_products');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            return parsed.map((p: any) => decodeProductWithMeta({
-              ...p,
-              selling_price: Number(p.selling_price ?? p.price ?? 0),
-            }));
-          }
-        }
-      } catch {}
-    }
-    return [];
-  });
+  const [products, setProducts] = useState<CachedProduct[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>('Tất cả');
   const [searchQuery, setSearchQuery] = useState('');
@@ -207,8 +193,8 @@ export default function POSPage() {
   }, [cartToast]);
   
   // Shift Management State
-  const [shift, setShift] = useState<ShiftState>(() => getCurrentShiftLocally());
-  const [shiftHistory, setShiftHistory] = useState<ShiftRecord[]>(() => getShiftHistoryLocally());
+  const [shift, setShift] = useState<ShiftState>(DEFAULT_SHIFT);
+  const [shiftHistory, setShiftHistory] = useState<ShiftRecord[]>([]);
   const [isShiftModalOpen, setIsShiftModalOpen] = useState(false);
   const [shiftModalTab, setShiftModalTab] = useState<'handover' | 'history'>('handover');
   const [closingCashInput, setClosingCashInput] = useState<number>(0);
@@ -221,9 +207,13 @@ export default function POSPage() {
   const [isSettingsDropdownOpen, setIsSettingsDropdownOpen] = useState(false);
 
   // Cấu hình Giờ Cảnh Báo Giao Hàng
-  const [deliveryAlertConfig, setDeliveryAlertConfig] = useState<DeliveryAlertConfig>(() => getDeliveryAlertConfig());
+  const [deliveryAlertConfig, setDeliveryAlertConfig] = useState<DeliveryAlertConfig>(DEFAULT_DELIVERY_ALERT_CONFIG);
 
   useEffect(() => {
+    setShift(getCurrentShiftLocally());
+    setShiftHistory(getShiftHistoryLocally());
+    setDeliveryAlertConfig(getDeliveryAlertConfig());
+
     fetchCurrentShiftFromDb().then((dbShift) => {
       if (dbShift) setShift(dbShift);
     });

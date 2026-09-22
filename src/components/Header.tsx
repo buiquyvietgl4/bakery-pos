@@ -10,7 +10,7 @@ import NotificationSettingsModal from '@/components/NotificationSettingsModal';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
 import { autoOrderWatcher } from '@/lib/supabase/autoOrderWatcher';
 import { getUnreadNotificationCount, subscribeNotificationHistory } from '@/lib/utils/notificationHistory';
-import { getStoreBranding, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
+import { getStoreBranding, DEFAULT_BRANDING, fetchStoreBrandingFromDb, BRANDING_UPDATED_EVENT, StoreBrandingConfig } from '@/lib/utils/storeBranding';
 import { offlineSyncWorker } from '@/lib/supabase/offlineSyncWorker';
 
 export default function Header() {
@@ -23,7 +23,7 @@ export default function Header() {
   const [unreadNotifs, setUnreadNotifs] = useState<number>(0);
   const [pendingOfflineCount, setPendingOfflineCount] = useState<number>(0);
   const [isFlushingQueue, setIsFlushingQueue] = useState<boolean>(false);
-  const [branding, setBranding] = useState<StoreBrandingConfig>(getStoreBranding());
+  const [branding, setBranding] = useState<StoreBrandingConfig>(DEFAULT_BRANDING);
   const { user, isAdmin, isKitchen, isCashier, canAccessKitchen, canAccessAdmin, logout, openLoginModal } = useAuth();
 
   useEffect(() => {

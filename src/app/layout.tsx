@@ -27,7 +27,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="vi" className="h-full bg-[#f3eae0] antialiased">
+    <html lang="vi" className="h-full bg-[#f3eae0] antialiased" suppressHydrationWarning>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
         <meta name="theme-color" content="#d97706" />
@@ -45,7 +45,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="min-h-full flex flex-col font-sans text-[#2d241e] bg-[#f3eae0] selection:bg-amber-200 selection:text-amber-950">
+      <body className="min-h-full flex flex-col font-sans text-[#2d241e] bg-[#f3eae0] selection:bg-amber-200 selection:text-amber-950" suppressHydrationWarning>
         <AuthProvider>
           <TestModeGlobalBanner />
           <Header />

@@ -526,25 +526,27 @@ export async function sendTelegramDischargedAlert(batch: {
 if (typeof window !== 'undefined' && !isInitStarted) {
   isInitStarted = true;
 
-  // 1. Tải ngay từ SQL khi khởi động
-  fetchTelegramConfigFromDb().catch(() => {});
+  setTimeout(() => {
+    // 1. Tải ngay từ SQL khi khởi động
+    fetchTelegramConfigFromDb().catch(() => {});
 
-  // 2. Lắng nghe phát sóng từ các thiết bị khác khi Admin cập nhật mã mới
-  try {
-    subscribeCrossDeviceSync({
-      onTelegramConfigChange: (newConfig: any) => {
-        if (newConfig && typeof newConfig === 'object') {
-          updateLocalTelegramConfig({
-            enabled: !!newConfig.enabled,
-            botToken: newConfig.botToken || '',
-            chatId: newConfig.chatId || '',
-            updated_at: newConfig.updated_at,
-            updated_by: newConfig.updated_by,
-          });
-        }
-      },
-    });
-  } catch (err) {
-    console.warn('Lỗi đăng ký lắng nghe Telegram sync:', err);
-  }
+    // 2. Lắng nghe phát sóng từ các thiết bị khác khi Admin cập nhật mã mới
+    try {
+      subscribeCrossDeviceSync({
+        onTelegramConfigChange: (newConfig: any) => {
+          if (newConfig && typeof newConfig === 'object') {
+            updateLocalTelegramConfig({
+              enabled: !!newConfig.enabled,
+              botToken: newConfig.botToken || '',
+              chatId: newConfig.chatId || '',
+              updated_at: newConfig.updated_at,
+              updated_by: newConfig.updated_by,
+            });
+          }
+        },
+      });
+    } catch (err) {
+      console.warn('Lỗi đăng ký lắng nghe Telegram sync:', err);
+    }
+  }, 0);
 }
