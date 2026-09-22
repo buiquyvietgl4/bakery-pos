@@ -191,6 +191,7 @@ export default function AdminDashboard() {
     updateKitchenCredentials,
     updateStaffCredentials,
     updateManagerPin,
+    updateReturnApprovalMode,
     updateReturnSkipForAdmin,
     updateAdminRecoveryKey,
     forceResetAdminToDefault,
@@ -9127,39 +9128,211 @@ export default function AdminDashboard() {
                     Lưu Mã PIN Quản Lý
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
 
-                {/* Cấu hình bỏ qua xác nhận đổi trả cho tài khoản Admin */}
-                <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-2">
-                  <span className="font-bold text-amber-950 block text-xs flex items-center gap-1.5">
-                    <ShieldCheck className="w-3.5 h-3.5 text-amber-600" /> Miễn Xác Nhận Đổi Trả Cho Admin:
-                  </span>
-                  <p className="text-[11px] text-zinc-500 leading-snug">
-                    Nếu bật tùy chọn này, khi tài khoản Chủ Tiệm (Admin) thực hiện đổi trả tại POS, hệ thống sẽ tự động hoàn tất ngay mà không cần hỏi PIN hay gửi thông báo.
+          {/* THẺ CẤU HÌNH DUYỆT ĐỔI TRẢ & HOÀN TIỀN (2 LỰA CHỌN: XÁC NHẬN MÃ HOẶC GỬI THÔNG BÁO DUYỆT) */}
+          <div className="bg-white p-5 sm:p-6 rounded-3xl border border-rose-200 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-zinc-100 gap-2">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-600 to-amber-500 text-white flex items-center justify-center font-black shadow-xs">
+                  <RotateCcw className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-base text-zinc-900">Cài Đặt Xác Thực Đổi Trả / Hoàn Tiền</h3>
+                    <span className="text-[10px] font-black text-rose-700 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200 flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3 text-rose-600" />
+                      <span>Bảo Mật POS &amp; Chống Gian Lận</span>
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Hệ thống có 2 lựa chọn phương thức xác thực khi thu ngân thao tác đổi trả bánh hoặc hoàn tiền tại quầy POS.
                   </p>
-                  <label className="flex items-center gap-2.5 p-2.5 bg-white border border-amber-200 rounded-xl cursor-pointer hover:border-amber-400 transition">
-                    <input
-                      type="checkbox"
-                      checked={securityConfig.returnSkipForAdmin ?? true}
-                      onChange={(e) => {
-                        const isSkip = e.target.checked;
-                        updateReturnSkipForAdmin(isSkip);
-                        setSecurityMsg({
-                          type: 'success',
-                          text: isSkip
-                            ? 'Đã bật: Tài khoản Admin sẽ được duyệt đổi trả tức thì tại POS!'
-                            : 'Đã tắt: Mọi tài khoản (kể cả Admin) đều phải xác nhận khi đổi trả.',
-                        });
-                        setTimeout(() => setSecurityMsg(null), 4000);
-                      }}
-                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
-                    />
-                    <div>
-                      <div className="text-xs font-bold text-zinc-800">Bỏ qua xác nhận khi tài khoản Admin thao tác</div>
-                      <div className="text-[10px] text-zinc-500">Mặc định Bật. Nếu tắt, Admin vẫn phải nhập mã PIN hoặc chọn duyệt</div>
-                    </div>
-                  </label>
                 </div>
               </div>
+            </div>
+
+            {/* 2 LỰA CHỌN PHƯƠNG THỨC XÁC NHẬN */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* LỰA CHỌN 1: XÁC NHẬN BẰNG MÃ PIN */}
+              <div
+                onClick={() => {
+                  updateReturnApprovalMode('pin');
+                  setSecurityMsg({
+                    type: 'success',
+                    text: 'Đã lưu cấu hình: Lựa chọn 1 - Duyệt đổi trả bằng Mã PIN Quản Lý trực tiếp tại quầy!',
+                  });
+                  setTimeout(() => setSecurityMsg(null), 4000);
+                }}
+                className={`relative p-5 rounded-3xl border-2 transition cursor-pointer flex flex-col justify-between space-y-3.5 ${
+                  (securityConfig.returnApprovalMode || 'pin') === 'pin'
+                    ? 'border-amber-500 bg-amber-50/30 shadow-md ring-2 ring-amber-500/10'
+                    : 'border-zinc-200 bg-zinc-50/60 hover:bg-zinc-100/60'
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-xl bg-amber-100 text-amber-800 flex items-center justify-center font-black text-xs">
+                      1
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        (securityConfig.returnApprovalMode || 'pin') === 'pin'
+                          ? 'bg-amber-100 text-amber-800'
+                          : 'bg-zinc-200 text-zinc-600'
+                      }`}
+                    >
+                      {(securityConfig.returnApprovalMode || 'pin') === 'pin' ? '● Đang Kích Hoạt' : 'Lựa Chọn 1'}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <KeyRound className="w-4 h-4 text-amber-600" />
+                      <h4 className="text-base font-black text-zinc-900">1. Xác Nhận Bằng Mã (Mã PIN / Mật Khẩu)</h4>
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Yêu cầu nhập mã PIN Quản Lý trực tiếp tại quầy thu ngân (Mặc định: <b>8888</b> hoặc <b>admin123</b>).
+                    </p>
+                  </div>
+                  <ul className="text-[11px] text-zinc-600 space-y-1.5 pt-2 border-t border-zinc-200/60">
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Thao tác nhanh chóng trực tiếp trên màn hình POS.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Hoạt động 100% ngoại tuyến, không phụ thuộc vào internet.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                      <span>Kèm nút chuyển nhanh sang gửi Admin nếu Quản lý vắng mặt.</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    className={`w-full py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      (securityConfig.returnApprovalMode || 'pin') === 'pin'
+                        ? 'bg-amber-600 text-white shadow-xs'
+                        : 'bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {(securityConfig.returnApprovalMode || 'pin') === 'pin' ? '✓ Đang Kích Hoạt' : 'Chọn Chế Độ Này'}
+                  </button>
+                </div>
+              </div>
+
+              {/* LỰA CHỌN 2: GỬI THÔNG BÁO DUYỆT (ADMIN REALTIME 2 BƯỚC) */}
+              <div
+                onClick={() => {
+                  updateReturnApprovalMode('admin_approval');
+                  setSecurityMsg({
+                    type: 'success',
+                    text: 'Đã lưu cấu hình: Lựa chọn 2 - Gửi thông báo phê duyệt Realtime tới thiết bị Admin!',
+                  });
+                  setTimeout(() => setSecurityMsg(null), 4000);
+                }}
+                className={`relative p-5 rounded-3xl border-2 transition cursor-pointer flex flex-col justify-between space-y-3.5 ${
+                  securityConfig.returnApprovalMode === 'admin_approval'
+                    ? 'border-rose-500 bg-rose-50/30 shadow-md ring-2 ring-rose-500/10'
+                    : 'border-zinc-200 bg-zinc-50/60 hover:bg-zinc-100/60'
+                }`}
+              >
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="w-8 h-8 rounded-xl bg-rose-100 text-rose-800 flex items-center justify-center font-black text-xs">
+                      2
+                    </span>
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase ${
+                        securityConfig.returnApprovalMode === 'admin_approval'
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-zinc-200 text-zinc-600'
+                      }`}
+                    >
+                      {securityConfig.returnApprovalMode === 'admin_approval' ? '● Đang Kích Hoạt' : 'Lựa Chọn 2'}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <Smartphone className="w-4 h-4 text-rose-600" />
+                      <h4 className="text-base font-black text-zinc-900">2. Gửi Thông Báo Duyệt (Admin 2 Bước)</h4>
+                    </div>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      POS phát chuông cảnh báo và gửi yêu cầu tới điện thoại Admin để duyệt từ xa (nguyên lý như chuyển khoản).
+                    </p>
+                  </div>
+                  <ul className="text-[11px] text-zinc-600 space-y-1.5 pt-2 border-t border-zinc-200/60">
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                      <span>Admin nhận chuông khẩn cấp và xem chi tiết tiền/món để duyệt.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                      <span>Màn hình POS có radar phát sóng và nút <b>"🔄 Yêu Cầu Lại"</b> nếu Admin bận.</span>
+                    </li>
+                    <li className="flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                      <span>POS tự động hoàn tất và in biên lai nhiệt ngay khi Admin bấm duyệt.</span>
+                    </li>
+                  </ul>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    className={`w-full py-2.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                      securityConfig.returnApprovalMode === 'admin_approval'
+                        ? 'bg-rose-600 text-white shadow-xs'
+                        : 'bg-white border border-zinc-300 text-zinc-700 hover:bg-zinc-200'
+                    }`}
+                  >
+                    {securityConfig.returnApprovalMode === 'admin_approval' ? '✓ Đang Kích Hoạt' : 'Chọn Chế Độ Này'}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* CÀI ĐẶT BỔ TRỢ: MIỄN XÁC NHẬN CHO TÀI KHOẢN ADMIN */}
+            <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-amber-600" /> Tùy Chọn Miễn Xác Nhận Cho Admin:
+                </span>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+                  Khuyên dùng
+                </span>
+              </div>
+              <label className="flex items-center gap-3 p-3 bg-white border border-amber-200 rounded-xl cursor-pointer hover:border-amber-400 transition">
+                <input
+                  type="checkbox"
+                  checked={securityConfig.returnSkipForAdmin ?? true}
+                  onChange={(e) => {
+                    const isSkip = e.target.checked;
+                    updateReturnSkipForAdmin(isSkip);
+                    setSecurityMsg({
+                      type: 'success',
+                      text: isSkip
+                        ? 'Đã bật: Tài khoản Admin sẽ được duyệt đổi trả tức thì tại POS!'
+                        : 'Đã tắt: Mọi tài khoản (kể cả Admin) đều phải xác nhận khi đổi trả.',
+                    });
+                    setTimeout(() => setSecurityMsg(null), 4000);
+                  }}
+                  className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                />
+                <div>
+                  <div className="text-xs font-bold text-zinc-900">
+                    Tài khoản Admin không cần xác nhận thêm khi thao tác đổi trả
+                  </div>
+                  <div className="text-[11px] text-zinc-500">
+                    Khi bật, nếu người đứng quầy đăng nhập bằng tài khoản Chủ Tiệm (Admin), hệ thống sẽ tự động hoàn tất ngay mà không cần hỏi mã PIN hay gửi thông báo.
+                  </div>
+                </div>
+              </label>
             </div>
           </div>
 

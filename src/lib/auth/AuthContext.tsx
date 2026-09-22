@@ -68,6 +68,8 @@ export const DEFAULT_PERMISSIONS: RolePermissionsConfig = {
   },
 };
 
+export type ReturnApprovalMode = 'pin' | 'admin_approval';
+
 export interface SecurityConfig {
   adminUsername: string;
   adminPasswordHash: string;
@@ -82,6 +84,7 @@ export interface SecurityConfig {
   staffName: string; // Tên Thu ngân
   staffUsername?: string;
   managerPin?: string; // Mã PIN Quản lý duyệt đổi trả / chi tiền / hủy đơn
+  returnApprovalMode?: ReturnApprovalMode; // 1: 'pin' (Xác nhận mã), 2: 'admin_approval' (Gửi thông báo duyệt)
   returnSkipForAdmin?: boolean; // Tùy chọn bỏ qua xác nhận đổi trả nếu tài khoản đang thao tác là Admin
   permissions?: RolePermissionsConfig;
 }
@@ -100,6 +103,7 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   staffName: 'Thu Ngân / Bán Hàng',
   staffUsername: 'nhanvien',
   managerPin: '8888',
+  returnApprovalMode: 'pin',
   returnSkipForAdmin: true,
   permissions: DEFAULT_PERMISSIONS,
 };
@@ -207,6 +211,7 @@ interface AuthContextType {
   updateKitchenCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
   updateStaffCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
   updateManagerPin: (newPin: string) => { success: boolean; error?: string };
+  updateReturnApprovalMode: (mode: ReturnApprovalMode) => { success: boolean };
   updateReturnSkipForAdmin: (skip: boolean) => { success: boolean };
   resetAdminPasswordWithRecoveryKey: (recoveryKeyOrPhone: string, newPassword?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   updateAdminRecoveryKey: (newKey: string, newRecoveryPhone?: string) => { success: boolean; error?: string };
@@ -243,6 +248,7 @@ const AuthContext = createContext<AuthContextType>({
   updateKitchenCredentials: () => ({ success: false }),
   updateStaffCredentials: () => ({ success: false }),
   updateManagerPin: () => ({ success: false }),
+  updateReturnApprovalMode: () => ({ success: false }),
   updateReturnSkipForAdmin: () => ({ success: false }),
   resetAdminPasswordWithRecoveryKey: async () => ({ success: false }),
   updateAdminRecoveryKey: () => ({ success: false }),
@@ -572,6 +578,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
+  const updateReturnApprovalMode = (mode: ReturnApprovalMode) => {
+    const updated: SecurityConfig = {
+      ...securityConfig,
+      returnApprovalMode: mode,
+    };
+    saveSecurityConfig(updated);
+    return { success: true };
+  };
+
   const updateReturnSkipForAdmin = (skip: boolean) => {
     const updated: SecurityConfig = {
       ...securityConfig,
@@ -803,6 +818,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateKitchenCredentials,
         updateStaffCredentials,
         updateManagerPin,
+        updateReturnApprovalMode,
         updateReturnSkipForAdmin,
         resetAdminPasswordWithRecoveryKey,
         updateAdminRecoveryKey,

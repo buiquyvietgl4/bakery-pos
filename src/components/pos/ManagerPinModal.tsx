@@ -7,6 +7,7 @@ interface ManagerPinModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  onSwitchToAdminApproval?: () => void;
   title?: string;
   subtitle?: string;
   actionDescription?: string;
@@ -16,6 +17,7 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  onSwitchToAdminApproval,
   title = 'Xác Thực Mã PIN Quản Lý',
   subtitle = 'Nhập mã PIN Quản Lý để cấp quyền thực hiện hành động này',
   actionDescription,
@@ -228,6 +230,21 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
           <p className="text-[10px] text-zinc-400 text-center italic">
             Mã PIN mặc định: <b>admin123</b> (hoặc gõ trực tiếp bàn phím)
           </p>
+
+          {onSwitchToAdminApproval && (
+            <div className="pt-1 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onSwitchToAdminApproval();
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <span>📱 Quản lý vắng mặt? Gửi thông báo cho Admin duyệt</span>
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

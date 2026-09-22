@@ -441,15 +441,22 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
     if (!hasAnyItemSelected) return;
     if (returnType === 'exchange' && exchangeProducts.length === 0) return;
 
-    // Kiểm tra cài đặt bỏ qua cho tài khoản Admin
+    // 1. Kiểm tra cài đặt bỏ qua cho tài khoản Admin
     const skipForAdmin = Boolean((securityConfig?.returnSkipForAdmin ?? true) && isAdmin);
     if (skipForAdmin) {
       await executeFinalizeReturn('Chủ Tiệm (Admin)');
       return;
     }
 
-    // Mở modal lựa chọn phương thức xác nhận (Nhập PIN vs Gửi Admin)
-    setIsApprovalMethodModalOpen(true);
+    // 2. Kích hoạt phương thức duyệt theo cài đặt (2 lựa chọn: 1 là xác nhận mã, 2 là gửi thông báo duyệt)
+    const approvalMode = securityConfig?.returnApprovalMode || 'pin';
+    if (approvalMode === 'admin_approval') {
+      // Lựa chọn 2: Gửi thông báo cho Admin duyệt (Realtime 2 bước)
+      handleSendApprovalToAdmin();
+    } else {
+      // Lựa chọn 1: Xác nhận bằng mã PIN Quản Lý
+      setIsPinModalOpen(true);
+    }
   };
 
   const executeFinalizeReturn = async (approverName?: string) => {
@@ -587,13 +594,21 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-stone-100 rounded-xl transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2">
+              <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-[11px] font-bold text-zinc-600">
+                <span>Duyệt:</span>
+                <span className="text-zinc-900 font-black">
+                  {(securityConfig?.returnApprovalMode || 'pin') === 'admin_approval' ? '📱 Gửi Admin (2 Bước)' : '🔑 Mã PIN Quản Lý'}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 text-zinc-400 hover:text-zinc-600 hover:bg-stone-100 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* NỘI DUNG CHÍNH */}
@@ -1760,6 +1775,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
         isOpen={isPinModalOpen}
         onClose={() => setIsPinModalOpen(false)}
         onSuccess={() => executeFinalizeReturn('Quản Lý (Mã PIN)')}
+        onSwitchToAdminApproval={handleSendApprovalToAdmin}
         title="Duyệt Đổi Trả / Hoàn Tiền"
         subtitle="Vui lòng nhập mã PIN Quản Lý để xác nhận xuất quỹ hoàn tiền hoặc điều chỉnh đơn"
         actionDescription={`Duyệt giao dịch ${returnType === 'refund' ? 'Hoàn tiền' : 'Đổi hàng'} cho đơn #${
