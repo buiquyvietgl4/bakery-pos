@@ -206,20 +206,22 @@ export default function POSPage() {
 
     const cartTarget = document.getElementById('pos-cart-target') || document.getElementById('pos-cart-mobile-target');
     let endX = window.innerWidth - 120;
-    let endY = 100;
+    let endY = 115;
 
     if (cartTarget) {
       const rect = cartTarget.getBoundingClientRect();
-      endX = rect.left + rect.width / 2;
-      endY = rect.top + rect.height / 2;
+      endX = Math.round(rect.left + rect.width / 2);
+      endY = Math.round(rect.top + rect.height / 2);
     }
 
     const startX = clientX !== undefined && clientX > 0 ? clientX : window.innerWidth / 2;
     const startY = clientY !== undefined && clientY > 0 ? clientY : window.innerHeight / 2;
 
-    // Tính điểm đỉnh uốn cong mềm mại của quỹ đạo parabol (cao hơn 70px)
-    const midX = Math.round(startX + (endX - startX) * 0.52);
-    const midY = Math.round(Math.min(startY, endY) - 70);
+    // Quỹ đạo uốn cong tự nhiên, TUYỆT ĐỐI KHÔNG bay lên header/logo (luôn giữ midY >= 140px)
+    const midX = Math.round(startX + (endX - startX) * 0.5);
+    const naturalMidY = Math.round((startY + endY) / 2 - 50);
+    // Đảm bảo không bay vượt lên trên thanh header (Y < 135px)
+    const midY = Math.max(135, naturalMidY);
 
     const newItem = {
       id: Date.now() + Math.random(),
@@ -235,17 +237,17 @@ export default function POSPage() {
 
     setFlyingItems((prev) => [...prev, newItem]);
 
-    // Kích hoạt rung nảy giỏ hàng và bừng sáng tổng tiền ngay khi hạt chạm giỏ (670ms)
+    // Kích hoạt rung nảy giỏ hàng và bừng sáng tổng tiền ngay khi hạt tiếp đất chính xác vào giỏ (1010ms)
     setTimeout(() => {
       setCartBumping(true);
       setTotalPulsing(true);
-      setTimeout(() => setCartBumping(false), 550);
-      setTimeout(() => setTotalPulsing(false), 650);
-    }, 670);
+      setTimeout(() => setCartBumping(false), 600);
+      setTimeout(() => setTotalPulsing(false), 700);
+    }, 1010);
 
     setTimeout(() => {
       setFlyingItems((prev) => prev.filter((it) => it.id !== newItem.id));
-    }, 860);
+    }, 1200);
   };
 
   useEffect(() => {
@@ -4334,13 +4336,13 @@ export default function POSPage() {
             </button>
             <div
               id="pos-cart-target"
-              className={`w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 transition-transform relative ${
-                cartBumping ? 'animate-cart-bounce' : ''
+              className={`w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 transition-all relative ${
+                cartBumping ? 'animate-cart-bounce ring-4 ring-amber-400 shadow-amber-500/50 scale-110' : ''
               }`}
             >
-              <ShoppingCart className="w-4 h-4" />
+              <ShoppingCart className="w-5 h-5" />
               {cartBumping && (
-                <span className="absolute -inset-2.5 rounded-full border-2 border-amber-400 bg-amber-400/20 animate-spark-aura pointer-events-none" />
+                <span className="absolute -inset-3 rounded-full border-2 border-amber-400 bg-amber-400/25 animate-spark-aura pointer-events-none" />
               )}
             </div>
             <div>

@@ -194,15 +194,15 @@ async function record() {
       const targetY = Math.round(box.y + box.height / 2);
 
       // Lướt chuột mượt mà 60fps đến sản phẩm
-      await page.evaluate(`window.__glideCursorTo(${targetX}, ${targetY}, 480)`);
-      await sleep(250);
+      await page.evaluate(`window.__glideCursorTo(${targetX}, ${targetY}, 500)`);
+      await sleep(550);
 
       // Hiệu ứng bấm chuột và trigger click thực tế
       await page.evaluate(`window.__clickCursorFeedback()`);
       await page.mouse.click(targetX, targetY);
 
-      // Chờ trọn vẹn quỹ đạo parabol bay 680ms + rung giỏ squash 550ms + trượt slide-in 420ms
-      await sleep(1500);
+      // Chờ trọn vẹn quỹ đạo parabol bay 1150ms + rung giỏ squash 600ms + trượt slide-in
+      await sleep(1800);
     }
   }
 
