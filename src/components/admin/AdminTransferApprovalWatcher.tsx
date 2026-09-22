@@ -9,6 +9,11 @@ import {
   fetchPendingTransfersFromDb,
   removePendingTransferFromDb,
   TransferApprovalPayload,
+  ReturnApprovalPayload,
+  ReturnApprovalResolvedPayload,
+  broadcastReturnApprovalResolved,
+  fetchPendingReturnsFromDb,
+  removePendingReturnFromDb,
 } from '@/lib/supabase/realtimeSync';
 import {
   subscribeCurrentDeviceToPush,
@@ -22,10 +27,14 @@ import {
   Bell,
   KeyRound,
   Sparkles,
+  RotateCcw,
+  ArrowRightLeft,
 } from 'lucide-react';
 
 const STORAGE_KEY_PENDING_TRANSFERS = 'bakery_pending_transfers';
 const STORAGE_KEY_RESOLVED_TRANSFERS = 'bakery_resolved_transfers';
+const STORAGE_KEY_PENDING_RETURNS = 'bakery_pending_returns';
+const STORAGE_KEY_RESOLVED_RETURNS = 'bakery_resolved_returns';
 
 function getStoredResolvedSet(): Set<string> {
   if (typeof window === 'undefined') return new Set();
@@ -74,6 +83,53 @@ export function saveStoredPendingTransfers(list: TransferApprovalPayload[]) {
   } catch {}
 }
 
+function getStoredResolvedReturnsSet(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_RESOLVED_RETURNS);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? new Set(arr) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function markReturnAsResolved(orderNumber: string) {
+  if (typeof window === 'undefined' || !orderNumber) return;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_RESOLVED_RETURNS);
+    const arr: string[] = raw ? JSON.parse(raw) : [];
+    if (!arr.includes(orderNumber)) {
+      arr.push(orderNumber);
+      localStorage.setItem(STORAGE_KEY_RESOLVED_RETURNS, JSON.stringify(arr.slice(-150)));
+    }
+  } catch {}
+}
+
+export function getStoredPendingReturns(): ReturnApprovalPayload[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_PENDING_RETURNS);
+    if (!raw) return [];
+    const list = JSON.parse(raw);
+    if (!Array.isArray(list)) return [];
+    const resolved = getStoredResolvedReturnsSet();
+    return list.filter((item: any) => item && item.order_number && !resolved.has(item.order_number));
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredPendingReturns(list: ReturnApprovalPayload[]) {
+  if (typeof window === 'undefined') return;
+  try {
+    const resolved = getStoredResolvedReturnsSet();
+    const cleanList = list.filter((item) => item && item.order_number && !resolved.has(item.order_number));
+    localStorage.setItem(STORAGE_KEY_PENDING_RETURNS, JSON.stringify(cleanList));
+  } catch {}
+}
+
 export default function AdminTransferApprovalWatcher() {
   const { isAdmin, user, openLoginModal } = useAuth();
   const [pendingList, setPendingList] = useState<TransferApprovalPayload[]>([]);
@@ -85,6 +141,13 @@ export default function AdminTransferApprovalWatcher() {
   const notifiedOrderNumsRef = useRef<Set<string>>(new Set());
   const dismissedOrderNumsRef = useRef<Set<string>>(new Set());
   const resolvedOrderNumsRef = useRef<Set<string>>(getStoredResolvedSet());
+
+  // Trạng thái yêu cầu duyệt Đổi Trả / Hoàn Tiền
+  const [pendingReturnList, setPendingReturnList] = useState<ReturnApprovalPayload[]>([]);
+  const [activeReturnRequest, setActiveReturnRequest] = useState<ReturnApprovalPayload | null>(null);
+  const notifiedReturnOrderNumsRef = useRef<Set<string>>(new Set());
+  const dismissedReturnOrderNumsRef = useRef<Set<string>>(new Set());
+  const resolvedReturnOrderNumsRef = useRef<Set<string>>(getStoredResolvedReturnsSet());
 
   // Xóa sạch query parameters trên thanh URL (ngăn trình duyệt refresh nạp lại đơn đã xử lý)
   const cleanUrlParams = useCallback(() => {
@@ -104,6 +167,49 @@ export default function AdminTransferApprovalWatcher() {
       }
     } catch {}
   }, []);
+
+  // Đọc danh sách yêu cầu chờ duyệt đổi trả từ Local Storage & Database
+  const loadPendingReturnsFromStorageAndDb = useCallback(async () => {
+    resolvedReturnOrderNumsRef.current = getStoredResolvedReturnsSet();
+
+    let list = getStoredPendingReturns().filter(
+      (p) => !resolvedReturnOrderNumsRef.current.has(p.order_number) && !dismissedReturnOrderNumsRef.current.has(p.order_number)
+    );
+
+    try {
+      const dbList = await fetchPendingReturnsFromDb();
+      if (Array.isArray(dbList) && dbList.length > 0) {
+        const mergedMap = new Map<string, ReturnApprovalPayload>();
+        list.forEach((item) => mergedMap.set(item.order_number, item));
+        dbList.forEach((item) => {
+          if (item && item.order_number && !resolvedReturnOrderNumsRef.current.has(item.order_number) && !dismissedReturnOrderNumsRef.current.has(item.order_number)) {
+            mergedMap.set(item.order_number, item);
+          }
+        });
+        list = Array.from(mergedMap.values());
+        saveStoredPendingReturns(list);
+      }
+    } catch {}
+
+    setPendingReturnList(list);
+
+    if (list.length > 0) {
+      let targetOrder = activeReturnRequest && list.some((p) => p.order_number === activeReturnRequest.order_number) ? activeReturnRequest : list[0];
+      if (targetOrder) {
+        if (!notifiedReturnOrderNumsRef.current.has(targetOrder.order_number)) {
+          notifiedReturnOrderNumsRef.current.add(targetOrder.order_number);
+          if (isAdmin) {
+            try {
+              soundManager.playUrgentAlert();
+            } catch {}
+          }
+        }
+        setActiveReturnRequest(targetOrder);
+      }
+    } else {
+      setActiveReturnRequest(null);
+    }
+  }, [activeReturnRequest, isAdmin]);
 
   // Đọc danh sách yêu cầu chờ duyệt từ Local Storage & Database
   const loadPendingFromStorageAndDb = useCallback(async () => {
@@ -254,6 +360,43 @@ export default function AdminTransferApprovalWatcher() {
         });
         setActiveRequest((current) => (current?.order_number === num ? null : current));
       },
+      onReturnApprovalRequest: (payload) => {
+        if (!payload?.order_number) return;
+        if (resolvedReturnOrderNumsRef.current.has(payload.order_number) || dismissedReturnOrderNumsRef.current.has(payload.order_number)) {
+          return;
+        }
+
+        notifiedReturnOrderNumsRef.current.add(payload.order_number);
+
+        setPendingReturnList((prev) => {
+          const exists = prev.some((p) => p.order_number === payload.order_number);
+          const updated = exists ? [payload, ...prev.filter(p => p.order_number !== payload.order_number)] : [payload, ...prev];
+          saveStoredPendingReturns(updated);
+          return updated;
+        });
+
+        setActiveReturnRequest(payload);
+
+        if (isAdmin) {
+          try {
+            soundManager.playUrgentAlert();
+          } catch {}
+        }
+      },
+      onReturnApprovalResolved: (payload) => {
+        if (!payload?.order_number) return;
+        const num = payload.order_number;
+        markReturnAsResolved(num);
+        resolvedReturnOrderNumsRef.current.add(num);
+        dismissedReturnOrderNumsRef.current.add(num);
+
+        setPendingReturnList((prev) => {
+          const updated = prev.filter((p) => p.order_number !== num);
+          saveStoredPendingReturns(updated);
+          return updated;
+        });
+        setActiveReturnRequest((current) => (current?.order_number === num ? null : current));
+      },
     });
 
     const handleCustomEventReq = (e: any) => {
@@ -296,19 +439,133 @@ export default function AdminTransferApprovalWatcher() {
       }
     };
 
+    const handleReturnCustomReq = (e: any) => {
+      if (e.detail?.order_number) {
+        const payload: ReturnApprovalPayload = e.detail;
+        if (resolvedReturnOrderNumsRef.current.has(payload.order_number) || dismissedReturnOrderNumsRef.current.has(payload.order_number)) {
+          return;
+        }
+        notifiedReturnOrderNumsRef.current.add(payload.order_number);
+        setPendingReturnList((prev) => {
+          const exists = prev.some((p) => p.order_number === payload.order_number);
+          const updated = exists ? [payload, ...prev.filter(p => p.order_number !== payload.order_number)] : [payload, ...prev];
+          saveStoredPendingReturns(updated);
+          return updated;
+        });
+        setActiveReturnRequest(payload);
+        if (isAdmin) {
+          try {
+            soundManager.playUrgentAlert();
+          } catch {}
+        }
+      }
+    };
+
+    const handleReturnCustomRes = (e: any) => {
+      if (e.detail?.order_number) {
+        const num = e.detail.order_number;
+        markReturnAsResolved(num);
+        resolvedReturnOrderNumsRef.current.add(num);
+        dismissedReturnOrderNumsRef.current.add(num);
+        setPendingReturnList((prev) => {
+          const updated = prev.filter((p) => p.order_number !== num);
+          saveStoredPendingReturns(updated);
+          return updated;
+        });
+        setActiveReturnRequest((current) => (current?.order_number === num ? null : current));
+      }
+    };
+
     window.addEventListener('transfer_approval_requested', handleCustomEventReq as EventListener);
     window.addEventListener('transfer_approval_resolved', handleCustomEventRes as EventListener);
+    window.addEventListener('return_approval_requested', handleReturnCustomReq as EventListener);
+    window.addEventListener('return_approval_resolved', handleReturnCustomRes as EventListener);
+
+    // Nạp ban đầu danh sách đổi trả
+    loadPendingReturnsFromStorageAndDb();
 
     // Quét định kỳ 15 giây để đồng bộ nhẹ nhàng, không gây lag hay giật
-    const interval = setInterval(loadPendingFromStorageAndDb, 15000);
+    const interval = setInterval(() => {
+      loadPendingFromStorageAndDb();
+      loadPendingReturnsFromStorageAndDb();
+    }, 15000);
 
     return () => {
       unsubscribe();
       window.removeEventListener('transfer_approval_requested', handleCustomEventReq as EventListener);
       window.removeEventListener('transfer_approval_resolved', handleCustomEventRes as EventListener);
+      window.removeEventListener('return_approval_requested', handleReturnCustomReq as EventListener);
+      window.removeEventListener('return_approval_resolved', handleReturnCustomRes as EventListener);
       clearInterval(interval);
     };
-  }, [isAdmin, loadPendingFromStorageAndDb, cleanUrlParams]);
+  }, [isAdmin, loadPendingFromStorageAndDb, loadPendingReturnsFromStorageAndDb, cleanUrlParams]);
+
+  // Hành động Admin: DUYỆT ĐỔI TRẢ
+  const handleApproveReturn = async (req: ReturnApprovalPayload) => {
+    setProcessing(true);
+    try {
+      const orderNo = req.order_number;
+      markReturnAsResolved(orderNo);
+      resolvedReturnOrderNumsRef.current.add(orderNo);
+      dismissedReturnOrderNumsRef.current.add(orderNo);
+
+      const remaining = pendingReturnList.filter((p) => p.order_number !== orderNo);
+      setPendingReturnList(remaining);
+      saveStoredPendingReturns(remaining);
+      setActiveReturnRequest(remaining.length > 0 ? remaining[0] : null);
+
+      removePendingReturnFromDb(orderNo).catch(console.error);
+
+      const adminName = user?.name || 'Chủ Tiệm (Admin)';
+      await broadcastReturnApprovalResolved({
+        id: req.id,
+        order_number: orderNo,
+        action: 'approved',
+        resolved_by: adminName,
+        resolved_at: new Date().toISOString(),
+      });
+
+      try {
+        soundManager.playPaymentSuccessChime();
+      } catch {}
+    } catch (err) {
+      console.error('Lỗi khi duyệt đổi trả:', err);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  // Hành động Admin: TỪ CHỐI ĐỔI TRẢ
+  const handleRejectReturn = async (req: ReturnApprovalPayload) => {
+    setProcessing(true);
+    try {
+      const orderNo = req.order_number;
+      markReturnAsResolved(orderNo);
+      resolvedReturnOrderNumsRef.current.add(orderNo);
+      dismissedReturnOrderNumsRef.current.add(orderNo);
+
+      const remaining = pendingReturnList.filter((p) => p.order_number !== orderNo);
+      setPendingReturnList(remaining);
+      saveStoredPendingReturns(remaining);
+      setActiveReturnRequest(remaining.length > 0 ? remaining[0] : null);
+
+      removePendingReturnFromDb(orderNo).catch(console.error);
+
+      const adminName = user?.name || 'Chủ Tiệm (Admin)';
+      await broadcastReturnApprovalResolved({
+        id: req.id,
+        order_number: orderNo,
+        action: 'rejected',
+        reason: 'Chủ tiệm từ chối yêu cầu đổi trả',
+        resolved_by: adminName,
+        resolved_at: new Date().toISOString(),
+      });
+    } catch (err) {
+      console.error('Lỗi khi từ chối đổi trả:', err);
+    } finally {
+      setProcessing(false);
+    }
+  };
 
   // Hành động: XÁC NHẬN ĐÃ NHẬN TIỀN
   const handleApprove = async (req: TransferApprovalPayload) => {
@@ -393,6 +650,55 @@ export default function AdminTransferApprovalWatcher() {
 
   // NẾU CHƯA ĐĂNG NHẬP ADMIN MÀ CÓ YÊU CẦU DUYỆT ĐANG CHỜ
   if (!isAdmin) {
+    const returnReq = activeReturnRequest || pendingReturnList[0];
+    if (returnReq && !resolvedReturnOrderNumsRef.current.has(returnReq.order_number) && !dismissedReturnOrderNumsRef.current.has(returnReq.order_number)) {
+      return (
+        <div className="fixed top-18 left-1/2 -translate-x-1/2 z-[99999] w-[92%] max-w-md animate-in slide-in-from-top-4 duration-300">
+          <div
+            onClick={() => openLoginModal('admin')}
+            className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-amber-600 text-white shadow-2xl flex items-center justify-between gap-3 border-2 border-rose-300 cursor-pointer hover:scale-[1.02] active:scale-95 transition"
+          >
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                <RotateCcw className="w-6 h-6 animate-pulse text-white" />
+              </div>
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-wider text-rose-200 flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> Yêu Cầu Duyệt Đổi Trả
+                </div>
+                <div className="text-xs font-black">
+                  Đơn #{returnReq.order_number} • {returnReq.return_type === 'refund' ? `${(returnReq.refund_amount || 0).toLocaleString('vi-VN')}₫` : `Đổi bánh`}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                className="px-3 py-1.5 rounded-xl bg-white text-rose-900 font-black text-xs flex items-center gap-1 shadow-md shrink-0"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-rose-700" />
+                <span>Duyệt</span>
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismissedReturnOrderNumsRef.current.add(returnReq.order_number);
+                  setActiveReturnRequest(null);
+                  setPendingReturnList((prev) => prev.filter((p) => p.order_number !== returnReq.order_number));
+                }}
+                className="p-1 text-white/80 hover:text-white rounded-lg"
+                title="Ẩn thông báo này"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (activeRequest || pendingList.length > 0) {
       const req = activeRequest || pendingList[0];
       if (req && !resolvedOrderNumsRef.current.has(req.order_number) && !dismissedOrderNumsRef.current.has(req.order_number)) {
@@ -450,6 +756,135 @@ export default function AdminTransferApprovalWatcher() {
   // GIAO DIỆN KHI ĐÃ ĐĂNG NHẬP ADMIN
   return (
     <>
+      {/* ── 1.0 MODAL DUYỆT ĐỔI TRẢ / HOÀN TIỀN DÀNH CHO ADMIN ── */}
+      {activeReturnRequest && !resolvedReturnOrderNumsRef.current.has(activeReturnRequest.order_number) && !dismissedReturnOrderNumsRef.current.has(activeReturnRequest.order_number) && (
+        <div className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl border-2 border-rose-500 max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 shadow-inner">
+                  <RotateCcw className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">
+                      Xác Thực Đổi Trả
+                    </span>
+                    <span className="text-xs text-zinc-400 font-mono">
+                      {pendingReturnList.length > 1 && `(${pendingReturnList.length} yêu cầu đang chờ)`}
+                    </span>
+                  </div>
+                  <h3 className="font-black text-base sm:text-lg text-zinc-900 mt-0.5">
+                    {activeReturnRequest.return_type === 'refund' ? 'Duyệt Hoàn Tiền Cho Khách?' : 'Duyệt Đổi Bánh Đơn Hàng?'}
+                  </h3>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeReturnRequest) {
+                    dismissedReturnOrderNumsRef.current.add(activeReturnRequest.order_number);
+                  }
+                  const remaining = pendingReturnList.filter((p) => p.order_number !== activeReturnRequest?.order_number);
+                  setPendingReturnList(remaining);
+                  setActiveReturnRequest(null);
+                }}
+                className="p-1.5 text-zinc-400 hover:text-zinc-600 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
+                title="Đóng cửa sổ này"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Thông tin chi tiết */}
+            <div className="p-4 rounded-2xl bg-rose-50/60 border border-rose-200/80 space-y-2.5">
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-zinc-600">Mã đơn hàng:</span>
+                <span className="font-mono font-black text-rose-900 text-sm">
+                  #{activeReturnRequest.order_number}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-zinc-600">Loại giao dịch:</span>
+                <span className="font-bold px-2 py-0.5 rounded bg-rose-100 text-rose-900 text-xs">
+                  {activeReturnRequest.return_type === 'refund' ? 'Hoàn tiền trả hàng' : 'Đổi món bánh'}
+                </span>
+              </div>
+
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-zinc-600">
+                  {activeReturnRequest.return_type === 'refund'
+                    ? 'Số tiền hoàn lại:'
+                    : (activeReturnRequest.exchange_difference || 0) > 0
+                    ? 'Khách đóng thêm:'
+                    : (activeReturnRequest.exchange_difference || 0) < 0
+                    ? 'Hoàn lại khách:'
+                    : 'Chênh lệch:'}
+                </span>
+                <span className={`font-black text-lg sm:text-xl ${
+                  activeReturnRequest.return_type === 'refund' || (activeReturnRequest.exchange_difference || 0) < 0
+                    ? 'text-rose-600'
+                    : (activeReturnRequest.exchange_difference || 0) > 0
+                    ? 'text-emerald-600'
+                    : 'text-zinc-700'
+                }`}>
+                  {activeReturnRequest.return_type === 'refund'
+                    ? `${(activeReturnRequest.refund_amount || 0).toLocaleString('vi-VN')}₫`
+                    : (activeReturnRequest.exchange_difference || 0) > 0
+                    ? `+${(activeReturnRequest.exchange_difference || 0).toLocaleString('vi-VN')}₫`
+                    : (activeReturnRequest.exchange_difference || 0) < 0
+                    ? `-${(Math.abs(activeReturnRequest.exchange_difference || 0)).toLocaleString('vi-VN')}₫`
+                    : '0₫ (Đổi ngang)'}
+                </span>
+              </div>
+
+              <div className="pt-2 border-t border-rose-200/60 space-y-1.5 text-xs">
+                <div>
+                  <span className="text-zinc-500 font-medium">Món khách trả:</span>
+                  <p className="font-bold text-zinc-900 mt-0.5">{activeReturnRequest.items_summary}</p>
+                </div>
+                {activeReturnRequest.exchange_summary && (
+                  <div>
+                    <span className="text-zinc-500 font-medium">Món đổi mới:</span>
+                    <p className="font-bold text-amber-900 mt-0.5">{activeReturnRequest.exchange_summary}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex justify-between items-center text-[11px] text-zinc-500 pt-1 border-t border-rose-200/60">
+                <span>Thu ngân yêu cầu:</span>
+                <span className="font-semibold text-zinc-700">{activeReturnRequest.cashier || 'Quầy thu ngân'}</span>
+              </div>
+            </div>
+
+            {/* Nút thao tác: Duyệt hoặc Từ chối */}
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <button
+                type="button"
+                disabled={processing}
+                onClick={() => handleRejectReturn(activeReturnRequest)}
+                className="py-3.5 px-4 rounded-2xl border-2 border-zinc-200 bg-zinc-50 hover:bg-zinc-100 text-zinc-700 font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <XCircle className="w-4 h-4 text-zinc-500" />
+                <span>Từ Chối Duyệt</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={processing}
+                onClick={() => handleApproveReturn(activeReturnRequest)}
+                className="py-3.5 px-4 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-1.5 shadow-lg shadow-rose-600/30 transition cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <CheckCircle2 className="w-4 h-4 text-white" />
+                <span>Phê Duyệt Đổi Trả</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 1. MODAL DUYỆT CHUYỂN KHOẢN NỔI BẬT DÀNH CHO ADMIN ── */}
       {activeRequest && !resolvedOrderNumsRef.current.has(activeRequest.order_number) && !dismissedOrderNumsRef.current.has(activeRequest.order_number) && (
         <div className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in">

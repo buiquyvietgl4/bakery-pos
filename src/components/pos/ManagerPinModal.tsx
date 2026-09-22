@@ -70,9 +70,10 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
   };
 
   const handleKeyPress = (num: string) => {
-    if (pin.length >= 8) return;
-    const newPin = pin + num;
-    setPin(newPin);
+    setPin((prev) => {
+      if (prev.length >= 8) return prev;
+      return prev + num;
+    });
     setErrorMsg(null);
   };
 

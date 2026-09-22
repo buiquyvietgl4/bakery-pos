@@ -119,6 +119,28 @@ class AudioManager {
   }
 
   /**
+   * Âm bíp ngắn nhẹ nhàng khi tương tác nút hoặc phản hồi
+   */
+  public playBeep(freq = 800, duration = 0.08) {
+    if (!this.soundEnabled) return;
+    const ctx = this.getContext();
+    if (!ctx) return;
+    try {
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now);
+      osc.stop(now + duration + 0.02);
+    } catch {}
+  }
+
+  /**
    * Âm cảnh báo khẩn cấp (Urgent Delivery Alert)
    * 3 tiếng bíp dồn dập (1046.5 Hz - C6) để nhắc đơn bánh sắp đến giờ giao hoặc trễ hẹn
    */

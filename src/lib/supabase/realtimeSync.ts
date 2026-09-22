@@ -84,11 +84,37 @@ export interface TransferApprovalResolvedPayload {
   resolved_at?: string;
 }
 
+export interface ReturnApprovalPayload {
+  id: string; // ID yêu cầu duyệt: REQ-RET-xxxxxx
+  order_number: string;
+  order_id?: string;
+  return_type: 'refund' | 'exchange';
+  refund_amount: number;
+  exchange_difference?: number;
+  items_summary: string;
+  exchange_summary?: string;
+  cashier: string;
+  requested_at: string;
+  return_record?: any;
+}
+
+export interface ReturnApprovalResolvedPayload {
+  id?: string;
+  order_number: string;
+  action: 'approved' | 'rejected';
+  reason?: string;
+  resolved_by?: string;
+  resolved_at?: string;
+  return_record?: any;
+}
+
 type BakeApprovalCallback = (payload: BakeApprovalPayload) => void;
 type BakeApprovalResolvedCallback = (payload: BakeApprovalResolvedPayload) => void;
 export type PaymentReceivedCallback = (payload: PaymentReceivedPayload) => void;
 export type TransferApprovalCallback = (payload: TransferApprovalPayload) => void;
 export type TransferApprovalResolvedCallback = (payload: TransferApprovalResolvedPayload) => void;
+export type ReturnApprovalCallback = (payload: ReturnApprovalPayload) => void;
+export type ReturnApprovalResolvedCallback = (payload: ReturnApprovalResolvedPayload) => void;
 
 const statusListeners = new Set<StatusCallback>();
 const newOrderListeners = new Set<NewOrderCallback>();
@@ -106,6 +132,8 @@ const bakeApprovalResolvedListeners = new Set<BakeApprovalResolvedCallback>();
 const paymentReceivedListeners = new Set<PaymentReceivedCallback>();
 const transferApprovalListeners = new Set<TransferApprovalCallback>();
 const transferApprovalResolvedListeners = new Set<TransferApprovalResolvedCallback>();
+const returnApprovalListeners = new Set<ReturnApprovalCallback>();
+const returnApprovalResolvedListeners = new Set<ReturnApprovalResolvedCallback>();
 
 const recentlyNotifiedOrders = new Map<string, number>();
 
@@ -355,6 +383,34 @@ function ensureSyncChannel() {
               cb(payload);
             } catch (e) {
               console.warn('Lỗi transferApprovalResolvedListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'return_approval_requested' }, ({ payload }: any) => {
+        if (payload) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('return_approval_requested', { detail: payload }));
+          }
+          returnApprovalListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi returnApprovalListener:', e);
+            }
+          });
+        }
+      })
+      .on('broadcast', { event: 'return_approval_resolved' }, ({ payload }: any) => {
+        if (payload) {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('return_approval_resolved', { detail: payload }));
+          }
+          returnApprovalResolvedListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi returnApprovalResolvedListener:', e);
             }
           });
         }
@@ -841,6 +897,8 @@ export function subscribeCrossDeviceSync(callbacks: {
   onPaymentReceived?: PaymentReceivedCallback;
   onTransferApprovalRequest?: TransferApprovalCallback;
   onTransferApprovalResolved?: TransferApprovalResolvedCallback;
+  onReturnApprovalRequest?: ReturnApprovalCallback;
+  onReturnApprovalResolved?: ReturnApprovalResolvedCallback;
 }) {
   ensureSyncChannel();
 
@@ -861,6 +919,8 @@ export function subscribeCrossDeviceSync(callbacks: {
     onPaymentReceived,
     onTransferApprovalRequest,
     onTransferApprovalResolved,
+    onReturnApprovalRequest,
+    onReturnApprovalResolved,
   } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
@@ -879,6 +939,8 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onPaymentReceived) paymentReceivedListeners.add(onPaymentReceived);
   if (onTransferApprovalRequest) transferApprovalListeners.add(onTransferApprovalRequest);
   if (onTransferApprovalResolved) transferApprovalResolvedListeners.add(onTransferApprovalResolved);
+  if (onReturnApprovalRequest) returnApprovalListeners.add(onReturnApprovalRequest);
+  if (onReturnApprovalResolved) returnApprovalResolvedListeners.add(onReturnApprovalResolved);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
@@ -897,6 +959,8 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onPaymentReceived) paymentReceivedListeners.delete(onPaymentReceived);
     if (onTransferApprovalRequest) transferApprovalListeners.delete(onTransferApprovalRequest);
     if (onTransferApprovalResolved) transferApprovalResolvedListeners.delete(onTransferApprovalResolved);
+    if (onReturnApprovalRequest) returnApprovalListeners.delete(onReturnApprovalRequest);
+    if (onReturnApprovalResolved) returnApprovalResolvedListeners.delete(onReturnApprovalResolved);
   };
 }
 
@@ -1248,6 +1312,239 @@ export async function broadcastTransferApprovalResolved(payload: TransferApprova
     } catch {}
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastTransferApprovalResolved:', err);
+  }
+}
+
+// ── ĐỒNG BỘ YÊU CẦU DUYỆT ĐỔI TRẢ & HOÀN TIỀN (RETURN APPROVALS) ──
+export const DB_ROW_PENDING_RETURNS_ID = '00000000-0000-0000-0000-000000000028';
+export const DB_ROW_PENDING_RETURNS_NAME = 'SYS_CONFIG_PENDING_RETURNS';
+
+export async function savePendingReturnToDb(payload: ReturnApprovalPayload): Promise<void> {
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_pending_returns');
+      const list: ReturnApprovalPayload[] = raw ? JSON.parse(raw) : [];
+      if (!list.some((p) => p.order_number === payload.order_number)) {
+        const updated = [payload, ...list];
+        localStorage.setItem('bakery_pending_returns', JSON.stringify(updated));
+      }
+      autoSyncToLocalSqlFolder().catch(() => {});
+    } catch {}
+  }
+
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    const { data } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_PENDING_RETURNS_ID},name.eq.${DB_ROW_PENDING_RETURNS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    let currentList: ReturnApprovalPayload[] = [];
+    if (data?.notes) {
+      try {
+        const parsed = JSON.parse(data.notes);
+        if (Array.isArray(parsed)) currentList = parsed;
+      } catch {}
+    }
+
+    const filtered = currentList.filter((p) => p.order_number !== payload.order_number);
+    const updatedList = [payload, ...filtered];
+    const notesContent = JSON.stringify(updatedList);
+
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_PENDING_RETURNS_ID,
+        name: DB_ROW_PENDING_RETURNS_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi khi savePendingReturnToDb:', err);
+  }
+}
+
+export async function removePendingReturnFromDb(orderNumber: string): Promise<void> {
+  if (!orderNumber) return;
+
+  if (typeof window !== 'undefined') {
+    try {
+      const resRaw = localStorage.getItem('bakery_resolved_returns');
+      const resList: string[] = resRaw ? JSON.parse(resRaw) : [];
+      if (!resList.includes(orderNumber)) {
+        resList.push(orderNumber);
+        localStorage.setItem('bakery_resolved_returns', JSON.stringify(resList.slice(-100)));
+      }
+      const raw = localStorage.getItem('bakery_pending_returns');
+      if (raw) {
+        const list: ReturnApprovalPayload[] = JSON.parse(raw);
+        const updated = list.filter((p) => p.order_number !== orderNumber);
+        localStorage.setItem('bakery_pending_returns', JSON.stringify(updated));
+      }
+      autoSyncToLocalSqlFolder().catch(() => {});
+    } catch {}
+  }
+
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    const { data } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_PENDING_RETURNS_ID},name.eq.${DB_ROW_PENDING_RETURNS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    let currentList: ReturnApprovalPayload[] = [];
+    if (data?.notes) {
+      try {
+        const parsed = JSON.parse(data.notes);
+        if (Array.isArray(parsed)) currentList = parsed;
+      } catch {}
+    }
+    const updatedList = currentList.filter((p) => p.order_number !== orderNumber);
+    const notesContent = JSON.stringify(updatedList);
+
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_PENDING_RETURNS_ID,
+        name: DB_ROW_PENDING_RETURNS_NAME,
+        yield_qty: 1,
+        yield_unit: 'chiếc',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi khi removePendingReturnFromDb:', err);
+  }
+}
+
+export async function fetchPendingReturnsFromDb(): Promise<ReturnApprovalPayload[]> {
+  if (isLocalMode()) {
+    return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_pending_returns') || '[]') : [];
+  }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_pending_returns') || '[]') : [];
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_PENDING_RETURNS_ID},name.eq.${DB_ROW_PENDING_RETURNS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed)) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bakery_pending_returns', JSON.stringify(parsed));
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi fetchPendingReturnsFromDb:', err);
+  }
+  return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_pending_returns') || '[]') : [];
+}
+
+export async function broadcastReturnApprovalRequest(payload: ReturnApprovalPayload) {
+  try {
+    // 1. Lưu Database & LocalStorage
+    savePendingReturnToDb(payload).catch(console.error);
+
+    // 2. Phát sóng Realtime
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'return_approval_requested',
+        payload: {
+          ...payload,
+          requested_at: payload.requested_at || new Date().toISOString(),
+        },
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('return_approval_requested', { detail: payload }));
+    }
+
+    // 3. Web Push Notification
+    try {
+      const title = payload.return_type === 'refund' ? '🔄 YÊU CẦU DUYỆT HOÀN TIỀN' : '🔄 YÊU CẦU DUYỆT ĐỔI BÁNH';
+      const amountStr = (Number(payload.refund_amount || payload.exchange_difference || 0)).toLocaleString('vi-VN');
+      fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title,
+          body: `Đơn #${payload.order_number}: Thu ngân ${payload.cashier || 'Quầy'} yêu cầu duyệt ${payload.return_type === 'refund' ? 'hoàn' : 'đổi'} (${amountStr}₫). Bấm để mở duyệt ngay!`,
+          url: '/admin',
+          type: 'return_approval',
+          isUrgent: true,
+          orderNumber: payload.order_number,
+        }),
+      }).catch(() => {});
+    } catch {}
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastReturnApprovalRequest:', err);
+  }
+}
+
+export async function broadcastReturnApprovalResolved(payload: ReturnApprovalResolvedPayload) {
+  try {
+    // 1. Xóa yêu cầu khỏi Database
+    if (payload.order_number) {
+      removePendingReturnFromDb(payload.order_number).catch(console.error);
+    }
+
+    // 2. Phát sóng Realtime
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'return_approval_resolved',
+        payload: {
+          ...payload,
+          resolved_at: payload.resolved_at || new Date().toISOString(),
+        },
+      });
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('return_approval_resolved', { detail: payload }));
+    }
+
+    // 3. Web Push
+    try {
+      fetch('/api/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: payload.action === 'approved' ? '✅ ĐÃ DUYỆT ĐỔI TRẢ' : '❌ TỪ CHỐI DUYỆT ĐỔI TRẢ',
+          body: `Đơn #${payload.order_number}: Quản trị viên đã ${payload.action === 'approved' ? 'phê duyệt đổi trả thành công' : 'từ chối yêu cầu đổi trả'}.`,
+          url: '/pos',
+          type: 'return_resolved',
+          isUrgent: false,
+          orderNumber: payload.order_number,
+        }),
+      }).catch(() => {});
+    } catch {}
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastReturnApprovalResolved:', err);
   }
 }
 

@@ -25,6 +25,12 @@ import {
   Trash2,
   Copy,
   Check,
+  KeyRound,
+  Smartphone,
+  RefreshCw,
+  Radio,
+  Send,
+  Hourglass,
 } from 'lucide-react';
 import { CachedProduct } from '@/lib/db/dexie';
 import { ManagerPinModal } from '@/components/pos/ManagerPinModal';
@@ -36,6 +42,13 @@ import {
   ExchangePaymentDetail,
 } from '@/lib/types/orderReturn';
 import { getVietqrConfig, VietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
+import { useAuth } from '@/lib/auth/AuthContext';
+import { soundManager } from '@/lib/utils/audioAlert';
+import {
+  broadcastReturnApprovalRequest,
+  subscribeCrossDeviceSync,
+  ReturnApprovalPayload,
+} from '@/lib/supabase/realtimeSync';
 
 interface ReturnExchangeModalProps {
   isOpen: boolean;
@@ -104,8 +117,14 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
   >([]);
   const [exchangeSearchQuery, setExchangeSearchQuery] = useState('');
 
-  // Quản lý PIN bảo mật
+  // Quản lý PIN bảo mật & Duyệt Admin (2 Bước)
+  const { isAdmin, user, securityConfig } = useAuth();
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [isApprovalMethodModalOpen, setIsApprovalMethodModalOpen] = useState(false);
+  const [isWaitingAdminModalOpen, setIsWaitingAdminModalOpen] = useState(false);
+  const [currentApprovalPayload, setCurrentApprovalPayload] = useState<ReturnApprovalPayload | null>(null);
+  const [resendStatusMsg, setResendStatusMsg] = useState<string | null>(null);
+  const [isResending, setIsResending] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
   // Phiếu hoàn tất đã in
@@ -118,6 +137,9 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
       setReturnItemsState({});
       setExchangeProducts([]);
       setCompletedReturnRecord(null);
+      setIsWaitingAdminModalOpen(false);
+      setIsApprovalMethodModalOpen(false);
+      setCurrentApprovalPayload(null);
     }
   }, [initialOrder]);
 
@@ -307,17 +329,133 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
     setSplitCashAmount(exchangeDifference - clamped);
   };
 
-  const handleConfirmAction = () => {
+  // Lắng nghe kết quả phê duyệt Realtime từ Admin
+  useEffect(() => {
+    if (!isOpen || !isWaitingAdminModalOpen || !currentApprovalPayload) return;
+
+    const orderNo = currentApprovalPayload.order_number;
+
+    const handleResolved = (payload: any) => {
+      if (!payload || payload.order_number !== orderNo) return;
+
+      if (payload.action === 'approved') {
+        try {
+          soundManager.playPaymentSuccessChime();
+        } catch {}
+        setIsWaitingAdminModalOpen(false);
+        const approver = payload.resolved_by || 'Chủ Tiệm (Admin)';
+        executeFinalizeReturn(approver);
+      } else if (payload.action === 'rejected') {
+        setIsWaitingAdminModalOpen(false);
+        alert(`❌ Yêu cầu đổi trả đơn #${orderNo} đã bị Admin từ chối.\n${payload.reason ? `Lý do: ${payload.reason}` : ''}`);
+      }
+    };
+
+    const handleCustomEvt = (e: any) => {
+      if (e.detail) handleResolved(e.detail);
+    };
+
+    window.addEventListener('return_approval_resolved', handleCustomEvt as EventListener);
+
+    const unsubscribe = subscribeCrossDeviceSync({
+      onReturnApprovalResolved: (payload) => {
+        handleResolved(payload);
+      },
+    });
+
+    return () => {
+      window.removeEventListener('return_approval_resolved', handleCustomEvt as EventListener);
+      unsubscribe();
+    };
+  }, [isOpen, isWaitingAdminModalOpen, currentApprovalPayload]);
+
+  const buildReturnApprovalPayload = (): ReturnApprovalPayload | null => {
+    if (!selectedOrder) return null;
+    const orderNum = selectedOrder.order_number || selectedOrder.orderNumber;
+    const orderId = selectedOrder.id || orderNum;
+
+    // Tóm tắt món trả
+    const returnSummaryArr: string[] = [];
+    orderItems.forEach((it: any, idx: number) => {
+      const state = returnItemsState[idx];
+      if (state && state.qty > 0) {
+        const name = it.product_name_snapshot || it.product?.name || it.name || 'Bánh';
+        returnSummaryArr.push(`${state.qty}x ${name}`);
+      }
+    });
+
+    // Tóm tắt món đổi mới
+    const exchangeSummaryArr = exchangeProducts.map((ep) => `${ep.quantity}x ${ep.product.name}`);
+    const effectiveRefundAmount = returnType === 'refund' ? refundTotalAmount : Math.max(0, -exchangeDifference);
+
+    return {
+      id: `REQ-RET-${orderNum}-${Date.now().toString().slice(-4)}`,
+      order_number: orderNum,
+      order_id: orderId,
+      return_type: returnType,
+      refund_amount: effectiveRefundAmount,
+      exchange_difference: returnType === 'exchange' ? exchangeDifference : undefined,
+      items_summary: returnSummaryArr.join(', '),
+      exchange_summary: returnType === 'exchange' && exchangeSummaryArr.length > 0 ? exchangeSummaryArr.join(', ') : undefined,
+      cashier: cashierName || user?.name || 'Thu ngân quầy',
+      requested_at: new Date().toISOString(),
+    };
+  };
+
+  const handleSendApprovalToAdmin = async () => {
+    const payload = buildReturnApprovalPayload();
+    if (!payload) return;
+
+    setCurrentApprovalPayload(payload);
+    setResendStatusMsg(null);
+    setIsWaitingAdminModalOpen(true);
+
+    await broadcastReturnApprovalRequest(payload);
+  };
+
+  const handleResendRequest = async () => {
+    if (!currentApprovalPayload) return;
+    setIsResending(true);
+    try {
+      const updatedPayload: ReturnApprovalPayload = {
+        ...currentApprovalPayload,
+        requested_at: new Date().toISOString(),
+      };
+      setCurrentApprovalPayload(updatedPayload);
+      await broadcastReturnApprovalRequest(updatedPayload);
+      try {
+        soundManager.playBeep();
+      } catch {}
+      const timeStr = new Date().toLocaleTimeString('vi-VN');
+      setResendStatusMsg(`Đã gửi lại yêu cầu lúc ${timeStr}! Chuông điện thoại Admin đang đổ chuông.`);
+      setTimeout(() => setResendStatusMsg(null), 5000);
+    } catch (e) {
+      console.error('Lỗi khi gửi lại yêu cầu:', e);
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const handleConfirmAction = async () => {
     if (!selectedOrder) return;
     if (!hasAnyItemSelected) return;
     if (returnType === 'exchange' && exchangeProducts.length === 0) return;
 
-    // Yêu cầu nhập PIN Quản Lý
-    setIsPinModalOpen(true);
+    // Kiểm tra cài đặt bỏ qua cho tài khoản Admin
+    const skipForAdmin = Boolean((securityConfig?.returnSkipForAdmin ?? true) && isAdmin);
+    if (skipForAdmin) {
+      await executeFinalizeReturn('Chủ Tiệm (Admin)');
+      return;
+    }
+
+    // Mở modal lựa chọn phương thức xác nhận (Nhập PIN vs Gửi Admin)
+    setIsApprovalMethodModalOpen(true);
   };
 
-  const handlePinSuccess = async () => {
+  const executeFinalizeReturn = async (approverName?: string) => {
     setIsPinModalOpen(false);
+    setIsApprovalMethodModalOpen(false);
+    setIsWaitingAdminModalOpen(false);
     setIsProcessing(true);
 
     try {
@@ -417,7 +555,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
         exchange_difference: returnType === 'exchange' ? exchangeDifference : undefined,
         exchange_payment_detail: exchangePaymentDetail,
         reason_summary: returnedItemsList.map((ri) => `${ri.quantity}x ${ri.product_name} (${ri.reason})`).join(', '),
-        approved_by: cashierName,
+        approved_by: approverName || cashierName || 'Quản lý',
         created_at: new Date().toISOString(),
       };
 
@@ -803,6 +941,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                                   <div className="flex items-center bg-white border border-stone-200 rounded-xl p-0.5">
                                     <button
                                       type="button"
+                                      data-testid={`btn-decrease-return-${idx}`}
                                       disabled={state.qty === 0}
                                       onClick={() => handleItemQtyChange(idx, -1, maxQty)}
                                       className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:bg-stone-100 disabled:opacity-30 cursor-pointer"
@@ -814,6 +953,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                                     </span>
                                     <button
                                       type="button"
+                                      data-testid={`btn-increase-return-${idx}`}
                                       disabled={state.qty >= maxQty}
                                       onClick={() => handleItemQtyChange(idx, 1, maxQty)}
                                       className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:bg-stone-100 disabled:opacity-30 cursor-pointer"
@@ -1422,11 +1562,204 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
         </div>
       </div>
 
+      {/* ── 1. MODAL CHỌN HÌNH THỨC XÁC NHẬN ĐỔI TRẢ (PIN vs GỬI ADMIN) ── */}
+      {isApprovalMethodModalOpen && (
+        <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in-95 border border-stone-200 text-zinc-900">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0 shadow-xs">
+                  <ShieldCheck className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base sm:text-lg text-zinc-900">Xác Nhận Đổi Trả / Hoàn Tiền</h3>
+                  <p className="text-xs text-zinc-500 font-medium">Chọn phương thức phê duyệt để xuất quỹ hoặc đổi bánh</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsApprovalMethodModalOpen(false)}
+                className="p-1.5 text-zinc-400 hover:text-zinc-600 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tóm tắt đơn */}
+            <div className="p-3.5 bg-stone-50 rounded-2xl border border-stone-200/80 text-xs space-y-1">
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Mã đơn hàng:</span>
+                <span className="font-mono font-bold text-zinc-900">#{selectedOrder?.order_number || selectedOrder?.orderNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-500">Thao tác:</span>
+                <span className="font-bold text-rose-700">
+                  {returnType === 'refund'
+                    ? `Hoàn tiền (${refundTotalAmount.toLocaleString('vi-VN')}₫)`
+                    : exchangeDifference > 0
+                    ? `Đổi bánh (Khách bù: ${exchangeDifference.toLocaleString('vi-VN')}₫)`
+                    : exchangeDifference < 0
+                    ? `Đổi bánh (Hoàn khách: ${(Math.abs(exchangeDifference)).toLocaleString('vi-VN')}₫)`
+                    : 'Đổi ngang (0₫)'}
+                </span>
+              </div>
+            </div>
+
+            {/* 2 Lựa chọn */}
+            <div className="space-y-3 pt-1">
+              {/* Cách 1: Nhập PIN Quản Lý */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsApprovalMethodModalOpen(false);
+                  setIsPinModalOpen(true);
+                }}
+                className="w-full p-4 rounded-2xl border-2 border-amber-300 bg-amber-50/60 hover:bg-amber-100 hover:border-amber-500 text-left flex items-start gap-3.5 transition group cursor-pointer active:scale-[0.99]"
+              >
+                <div className="w-11 h-11 rounded-xl bg-amber-600 text-white flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition">
+                  <KeyRound className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 font-black text-amber-950 text-sm">
+                    <span>Cách 1: Nhập Mã PIN Quản Lý</span>
+                  </div>
+                  <p className="text-xs text-zinc-600 mt-0.5 leading-snug">
+                    Nhập mã PIN Quản Lý trực tiếp tại quầy thu ngân (Mặc định: <b>8888</b> hoặc <b>admin123</b>).
+                  </p>
+                </div>
+              </button>
+
+              {/* Cách 2: Gửi thông báo cho Admin (2 Bước) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsApprovalMethodModalOpen(false);
+                  handleSendApprovalToAdmin();
+                }}
+                className="w-full p-4 rounded-2xl border-2 border-rose-300 bg-rose-50/60 hover:bg-rose-100 hover:border-rose-500 text-left flex items-start gap-3.5 transition group cursor-pointer active:scale-[0.99]"
+              >
+                <div className="w-11 h-11 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md group-hover:scale-105 transition">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-1.5 font-black text-rose-950 text-sm">
+                    <span>Cách 2: Gửi Thông Báo Cho Admin</span>
+                    <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded-full bg-rose-200 text-rose-800">
+                      Realtime 2 Bước
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-600 mt-0.5 leading-snug">
+                    Phát tín hiệu chuông và popup duyệt tới điện thoại / máy tính của Admin. POS tự động hoàn tất khi Admin duyệt.
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 2. MODAL CHỜ ADMIN PHÊ DUYỆT REALTIME (KÈM NÚT YÊU CẦU LẠI) ── */}
+      {isWaitingAdminModalOpen && currentApprovalPayload && (
+        <div className="fixed inset-0 z-[60] bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in zoom-in-95 border-2 border-rose-400 text-zinc-900 text-center">
+            {/* Vòng tròn sóng radar động */}
+            <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-rose-400/30 animate-ping" />
+              <div className="w-12 h-12 rounded-full bg-rose-600 text-white flex items-center justify-center shadow-lg relative z-10">
+                <Radio className="w-6 h-6 animate-pulse" />
+              </div>
+            </div>
+
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-100 text-rose-800 text-xs font-black uppercase tracking-wider mb-2">
+                <Sparkles className="w-3.5 h-3.5" /> Đang Chờ Admin Phê Duyệt
+              </div>
+              <h3 className="font-black text-lg text-zinc-900">
+                Đã Gửi Thông Báo Tới Chủ Tiệm
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1">
+                Chuông cảnh báo đang phát trên thiết bị của Admin. Đơn sẽ tự động hoàn tất và in biên lai ngay khi được duyệt.
+              </p>
+            </div>
+
+            {/* Chi tiết đơn chờ */}
+            <div className="p-3.5 bg-rose-50/70 rounded-2xl border border-rose-200/80 text-left text-xs space-y-1.5">
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Mã đơn hàng:</span>
+                <span className="font-mono font-black text-rose-950">#{currentApprovalPayload.order_number}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Loại giao dịch:</span>
+                <span className="font-bold text-zinc-800">
+                  {currentApprovalPayload.return_type === 'refund' ? 'Hoàn tiền trả hàng' : 'Đổi món bánh'}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-600">Số tiền:</span>
+                <span className="font-black text-rose-700 text-sm">
+                  {currentApprovalPayload.return_type === 'refund'
+                    ? `${(currentApprovalPayload.refund_amount || 0).toLocaleString('vi-VN')}₫`
+                    : (currentApprovalPayload.exchange_difference || 0) > 0
+                    ? `Khách bù: ${(currentApprovalPayload.exchange_difference || 0).toLocaleString('vi-VN')}₫`
+                    : `Hoàn khách: ${(Math.abs(currentApprovalPayload.exchange_difference || 0)).toLocaleString('vi-VN')}₫`}
+                </span>
+              </div>
+              <div className="text-[11px] text-zinc-500 pt-1 border-t border-rose-200/60">
+                <span>Món: </span>
+                <span className="font-semibold text-zinc-700">{currentApprovalPayload.items_summary}</span>
+              </div>
+            </div>
+
+            {/* Thông báo gửi lại */}
+            {resendStatusMsg && (
+              <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold text-center animate-in fade-in flex items-center justify-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{resendStatusMsg}</span>
+              </div>
+            )}
+
+            {/* NÚT THAO TÁC QUAN TRỌNG: YÊU CẦU LẠI */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                disabled={isResending}
+                onClick={handleResendRequest}
+                className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-md shadow-orange-500/20 transition cursor-pointer active:scale-95 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 ${isResending ? 'animate-spin' : ''}`} />
+                <span>🔄 Yêu Cầu Lại (Gửi Lại Thông Báo)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsWaitingAdminModalOpen(false);
+                  setIsPinModalOpen(true);
+                }}
+                className="w-full py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <KeyRound className="w-3.5 h-3.5 text-zinc-600" />
+                <span>Nhập mã PIN Quản Lý thay thế (nếu Admin vắng mặt)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsWaitingAdminModalOpen(false)}
+                className="w-full py-2 text-zinc-400 hover:text-zinc-600 text-xs font-semibold cursor-pointer"
+              >
+                Hủy chờ duyệt
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal PIN Quản Lý Phê Duyệt */}
       <ManagerPinModal
         isOpen={isPinModalOpen}
         onClose={() => setIsPinModalOpen(false)}
-        onSuccess={handlePinSuccess}
+        onSuccess={() => executeFinalizeReturn('Quản Lý (Mã PIN)')}
         title="Duyệt Đổi Trả / Hoàn Tiền"
         subtitle="Vui lòng nhập mã PIN Quản Lý để xác nhận xuất quỹ hoàn tiền hoặc điều chỉnh đơn"
         actionDescription={`Duyệt giao dịch ${returnType === 'refund' ? 'Hoàn tiền' : 'Đổi hàng'} cho đơn #${

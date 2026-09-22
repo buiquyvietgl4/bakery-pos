@@ -191,6 +191,7 @@ export default function AdminDashboard() {
     updateKitchenCredentials,
     updateStaffCredentials,
     updateManagerPin,
+    updateReturnSkipForAdmin,
     updateAdminRecoveryKey,
     forceResetAdminToDefault,
     securityConfig,
@@ -9125,6 +9126,38 @@ export default function AdminDashboard() {
                   >
                     Lưu Mã PIN Quản Lý
                   </button>
+                </div>
+
+                {/* Cấu hình bỏ qua xác nhận đổi trả cho tài khoản Admin */}
+                <div className="p-3 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-2">
+                  <span className="font-bold text-amber-950 block text-xs flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-amber-600" /> Miễn Xác Nhận Đổi Trả Cho Admin:
+                  </span>
+                  <p className="text-[11px] text-zinc-500 leading-snug">
+                    Nếu bật tùy chọn này, khi tài khoản Chủ Tiệm (Admin) thực hiện đổi trả tại POS, hệ thống sẽ tự động hoàn tất ngay mà không cần hỏi PIN hay gửi thông báo.
+                  </p>
+                  <label className="flex items-center gap-2.5 p-2.5 bg-white border border-amber-200 rounded-xl cursor-pointer hover:border-amber-400 transition">
+                    <input
+                      type="checkbox"
+                      checked={securityConfig.returnSkipForAdmin ?? true}
+                      onChange={(e) => {
+                        const isSkip = e.target.checked;
+                        updateReturnSkipForAdmin(isSkip);
+                        setSecurityMsg({
+                          type: 'success',
+                          text: isSkip
+                            ? 'Đã bật: Tài khoản Admin sẽ được duyệt đổi trả tức thì tại POS!'
+                            : 'Đã tắt: Mọi tài khoản (kể cả Admin) đều phải xác nhận khi đổi trả.',
+                        });
+                        setTimeout(() => setSecurityMsg(null), 4000);
+                      }}
+                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
+                    />
+                    <div>
+                      <div className="text-xs font-bold text-zinc-800">Bỏ qua xác nhận khi tài khoản Admin thao tác</div>
+                      <div className="text-[10px] text-zinc-500">Mặc định Bật. Nếu tắt, Admin vẫn phải nhập mã PIN hoặc chọn duyệt</div>
+                    </div>
+                  </label>
                 </div>
               </div>
             </div>
