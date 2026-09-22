@@ -12,7 +12,7 @@ import {
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
   Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff,
-  Zap, Link2, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale, RotateCcw, ShoppingCart, FileKey
+  Zap, Link2, Settings, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale, RotateCcw, ShoppingCart, FileKey
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { useAuth, PermissionKey } from '@/lib/auth/AuthContext';
@@ -199,7 +199,67 @@ export default function AdminDashboard() {
     setAllPermissionsForRole,
     resetPermissionsToDefault,
   } = useAuth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'tax_accounting' | 'shifts' | 'images' | 'inventory' | 'recipes' | 'cake_costing' | 'opex' | 'cashflow' | 'vietqr' | 'transfer_verification' | 'ewallet' | 'cloud' | 'security' | 'branding'>('overview');
+  const [activeTab, setActiveTab] = useState<
+    | 'overview'
+    | 'tax_accounting'
+    | 'shifts'
+    | 'images'
+    | 'inventory'
+    | 'bom'
+    | 'payment'
+    | 'system'
+    // Tương thích ngược:
+    | 'recipes'
+    | 'cake_costing'
+    | 'opex'
+    | 'cashflow'
+    | 'vietqr'
+    | 'transfer_verification'
+    | 'ewallet'
+    | 'cloud'
+    | 'security'
+    | 'branding'
+  >('overview');
+
+  // Sub-tab states cho các nhóm tính năng đã hợp nhất
+  const [paymentSubTab, setPaymentSubTab] = useState<'verification' | 'vietqr' | 'ewallet'>('verification');
+  const [bomSubTab, setBomSubTab] = useState<'recipes' | 'cake_costing'>('recipes');
+  const [systemSubTab, setSystemSubTab] = useState<'branding' | 'security' | 'cloud'>('branding');
+
+  // Xử lý deep-link URL tham số ?tab=...
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab');
+      if (tabParam === 'transfer_verification') {
+        setActiveTab('payment');
+        setPaymentSubTab('verification');
+      } else if (tabParam === 'vietqr') {
+        setActiveTab('payment');
+        setPaymentSubTab('vietqr');
+      } else if (tabParam === 'ewallet') {
+        setActiveTab('payment');
+        setPaymentSubTab('ewallet');
+      } else if (tabParam === 'recipes') {
+        setActiveTab('bom');
+        setBomSubTab('recipes');
+      } else if (tabParam === 'cake_costing') {
+        setActiveTab('bom');
+        setBomSubTab('cake_costing');
+      } else if (tabParam === 'branding') {
+        setActiveTab('system');
+        setSystemSubTab('branding');
+      } else if (tabParam === 'security') {
+        setActiveTab('system');
+        setSystemSubTab('security');
+      } else if (tabParam === 'cloud') {
+        setActiveTab('system');
+        setSystemSubTab('cloud');
+      } else if (tabParam) {
+        setActiveTab(tabParam as any);
+      }
+    }
+  }, []);
 
   // ── PHÂN HỆ XÁC THỰC CHUYỂN KHOẢN (3 CHẾ ĐỘ & QUẢN TRỊ DUYỆT CK) ──
   const [transferVerifyConfig, setTransferVerifyConfig] = useState<TransferVerificationConfig>(() => getTransferVerificationConfig());
@@ -3431,6 +3491,177 @@ export default function AdminDashboard() {
     );
   }
 
+  // ── SUB-TAB RENDERERS CHO CÁC NHÓM HỢP NHẤT ──
+  const renderBomSubTabs = () => (
+    <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-stone-200/90 p-1.5 shadow-2xs flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('bom');
+            setBomSubTab('recipes');
+          }}
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            (bomSubTab === 'recipes' && activeTab !== 'cake_costing') || activeTab === 'recipes'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+          }`}
+        >
+          <BookOpen className="w-4 h-4" />
+          <span>BOM Bánh Bán Lẻ &amp; Bán Thành Phẩm</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('bom');
+            setBomSubTab('cake_costing');
+          }}
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            (bomSubTab === 'cake_costing' || activeTab === 'cake_costing') && activeTab !== 'recipes'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+          }`}
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>Định Mức Bánh Sinh Nhật (Size &amp; Phụ Kiện)</span>
+        </button>
+      </div>
+      <div className="text-[11px] text-zinc-400 font-medium px-2">
+        Quản lý định mức nguyên liệu &amp; công thức tính giá vốn
+      </div>
+    </div>
+  );
+
+  const renderPaymentSubTabs = () => (
+    <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-stone-200/90 p-1.5 shadow-2xs flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('payment');
+            setPaymentSubTab('verification');
+          }}
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            (paymentSubTab === 'verification' && activeTab !== 'vietqr' && activeTab !== 'ewallet') || activeTab === 'transfer_verification'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+          }`}
+        >
+          <ShieldCheck className="w-4 h-4" />
+          <span>Duyệt Chuyển Khoản</span>
+          {adminPendingTransfers.length > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse shadow-xs">
+              {adminPendingTransfers.length}
+            </span>
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('payment');
+            setPaymentSubTab('vietqr');
+          }}
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            (paymentSubTab === 'vietqr' || activeTab === 'vietqr') && activeTab !== 'transfer_verification' && activeTab !== 'ewallet'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+          }`}
+        >
+          <QrCode className="w-4 h-4" />
+          <span>Cài Đặt VietQR Ngân Hàng</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('payment');
+            setPaymentSubTab('ewallet');
+          }}
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            (paymentSubTab === 'ewallet' || activeTab === 'ewallet') && activeTab !== 'transfer_verification' && activeTab !== 'vietqr'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+          }`}
+        >
+          <Wallet className="w-4 h-4" />
+          <span>Ví Điện Tử (MoMo, ZaloPay)</span>
+        </button>
+      </div>
+      <div className="text-[11px] text-zinc-400 font-medium px-2">
+        Quản lý tài khoản ngân hàng, ví điện tử &amp; phê duyệt giao dịch chuyển khoản
+      </div>
+    </div>
+  );
+
+  const renderSystemSubTabs = () => (
+    <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-stone-200/90 p-1.5 shadow-2xs flex items-center justify-between flex-wrap gap-2">
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('system');
+            setSystemSubTab('branding');
+          }}
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            (systemSubTab === 'branding' && activeTab !== 'security' && activeTab !== 'cloud') || activeTab === 'branding'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+          }`}
+        >
+          <Building2 className="w-4 h-4" />
+          <span>Tên &amp; Logo Tiệm</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('system');
+            setSystemSubTab('security');
+          }}
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            (systemSubTab === 'security' || activeTab === 'security') && activeTab !== 'branding' && activeTab !== 'cloud'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+          }`}
+        >
+          <Shield className="w-4 h-4" />
+          <span>Bảo Mật &amp; Phân Quyền</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('system');
+            setSystemSubTab('cloud');
+          }}
+          className={`relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            (systemSubTab === 'cloud' || activeTab === 'cloud') && activeTab !== 'branding' && activeTab !== 'security'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
+          }`}
+        >
+          <Database className="w-4 h-4" />
+          <span>CSDL &amp; Sao Lưu SQL</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsPrinterSettingsOpen(true)}
+          className="relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold text-blue-700 bg-blue-50/70 hover:bg-blue-100 transition cursor-pointer border border-blue-200/80"
+          title="Cài đặt máy in hóa đơn & tem nhãn bánh (Bluetooth, USB, khổ giấy)"
+        >
+          <Printer className="w-4 h-4 text-blue-600" />
+          <span>Máy In Hóa Đơn &amp; Tem</span>
+        </button>
+      </div>
+      <div className="text-[11px] text-zinc-400 font-medium px-2">
+        Cấu hình thương hiệu, bảo mật tài khoản &amp; đồng bộ dữ liệu
+      </div>
+    </div>
+  );
+
   return (
     <div className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 space-y-5">
       {/* ── HEADER PHÂN HỆ QUẢN TRỊ (ROW 1: TITLE & ACTION BUTTONS) ── */}
@@ -3520,32 +3751,42 @@ export default function AdminDashboard() {
               // Nhóm 2: Vận hành & Kho
               { id: 'images', label: 'Quản Lý Bánh & Ảnh', icon: Cake, group: 'operations' },
               { id: 'inventory', label: 'Kho & Vật Tư', icon: Package, group: 'operations' },
-              { id: 'recipes', label: 'Công Thức BOM', icon: BookOpen, group: 'operations' },
-              { id: 'cake_costing', label: 'Định Mức Bánh Đặt', icon: Sparkles, group: 'operations' },
+              { id: 'bom', label: 'Công Thức (BOM)', icon: BookOpen, group: 'operations' },
               // Nhóm 3: Thanh toán
-              { id: 'transfer_verification', label: 'Duyệt Chuyển Khoản', icon: ShieldCheck, group: 'payment' },
-              { id: 'vietqr', label: 'Cài Đặt VietQR', icon: QrCode, group: 'payment' },
-              { id: 'ewallet', label: 'Ví Điện Tử', icon: Wallet, group: 'payment' },
+              { id: 'payment', label: 'Thanh Toán & Chuyển Khoản', icon: ShieldCheck, group: 'payment' },
               // Nhóm 4: Hệ thống
-              { id: 'branding', label: 'Tên & Logo Tiệm', icon: Building2, group: 'system' },
-              { id: 'security', label: 'Bảo Mật & Tài Khoản', icon: Shield, group: 'system' },
-              { id: 'cloud', label: 'CSDL & Sao Lưu SQL', icon: Database, group: 'system' },
+              { id: 'system', label: 'Cài Đặt Hệ Thống', icon: Settings, group: 'system' },
             ].map((tab, idx, arr) => {
               const Icon = tab.icon;
-              const hasPendingTransfers = tab.id === 'transfer_verification' && adminPendingTransfers.length > 0;
-              const isActive = activeTab === tab.id;
+              const hasPendingTransfers = tab.id === 'payment' && adminPendingTransfers.length > 0;
+              const isActive =
+                activeTab === tab.id ||
+                (tab.id === 'bom' && (activeTab === 'recipes' || activeTab === 'cake_costing')) ||
+                (tab.id === 'payment' && (activeTab === 'transfer_verification' || activeTab === 'vietqr' || activeTab === 'ewallet')) ||
+                (tab.id === 'system' && (activeTab === 'branding' || activeTab === 'security' || activeTab === 'cloud'));
               const prevTab = arr[idx - 1];
               const isNewGroup = prevTab && prevTab.group !== tab.group;
 
               return (
                 <div key={tab.id} className="flex items-center shrink-0">
                   {isNewGroup && (
-                    <div className="h-5 w-[1px] bg-stone-200/90 mx-1.5 shrink-0 hidden md:block" />
+                    <div className="h-5 w-[1px] bg-stone-200/90 mx-1 shrink-0 hidden md:block" />
                   )}
                   <button
                     type="button"
-                    onClick={() => setActiveTab(tab.id as any)}
-                    className={`relative flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+                    onClick={(e) => {
+                      (e.currentTarget as HTMLElement).scrollIntoView({ behavior: 'smooth', inline: 'nearest', block: 'nearest' });
+                      if (tab.id === 'bom' && (activeTab === 'recipes' || activeTab === 'cake_costing')) {
+                        setActiveTab('bom');
+                      } else if (tab.id === 'payment' && (activeTab === 'transfer_verification' || activeTab === 'vietqr' || activeTab === 'ewallet')) {
+                        setActiveTab('payment');
+                      } else if (tab.id === 'system' && (activeTab === 'branding' || activeTab === 'security' || activeTab === 'cloud')) {
+                        setActiveTab('system');
+                      } else {
+                        setActiveTab(tab.id as any);
+                      }
+                    }}
+                    className={`relative flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                       isActive
                         ? 'bg-amber-600 text-white shadow-xs'
                         : 'text-stone-600 hover:text-stone-900 hover:bg-amber-50/70'
@@ -6131,8 +6372,9 @@ export default function AdminDashboard() {
       )}
 
       {/* ── TAB 4: CÔNG THỨC BÁNH (BOM BUILDER) ── */}
-      {activeTab === 'recipes' && (
+      {((activeTab === 'bom' ? bomSubTab === 'recipes' : activeTab === 'recipes')) && (
         <div className="space-y-4">
+          {renderBomSubTabs()}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-200">
             <div>
               <h2 className="font-black text-lg text-zinc-900 flex items-center gap-2">
@@ -6538,8 +6780,11 @@ export default function AdminDashboard() {
       )}
 
       {/* ── TAB: ĐỊNH MỨC BÁNH ĐẶT (SIZE & PHỤ KIỆN) ── */}
-      {activeTab === 'cake_costing' && (
-        <CustomCakeCostingSettings />
+      {((activeTab === 'bom' ? bomSubTab === 'cake_costing' : activeTab === 'cake_costing')) && (
+        <div className="space-y-4">
+          {renderBomSubTabs()}
+          <CustomCakeCostingSettings />
+        </div>
       )}
 
       {/* ── TAB 5: CHI PHÍ VẬN HÀNH (OPEX) ── */}
@@ -6581,8 +6826,10 @@ export default function AdminDashboard() {
       )}
 
       {/* ── TAB 7: QUẢN TRỊ CƠ SỞ DỮ LIỆU: CLOUD SQL & LOCAL SQL CỤC BỘ ── */}
-      {activeTab === 'cloud' && (
-        <div className="max-w-5xl w-full mx-auto space-y-6">
+      {((activeTab === 'system' ? systemSubTab === 'cloud' : activeTab === 'cloud')) && (
+        <div className="space-y-4">
+          {renderSystemSubTabs()}
+          <div className="max-w-5xl w-full mx-auto space-y-6">
           {/* HEADER CHÍNH CỦA TRANG CSDL */}
           <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
@@ -7157,11 +7404,14 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
-      )}
+      </div>
+    )}
 
       {/* ── TAB 8: CÀI ĐẶT TẠO MÃ CHUYỂN KHOẢN VIETQR ── */}
-      {activeTab === 'vietqr' && (
-        <div className="space-y-6">
+      {((activeTab === 'payment' ? paymentSubTab === 'vietqr' : activeTab === 'vietqr')) && (
+        <div className="space-y-4">
+          {renderPaymentSubTabs()}
+          <div className="space-y-6">
           <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
               <div>
@@ -7421,7 +7671,10 @@ export default function AdminDashboard() {
             </div>
             <button
               type="button"
-              onClick={() => setActiveTab('transfer_verification')}
+              onClick={() => {
+                setActiveTab('payment');
+                setPaymentSubTab('verification');
+              }}
               className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition flex items-center gap-2 shrink-0 cursor-pointer shadow-sm shadow-emerald-600/20"
             >
               <Zap className="w-4 h-4" />
@@ -7429,12 +7682,15 @@ export default function AdminDashboard() {
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
+          </div>
         </div>
       )}
 
       {/* ── TAB MỚI: XÁC THỰC CHUYỂN KHOẢN (3 CHẾ ĐỘ & QUẢN TRỊ DUYỆT TIỀN) ── */}
-      {activeTab === 'transfer_verification' && (
-        <div className="space-y-6">
+      {((activeTab === 'payment' ? paymentSubTab === 'verification' : activeTab === 'transfer_verification')) && (
+        <div className="space-y-4">
+          {renderPaymentSubTabs()}
+          <div className="space-y-6">
           {/* Header Card */}
           <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
@@ -8127,11 +8383,14 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
-      )}
+      </div>
+    )}
 
       {/* ── TAB 9: CÀI ĐẶT NHẬN TIỀN VÍ ĐIỆN TỬ (MOMO, ZALOPAY, VIETTEL MONEY) ── */}
-      {activeTab === 'ewallet' && (
-        <div className="space-y-6">
+      {((activeTab === 'payment' ? paymentSubTab === 'ewallet' : activeTab === 'ewallet')) && (
+        <div className="space-y-4">
+          {renderPaymentSubTabs()}
+          <div className="space-y-6">
           <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
               <div className="flex items-center gap-2.5">
@@ -8542,11 +8801,14 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* ── TAB 10: QUẢN LÝ TÀI KHOẢN & PHÂN QUYỀN BẢO MẬT (SECURITY & ROLES) ── */}
-      {activeTab === 'security' && (
-        <div className="space-y-6 animate-in fade-in duration-200">
+      {((activeTab === 'system' ? systemSubTab === 'security' : activeTab === 'security')) && (
+        <div className="space-y-4">
+          {renderSystemSubTabs()}
+          <div className="space-y-6 animate-in fade-in duration-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-zinc-200 shadow-xs">
             <div>
               <h2 className="text-lg font-black text-zinc-900 flex items-center gap-2">
@@ -9274,10 +9536,16 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
       {/* ── TAB BRANDING: CÀI ĐẶT TÊN TIỆM & LOGO QUÁN ── */}
-      {activeTab === 'branding' && <StoreBrandingSettings />}
+      {((activeTab === 'system' ? systemSubTab === 'branding' : activeTab === 'branding')) && (
+        <div className="space-y-4">
+          {renderSystemSubTabs()}
+          <StoreBrandingSettings />
+        </div>
+      )}
 
       {/* ── MODAL LỊCH SỬ THAY ĐỔI TỒN KHO BÁNH ── */}
       <StockAdjustmentHistoryModal
