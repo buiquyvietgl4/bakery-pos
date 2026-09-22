@@ -186,6 +186,59 @@ export default function POSPage() {
   // Toast phản hồi tức thời khi thêm bánh vào giỏ hàng
   const [cartToast, setCartToast] = useState<{ name: string; qty: number; time: number } | null>(null);
 
+  // ── BỘ HIỆU ỨNG ANIMATION SỐNG ĐỘNG (FLY TO CART & JIGGLE) ──
+  const [flyingItems, setFlyingItems] = useState<Array<{
+    id: number;
+    startX: number;
+    startY: number;
+    endX: number;
+    endY: number;
+    name: string;
+    image?: string;
+  }>>([]);
+  const [cartBumping, setCartBumping] = useState(false);
+  const [totalPulsing, setTotalPulsing] = useState(false);
+
+  const triggerFlyToCart = (clientX?: number, clientY?: number, product?: any) => {
+    if (typeof window === 'undefined') return;
+
+    const cartTarget = document.getElementById('pos-cart-target') || document.getElementById('pos-cart-mobile-target');
+    let endX = window.innerWidth - 120;
+    let endY = 100;
+
+    if (cartTarget) {
+      const rect = cartTarget.getBoundingClientRect();
+      endX = rect.left + rect.width / 2;
+      endY = rect.top + rect.height / 2;
+    }
+
+    const startX = clientX !== undefined && clientX > 0 ? clientX : window.innerWidth / 2;
+    const startY = clientY !== undefined && clientY > 0 ? clientY : window.innerHeight / 2;
+
+    const newItem = {
+      id: Date.now() + Math.random(),
+      startX,
+      startY,
+      endX,
+      endY,
+      name: product?.name || 'Bánh',
+      image: product?.image_url,
+    };
+
+    setFlyingItems((prev) => [...prev, newItem]);
+
+    setTimeout(() => {
+      setCartBumping(true);
+      setTotalPulsing(true);
+      setTimeout(() => setCartBumping(false), 500);
+      setTimeout(() => setTotalPulsing(false), 700);
+    }, 550);
+
+    setTimeout(() => {
+      setFlyingItems((prev) => prev.filter((it) => it.id !== newItem.id));
+    }, 700);
+  };
+
   useEffect(() => {
     if (!cartToast) return;
     const t = setTimeout(() => setCartToast(null), 2500);
@@ -1880,7 +1933,14 @@ export default function POSPage() {
     return matchCat && matchSearch;
   });
 
-  const addToCart = (product: CachedProduct, forceDirectCart: boolean = false) => {
+  const addToCart = (product: CachedProduct, forceDirectCart: boolean = false, event?: React.MouseEvent | { clientX?: number; clientY?: number }) => {
+    // Kích hoạt hiệu ứng bay vào giỏ hàng
+    if (event?.clientX && event?.clientY) {
+      triggerFlyToCart(event.clientX, event.clientY, product);
+    } else {
+      triggerFlyToCart(undefined, undefined, product);
+    }
+
     // 0. BÁNH / HÀNG NHẬP NGOÀI VỀ BÁN:
     // Vì đây là hàng thương mại nhập sẵn từ bên ngoài, thợ bếp không thể tự làm/nướng.
     // TUYỆT ĐỐI không cho phép bán quá số lượng tồn kho có sẵn trong tiệm.
@@ -4066,7 +4126,7 @@ export default function POSPage() {
                 return (
                   <div
                     key={product.id}
-                    onClick={() => {
+                    onClick={(e) => {
                       if (isImportedOutOfStock) {
                         alert(`❌ Sản phẩm "${product.name}" là HÀNG NHẬP NGOÀI VỀ BÁN và hiện ĐÃ HẾT HÀNG TRONG KHO (Tồn: 0)!\n\n⚠️ Vì đây là hàng nhập sẵn từ bên ngoài, bếp không thể tự nướng hay làm được, do đó hệ thống KHÔNG CHO PHÉP bán khi hết tồn kho.`);
                         return;
@@ -4075,9 +4135,9 @@ export default function POSPage() {
                         alert(`⚠️ Sản phẩm "${product.name}" là HÀNG NHẬP NGOÀI VỀ BÁN, hiện trong tiệm chỉ còn ${stock} cái!\n\n⚠️ Bếp không thể làm thêm loại hàng này, bạn không thể thêm vượt quá số lượng tồn kho có sẵn (${stock} cái).`);
                         return;
                       }
-                      addToCart(product);
+                      addToCart(product, false, e);
                     }}
-                    className={`group bg-white rounded-3xl p-3 sm:p-3.5 border hover:border-amber-400/80 hover:shadow-xl hover:shadow-amber-950/10 hover:-translate-y-1 transition-all duration-300 text-left flex flex-col justify-between overflow-hidden relative active:scale-[0.98] select-none ${
+                    className={`group bg-white rounded-3xl p-3 sm:p-3.5 border hover:border-amber-400 hover:shadow-xl hover:shadow-amber-950/10 hover:-translate-y-1.5 transition-all duration-300 text-left flex flex-col justify-between overflow-hidden relative active:scale-[0.98] select-none ${
                       isImportedOutOfStock
                         ? 'border-zinc-300 bg-zinc-100/70 opacity-60 cursor-not-allowed hover:translate-y-0 hover:shadow-none hover:border-zinc-300'
                         : itemInCart
@@ -4118,7 +4178,7 @@ export default function POSPage() {
 
                       {/* Huy hiệu số lượng đã có trong giỏ hàng - Góc trên bên phải */}
                       {itemInCart && (
-                        <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-xl bg-amber-600 text-white text-[10px] font-black shadow-md flex items-center gap-1 z-10 animate-in zoom-in duration-150">
+                        <span className="absolute top-2.5 right-2.5 px-2 py-0.5 rounded-xl bg-amber-600 text-white text-[10px] font-black shadow-md flex items-center gap-1 z-10 animate-in zoom-in duration-200 animate-pop-scale">
                           ✓ {itemInCart.quantity} trong giỏ
                         </span>
                       )}
@@ -4177,7 +4237,7 @@ export default function POSPage() {
                             <button
                               type="button"
                               onClick={() => updateQuantity(product.id, -1)}
-                              className="w-7 h-7 rounded-lg bg-amber-700 hover:bg-amber-800 text-white flex items-center justify-center font-black text-sm cursor-pointer active:scale-90 transition"
+                              className="w-7 h-7 rounded-lg bg-amber-700 hover:bg-amber-800 text-white flex items-center justify-center font-black text-sm cursor-pointer active:scale-90 active:animate-pop-scale transition"
                               title="Bớt 1"
                             >
                               -
@@ -4188,8 +4248,8 @@ export default function POSPage() {
                             <button
                               type="button"
                               disabled={isImportedMaxReached}
-                              onClick={() => addToCart(product, true)}
-                              className={`w-7 h-7 rounded-lg text-white flex items-center justify-center font-black text-sm transition ${
+                              onClick={(e) => addToCart(product, true, e)}
+                              className={`w-7 h-7 rounded-lg text-white flex items-center justify-center font-black text-sm transition active:animate-pop-scale ${
                                 isImportedMaxReached
                                   ? 'bg-amber-900/60 text-amber-300/40 cursor-not-allowed'
                                   : 'bg-amber-700 hover:bg-amber-800 cursor-pointer active:scale-90'
@@ -4205,9 +4265,9 @@ export default function POSPage() {
                             disabled={isImportedOutOfStock}
                             onClick={(e) => {
                               e.stopPropagation();
-                              addToCart(product, true);
+                              addToCart(product, true, e);
                             }}
-                            className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black transition-all duration-200 shadow-2xs ${
+                            className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black transition-all duration-200 shadow-2xs active:scale-85 active:animate-pop-scale ${
                               isImportedOutOfStock
                                 ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
                                 : 'bg-amber-50 hover:bg-amber-600 text-amber-700 hover:text-white group-hover:bg-gradient-to-tr group-hover:from-amber-600 group-hover:to-amber-500 group-hover:text-white group-hover:scale-105 cursor-pointer'
@@ -4228,13 +4288,13 @@ export default function POSPage() {
 
         {/* Nút Xem Giỏ Hàng nổi cố định trên Mobile & Tablet khi đang chọn món */}
         {cart.length > 0 && mobileTab === 'menu' && (
-          <div className="lg:hidden fixed bottom-3 left-3 right-3 z-50 shadow-2xl animate-in slide-in-from-bottom duration-200">
+          <div id="pos-cart-mobile-target" className={`lg:hidden fixed bottom-3 left-3 right-3 z-50 shadow-2xl animate-in slide-in-from-bottom duration-200 transition-transform ${cartBumping ? 'animate-cart-jiggle' : ''}`}>
             <button
               onClick={() => setMobileTab('cart')}
-              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 text-white font-black text-sm shadow-xl shadow-amber-900/25 flex items-center justify-between transition active:scale-98 cursor-pointer ring-2 ring-white/30"
+              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 text-white font-black text-sm shadow-xl shadow-amber-900/25 flex items-center justify-between transition active:scale-98 cursor-pointer ring-2 ring-white/30 animate-shimmer"
             >
               <div className="flex items-center gap-2.5">
-                <span className="w-8 h-8 rounded-xl bg-white text-amber-600 flex items-center justify-center text-xs font-black shadow-xs">
+                <span className={`w-8 h-8 rounded-xl bg-white text-amber-600 flex items-center justify-center text-xs font-black shadow-xs ${cartBumping ? 'animate-pop-scale' : ''}`}>
                   {cart.reduce((sum, item) => sum + item.quantity, 0)}
                 </span>
                 <div className="text-left leading-tight">
@@ -4263,12 +4323,17 @@ export default function POSPage() {
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20">
+            <div
+              id="pos-cart-target"
+              className={`w-9 h-9 rounded-2xl bg-gradient-to-tr from-amber-600 to-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 transition-transform ${
+                cartBumping ? 'animate-cart-jiggle' : ''
+              }`}
+            >
               <ShoppingCart className="w-4 h-4" />
             </div>
             <div>
               <h2 className="font-black text-amber-950 text-sm sm:text-base leading-none">Đơn Bán Tại Quầy</h2>
-              <span className="text-[10px] text-zinc-400 font-bold">
+              <span className={`text-[10px] font-bold block transition-all ${cartBumping ? 'text-amber-600 font-black animate-pop-scale' : 'text-zinc-400'}`}>
                 {cart.length > 0 ? `${cart.reduce((s, i) => s + i.quantity, 0)} món trong giỏ` : 'Chưa chọn món'}
               </span>
             </div>
@@ -4276,7 +4341,7 @@ export default function POSPage() {
           {cart.length > 0 && (
             <button
               onClick={clearCart}
-              className="text-xs text-rose-500 hover:text-rose-700 font-bold hover:bg-rose-50 px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1"
+              className="text-xs text-rose-500 hover:text-rose-700 font-bold hover:bg-rose-50 px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 active:scale-90"
               title="Xóa toàn bộ giỏ hàng"
             >
               <Trash2 className="w-3.5 h-3.5" /> <span>Xóa</span>
@@ -4288,7 +4353,7 @@ export default function POSPage() {
         <div className="flex-1 overflow-y-auto p-4 space-y-2.5 min-h-0">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-zinc-400 text-sm space-y-2.5 py-12">
-              <div className="w-16 h-16 rounded-3xl bg-amber-50 flex items-center justify-center text-amber-600 shadow-inner">
+              <div className="w-16 h-16 rounded-3xl bg-amber-50 flex items-center justify-center text-amber-600 shadow-inner animate-float-slow">
                 <ShoppingCart className="w-8 h-8 stroke-1.5" />
               </div>
               <span className="font-extrabold text-zinc-700 text-sm">Giỏ hàng đang trống</span>
@@ -4306,7 +4371,7 @@ export default function POSPage() {
             cart.map((item) => (
               <div
                 key={item.product.id}
-                className="p-2.5 sm:p-3 rounded-2xl bg-stone-50/90 hover:bg-stone-50 border border-stone-200/80 flex items-center gap-3 transition-all shadow-2xs group"
+                className="p-2.5 sm:p-3 rounded-2xl bg-stone-50/90 hover:bg-stone-50 border border-stone-200/80 flex items-center gap-3 transition-all shadow-2xs group animate-slide-in-right"
               >
                 {/* Thumbnail Image Bánh */}
                 <div className="w-12 h-12 rounded-xl bg-stone-100 overflow-hidden shrink-0 border border-stone-200/80">
@@ -4366,6 +4431,7 @@ export default function POSPage() {
                     {item.quantity}
                   </span>
                   <button
+                    data-testid="pos-cart-plus-btn"
                     onClick={() => updateQuantity(item.product.id, 1)}
                     disabled={isImportedProduct(item.product) && item.quantity >= Number(item.product.stock_qty ?? item.product.stock ?? 0)}
                     className={`w-6 h-6 rounded-lg flex items-center justify-center font-bold transition active:scale-90 ${
@@ -4536,7 +4602,7 @@ export default function POSPage() {
             )}
             <div className="flex justify-between text-sm sm:text-base font-black text-zinc-900 pt-2 border-t border-stone-200">
               <span>TỔNG CỘNG:</span>
-              <span className="text-amber-700 text-lg sm:text-xl font-black">
+              <span className={`text-amber-700 text-lg sm:text-xl font-black transition-all ${totalPulsing ? 'animate-glow-pulse scale-105 inline-block text-amber-600' : ''}`}>
                 {(totalAmount || 0).toLocaleString('vi-VN')}₫
               </span>
             </div>
@@ -4565,6 +4631,7 @@ export default function POSPage() {
           })()}
 
           <button
+            id="pos-checkout-btn"
             disabled={
               cart.length === 0 ||
               cart.some(
@@ -4589,6 +4656,8 @@ export default function POSPage() {
               setIsCheckoutOpen(true);
             }}
             className={`w-full py-3.5 rounded-2xl text-white font-black text-sm sm:text-base shadow-xl disabled:opacity-50 disabled:pointer-events-none transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${
+              cart.length > 0 ? 'animate-shimmer' : ''
+            } ${
               cart.some(
                 (item) =>
                   isImportedProduct(item.product) &&
@@ -9046,6 +9115,32 @@ export default function POSPage() {
           </div>
         </div>
       )}
+
+      {/* Overlay hiệu ứng hạt bay vào giỏ hàng (Fly to Cart) */}
+      {flyingItems.map((item) => {
+        const dx = item.endX - item.startX;
+        const dy = item.endY - item.startY;
+        return (
+          <div
+            key={item.id}
+            style={{
+              left: `${item.startX}px`,
+              top: `${item.startY}px`,
+              '--tx': `${dx}px`,
+              '--ty': `${dy}px`,
+            } as React.CSSProperties}
+            className="fixed pointer-events-none z-[99999] animate-fly-particle flex items-center justify-center"
+          >
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 text-white shadow-2xl shadow-amber-900/50 flex items-center justify-center p-1.5 border-2 border-white overflow-hidden ring-4 ring-amber-400/40">
+              {item.image ? (
+                <img src={item.image} alt={item.name} className="w-full h-full object-cover rounded-xl" />
+              ) : (
+                <span className="text-2xl drop-shadow-sm">🍰</span>
+              )}
+            </div>
+          </div>
+        );
+      })}
 
     </div>
   );

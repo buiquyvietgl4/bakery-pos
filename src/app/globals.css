@@ -87,3 +87,134 @@ input[type="time"]::-webkit-date-and-time-value {
 ::-webkit-scrollbar-thumb:hover {
   background: #d6d3d1;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   BỘ HIỆU ỨNG ANIMATION POS SỐNG ĐỘNG (60FPS GPU-ACCELERATED)
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 1. Hiệu ứng rung nảy giỏ hàng khi nhận món (Cart Jiggle) */
+@keyframes cartJiggle {
+  0% { transform: scale(1) rotate(0deg); }
+  20% { transform: scale(1.25) rotate(-10deg); }
+  40% { transform: scale(1.2) rotate(10deg); }
+  60% { transform: scale(1.1) rotate(-5deg); }
+  80% { transform: scale(1.05) rotate(3deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+.animate-cart-jiggle {
+  animation: cartJiggle 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* 2. Hiệu ứng vệt sáng lấp lánh (Button Shimmer Sheen) */
+@keyframes btnShimmer {
+  0% { transform: translateX(-150%) skewX(-20deg); }
+  50%, 100% { transform: translateX(250%) skewX(-20deg); }
+}
+
+.animate-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.animate-shimmer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.45) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: btnShimmer 3.2s infinite ease-in-out;
+  pointer-events: none;
+}
+
+/* 3. Hiệu ứng bồng bềnh lơ lửng cho giỏ hàng rỗng (Float Slow) */
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-float-slow {
+  animation: floatSlow 3s ease-in-out infinite;
+}
+
+/* 4. Hiệu ứng nảy số lượng / nút bấm (Pop Scale) */
+@keyframes popScale {
+  0% { transform: scale(0.85); }
+  50% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.animate-pop-scale {
+  animation: popScale 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+}
+
+/* 5. Hiệu ứng trượt êm vào từ bên phải (Slide In Right) */
+@keyframes slideInRight {
+  0% {
+    opacity: 0;
+    transform: translateX(25px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 6. Hiệu ứng bừng sáng tổng tiền khi thay đổi */
+@keyframes glowPulse {
+  0%, 100% { filter: drop-shadow(0 0 0 rgba(217, 119, 6, 0)); }
+  50% { filter: drop-shadow(0 0 10px rgba(217, 119, 6, 0.6)); }
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 0.6s ease-in-out;
+}
+
+/* 7. Pháo hoa ăn mừng khi thanh toán thành công (Confetti Burst) */
+@keyframes confettiFall {
+  0% {
+    transform: translateY(0) rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(120px) rotate(360deg) scale(0.4);
+    opacity: 0;
+  }
+}
+
+.animate-confetti-particle {
+  animation: confettiFall 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* 8. Hiệu ứng hạt bánh bay vào giỏ hàng (Fly to Cart) */
+@keyframes flyParticle {
+  0% {
+    transform: translate(-50%, -50%) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(-50% + var(--tx) * 0.65), calc(-50% + var(--ty) * 0.35 - 75px)) scale(1.05) rotate(180deg);
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.2) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+.animate-fly-particle {
+  animation: flyParticle 0.65s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+
