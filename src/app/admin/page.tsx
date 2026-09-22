@@ -190,6 +190,7 @@ export default function AdminDashboard() {
     updateAdminCredentials,
     updateKitchenCredentials,
     updateStaffCredentials,
+    updateManagerPin,
     updateAdminRecoveryKey,
     forceResetAdminToDefault,
     securityConfig,
@@ -281,6 +282,7 @@ export default function AdminDashboard() {
   const [kitchenNameInput, setKitchenNameInput] = useState(securityConfig.kitchenName || 'Nhân Viên Bếp');
   const [staffPinInput, setStaffPinInput] = useState(securityConfig.staffPin || '1234');
   const [staffNameInput, setStaffNameInput] = useState(securityConfig.staffName || 'Thu Ngân / Bán Hàng');
+  const [managerPinInput, setManagerPinInput] = useState(securityConfig.managerPin || '8888');
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
@@ -9085,6 +9087,43 @@ export default function AdminDashboard() {
                     className="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
                   >
                     Lưu Mã PIN Cho Thu Ngân
+                  </button>
+                </div>
+
+                {/* Đổi mã PIN Quản Lý (Duyệt Đổi Trả / Hoàn Tiền) */}
+                <div className="p-3 bg-rose-50/60 rounded-2xl border border-rose-200/80 space-y-2">
+                  <span className="font-bold text-rose-950 block text-xs flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5 text-rose-600" /> Mã PIN Quản Lý Duyệt Đổi Trả & Xuất Quỹ:
+                  </span>
+                  <p className="text-[11px] text-zinc-500 leading-snug">
+                    Mã bảo mật cấp quản lý (4-8 số). Thu ngân bắt buộc phải nhờ Quản lý nhập mã này khi duyệt hoàn tiền khách hoặc đổi bánh.
+                  </p>
+                  <div>
+                    <label className="text-[10px] text-zinc-600 block mb-0.5">Mã PIN Quản Lý (4-8 số):</label>
+                    <input
+                      type="text"
+                      maxLength={8}
+                      value={managerPinInput}
+                      onChange={(e) => setManagerPinInput(e.target.value)}
+                      placeholder="Mặc định: 8888"
+                      className="w-full p-2 bg-white border border-zinc-200 rounded-xl text-sm font-black text-center tracking-widest font-mono text-zinc-900"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSecurityMsg(null);
+                      const res = updateManagerPin(managerPinInput);
+                      if (res.success) {
+                        setSecurityMsg({ type: 'success', text: `Đã cập nhật mã PIN Quản Lý duyệt đổi trả (${managerPinInput}) thành công!` });
+                      } else {
+                        setSecurityMsg({ type: 'error', text: res.error || 'Cập nhật mã PIN thất bại' });
+                      }
+                      setTimeout(() => setSecurityMsg(null), 4000);
+                    }}
+                    className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-xs transition cursor-pointer"
+                  >
+                    Lưu Mã PIN Quản Lý
                   </button>
                 </div>
               </div>

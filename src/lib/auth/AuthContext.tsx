@@ -81,6 +81,7 @@ export interface SecurityConfig {
   staffPasswordHash: string; // Mật khẩu Bán hàng
   staffName: string; // Tên Thu ngân
   staffUsername?: string;
+  managerPin?: string; // Mã PIN Quản lý duyệt đổi trả / chi tiền / hủy đơn
   permissions?: RolePermissionsConfig;
 }
 
@@ -97,6 +98,7 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   staffPasswordHash: '123456',
   staffName: 'Thu Ngân / Bán Hàng',
   staffUsername: 'nhanvien',
+  managerPin: '8888',
   permissions: DEFAULT_PERMISSIONS,
 };
 
@@ -201,6 +203,7 @@ interface AuthContextType {
   updateAdminCredentials: (oldPass: string, newPass: string, newName?: string) => { success: boolean; error?: string };
   updateKitchenCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
   updateStaffCredentials: (newPin: string, newPass?: string, newName?: string) => { success: boolean; error?: string };
+  updateManagerPin: (newPin: string) => { success: boolean; error?: string };
   resetAdminPasswordWithRecoveryKey: (recoveryKeyOrPhone: string, newPassword?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   updateAdminRecoveryKey: (newKey: string, newRecoveryPhone?: string) => { success: boolean; error?: string };
   forceResetAdminToDefault: () => { success: boolean };
@@ -235,6 +238,7 @@ const AuthContext = createContext<AuthContextType>({
   updateAdminCredentials: () => ({ success: false }),
   updateKitchenCredentials: () => ({ success: false }),
   updateStaffCredentials: () => ({ success: false }),
+  updateManagerPin: () => ({ success: false }),
   resetAdminPasswordWithRecoveryKey: async () => ({ success: false }),
   updateAdminRecoveryKey: () => ({ success: false }),
   forceResetAdminToDefault: () => ({ success: false }),
@@ -550,6 +554,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { success: true };
   };
 
+  const updateManagerPin = (newPin: string) => {
+    const pin = (newPin || '').trim();
+    if (!pin || pin.length < 4) {
+      return { success: false, error: 'Mã PIN Quản lý phải có ít nhất 4 số!' };
+    }
+    const updated: SecurityConfig = {
+      ...securityConfig,
+      managerPin: pin,
+    };
+    saveSecurityConfig(updated);
+    return { success: true };
+  };
+
   // 4. CƠ CHẾ MÃ CỨU HỘ DÙNG 1 LẦN (SINGLE-USE OTP & MASTER ROOT SECRET)
   const resetAdminPasswordWithRecoveryKey = async (codeOrKey: string, newPassword?: string) => {
     const input = (codeOrKey || '').trim();
@@ -771,6 +788,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateAdminCredentials,
         updateKitchenCredentials,
         updateStaffCredentials,
+        updateManagerPin,
         resetAdminPasswordWithRecoveryKey,
         updateAdminRecoveryKey,
         forceResetAdminToDefault,

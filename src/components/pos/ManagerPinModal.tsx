@@ -56,7 +56,7 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
 
   const handleVerify = (inputPin: string) => {
     const targetPin = getTargetPin();
-    if (inputPin === targetPin || inputPin === 'admin123' || inputPin === '8888') {
+    if (inputPin === targetPin || inputPin === 'admin123') {
       setErrorMsg(null);
       onSuccess();
       onClose();
