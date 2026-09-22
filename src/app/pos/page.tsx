@@ -2392,9 +2392,11 @@ export default function POSPage() {
       localStorage.setItem('bakery_order_returns', JSON.stringify(updatedReturns));
 
       const orderNum = returnRecord.order_number;
+      const normOrderNum = String(orderNum || '').replace(/^#/, '').trim().toLowerCase();
       setInvoicesList((prev) => {
         const updated = prev.map((o) => {
-          if ((o.order_number || o.orderNumber) === orderNum) {
+          const currentNum = String(o.order_number || o.orderNumber || '').replace(/^#/, '').trim().toLowerCase();
+          if (currentNum === normOrderNum) {
             const isFullRefund = returnRecord.return_type === 'refund' && returnRecord.items.reduce((s, it) => s + it.quantity, 0) >= (o.items?.reduce((s: number, it: any) => s + it.quantity, 0) || 1);
             const newStatus = isFullRefund ? 'refunded' : 'partially_refunded';
             const existingHistory = o.return_records || [];
