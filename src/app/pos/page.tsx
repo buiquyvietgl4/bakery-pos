@@ -204,24 +204,52 @@ export default function POSPage() {
   const triggerFlyToCart = (clientX?: number, clientY?: number, product?: any) => {
     if (typeof window === 'undefined') return;
 
-    const cartTarget = document.getElementById('pos-cart-target') || document.getElementById('pos-cart-mobile-target');
-    let endX = window.innerWidth - 120;
-    let endY = 115;
+    const isMobile = window.innerWidth < 1024;
+
+    // Tìm phần tử biểu tượng giỏ hàng ĐANG HIỂN THỊ (không bị hidden / display: none)
+    let cartTarget: HTMLElement | null = null;
+
+    if (isMobile) {
+      // 1. Trên điện thoại: Luôn bay vào tab "Giỏ Hàng" ở thanh điều hướng trên cùng (cột 3/6)
+      const tabTarget = document.getElementById('pos-cart-mobile-tab-target');
+      if (tabTarget && tabTarget.getBoundingClientRect().width > 0) {
+        cartTarget = tabTarget;
+      }
+    } else {
+      // 2. Trên desktop: Bay vào icon giỏ hàng ở cột phải
+      const desktopTarget = document.getElementById('pos-cart-target');
+      if (desktopTarget && desktopTarget.getBoundingClientRect().width > 0) {
+        cartTarget = desktopTarget;
+      }
+    }
+
+    let endX = isMobile ? Math.round(window.innerWidth * 0.42) : window.innerWidth - 120;
+    let endY = isMobile ? 32 : 115;
 
     if (cartTarget) {
       const rect = cartTarget.getBoundingClientRect();
-      endX = Math.round(rect.left + rect.width / 2);
-      endY = Math.round(rect.top + rect.height / 2);
+      if (rect.width > 0 && rect.height > 0) {
+        endX = Math.round(rect.left + rect.width / 2);
+        endY = Math.round(rect.top + rect.height / 2);
+      }
     }
 
     const startX = clientX !== undefined && clientX > 0 ? clientX : window.innerWidth / 2;
     const startY = clientY !== undefined && clientY > 0 ? clientY : window.innerHeight / 2;
 
-    // Quỹ đạo uốn cong tự nhiên, TUYỆT ĐỐI KHÔNG bay lên header/logo (luôn giữ midY >= 140px)
-    const midX = Math.round(startX + (endX - startX) * 0.5);
-    const naturalMidY = Math.round((startY + endY) / 2 - 50);
-    // Đảm bảo không bay vượt lên trên thanh header (Y < 135px)
-    const midY = Math.max(135, naturalMidY);
+    let midX: number;
+    let midY: number;
+
+    if (isMobile) {
+      // Trên điện thoại: Quỹ đạo uốn cong nhẹ tự nhiên từ thẻ bánh bay thẳng lên icon "Giỏ Hàng" ở tab đỉnh
+      midX = Math.round(startX + (endX - startX) * 0.45);
+      midY = Math.round(startY - (startY - endY) * 0.55);
+    } else {
+      // Trên desktop: Quỹ đạo uốn cong tự nhiên bên dưới thanh header (luôn giữ midY >= 135px)
+      midX = Math.round(startX + (endX - startX) * 0.5);
+      const naturalMidY = Math.round((startY + endY) / 2 - 50);
+      midY = Math.max(135, naturalMidY);
+    }
 
     const newItem = {
       id: Date.now() + Math.random(),
@@ -3475,18 +3503,21 @@ export default function POSPage() {
 
         {/* 3. GIỎ HÀNG */}
         <button
+          id="pos-cart-mobile-tab-target"
           onClick={() => setMobileTab('cart')}
           className={`relative flex flex-col items-center justify-center py-1.5 px-0.5 rounded-xl transition-all cursor-pointer active:scale-95 ${
             mobileTab === 'cart'
               ? 'bg-amber-600 text-white shadow-xs'
               : 'text-zinc-700 bg-white border border-stone-200/90 hover:bg-stone-50'
-          }`}
+          } ${cartBumping ? 'animate-cart-bounce ring-2 ring-amber-400' : ''}`}
           title="Xem giỏ hàng thanh toán"
         >
           <div className="relative">
             <ShoppingCart className="w-4 h-4" />
             {cart.length > 0 && (
-              <span className={`absolute -top-1.5 -right-2.5 px-1 min-w-[14px] h-[13px] rounded-full text-[9px] font-black flex items-center justify-center leading-none animate-pulse ${
+              <span className={`absolute -top-1.5 -right-2.5 px-1 min-w-[14px] h-[13px] rounded-full text-[9px] font-black flex items-center justify-center leading-none ${
+                cartBumping ? 'animate-pop-scale' : ''
+              } ${
                 mobileTab === 'cart' ? 'bg-white text-amber-700' : 'bg-rose-500 text-white'
               }`}>
                 {cart.reduce((s, i) => s + i.quantity, 0)}
