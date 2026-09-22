@@ -20,6 +20,17 @@ export interface OrderReturnItem {
   notes?: string;
 }
 
+export type ReturnPaymentMethod = 'cash' | 'transfer' | 'split';
+
+export interface ExchangePaymentDetail {
+  method: ReturnPaymentMethod;
+  cashAmount?: number;
+  transferAmount?: number;
+  cashGiven?: number;
+  changeAmount?: number;
+  transferCode?: string;
+}
+
 export interface OrderReturnRecord {
   id: string; // e.g. 'RET-...'
   order_id: string;
@@ -27,7 +38,7 @@ export interface OrderReturnRecord {
   return_type: 'refund' | 'exchange'; // 'refund': trả hàng hoàn tiền, 'exchange': đổi sang món khác
   items: OrderReturnItem[];
   refund_amount: number; // Tổng tiền hoàn lại cho khách
-  refund_method: 'cash' | 'transfer'; // 'cash': tiền mặt từ két, 'transfer': chuyển khoản ngân hàng
+  refund_method: ReturnPaymentMethod; // 'cash' | 'transfer' | 'split'
   exchange_replacement_items?: Array<{
     product_id: string;
     product_name: string;
@@ -36,6 +47,7 @@ export interface OrderReturnRecord {
     line_total: number;
   }>;
   exchange_difference?: number; // Số tiền chênh lệch: > 0 khách trả thêm, < 0 hoàn lại khách, = 0 đổi ngang
+  exchange_payment_detail?: ExchangePaymentDetail;
   reason_summary: string;
   notes?: string;
   approved_by: string; // Quản lý duyệt

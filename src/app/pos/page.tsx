@@ -2415,6 +2415,8 @@ export default function POSPage() {
         return updated;
       });
 
+      // Xử lý biến động quỹ tiền mặt ca bán (Shift Cash Sales):
+      // 1. Hoàn tiền mặt cho khách -> Giảm doanh thu tiền mặt ca bán
       if (returnRecord.refund_method === 'cash' && returnRecord.refund_amount > 0) {
         setShift((prev) => {
           const updated: ShiftState = {
@@ -2425,6 +2427,28 @@ export default function POSPage() {
           saveCurrentShiftToDb(updated).catch(() => {});
           return updated;
         });
+      }
+
+      // 2. Khách bù thêm tiền mặt khi đổi bánh -> Tăng doanh thu tiền mặt ca bán
+      if (returnRecord.return_type === 'exchange' && (returnRecord.exchange_difference || 0) > 0) {
+        const cashIn =
+          returnRecord.exchange_payment_detail?.method === 'split'
+            ? (returnRecord.exchange_payment_detail.cashAmount || 0)
+            : returnRecord.refund_method === 'cash'
+            ? (returnRecord.exchange_difference || 0)
+            : 0;
+
+        if (cashIn > 0) {
+          setShift((prev) => {
+            const updated: ShiftState = {
+              ...prev,
+              cashSales: (prev.cashSales || 0) + cashIn,
+            };
+            saveCurrentShiftLocally(updated);
+            saveCurrentShiftToDb(updated).catch(() => {});
+            return updated;
+          });
+        }
       }
 
       returnRecord.items.forEach((it) => {

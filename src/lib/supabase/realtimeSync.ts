@@ -479,7 +479,7 @@ export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord)
       })
       .eq('order_number', order_number);
 
-    // 2. Ghi nhận dòng hoàn tiền vào payments trên Supabase
+    // 2. Ghi nhận dòng thanh toán hoàn tiền hoặc thu thêm vào payments trên Supabase
     if (refund_amount > 0) {
       const { data: orderRow } = await supabase
         .from('orders')
@@ -495,6 +495,21 @@ export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord)
           reference_code: `Hoàn tiền phiếu #${returnRecord.id} (${return_type === 'refund' ? 'Trả hàng' : 'Đổi món'})`,
         });
       }
+    } else if (returnRecord.exchange_difference && returnRecord.exchange_difference > 0) {
+      const { data: orderRow } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('order_number', order_number)
+        .maybeSingle();
+
+      if (orderRow?.id) {
+        await supabase.from('payments').insert({
+          order_id: orderRow.id,
+          method: returnRecord.refund_method || 'cash',
+          amount: returnRecord.exchange_difference,
+          reference_code: `Thu thêm đổi bánh phiếu #${returnRecord.id} (${returnRecord.refund_method})`,
+        });
+      }
     }
 
     // 3. Cập nhật tồn kho sản phẩm nếu có nhập lại kho
@@ -508,6 +523,23 @@ export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord)
         if (pData) {
           const updatedStock = (pData.stock_qty || 0) + item.quantity;
           await supabase.from('products').update({ stock_qty: updatedStock }).eq('id', item.product_id);
+        }
+      }
+    }
+
+    // Trừ kho cho các món đổi mới
+    if (return_type === 'exchange' && returnRecord.exchange_replacement_items) {
+      for (const repItem of returnRecord.exchange_replacement_items) {
+        if (repItem.product_id) {
+          const { data: pData } = await supabase
+            .from('products')
+            .select('stock_qty')
+            .eq('id', repItem.product_id)
+            .maybeSingle();
+          if (pData) {
+            const updatedStock = Math.max(0, (pData.stock_qty || 0) - repItem.quantity);
+            await supabase.from('products').update({ stock_qty: updatedStock }).eq('id', repItem.product_id);
+          }
         }
       }
     }
