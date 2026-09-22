@@ -2,10 +2,11 @@ import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { cleanCakeNameAndSize, splitRespectingParentheses } from '@/lib/utils/customCakeCosting';
+import { OrderReturnRecord } from '@/lib/types/orderReturn';
 
 export interface SyncOrderPayload {
   order_number: string;
-  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'refunded' | 'partially_refunded';
   updated_at: string;
   order_data?: any;
 }
@@ -438,7 +439,7 @@ export function getSyncChannel() {
  */
 export async function broadcastOrderStatusUpdate(
   orderNumber: string,
-  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled',
+  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'refunded' | 'partially_refunded',
   orderData?: any
 ) {
   try {
@@ -457,6 +458,64 @@ export async function broadcastOrderStatusUpdate(
     }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastOrderStatusUpdate:', err);
+  }
+}
+
+/**
+ * Đồng bộ nghiệp vụ Đổi Trả / Hoàn Tiền lên CSDL Supabase Cloud SQL và phát sóng Realtime
+ */
+export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord): Promise<void> {
+  if (typeof navigator === 'undefined' || !navigator.onLine) return;
+  try {
+    const { order_number, refund_amount, refund_method, return_type, items } = returnRecord;
+    const newStatus = return_type === 'refund' ? 'refunded' : 'partially_refunded';
+
+    // 1. Cập nhật trạng thái đơn hàng trên Supabase
+    await supabase
+      .from('orders')
+      .update({
+        status: newStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('order_number', order_number);
+
+    // 2. Ghi nhận dòng hoàn tiền vào payments trên Supabase
+    if (refund_amount > 0) {
+      const { data: orderRow } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('order_number', order_number)
+        .maybeSingle();
+
+      if (orderRow?.id) {
+        await supabase.from('payments').insert({
+          order_id: orderRow.id,
+          method: refund_method || 'cash',
+          amount: -refund_amount,
+          reference_code: `Hoàn tiền phiếu #${returnRecord.id} (${return_type === 'refund' ? 'Trả hàng' : 'Đổi món'})`,
+        });
+      }
+    }
+
+    // 3. Cập nhật tồn kho sản phẩm nếu có nhập lại kho
+    for (const item of items) {
+      if (item.restocked && item.product_id) {
+        const { data: pData } = await supabase
+          .from('products')
+          .select('stock_qty')
+          .eq('id', item.product_id)
+          .maybeSingle();
+        if (pData) {
+          const updatedStock = (pData.stock_qty || 0) + item.quantity;
+          await supabase.from('products').update({ stock_qty: updatedStock }).eq('id', item.product_id);
+        }
+      }
+    }
+
+    // 4. Phát sóng realtime status update để KDS bếp và các quầy khác cập nhật ngay
+    await broadcastOrderStatusUpdate(order_number, newStatus);
+  } catch (err) {
+    console.warn('Lỗi syncOrderRefundToSupabase:', err);
   }
 }
 

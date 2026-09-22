@@ -20,7 +20,7 @@ import {
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
   Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet,
   Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings, ShieldCheck,
-  Home, KeyRound, RefreshCw, ChevronDown
+  Home, KeyRound, RefreshCw, ChevronDown, PauseCircle, RotateCcw
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -132,7 +132,11 @@ import {
 } from '@/lib/constants/cakeCostingData';
 import { BirthdayCakeOrderModal } from '@/components/pos/BirthdayCakeOrderModal';
 import { PosReadyShippingModal } from '@/components/pos/PosReadyShippingModal';
-import { broadcastOrderStatusUpdate } from '@/lib/supabase/realtimeSync';
+import { broadcastOrderStatusUpdate, syncOrderRefundToSupabase } from '@/lib/supabase/realtimeSync';
+import { HeldOrder } from '@/lib/types/heldOrder';
+import { HeldOrdersModal } from '@/components/pos/HeldOrdersModal';
+import { ReturnExchangeModal } from '@/components/pos/ReturnExchangeModal';
+import { OrderReturnRecord } from '@/lib/types/orderReturn';
 
 interface CartItem {
   product: CachedProduct;
@@ -182,6 +186,16 @@ export default function POSPage() {
   const [discountMode, setDiscountMode] = useState<'percent' | 'amount'>('percent');
   const [discountPercent, setDiscountPercent] = useState<number>(0);
   const [discountCustomAmount, setDiscountCustomAmount] = useState<number>(0);
+
+  // ── PHÂN HỆ TẠM LƯU ĐƠN HÀNG (HOLD ORDERS) ──
+  const [heldOrders, setHeldOrders] = useState<HeldOrder[]>([]);
+  const [isHeldOrdersModalOpen, setIsHeldOrdersModalOpen] = useState(false);
+  const [isHoldPromptOpen, setIsHoldPromptOpen] = useState(false);
+  const [holdLabelInput, setHoldLabelInput] = useState('');
+
+  // ── PHÂN HỆ ĐỔI TRẢ HÀNG & HOÀN TIỀN (RETURNS & EXCHANGES) ──
+  const [isReturnExchangeModalOpen, setIsReturnExchangeModalOpen] = useState(false);
+  const [orderToReturn, setOrderToReturn] = useState<any | null>(null);
 
   // Toast phản hồi tức thời khi thêm bánh vào giỏ hàng
   const [cartToast, setCartToast] = useState<{ name: string; qty: number; time: number } | null>(null);
@@ -344,8 +358,11 @@ export default function POSPage() {
 
   // Normal Checkout Modal State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'momo'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'momo' | 'split'>('cash');
   const [cashGiven, setCashGiven] = useState<number>(0);
+  const [splitCashAmount, setSplitCashAmount] = useState<number>(0);
+  const [splitTransferAmount, setSplitTransferAmount] = useState<number>(0);
+  const [splitCashGiven, setSplitCashGiven] = useState<number>(0);
   const [processingOrder, setProcessingOrder] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<any | null>(null);
   const [isPrintTemplateDesignerOpen, setIsPrintTemplateDesignerOpen] = useState(false);
@@ -1080,6 +1097,12 @@ export default function POSPage() {
           const parsed = JSON.parse(savedWallet);
           setEwalletConfig(parsed);
           if (parsed.activeWallet) setSelectedWalletType(parsed.activeWallet);
+        } catch {}
+      }
+      const savedHeld = localStorage.getItem('bakery_held_orders');
+      if (savedHeld) {
+        try {
+          setHeldOrders(JSON.parse(savedHeld));
         } catch {}
       }
     }
@@ -2188,13 +2211,261 @@ export default function POSPage() {
   const dueNow = effectiveDeposit;
   const remainingCOD = Math.max(0, grandTotal - dueNow);
   const changeAmount = paymentMethod === 'cash' ? Math.max(0, (cashGiven || dueNow) - dueNow) : 0;
+  const splitCashChange = paymentMethod === 'split' ? Math.max(0, (splitCashGiven || splitCashAmount) - splitCashAmount) : 0;
 
   // Tự động đồng bộ tiền khách đưa khi mở modal thanh toán hoặc thay đổi mức tiền cọc
   useEffect(() => {
     if (isCheckoutOpen) {
       setCashGiven(dueNow);
+      if (paymentMethod === 'split') {
+        const half = Math.round(dueNow / 2);
+        setSplitCashAmount(half);
+        setSplitTransferAmount(dueNow - half);
+        setSplitCashGiven(half);
+      }
     }
   }, [dueNow, isCheckoutOpen]);
+
+  const handleSelectSplitPayment = () => {
+    setPaymentMethod('split');
+    const half = Math.round(dueNow / 2);
+    setSplitCashAmount(half);
+    setSplitTransferAmount(dueNow - half);
+    setSplitCashGiven(half);
+    if (!checkoutTransferCode) {
+      const syntax = vietqrConfig.transferSyntax || 'DH';
+      const randSuffix = String(Math.floor(100000 + Math.random() * 900000));
+      setCheckoutTransferCode(`${syntax}${randSuffix}`);
+    }
+  };
+
+  const handleSplitCashAmountChange = (newCash: number) => {
+    const safeCash = Math.min(dueNow, Math.max(0, newCash));
+    setSplitCashAmount(safeCash);
+    setSplitTransferAmount(dueNow - safeCash);
+    if (splitCashGiven < safeCash) {
+      setSplitCashGiven(safeCash);
+    }
+  };
+
+  const handleSplitTransferAmountChange = (newTransfer: number) => {
+    const safeTransfer = Math.min(dueNow, Math.max(0, newTransfer));
+    setSplitTransferAmount(safeTransfer);
+    setSplitCashAmount(dueNow - safeTransfer);
+  };
+
+  // ── HANDLERS PHÂN HỆ TẠM LƯU ĐƠN HÀNG (HOLD ORDERS) ──
+  const handleHoldCurrentOrder = (customLabel?: string) => {
+    if (cart.length === 0) {
+      alert('Giỏ hàng đang trống, không thể tạm lưu!');
+      return;
+    }
+    const holdCode = `#T${heldOrders.length + 1}`;
+    const newHeldOrder: HeldOrder = {
+      id: `HOLD-${Date.now()}`,
+      holdCode,
+      label: customLabel?.trim() || undefined,
+      createdAt: new Date().toISOString(),
+      items: [...cart],
+      discountMode,
+      discountPercent,
+      discountCustomAmount,
+      fulfillmentType,
+      posCustomerName,
+      posCustomerPhone,
+      posShippingAddress,
+      posPickupDate,
+      posPickupTime,
+      posCakeMessage,
+      posShippingFee,
+      posDepositAmount,
+      cartNotes,
+      totalAmount: grandTotal,
+      itemCount: cart.reduce((s, i) => s + i.quantity, 0),
+    };
+
+    const updated = [newHeldOrder, ...heldOrders];
+    setHeldOrders(updated);
+    try {
+      localStorage.setItem('bakery_held_orders', JSON.stringify(updated));
+    } catch {}
+
+    clearCart();
+    setDiscountPercent(0);
+    setDiscountCustomAmount(0);
+    setCartNotes('');
+    setPosCustomerName('');
+    setPosCustomerPhone('');
+    setPosShippingAddress('');
+    setPosCakeMessage('');
+    setPosShippingFee(0);
+    setPosDepositAmount(null);
+    setFulfillmentType('takeaway');
+
+    soundManager.playNewOrderChime();
+    setCartToast({ name: `Đã tạm lưu đơn ${holdCode}`, qty: newHeldOrder.itemCount, time: Date.now() });
+    if (isLocalMode()) {
+      autoSyncToLocalSqlFolder().catch(console.warn);
+    }
+  };
+
+  const handleRestoreHeldOrder = (orderToRestore: HeldOrder, holdCurrentFirst: boolean = false) => {
+    if (holdCurrentFirst && cart.length > 0) {
+      const autoCode = `#T${heldOrders.length + 1}`;
+      const autoHold: HeldOrder = {
+        id: `HOLD-${Date.now()}`,
+        holdCode: autoCode,
+        label: `Tự động lưu khi mở ${orderToRestore.holdCode}`,
+        createdAt: new Date().toISOString(),
+        items: [...cart],
+        discountMode,
+        discountPercent,
+        discountCustomAmount,
+        fulfillmentType,
+        posCustomerName,
+        posCustomerPhone,
+        posShippingAddress,
+        posPickupDate,
+        posPickupTime,
+        posCakeMessage,
+        posShippingFee,
+        posDepositAmount,
+        cartNotes,
+        totalAmount: grandTotal,
+        itemCount: cart.reduce((s, i) => s + i.quantity, 0),
+      };
+      const afterHold = [autoHold, ...heldOrders.filter((h) => h.id !== orderToRestore.id)];
+      setHeldOrders(afterHold);
+      try {
+        localStorage.setItem('bakery_held_orders', JSON.stringify(afterHold));
+      } catch {}
+    } else {
+      const remaining = heldOrders.filter((h) => h.id !== orderToRestore.id);
+      setHeldOrders(remaining);
+      try {
+        localStorage.setItem('bakery_held_orders', JSON.stringify(remaining));
+      } catch {}
+    }
+
+    setCart(orderToRestore.items);
+    setDiscountMode(orderToRestore.discountMode || 'percent');
+    setDiscountPercent(orderToRestore.discountPercent || 0);
+    setDiscountCustomAmount(orderToRestore.discountCustomAmount || 0);
+    setFulfillmentType(orderToRestore.fulfillmentType || 'takeaway');
+    setPosCustomerName(orderToRestore.posCustomerName || '');
+    setPosCustomerPhone(orderToRestore.posCustomerPhone || '');
+    setPosShippingAddress(orderToRestore.posShippingAddress || '');
+    setPosPickupDate(orderToRestore.posPickupDate || '');
+    setPosPickupTime(orderToRestore.posPickupTime || '');
+    setPosCakeMessage(orderToRestore.posCakeMessage || '');
+    setPosShippingFee(orderToRestore.posShippingFee || 0);
+    setPosDepositAmount(orderToRestore.posDepositAmount ?? null);
+    setCartNotes(orderToRestore.cartNotes || '');
+
+    soundManager.playNewOrderChime();
+    setCartToast({ name: `Đã khôi phục đơn ${orderToRestore.holdCode}`, qty: orderToRestore.itemCount, time: Date.now() });
+    if (isLocalMode()) {
+      autoSyncToLocalSqlFolder().catch(console.warn);
+    }
+  };
+
+  const handleDeleteHeldOrder = (id: string) => {
+    const remaining = heldOrders.filter((h) => h.id !== id);
+    setHeldOrders(remaining);
+    try {
+      localStorage.setItem('bakery_held_orders', JSON.stringify(remaining));
+    } catch {}
+  };
+
+  const handleClearAllHeldOrders = () => {
+    setHeldOrders([]);
+    try {
+      localStorage.setItem('bakery_held_orders', JSON.stringify([]));
+    } catch {}
+  };
+
+  // ── HANDLERS PHÂN HỆ ĐỔI TRẢ HÀNG & HOÀN TIỀN (RETURNS & EXCHANGES) ──
+  const handleExecuteReturn = async (returnRecord: OrderReturnRecord) => {
+    try {
+      const existingReturns = JSON.parse(localStorage.getItem('bakery_order_returns') || '[]');
+      const updatedReturns = [returnRecord, ...existingReturns];
+      localStorage.setItem('bakery_order_returns', JSON.stringify(updatedReturns));
+
+      const orderNum = returnRecord.order_number;
+      setInvoicesList((prev) => {
+        const updated = prev.map((o) => {
+          if ((o.order_number || o.orderNumber) === orderNum) {
+            const isFullRefund = returnRecord.return_type === 'refund' && returnRecord.items.reduce((s, it) => s + it.quantity, 0) >= (o.items?.reduce((s: number, it: any) => s + it.quantity, 0) || 1);
+            const newStatus = isFullRefund ? 'refunded' : 'partially_refunded';
+            const existingHistory = o.return_records || [];
+            return {
+              ...o,
+              status: newStatus,
+              return_records: [returnRecord, ...existingHistory],
+            };
+          }
+          return o;
+        });
+        try {
+          localStorage.setItem('bakery_orders', JSON.stringify(updated));
+          db.orders.bulkPut(updated as any);
+        } catch {}
+        return updated;
+      });
+
+      if (returnRecord.refund_method === 'cash' && returnRecord.refund_amount > 0) {
+        setShift((prev) => {
+          const updated: ShiftState = {
+            ...prev,
+            cashSales: Math.max(0, (prev.cashSales || 0) - returnRecord.refund_amount),
+          };
+          saveCurrentShiftLocally(updated);
+          saveCurrentShiftToDb(updated).catch(() => {});
+          return updated;
+        });
+      }
+
+      returnRecord.items.forEach((it) => {
+        if (it.product_id) {
+          if (it.restocked) {
+            addProductStock(it.product_id, it.quantity, `Hoàn trả từ đơn #${orderNum}`);
+          } else {
+            addSpoilageLog({
+              productId: it.product_id,
+              productName: it.product_name,
+              quantity: it.quantity,
+              unit: 'cái',
+              baseCost: 0,
+              sellingPrice: it.unit_price,
+              totalCostLoss: it.refund_subtotal,
+              totalRevenueLoss: it.refund_subtotal,
+              reason: it.reason === 'damaged' ? 'Bánh lỗi / hỏng móp' : it.reason === 'expired' ? 'Bánh cận date / hết hạn' : 'Khách trả hàng loại bỏ',
+              notes: `Phiếu đổi trả #${returnRecord.id} đơn #${orderNum}`,
+              loggedBy: user?.name || 'Thu Ngân',
+            });
+          }
+        }
+      });
+
+      if (returnRecord.return_type === 'exchange' && returnRecord.exchange_replacement_items) {
+        returnRecord.exchange_replacement_items.forEach((ep) => {
+          if (ep.product_id) {
+            const currentP = products.find((p) => p.id === ep.product_id);
+            const oldStock = Number(currentP?.stock_qty ?? 10);
+            updateProductStock(ep.product_id, Math.max(0, oldStock - ep.quantity), `Đổi món cho đơn #${orderNum}`);
+          }
+        });
+      }
+
+      if (isLocalMode()) {
+        autoSyncToLocalSqlFolder().catch(console.warn);
+      }
+      await syncOrderRefundToSupabase(returnRecord);
+      soundManager.playNewOrderChime();
+    } catch (err) {
+      console.error('Lỗi khi lưu đổi trả:', err);
+    }
+  };
 
   // Tính toán đơn Đặt Bánh Kem
   const preorderShippingFee = preorderForm.deliveryMethod === 'shipping' ? (Number(preorderForm.shippingFee) || 0) : 0;
@@ -2491,9 +2762,9 @@ export default function POSPage() {
     skipTwoStepCheck = false
   ) => {
     if (cart.length === 0) return;
-    const effectivePaymentMethod: 'cash' | 'transfer' | 'momo' =
-      (typeof overridePaymentMethod === 'string' && ['cash', 'transfer', 'momo'].includes(overridePaymentMethod))
-        ? (overridePaymentMethod as 'cash' | 'transfer' | 'momo')
+    const effectivePaymentMethod: 'cash' | 'transfer' | 'momo' | 'split' =
+      (typeof overridePaymentMethod === 'string' && ['cash', 'transfer', 'momo', 'split'].includes(overridePaymentMethod))
+        ? (overridePaymentMethod as 'cash' | 'transfer' | 'momo' | 'split')
         : paymentMethod;
 
     if (fulfillmentType === 'shipping' && !posShippingAddress.trim()) {
@@ -2524,7 +2795,7 @@ export default function POSPage() {
     const isSkipAdmin = Boolean(skipAdminSetting && isAdmin);
 
     if (
-      effectivePaymentMethod === 'transfer' &&
+      (effectivePaymentMethod === 'transfer' || (effectivePaymentMethod === 'split' && splitTransferAmount > 0)) &&
       isTwoStepMode &&
       !isSkipAdmin &&
       !skipTwoStepCheck &&
@@ -2545,7 +2816,7 @@ export default function POSPage() {
       const isPreOrder = fulfillmentType !== 'takeaway';
       const transferReqPayload: TransferApprovalPayload = {
         order_number: orderNumToUse,
-        amount: dueNow,
+        amount: effectivePaymentMethod === 'split' ? splitTransferAmount : dueNow,
         customer_name: isPreOrder ? (posCustomerName || 'Khách đặt') : (posCustomerName || 'Khách tại quầy'),
         transfer_code: checkoutTransferCode,
         requested_by: cashierName,
@@ -2671,8 +2942,16 @@ export default function POSPage() {
         total_amount: grandTotal,
         deposit_amount: dueNow,
         remaining_amount: remainingCOD,
-        cash_given: effectivePaymentMethod === 'cash' ? (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) : dueNow,
-        change_amount: effectivePaymentMethod === 'cash' ? Math.max(0, (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) - dueNow) : 0,
+        cash_given: effectivePaymentMethod === 'cash' 
+          ? (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) 
+          : effectivePaymentMethod === 'split'
+          ? (splitCashGiven && splitCashGiven >= splitCashAmount ? splitCashGiven : splitCashAmount)
+          : dueNow,
+        change_amount: effectivePaymentMethod === 'cash' 
+          ? Math.max(0, (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) - dueNow) 
+          : effectivePaymentMethod === 'split'
+          ? Math.max(0, (splitCashGiven && splitCashGiven >= splitCashAmount ? splitCashGiven : splitCashAmount) - splitCashAmount)
+          : 0,
         shipping_fee: fulfillmentType === 'shipping' ? (posShippingFee || 0) : 0,
         shipping_address: fulfillmentType === 'shipping' ? posShippingAddress : undefined,
         customer_name: isPre ? (posCustomerName || 'Khách đặt') : undefined,
@@ -2709,10 +2988,14 @@ export default function POSPage() {
             }
           ] : []),
         ],
-        payments: [
+        payments: effectivePaymentMethod === 'split' ? [
+          { method: 'cash', amount: splitCashAmount },
+          { method: 'transfer', amount: splitTransferAmount, reference_code: checkoutTransferCode },
+        ] : [
           {
             method: effectivePaymentMethod,
             amount: dueNow,
+            reference_code: effectivePaymentMethod === 'transfer' ? checkoutTransferCode : undefined,
           },
         ],
       };
@@ -2769,7 +3052,7 @@ export default function POSPage() {
               ? `⏰ Đơn Hẹn Lấy Bánh #${orderData.order_number}`
               : `🛒 Đơn Bán Tại Quầy #${orderData.order_number}`,
             sender: `Thu Ngân: ${user?.name || 'Quầy POS'}`,
-            message: `${cart.length} món bánh • Tổng: ${grandTotal.toLocaleString('vi-VN')}₫ (Thu ngay: ${dueNow.toLocaleString('vi-VN')}₫ - ${effectivePaymentMethod === 'cash' ? '💵 Tiền mặt' : effectivePaymentMethod === 'transfer' ? '🏦 Chuyển khoản' : '📱 Ví MoMo'})`,
+            message: `${cart.length} món bánh • Tổng: ${grandTotal.toLocaleString('vi-VN')}₫ (Thu ngay: ${dueNow.toLocaleString('vi-VN')}₫ - ${effectivePaymentMethod === 'cash' ? '💵 Tiền mặt' : effectivePaymentMethod === 'transfer' ? '🏦 Chuyển khoản' : effectivePaymentMethod === 'split' ? '💳+💵 Kết hợp' : '📱 Ví MoMo'})`,
             extraDetails: 'Đã lưu hóa đơn & chuyển tiếp dữ liệu vào bếp',
             orderNumber: orderData.order_number,
             actionLabel: 'Xem Hóa Đơn',
@@ -2779,12 +3062,14 @@ export default function POSPage() {
       }
 
       // 2. Cập nhật tiền ca bán (chỉ tính số tiền thu ngay lúc này) và lưu vĩnh viễn vào CSDL
+      const addedCash = effectivePaymentMethod === 'cash' ? dueNow : effectivePaymentMethod === 'split' ? splitCashAmount : 0;
+      const addedTransfer = (effectivePaymentMethod === 'transfer' || effectivePaymentMethod === 'momo') ? dueNow : effectivePaymentMethod === 'split' ? splitTransferAmount : 0;
       setShift((prev) => {
         const updated: ShiftState = {
           ...prev,
           orderCount: (prev.orderCount || 0) + 1,
-          cashSales: effectivePaymentMethod === 'cash' ? (prev.cashSales || 0) + dueNow : (prev.cashSales || 0),
-          transferSales: effectivePaymentMethod !== 'cash' ? (prev.transferSales || 0) + dueNow : (prev.transferSales || 0),
+          cashSales: (prev.cashSales || 0) + addedCash,
+          transferSales: (prev.transferSales || 0) + addedTransfer,
         };
         saveCurrentShiftLocally(updated);
         saveCurrentShiftToDb(updated).catch(() => {});
@@ -2848,8 +3133,19 @@ export default function POSPage() {
         pickupDateTimeStr: isPre ? `${posPickupTime} ngày ${posPickupDate}` : '',
         cakeMessage: isPre ? posCakeMessage : '',
         paymentMethod: effectivePaymentMethod,
-        cashGiven: effectivePaymentMethod === 'cash' ? (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) : dueNow,
-        changeAmount: effectivePaymentMethod === 'cash' ? Math.max(0, (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) - dueNow) : 0,
+        splitCashAmount: effectivePaymentMethod === 'split' ? splitCashAmount : undefined,
+        splitTransferAmount: effectivePaymentMethod === 'split' ? splitTransferAmount : undefined,
+        splitCashGiven: effectivePaymentMethod === 'split' ? splitCashGiven : undefined,
+        cashGiven: effectivePaymentMethod === 'cash' 
+          ? (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) 
+          : effectivePaymentMethod === 'split'
+          ? (splitCashGiven && splitCashGiven >= splitCashAmount ? splitCashGiven : splitCashAmount)
+          : dueNow,
+        changeAmount: effectivePaymentMethod === 'cash' 
+          ? Math.max(0, (cashGiven && cashGiven >= dueNow ? cashGiven : dueNow) - dueNow) 
+          : effectivePaymentMethod === 'split'
+          ? Math.max(0, (splitCashGiven && splitCashGiven >= splitCashAmount ? splitCashGiven : splitCashAmount) - splitCashAmount)
+          : 0,
         createdAt: now.toLocaleString('vi-VN'),
         cashier: user?.name || 'Thu Ngân',
       });
@@ -2871,6 +3167,10 @@ export default function POSPage() {
         } catch (bErr) {
           console.warn('Lỗi broadcastNewOrder POS:', bErr);
         }
+      }
+
+      if (isLocalMode()) {
+        autoSyncToLocalSqlFolder().catch(console.warn);
       }
 
       // Reset form sau khi đặt
@@ -3924,6 +4224,38 @@ export default function POSPage() {
               </span>
             </button>
 
+            {/* Nút Xem Đơn Tạm Lưu (Hold Orders) */}
+            <button
+              onClick={() => setIsHeldOrdersModalOpen(true)}
+              className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition shadow-2xs cursor-pointer ${
+                heldOrders.length > 0
+                  ? 'bg-amber-500/10 border-amber-400 text-amber-900 hover:bg-amber-500/20'
+                  : 'bg-white border-stone-200/90 hover:border-amber-400 text-zinc-700 hover:bg-amber-50/50'
+              }`}
+              title="Xem danh sách các đơn hàng đang tạm lưu"
+            >
+              <PauseCircle className="w-4 h-4 text-amber-600" />
+              <span className="hidden sm:inline">Đơn Tạm</span>
+              {heldOrders.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px] font-black animate-pulse">
+                  {heldOrders.length}
+                </span>
+              )}
+            </button>
+
+            {/* Nút Đổi Trả / Hoàn Tiền (Returns & Exchanges) */}
+            <button
+              onClick={() => {
+                setOrderToReturn(null);
+                setIsReturnExchangeModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-rose-400 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-rose-50/50 cursor-pointer"
+              title="Đổi trả hàng hoặc hoàn tiền hóa đơn"
+            >
+              <RotateCcw className="w-4 h-4 text-rose-600" />
+              <span className="hidden sm:inline">Đổi Trả</span>
+            </button>
+
             {/* MENU CÀI ĐẶT HỢP NHẤT (Máy In, Thông Báo & Âm Thanh, Đồng Bộ SQL) */}
             <div className="relative">
               <button
@@ -4383,15 +4715,40 @@ export default function POSPage() {
               </span>
             </div>
           </div>
-          {cart.length > 0 && (
-            <button
-              onClick={clearCart}
-              className="text-xs text-rose-500 hover:text-rose-700 font-bold hover:bg-rose-50 px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 active:scale-90"
-              title="Xóa toàn bộ giỏ hàng"
-            >
-              <Trash2 className="w-3.5 h-3.5" /> <span>Xóa</span>
-            </button>
-          )}
+          <div className="flex items-center gap-1.5">
+            {heldOrders.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setIsHeldOrdersModalOpen(true)}
+                className="text-xs text-amber-700 bg-amber-100/80 hover:bg-amber-200/80 font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 active:scale-95 border border-amber-300 shadow-2xs"
+                title="Xem danh sách các đơn đang tạm lưu"
+              >
+                <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                <span>Đơn tạm ({heldOrders.length})</span>
+              </button>
+            )}
+            {cart.length > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setIsHoldPromptOpen(true)}
+                  className="text-xs text-amber-800 bg-amber-50 hover:bg-amber-100 font-bold px-2.5 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 active:scale-95 border border-amber-200"
+                  title="Tạm lưu đơn hàng này để bán đơn khác"
+                >
+                  <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Tạm lưu</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={clearCart}
+                  className="text-xs text-rose-500 hover:text-rose-700 font-bold hover:bg-rose-50 px-2 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1 active:scale-90"
+                  title="Xóa toàn bộ giỏ hàng"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> <span>Xóa</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Danh Sách Món Trong Giỏ Hàng */}
@@ -6550,6 +6907,20 @@ export default function POSPage() {
                             <span>In Tem Hộp</span>
                           </button>
 
+                          {/* Nút Đổi Trả / Hoàn Tiền */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOrderToReturn(inv);
+                              setIsReturnExchangeModalOpen(true);
+                            }}
+                            className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                            title="Tạo phiếu đổi hàng hoặc hoàn tiền cho đơn này"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                            <span>Đổi / Trả</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => {
@@ -7628,11 +7999,11 @@ export default function POSPage() {
 
             <div className="space-y-2">
               <label className="text-xs font-bold text-zinc-700">Phương thức thanh toán:</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <button
                   type="button"
                   onClick={() => setPaymentMethod('cash')}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition ${
+                  className={`py-2.5 px-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition cursor-pointer ${
                     paymentMethod === 'cash'
                       ? 'border-amber-600 bg-amber-50 text-amber-700 shadow-xs'
                       : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
@@ -7650,7 +8021,7 @@ export default function POSPage() {
                       setCheckoutTransferCode(`${syntax}${randSuffix}`);
                     }
                   }}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition ${
+                  className={`py-2.5 px-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition cursor-pointer ${
                     paymentMethod === 'transfer'
                       ? 'border-amber-600 bg-amber-50 text-amber-700 shadow-xs'
                       : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
@@ -7660,14 +8031,25 @@ export default function POSPage() {
                 </button>
                 <button
                   type="button"
+                  onClick={handleSelectSplitPayment}
+                  className={`py-2.5 px-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition cursor-pointer ${
+                    paymentMethod === 'split'
+                      ? 'border-amber-600 bg-amber-50 text-amber-700 shadow-xs'
+                      : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
+                  }`}
+                >
+                  <CreditCard className="w-4 h-4" /> Kết hợp (TM+CK)
+                </button>
+                <button
+                  type="button"
                   onClick={() => setPaymentMethod('momo')}
-                  className={`py-2.5 px-3 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition ${
+                  className={`py-2.5 px-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition cursor-pointer ${
                     paymentMethod === 'momo'
                       ? 'border-amber-600 bg-amber-50 text-amber-700 shadow-xs'
                       : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
                   }`}
                 >
-                  <CreditCard className="w-4 h-4" /> Ví MoMo
+                  <Wallet className="w-4 h-4" /> Ví MoMo
                 </button>
               </div>
             </div>
@@ -7716,6 +8098,136 @@ export default function POSPage() {
                     {(changeAmount || 0).toLocaleString('vi-VN')}₫
                   </span>
                 </div>
+              </div>
+            )}
+
+            {paymentMethod === 'split' && (
+              <div className="space-y-3.5 p-3.5 bg-gradient-to-b from-amber-50/60 to-orange-50/40 rounded-2xl border border-amber-200/80">
+                <div className="flex items-center justify-between text-xs pb-2 border-b border-amber-200/60">
+                  <span className="font-bold text-amber-950 flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-amber-600" /> Thanh toán Kết Hợp (Tiền Mặt + CK)
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-black text-[10px]">
+                    Cần thu: {(dueNow || 0).toLocaleString('vi-VN')}₫
+                  </span>
+                </div>
+
+                {/* Nút chia nhanh */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold text-zinc-600">Chia nhanh:</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const half = Math.round(dueNow / 2);
+                      handleSplitCashAmountChange(half);
+                    }}
+                    className="px-2 py-1 rounded-lg bg-white border border-amber-300 hover:bg-amber-100 text-[11px] font-bold text-amber-900 cursor-pointer shadow-2xs"
+                  >
+                    50% - 50%
+                  </button>
+                  {[50000, 100000, 200000, 500000].map((c) => (
+                    c < dueNow && (
+                      <button
+                        key={c}
+                        type="button"
+                        onClick={() => handleSplitCashAmountChange(c)}
+                        className="px-2 py-1 rounded-lg bg-white border border-zinc-200 hover:border-amber-400 text-[11px] font-bold text-zinc-700 cursor-pointer shadow-2xs"
+                      >
+                        TM {(c / 1000)}k
+                      </button>
+                    )
+                  ))}
+                </div>
+
+                {/* 2 Cột Nhập Số Tiền: Tiền Mặt & Chuyển Khoản */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  <div className="p-2.5 rounded-xl bg-white border border-amber-200 shadow-2xs space-y-1">
+                    <label className="text-[11px] font-bold text-zinc-700 flex items-center justify-between">
+                      <span className="flex items-center gap-1">💵 Tiền mặt:</span>
+                      <span className="text-[10px] text-amber-600 font-bold">Thu ngay</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(splitCashAmount)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleSplitCashAmountChange(parseCurrencyInput(e.target.value))}
+                      className="w-full px-2 py-1.5 text-right font-black text-sm bg-amber-50/50 border border-amber-300 rounded-lg text-amber-950 focus:outline-amber-500"
+                    />
+                  </div>
+
+                  <div className="p-2.5 rounded-xl bg-white border border-blue-200 shadow-2xs space-y-1">
+                    <label className="text-[11px] font-bold text-zinc-700 flex items-center justify-between">
+                      <span className="flex items-center gap-1">🏦 Chuyển khoản:</span>
+                      <span className="text-[10px] text-blue-600 font-bold">Quét QR</span>
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(splitTransferAmount)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => handleSplitTransferAmountChange(parseCurrencyInput(e.target.value))}
+                      className="w-full px-2 py-1.5 text-right font-black text-sm bg-blue-50/50 border border-blue-300 rounded-lg text-blue-950 focus:outline-blue-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Phần Tiền mặt khách đưa & Tiền thối */}
+                <div className="p-2.5 rounded-xl bg-white/90 border border-stone-200 space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-zinc-700">Khách đưa tiền mặt:</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(splitCashGiven)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => setSplitCashGiven(parseCurrencyInput(e.target.value))}
+                      placeholder={(splitCashAmount || 0).toLocaleString('vi-VN')}
+                      className="w-32 px-2.5 py-1 text-right font-black text-xs bg-stone-50 border border-zinc-200 rounded-lg text-zinc-900"
+                    />
+                  </div>
+                  <div className="flex justify-between items-center text-xs pt-1 border-t border-zinc-100">
+                    <span className="font-bold text-zinc-500">Tiền thừa trả khách:</span>
+                    <span className="font-black text-sm text-emerald-600">
+                      {(splitCashChange || 0).toLocaleString('vi-VN')}₫
+                    </span>
+                  </div>
+                </div>
+
+                {/* Mã VietQR động cho phần Chuyển Khoản */}
+                {splitTransferAmount > 0 && (
+                  <div className="p-3 bg-white rounded-xl border border-blue-200 text-center space-y-2">
+                    <div className="flex items-center justify-between px-1 text-[11px]">
+                      <span className="font-bold text-blue-900 flex items-center gap-1">
+                        <QrCode className="w-3.5 h-3.5 text-blue-600" /> Mã VietQR phần Chuyển Khoản:
+                      </span>
+                      <span className="font-black text-blue-600">
+                        {splitTransferAmount.toLocaleString('vi-VN')}₫
+                      </span>
+                    </div>
+                    <div className="inline-block p-1.5 bg-white rounded-xl border border-zinc-200 shadow-2xs max-w-[180px] mx-auto">
+                      <img
+                        src={`https://api.vietqr.io/image/${vietqrConfig.bankId}-${vietqrConfig.accountNo}-${vietqrConfig.template || 'compact2'}.jpg?amount=${splitTransferAmount}&addInfo=${encodeURIComponent(checkoutTransferCode || `${vietqrConfig.transferSyntax || 'DH'}${Date.now().toString().slice(-6)}`)}&accountName=${encodeURIComponent(vietqrConfig.accountName)}`}
+                        alt="VietQR Split Transfer"
+                        className="w-full h-auto rounded-lg"
+                      />
+                    </div>
+                    <div className="text-[11px] text-zinc-600 flex justify-between items-center px-2 py-1 bg-blue-50/60 rounded-lg">
+                      <span>Nội dung CK: <strong className="text-blue-900 font-mono">{checkoutTransferCode}</strong></span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(checkoutTransferCode);
+                          setCopiedTransferCode(true);
+                          setTimeout(() => setCopiedTransferCode(false), 2000);
+                        }}
+                        className="text-[10px] px-1.5 py-0.5 bg-white border border-blue-200 rounded text-blue-700 font-bold cursor-pointer"
+                      >
+                        {copiedTransferCode ? 'Đã chép' : 'Sao chép'}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -8264,6 +8776,8 @@ export default function POSPage() {
                               ? '💵 Tiền mặt'
                               : completedOrder.paymentMethod === 'momo'
                               ? '📱 Ví MoMo'
+                              : completedOrder.paymentMethod === 'split'
+                              ? '💳 + 💵 Kết hợp (TM + CK)'
                               : '🏦 Chuyển khoản VietQR'}
                           </span>
                         </div>
@@ -8306,6 +8820,38 @@ export default function POSPage() {
                               ? `✓ ĐÃ CỌC CHUYỂN KHOẢN (${targetDue.toLocaleString('vi-VN')}₫)`
                               : '✓ ĐÃ THANH TOÁN CHUYỂN KHOẢN'}
                           </div>
+                        )}
+
+                        {completedOrder.paymentMethod === 'split' && (
+                          <>
+                            <div className="space-y-1 py-1 text-zinc-700 border-t border-dashed border-zinc-200 text-xs">
+                              <div className="flex justify-between">
+                                <span>💵 Tiền mặt:</span>
+                                <span className="font-bold text-zinc-900">{(completedOrder.splitCashAmount || 0).toLocaleString('vi-VN')}₫</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>🏦 Chuyển khoản:</span>
+                                <span className="font-bold text-zinc-900">{(completedOrder.splitTransferAmount || 0).toLocaleString('vi-VN')}₫</span>
+                              </div>
+                              {completedOrder.splitCashGiven !== undefined && Number(completedOrder.splitCashGiven) > Number(completedOrder.splitCashAmount || 0) && (
+                                <>
+                                  <div className="flex justify-between text-zinc-500 text-[10px]">
+                                    <span>Khách đưa tiền mặt:</span>
+                                    <span>{Number(completedOrder.splitCashGiven).toLocaleString('vi-VN')}₫</span>
+                                  </div>
+                                  <div className="flex justify-between text-emerald-700 font-bold">
+                                    <span>Tiền thừa trả khách:</span>
+                                    <span>{(Number(completedOrder.splitCashGiven) - Number(completedOrder.splitCashAmount || 0)).toLocaleString('vi-VN')}₫</span>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                            <div className="text-center py-1.5 mt-2 bg-amber-50 text-amber-900 font-black text-[11px] rounded-xl border border-amber-200/80">
+                              {isDepositOrder
+                                ? `✓ ĐÃ CỌC KẾT HỢP (${targetDue.toLocaleString('vi-VN')}₫)`
+                                : '✓ ĐÃ THANH TOÁN KẾT HỢP (TM + CK)'}
+                            </div>
+                          </>
                         )}
                       </div>
                     );
@@ -9186,6 +9732,106 @@ export default function POSPage() {
         </div>
       ))}
 
+      {/* ── MODAL TẠM LƯU ĐƠN HÀNG (HELD ORDERS) ── */}
+      <HeldOrdersModal
+        isOpen={isHeldOrdersModalOpen}
+        onClose={() => setIsHeldOrdersModalOpen(false)}
+        heldOrders={heldOrders}
+        activeCartCount={cart.length}
+        onRestoreOrder={(order, holdCurrent) => {
+          handleRestoreHeldOrder(order, holdCurrent);
+          setIsHeldOrdersModalOpen(false);
+        }}
+        onDeleteOrder={handleDeleteHeldOrder}
+        onClearAll={handleClearAllHeldOrders}
+      />
+
+      {/* ── MODAL NHẬP TÊN/GHI CHÚ KHI TẠM LƯU ĐƠN ── */}
+      {isHoldPromptOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 shadow-2xl space-y-4 border border-stone-200 animate-in zoom-in duration-150">
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+              <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                <PauseCircle className="w-4 h-4 text-amber-600" /> Tạm Lưu Đơn Hàng Hiện Tại
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHoldPromptOpen(false);
+                  setHoldLabelInput('');
+                }}
+                className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              <p className="text-zinc-600">
+                Đơn hàng gồm <b>{cart.reduce((s, i) => s + i.quantity, 0)} món</b> ({grandTotal.toLocaleString('vi-VN')}₫) sẽ được tạm lưu vào danh sách.
+              </p>
+              <div>
+                <label className="block text-[11px] font-bold text-zinc-700 mb-1">
+                  Tên hoặc ghi nhớ đơn tạm (không bắt buộc):
+                </label>
+                <input
+                  type="text"
+                  value={holdLabelInput}
+                  onChange={(e) => setHoldLabelInput(e.target.value)}
+                  placeholder="VD: Bàn 3, Anh áo đen, Chị váy hoa..."
+                  className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs font-bold text-zinc-800 focus:bg-white focus:outline-amber-500"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      handleHoldCurrentOrder(holdLabelInput);
+                      setIsHoldPromptOpen(false);
+                      setHoldLabelInput('');
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHoldPromptOpen(false);
+                  setHoldLabelInput('');
+                }}
+                className="flex-1 py-2.5 rounded-xl border border-stone-200 text-xs font-bold text-zinc-600 hover:bg-stone-50 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleHoldCurrentOrder(holdLabelInput);
+                  setIsHoldPromptOpen(false);
+                  setHoldLabelInput('');
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black shadow-sm cursor-pointer"
+              >
+                Xác Nhận Lưu
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL ĐỔI TRẢ HÀNG & HOÀN TIỀN (RETURNS & EXCHANGES) ── */}
+      <ReturnExchangeModal
+        isOpen={isReturnExchangeModalOpen}
+        onClose={() => {
+          setIsReturnExchangeModalOpen(false);
+          setOrderToReturn(null);
+        }}
+        initialOrder={orderToReturn}
+        ordersList={invoicesList}
+        availableProducts={products}
+        cashierName={user?.name || 'Thu Ngân Quầy POS'}
+        onExecuteReturn={handleExecuteReturn}
+      />
     </div>
   );
 }

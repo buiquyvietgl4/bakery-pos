@@ -249,19 +249,20 @@ export function calculateClosingMetrics(
     const amt = Number(o.total_amount || o.totalPrice || o.subtotal || 0);
     totalRevenue += amt;
 
-    // Phân loại tiền mặt vs chuyển khoản / ví
-    let isCash = true;
+    // Phân loại tiền mặt vs chuyển khoản / ví (hỗ trợ hoàn hảo Split Payment)
     if (Array.isArray(o.payments) && o.payments.length > 0) {
-      const hasBank = o.payments.some((p: any) => p.method !== 'cash');
-      if (hasBank) isCash = false;
+      o.payments.forEach((p: any) => {
+        const pAmt = Number(p.amount || 0);
+        if (p.method === 'cash') {
+          cashRevenue += pAmt;
+        } else {
+          bankRevenue += pAmt;
+        }
+      });
     } else if (o.payment_method && o.payment_method !== 'cash') {
-      isCash = false;
-    }
-
-    if (isCash) {
-      cashRevenue += amt;
-    } else {
       bankRevenue += amt;
+    } else {
+      cashRevenue += amt;
     }
   });
 

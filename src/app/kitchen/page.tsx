@@ -84,7 +84,7 @@ interface KDSOrder {
   id: string;
   order_number: string;
   order_type: 'dine_in' | 'takeaway' | 'preorder';
-  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled';
+  status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'refunded' | 'partially_refunded';
   created_at: string;
   updated_at?: string;
   preorder_pickup_at?: string;
@@ -1263,7 +1263,7 @@ export default function KitchenPage() {
         setOrders((prev) => {
           const list = Array.isArray(prev) ? prev : [];
           const exists = list.some((o) => o && (targetNums.has(o.order_number) || targetNums.has(o.id)));
-          if (payload.status === 'completed' || payload.status === 'cancelled') {
+          if (payload.status === 'completed' || payload.status === 'cancelled' || payload.status === 'refunded') {
             return list.filter((o) => o && !targetNums.has(o.order_number) && !targetNums.has(o.id));
           }
           if (exists) {

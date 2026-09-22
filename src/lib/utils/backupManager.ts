@@ -585,6 +585,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   let deletedProductIds: any[] = [];
   let resolvedTransfers: any[] = [];
   let ovenBatches: any[] = [];
+  let orderReturns: any[] = [];
+  let heldOrders: any[] = [];
 
   if (typeof window !== 'undefined') {
     try {
@@ -610,6 +612,10 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawRT) resolvedTransfers = JSON.parse(rawRT);
       const rawOB = localStorage.getItem('bakery_oven_batches');
       if (rawOB) ovenBatches = JSON.parse(rawOB);
+      const rawOR = localStorage.getItem('bakery_order_returns');
+      if (rawOR) orderReturns = JSON.parse(rawOR);
+      const rawHO = localStorage.getItem('bakery_held_orders');
+      if (rawHO) heldOrders = JSON.parse(rawHO);
     } catch {}
   }
   printerConfig = getPrinterConfig();
@@ -756,6 +762,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     deleted_product_ids: deletedProductIds,
     resolved_transfers: resolvedTransfers,
     oven_batches: ovenBatches,
+    order_returns: orderReturns,
+    held_orders: heldOrders,
     settings: {
       vietqr: vietqrConfig,
       ewallet: ewalletConfig,

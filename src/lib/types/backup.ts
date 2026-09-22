@@ -52,6 +52,15 @@ export interface BackupOrder {
   remaining_amount?: number;
   notes?: string;
   reference_image_url?: string;
+  payment_method?: string;
+  payments?: Array<{
+    id?: string;
+    method: string;
+    amount: number;
+    reference_code?: string;
+    paid_at?: string;
+  }>;
+  return_records?: any[];
   cake_costing?: any;
   custom_cake?: any;
   items?: BackupOrderItem[];
@@ -109,6 +118,8 @@ export interface BakeryBackupData {
   material_transactions?: any[];
   material_stock_adjustments?: any[];
   orders: BackupOrder[];
+  order_returns?: any[];
+  held_orders?: any[];
   expenses: BackupExpense[];
   cashflow: BackupCashflow[];
   images: BackupImageItem[];

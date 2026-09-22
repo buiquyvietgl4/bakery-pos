@@ -677,6 +677,44 @@ CREATE TABLE IF NOT EXISTS resolved_transfers (
     resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     resolved_by TEXT DEFAULT 'Admin'
 );
+
+CREATE TABLE IF NOT EXISTS order_returns (
+    id TEXT PRIMARY KEY,
+    order_id TEXT NOT NULL,
+    order_number TEXT NOT NULL,
+    return_type TEXT DEFAULT 'refund',
+    refund_amount NUMERIC DEFAULT 0,
+    refund_method TEXT DEFAULT 'cash',
+    exchange_difference NUMERIC DEFAULT 0,
+    reason_summary TEXT,
+    notes TEXT,
+    approved_by TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS order_return_items (
+    id TEXT PRIMARY KEY,
+    return_id TEXT NOT NULL,
+    product_id TEXT,
+    product_name TEXT,
+    quantity NUMERIC DEFAULT 1,
+    unit_price NUMERIC DEFAULT 0,
+    refund_subtotal NUMERIC DEFAULT 0,
+    restocked BOOLEAN DEFAULT TRUE,
+    condition TEXT DEFAULT 'intact',
+    reason TEXT,
+    notes TEXT
+);
+
+CREATE TABLE IF NOT EXISTS held_orders (
+    id TEXT PRIMARY KEY,
+    hold_code TEXT NOT NULL,
+    label TEXT,
+    total_amount NUMERIC DEFAULT 0,
+    item_count INTEGER DEFAULT 0,
+    raw_order_json TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 }
 
@@ -797,6 +835,50 @@ ${generateSchemaSql()}
 `;
         }
       }
+
+      // Xuất các dòng thanh toán (hỗ trợ Split Payment: Tiền mặt + Chuyển khoản)
+      if (Array.isArray(o.payments) && o.payments.length > 0) {
+        for (const p of o.payments) {
+          const payId = p.id || `${o.order_number || o.orderNumber}-pay-${Math.random().toString(36).substr(2, 6)}`;
+          sql += `INSERT INTO payments (id, order_id, method, amount, reference_code, paid_at) VALUES (${sqlEscape(payId)}, ${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(p.method || 'cash')}, ${sqlEscape(p.amount || 0)}, ${sqlEscape(p.reference_code || p.referenceCode || null)}, ${sqlEscape(p.paid_at || p.paidAt || o.created_at || new Date().toISOString())});
+`;
+        }
+      } else if (payStatus === 'paid' || depositAmt > 0) {
+        const payId = `${o.order_number || o.orderNumber}-pay-main`;
+        sql += `INSERT INTO payments (id, order_id, method, amount, reference_code, paid_at) VALUES (${sqlEscape(payId)}, ${sqlEscape(o.id || o.order_number || o.orderNumber)}, ${sqlEscape(payMethod)}, ${sqlEscape(depositAmt > 0 ? depositAmt : finalAmt)}, ${sqlEscape(o.order_number || o.orderNumber)}, ${sqlEscape(o.created_at || new Date().toISOString())});
+`;
+      }
+    }
+  }
+
+  sql += `
+-- ----------------------------------------------------------------------------
+-- 4.5. BẢNG LỊCH SỬ ĐỔI TRẢ (ORDER_RETURNS & ORDER_RETURN_ITEMS)
+-- ----------------------------------------------------------------------------
+`;
+  if (Array.isArray(data?.order_returns) && data.order_returns.length > 0) {
+    for (const ret of data.order_returns) {
+      sql += `INSERT INTO order_returns (id, order_id, order_number, return_type, refund_amount, refund_method, exchange_difference, reason_summary, notes, approved_by, created_at) VALUES (${sqlEscape(ret.id)}, ${sqlEscape(ret.order_id)}, ${sqlEscape(ret.order_number)}, ${sqlEscape(ret.return_type || 'refund')}, ${sqlEscape(ret.refund_amount || 0)}, ${sqlEscape(ret.refund_method || 'cash')}, ${sqlEscape(ret.exchange_difference || 0)}, ${sqlEscape(ret.reason_summary || null)}, ${sqlEscape(ret.notes || null)}, ${sqlEscape(ret.approved_by || 'Thu Ngân')}, ${sqlEscape(ret.created_at || new Date().toISOString())});
+`;
+      if (Array.isArray(ret.items)) {
+        for (const rItem of ret.items) {
+          const rItemId = rItem.id || `${ret.id}-item-${Math.random().toString(36).substr(2, 6)}`;
+          sql += `INSERT INTO order_return_items (id, return_id, product_id, product_name, quantity, unit_price, refund_subtotal, restocked, condition, reason, notes) VALUES (${sqlEscape(rItemId)}, ${sqlEscape(ret.id)}, ${sqlEscape(rItem.product_id || null)}, ${sqlEscape(rItem.product_name || 'Sản phẩm')}, ${sqlEscape(rItem.quantity || 1)}, ${sqlEscape(rItem.unit_price || 0)}, ${sqlEscape(rItem.refund_subtotal || 0)}, ${sqlEscape(rItem.restocked ?? true)}, ${sqlEscape(rItem.condition || 'intact')}, ${sqlEscape(rItem.reason || 'other')}, ${sqlEscape(rItem.notes || null)});
+`;
+        }
+      }
+    }
+  }
+
+  sql += `
+-- ----------------------------------------------------------------------------
+-- 4.6. BẢNG ĐƠN HÀNG TẠM LƯU (HELD_ORDERS)
+-- ----------------------------------------------------------------------------
+`;
+  if (Array.isArray(data?.held_orders) && data.held_orders.length > 0) {
+    for (const ho of data.held_orders) {
+      sql += `INSERT INTO held_orders (id, hold_code, label, total_amount, item_count, raw_order_json, created_at) VALUES (${sqlEscape(ho.id)}, ${sqlEscape(ho.holdCode || ho.hold_code || '#T')}, ${sqlEscape(ho.label || null)}, ${sqlEscape(ho.totalAmount || ho.total_amount || 0)}, ${sqlEscape(ho.itemCount || ho.item_count || ho.items?.length || 0)}, ${sqlEscape(JSON.stringify(ho))}, ${sqlEscape(ho.createdAt || ho.created_at || new Date().toISOString())});
+`;
     }
   }
 
