@@ -3623,6 +3623,8 @@ export default function POSPage() {
   const checkoutTransferCodeRef = useRef(checkoutTransferCode);
   const dueNowRef = useRef(dueNow);
   const autoBankConfigRef = useRef(autoBankConfig);
+  const paymentMethodRef = useRef(paymentMethod);
+  const splitTransferAmountRef = useRef(splitTransferAmount);
 
   useEffect(() => {
     isCheckoutOpenRef.current = isCheckoutOpen;
@@ -3641,6 +3643,14 @@ export default function POSPage() {
   }, [autoBankConfig]);
 
   useEffect(() => {
+    paymentMethodRef.current = paymentMethod;
+  }, [paymentMethod]);
+
+  useEffect(() => {
+    splitTransferAmountRef.current = splitTransferAmount;
+  }, [splitTransferAmount]);
+
+  useEffect(() => {
     if (toastPaymentNotice) {
       const timer = setTimeout(() => {
         setToastPaymentNotice(null);
@@ -3656,6 +3666,8 @@ export default function POSPage() {
     const currentDueNow = dueNowRef.current;
     const isCheckout = isCheckoutOpenRef.current;
     const cfg = autoBankConfigRef.current;
+    const currentMethod = paymentMethodRef.current;
+    const currentSplitTransfer = splitTransferAmountRef.current;
 
     // 1. Kiểm tra xem giao dịch có khớp với đơn đang mở thanh toán tại quầy không
     const codeMatches =
@@ -3664,7 +3676,11 @@ export default function POSPage() {
         (payload.order_number && payload.order_number.toUpperCase().includes(currentCode.toUpperCase())) ||
         (payload.content && payload.content.toUpperCase().includes(currentCode.toUpperCase())));
 
-    const amountMatches = isCheckout && currentDueNow > 0 && Math.abs(payload.amount - currentDueNow) < 1;
+    const targetAmount = (currentMethod === 'split' && currentSplitTransfer > 0)
+      ? currentSplitTransfer
+      : currentDueNow;
+
+    const amountMatches = isCheckout && targetAmount > 0 && Math.abs(payload.amount - targetAmount) < 1;
 
     if (isCheckout && (codeMatches || amountMatches)) {
       // Đơn tại quầy nhận đủ tiền!
@@ -3685,7 +3701,7 @@ export default function POSPage() {
 
       if (cfg.autoConfirmOrder) {
         setTimeout(() => {
-          handleCompleteOrder('transfer');
+          handleCompleteOrder(currentMethod);
         }, 1200);
       }
     } else {
@@ -3750,10 +3766,11 @@ export default function POSPage() {
           setIsWaitingAdminTransferApproval(false);
 
           soundManager.playPaymentSuccessChime();
-          soundManager.speakPaymentSuccess(payload.amount || dueNowRef.current, payload.order_number);
+          const targetVoiceAmount = payload.amount || (paymentMethodRef.current === 'split' ? splitTransferAmountRef.current : dueNowRef.current);
+          soundManager.speakPaymentSuccess(targetVoiceAmount, payload.order_number);
 
           setTimeout(() => {
-            handleCompleteOrder('transfer', capturedTransferProofImageRef.current, currentOrderNum, true);
+            handleCompleteOrder(paymentMethodRef.current, capturedTransferProofImageRef.current, currentOrderNum, true);
           }, 1200);
         } else if (payload.action === 'rejected') {
           setIsWaitingAdminTransferApproval(false);
@@ -3775,9 +3792,10 @@ export default function POSPage() {
       const orderNumToUse = activeCheckoutOrderNumber || 'BK-CK';
       const cashierName = user?.name || securityConfig.staffName || 'Thu Ngân Quầy POS';
       const isPreOrder = fulfillmentType !== 'takeaway';
+      const targetAmount = paymentMethod === 'split' ? splitTransferAmount : dueNow;
       const transferReqPayload: TransferApprovalPayload = {
         order_number: orderNumToUse,
-        amount: dueNow,
+        amount: targetAmount,
         customer_name: isPreOrder ? (posCustomerName || 'Khách đặt') : (posCustomerName || 'Khách tại quầy'),
         transfer_code: checkoutTransferCode,
         requested_by: cashierName,
@@ -8814,37 +8832,211 @@ export default function POSPage() {
                   </div>
                 </div>
 
-                {/* Mã VietQR động cho phần Chuyển Khoản */}
+                {/* THÔNG BÁO VÀ XÁC NHẬN CHUYỂN KHOẢN CHO PHẦN CK (TƯƠNG TỰ CHUYỂN KHOẢN THƯỜNG) */}
                 {splitTransferAmount > 0 && (
-                  <div className="p-3 bg-white rounded-xl border border-blue-200 text-center space-y-2">
-                    <div className="flex items-center justify-between px-1 text-[11px]">
-                      <span className="font-bold text-blue-900 flex items-center gap-1">
-                        <QrCode className="w-3.5 h-3.5 text-blue-600" /> Mã VietQR phần Chuyển Khoản:
+                  <div className="p-3.5 bg-white rounded-2xl border border-blue-200 text-center space-y-3 shadow-xs">
+                    <div className="flex items-center justify-between px-1 text-xs">
+                      <span className="font-bold text-zinc-800 flex items-center gap-1.5">
+                        <QrCode className="w-4 h-4 text-blue-600" /> Quét Mã VietQR Phần Chuyển Khoản
                       </span>
-                      <span className="font-black text-blue-600">
-                        {splitTransferAmount.toLocaleString('vi-VN')}₫
+                      <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold text-[10px]">
+                        Phần CK: {splitTransferAmount.toLocaleString('vi-VN')}₫
                       </span>
                     </div>
-                    <div className="inline-block p-1.5 bg-white rounded-xl border border-zinc-200 shadow-2xs max-w-[180px] mx-auto">
+
+                    {/* 1. HIỂN THỊ ẢNH BILL ĐỐI SOÁT NẾU ĐÃ CHỤP */}
+                    {capturedTransferProofImage && (
+                      <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-between text-xs text-purple-950 animate-in fade-in">
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={capturedTransferProofImage}
+                            alt="Bill đối soát"
+                            className="w-9 h-9 rounded-lg object-cover border border-purple-300 shadow-2xs"
+                          />
+                          <div className="text-left">
+                            <div className="font-black text-purple-900">📸 Đã chụp ảnh bill phần chuyển khoản!</div>
+                            <div className="text-[10px] text-purple-700">Đơn hàng sẽ được xác nhận ngay và lưu ảnh đối soát</div>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsProofCameraOpen(true)}
+                          className="px-2 py-1 bg-white border border-purple-300 rounded-lg text-[10px] font-bold text-purple-700 hover:bg-purple-100 cursor-pointer"
+                        >
+                          Chụp lại
+                        </button>
+                      </div>
+                    )}
+
+                    {/* 2. HIỂN THỊ THÔNG BÁO TRẠNG THÁI THEO 3 CHẾ ĐỘ XÁC THỰC */}
+                    {transferVerifyConfig.mode === 'two_step' ? (
+                      adminApprovedTransfer ? (
+                        <div className="p-3.5 rounded-2xl bg-emerald-500/15 border-2 border-emerald-500 text-emerald-900 space-y-1 animate-in zoom-in-95">
+                          <div className="flex items-center justify-center gap-2 font-black text-sm text-emerald-700">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-600 animate-bounce" />
+                            <span>✅ ADMIN ĐÃ XÁC NHẬN NHẬN ĐỦ TIỀN CK!</span>
+                          </div>
+                          <p className="text-xs text-emerald-700 font-medium">
+                            Hệ thống đang tự động hoàn tất đơn kết hợp...
+                          </p>
+                        </div>
+                      ) : isWaitingAdminTransferApproval ? (
+                        <div className="p-3.5 rounded-2xl bg-amber-500/15 border-2 border-amber-500 text-amber-900 space-y-2 animate-in zoom-in-95">
+                          <div className="flex items-center justify-center gap-2 font-black text-sm text-amber-800">
+                            <span className="w-3 h-3 rounded-full bg-amber-500 animate-ping shrink-0" />
+                            <span>⏳ ĐANG CHỜ ADMIN XÁC NHẬN TIỀN CK VỀ...</span>
+                          </div>
+                          <p className="text-xs text-amber-800 font-medium">
+                            Yêu cầu xác nhận phần CK ({splitTransferAmount.toLocaleString('vi-VN')}₫) đã được gửi tới Quản trị viên (Admin). Đơn sẽ tự động hoàn tất ngay khi Admin ấn xác nhận.
+                          </p>
+
+                          {/* Các nút hành động khi chờ Admin duyệt */}
+                          <div className="pt-2 border-t border-amber-300/60 space-y-2">
+                            <button
+                              type="button"
+                              onClick={handleResendTransferApproval}
+                              className="w-full py-2 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 border border-amber-300 text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 shadow-xs cursor-pointer transition"
+                            >
+                              <RefreshCw className="w-3.5 h-3.5" />
+                              <span>{transferResendStatus || '🔄 Gửi Lại Yêu Cầu Xác Thực'}</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setIsProofCameraOpen(true)}
+                              className="w-full py-2.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs flex items-center justify-center gap-2 shadow-sm cursor-pointer transition"
+                            >
+                              <Camera className="w-4 h-4" />
+                              <span>📸 Xác Nhận Ngay (Chụp Ảnh Bill Khách)</span>
+                            </button>
+                            <p className="text-[10px] text-amber-700 text-center italic pt-0.5">
+                              Phòng khi mất mạng hoặc Admin chưa kịp duyệt. Ảnh chụp sẽ lưu cùng đơn hàng để đối soát sau.
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between p-2.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold">
+                          <span className="flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-amber-600" />
+                            {((transferVerifyConfig.twoStep?.skipForAdmin !== undefined
+                              ? transferVerifyConfig.twoStep.skipForAdmin
+                              : (transferVerifyConfig.two_step?.skipForAdmin ?? true)) && isAdmin)
+                              ? 'Xác thực 2 bước: Admin trực tiếp bán (Miễn duyệt phần CK)'
+                              : `Xác thực 2 bước: Cần Admin duyệt tiền CK (${splitTransferAmount.toLocaleString('vi-VN')}₫)`}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsProofCameraOpen(true)}
+                            className="px-2.5 py-1 rounded-lg bg-white border border-amber-300 text-[10px] font-black text-amber-800 hover:bg-amber-100 flex items-center gap-1 cursor-pointer transition"
+                          >
+                            <Camera className="w-3 h-3" /> Chụp bill ngay
+                          </button>
+                        </div>
+                      )
+                    ) : transferVerifyConfig.mode === 'bank_webhook' ? (
+                      paymentReceivedInfo ? (
+                        <div className="p-3 rounded-xl bg-emerald-500/15 border-2 border-emerald-500 text-emerald-900 space-y-1 animate-in zoom-in-95">
+                          <div className="flex items-center justify-center gap-2 font-black text-sm text-emerald-700">
+                            <CheckCircle2 className="w-5 h-5 text-emerald-600 animate-bounce" />
+                            <span>✅ ĐÃ NHẬN TIỀN CK THÀNH CÔNG!</span>
+                          </div>
+                          <div className="text-xs font-black text-emerald-800">
+                            +{(paymentReceivedInfo.amount || 0).toLocaleString('vi-VN')}₫
+                            {paymentReceivedInfo.gateway ? ` • ${paymentReceivedInfo.gateway}` : ''}
+                          </div>
+                          <p className="text-[11px] text-emerald-700 font-medium">
+                            Hệ thống đang tự động xác nhận hoàn thành đơn hàng...
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-center gap-2 p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-800 text-xs font-semibold">
+                            <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-ping inline-block shrink-0" />
+                            <span>⏳ Đang chờ hệ thống ngân hàng xác nhận tiền CK ({splitTransferAmount.toLocaleString('vi-VN')}₫)...</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsProofCameraOpen(true)}
+                            className="w-full py-2 px-3 rounded-xl bg-zinc-100 hover:bg-amber-50 border border-zinc-300 hover:border-amber-400 text-zinc-700 hover:text-amber-900 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
+                            title="Dùng khi mất mạng hoặc ngân hàng chưa báo webhook"
+                          >
+                            <Camera className="w-3.5 h-3.5 text-amber-600" />
+                            <span>📸 Xác Nhận Ngay (Chụp Ảnh Bill Khách)</span>
+                          </button>
+                        </div>
+                      )
+                    ) : (
+                      <div className="flex items-center justify-center gap-1.5 p-2 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>Chuyển khoản trực tiếp phần CK (Bấm Xác nhận để hoàn tất ngay)</span>
+                      </div>
+                    )}
+
+                    {/* 3. MÃ VIETQR PHẦN CHUYỂN KHOẢN */}
+                    <div className="inline-block p-2 bg-white rounded-2xl border border-zinc-200 shadow-sm max-w-[220px] mx-auto relative">
                       <img
                         src={`https://api.vietqr.io/image/${vietqrConfig.bankId}-${vietqrConfig.accountNo}-${vietqrConfig.template || 'compact2'}.jpg?amount=${splitTransferAmount}&addInfo=${encodeURIComponent(checkoutTransferCode || `${vietqrConfig.transferSyntax || 'DH'}${Date.now().toString().slice(-6)}`)}&accountName=${encodeURIComponent(vietqrConfig.accountName)}`}
                         alt="VietQR Split Transfer"
-                        className="w-full h-auto rounded-lg"
+                        className="w-full h-auto rounded-xl"
                       />
+                      {(paymentReceivedInfo || adminApprovedTransfer) && (
+                        <div className="absolute inset-0 bg-emerald-900/60 backdrop-blur-xs rounded-2xl flex flex-col items-center justify-center text-white p-3 animate-in fade-in">
+                          <CheckCircle2 className="w-12 h-12 text-emerald-400 animate-bounce mb-1" />
+                          <span className="text-xs font-black uppercase">ĐÃ THANH TOÁN CK</span>
+                        </div>
+                      )}
                     </div>
-                    <div className="text-[11px] text-zinc-600 flex justify-between items-center px-2 py-1 bg-blue-50/60 rounded-lg">
-                      <span>Nội dung CK: <strong className="text-blue-900 font-mono">{checkoutTransferCode}</strong></span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(checkoutTransferCode);
-                          setCopiedTransferCode(true);
-                          setTimeout(() => setCopiedTransferCode(false), 2000);
-                        }}
-                        className="text-[10px] px-1.5 py-0.5 bg-white border border-blue-200 rounded text-blue-700 font-bold cursor-pointer"
-                      >
-                        {copiedTransferCode ? 'Đã chép' : 'Sao chép'}
-                      </button>
+
+                    {/* 4. CHI TIẾT TÀI KHOẢN NGÂN HÀNG CHO PHẦN CK */}
+                    <div className="text-left bg-zinc-50/80 p-3 rounded-xl border border-zinc-200 space-y-1.5 text-xs">
+                      <div className="flex justify-between items-center">
+                        <span className="text-zinc-500">Ngân hàng:</span>
+                        <span className="font-bold text-zinc-900">{vietqrConfig.bankName || vietqrConfig.bankId}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-zinc-500">Số tài khoản:</span>
+                        <div className="flex items-center gap-1.5 font-mono font-black text-zinc-900 text-sm">
+                          <span>{vietqrConfig.accountNo}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(vietqrConfig.accountNo);
+                              setCopiedAccount(true);
+                              setTimeout(() => setCopiedAccount(false), 2000);
+                            }}
+                            className="p-1 hover:bg-zinc-200 rounded text-zinc-500 hover:text-amber-600 transition cursor-pointer"
+                            title="Sao chép số tài khoản"
+                          >
+                            {copiedAccount ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-zinc-500">Chủ tài khoản:</span>
+                        <span className="font-bold text-zinc-900 uppercase">{vietqrConfig.accountName}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-zinc-500">Số tiền cần CK:</span>
+                        <span className="font-black text-blue-600 text-sm">{splitTransferAmount.toLocaleString('vi-VN')}₫</span>
+                      </div>
+                      <div className="flex justify-between items-center bg-blue-50/80 px-2 py-1.5 rounded-lg border border-blue-200/60">
+                        <span className="text-blue-800 font-medium">Nội dung CK:</span>
+                        <div className="flex items-center gap-1.5 font-mono font-black text-blue-900 text-xs">
+                          <span>{checkoutTransferCode}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(checkoutTransferCode);
+                              setCopiedTransferCode(true);
+                              setTimeout(() => setCopiedTransferCode(false), 2000);
+                            }}
+                            className="p-1 hover:bg-blue-100 rounded text-blue-700 cursor-pointer"
+                            title="Sao chép cú pháp chuyển tiền"
+                          >
+                            {copiedTransferCode ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
@@ -9182,7 +9374,7 @@ export default function POSPage() {
                 >
                   {processingOrder
                     ? 'Đang xử lý...'
-                    : paymentMethod === 'transfer' &&
+                    : ((paymentMethod === 'transfer' || (paymentMethod === 'split' && splitTransferAmount > 0)) &&
                       transferVerifyConfig.mode === 'two_step' &&
                       !(
                         (transferVerifyConfig.twoStep?.skipForAdmin !== undefined
@@ -9190,8 +9382,10 @@ export default function POSPage() {
                           : (transferVerifyConfig.two_step?.skipForAdmin ?? true)) && isAdmin
                       ) &&
                       !capturedTransferProofImage &&
-                      !adminApprovedTransfer
-                    ? `Gửi Duyệt 2 Bước (${(grandTotal || 0).toLocaleString('vi-VN')}₫)`
+                      !adminApprovedTransfer)
+                    ? paymentMethod === 'split'
+                      ? `Gửi Duyệt CK 2 Bước (${splitTransferAmount.toLocaleString('vi-VN')}₫)`
+                      : `Gửi Duyệt 2 Bước (${(grandTotal || 0).toLocaleString('vi-VN')}₫)`
                     : fulfillmentType === 'shipping'
                     ? `Xác Nhận Đặt Bánh (Giá cuối: ${(grandTotal || 0).toLocaleString('vi-VN')}₫)`
                     : `Xác Nhận Thanh Toán (${(grandTotal || 0).toLocaleString('vi-VN')}₫)`}
@@ -9206,11 +9400,11 @@ export default function POSPage() {
       {isProofCameraOpen && (
         <TransferProofCameraModal
           orderNumber={activeCheckoutOrderNumber || 'BK-CK'}
-          amount={dueNow}
+          amount={paymentMethod === 'split' ? splitTransferAmount : dueNow}
           onConfirm={(imgBase64) => {
             setCapturedTransferProofImage(imgBase64);
             setIsProofCameraOpen(false);
-            handleCompleteOrder('transfer', imgBase64, activeCheckoutOrderNumber, true);
+            handleCompleteOrder(paymentMethod, imgBase64, activeCheckoutOrderNumber, true);
           }}
           onClose={() => setIsProofCameraOpen(false)}
         />
