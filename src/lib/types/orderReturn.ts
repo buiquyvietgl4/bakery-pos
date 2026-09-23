@@ -50,6 +50,8 @@ export interface OrderReturnRecord {
   exchange_payment_detail?: ExchangePaymentDetail;
   reason_summary: string;
   notes?: string;
+  customer_name?: string;
+  customer_phone?: string;
   approved_by: string; // Quản lý duyệt
   created_at: string;
 }

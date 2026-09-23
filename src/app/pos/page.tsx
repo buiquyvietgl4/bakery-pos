@@ -137,6 +137,8 @@ import { HeldOrder } from '@/lib/types/heldOrder';
 import { HeldOrdersModal } from '@/components/pos/HeldOrdersModal';
 import { ReturnExchangeModal } from '@/components/pos/ReturnExchangeModal';
 import { OrderReturnRecord } from '@/lib/types/orderReturn';
+import { matchesOrderSearch } from '@/lib/utils/orderSearch';
+import { getCashflow, saveCashflowLocally, saveCashflowToDb, CashflowTransaction } from '@/lib/utils/accountingSync';
 
 interface CartItem {
   product: CachedProduct;
@@ -2403,6 +2405,7 @@ export default function POSPage() {
             return {
               ...o,
               status: newStatus,
+              refunded_amount: (Number(o.refunded_amount) || 0) + (Number(returnRecord.refund_amount) || 0),
               return_records: [returnRecord, ...existingHistory],
             };
           }
@@ -2415,40 +2418,92 @@ export default function POSPage() {
         return updated;
       });
 
-      // Xử lý biến động quỹ tiền mặt ca bán (Shift Cash Sales):
-      // 1. Hoàn tiền mặt cho khách -> Giảm doanh thu tiền mặt ca bán
-      if (returnRecord.refund_method === 'cash' && returnRecord.refund_amount > 0) {
-        setShift((prev) => {
-          const updated: ShiftState = {
-            ...prev,
-            cashSales: Math.max(0, (prev.cashSales || 0) - returnRecord.refund_amount),
-          };
-          saveCurrentShiftLocally(updated);
-          saveCurrentShiftToDb(updated).catch(() => {});
-          return updated;
-        });
+      // Xử lý biến động quỹ tiền mặt & chuyển khoản ca bán (Shift State):
+      // - Hoàn tiền cho khách -> Tăng refundCash (hoặc refundTransfer), từ đó tự động trừ tiền két quầy (expectedCashInRegister)
+      // - Khách bù chênh lệch đổi bánh -> Tăng doanh thu ca bán (cashSales / transferSales)
+      const refundCashAdd = (returnRecord.refund_method === 'cash' && returnRecord.refund_amount > 0)
+        ? Number(returnRecord.refund_amount)
+        : 0;
+      const refundTransferAdd = (returnRecord.refund_method !== 'cash' && returnRecord.refund_amount > 0)
+        ? Number(returnRecord.refund_amount)
+        : 0;
+
+      let exchangeCashIn = 0;
+      let exchangeTransferIn = 0;
+      if (returnRecord.return_type === 'exchange' && (returnRecord.exchange_difference || 0) > 0) {
+        if (returnRecord.exchange_payment_detail?.method === 'split') {
+          exchangeCashIn = Number(returnRecord.exchange_payment_detail.cashAmount || 0);
+          exchangeTransferIn = Number(returnRecord.exchange_payment_detail.transferAmount || 0);
+        } else if (returnRecord.refund_method === 'cash') {
+          exchangeCashIn = Number(returnRecord.exchange_difference || 0);
+        } else {
+          exchangeTransferIn = Number(returnRecord.exchange_difference || 0);
+        }
       }
 
-      // 2. Khách bù thêm tiền mặt khi đổi bánh -> Tăng doanh thu tiền mặt ca bán
-      if (returnRecord.return_type === 'exchange' && (returnRecord.exchange_difference || 0) > 0) {
-        const cashIn =
-          returnRecord.exchange_payment_detail?.method === 'split'
-            ? (returnRecord.exchange_payment_detail.cashAmount || 0)
-            : returnRecord.refund_method === 'cash'
-            ? (returnRecord.exchange_difference || 0)
-            : 0;
+      setShift((prev) => {
+        const updated: ShiftState = {
+          ...prev,
+          cashSales: (prev.cashSales || 0) + exchangeCashIn,
+          transferSales: (prev.transferSales || 0) + exchangeTransferIn,
+          refundCash: (prev.refundCash || 0) + refundCashAdd,
+          refundTransfer: (prev.refundTransfer || 0) + refundTransferAdd,
+        };
+        saveCurrentShiftLocally(updated);
+        saveCurrentShiftToDb(updated).catch(() => {});
+        return updated;
+      });
 
-        if (cashIn > 0) {
-          setShift((prev) => {
-            const updated: ShiftState = {
-              ...prev,
-              cashSales: (prev.cashSales || 0) + cashIn,
-            };
-            saveCurrentShiftLocally(updated);
-            saveCurrentShiftToDb(updated).catch(() => {});
-            return updated;
+      // Ghi sổ quỹ thu chi dòng tiền (bakery_cashflow) để liên kết kế toán & sổ sách đầy đủ
+      try {
+        const currentCashflow = getCashflow();
+        const newTransactions: CashflowTransaction[] = [];
+        const nowIso = new Date().toISOString();
+
+        if (returnRecord.refund_amount > 0) {
+          const isCash = returnRecord.refund_method === 'cash';
+          newTransactions.push({
+            id: `ret-${returnRecord.id}`,
+            type: 'expense',
+            category: returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi hàng' : 'Chi hoàn tiền trả hàng',
+            amount: Number(returnRecord.refund_amount),
+            desc: `${returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi món' : 'Hoàn tiền trả hàng'} đơn #${orderNum} (${returnRecord.customer_name || 'Khách lẻ'}) - ${isCash ? 'Tiền mặt' : 'Chuyển khoản'}`,
+            date: nowIso,
+            method: isCash ? 'cash' : 'bank',
           });
         }
+
+        if (exchangeCashIn > 0) {
+          newTransactions.push({
+            id: `ex-cash-${returnRecord.id}`,
+            type: 'income',
+            category: 'Thu chênh lệch đổi hàng',
+            amount: exchangeCashIn,
+            desc: `Thu chênh lệch đổi món đơn #${orderNum} (Tiền mặt)`,
+            date: nowIso,
+            method: 'cash',
+          });
+        }
+
+        if (exchangeTransferIn > 0) {
+          newTransactions.push({
+            id: `ex-bank-${returnRecord.id}`,
+            type: 'income',
+            category: 'Thu chênh lệch đổi hàng',
+            amount: exchangeTransferIn,
+            desc: `Thu chênh lệch đổi món đơn #${orderNum} (Chuyển khoản)`,
+            date: nowIso,
+            method: 'bank',
+          });
+        }
+
+        if (newTransactions.length > 0) {
+          const updatedCashflow = [...newTransactions, ...currentCashflow];
+          saveCashflowLocally(updatedCashflow);
+          saveCashflowToDb(updatedCashflow, user?.name || 'Thu Ngân').catch(() => {});
+        }
+      } catch (cfErr) {
+        console.warn('Lỗi ghi sổ quỹ thu chi đổi trả:', cfErr);
       }
 
       returnRecord.items.forEach((it) => {
@@ -2539,8 +2594,8 @@ export default function POSPage() {
 
   const preorderFinalTotal = Math.max(0, cakePriceNum - preorderDiscountAmount) + preorderShippingFee;
 
-  // Expected Cash in Register
-  const expectedCashInRegister = (Number(shift.openingCash) || 0) + (Number(shift.cashSales) || 0);
+  // Expected Cash in Register = Opening Cash + Cash Sales - Refund Cash
+  const expectedCashInRegister = Math.max(0, (Number(shift.openingCash) || 0) + (Number(shift.cashSales) || 0) - (Number(shift.refundCash) || 0));
   const shiftCashDifference = (Number(closingCashInput) || 0) - expectedCashInRegister;
 
   // Handler cho đơn Bánh Sinh Nhật theo cơ chế Flowchart mới (BOM & Tồn kho & 36.5% cost)
@@ -3716,23 +3771,29 @@ export default function POSPage() {
   };
 
   const filteredInvoices = invoicesList.filter((inv: any) => {
-    const isPreorder = inv.order_type === 'preorder' || !!inv.pickupDateTime;
-    const isTakeaway = !isPreorder;
-    const method = inv.payment_method || inv.paymentMethod || (inv.payments?.[0]?.method) || 'cash';
-
-    if (invoiceFilter === 'takeaway' && !isTakeaway) return false;
-    if (invoiceFilter === 'preorder' && !isPreorder) return false;
-    if (invoiceFilter === 'cash' && method !== 'cash') return false;
-    if (invoiceFilter === 'transfer' && method === 'cash') return false;
-
-    if (invoiceSearchQuery.trim()) {
-      const q = invoiceSearchQuery.toLowerCase();
-      const num = String(inv.order_number || inv.orderNumber || '').toLowerCase();
-      const name = String(inv.customer_name || inv.customerName || '').toLowerCase();
-      const phone = String(inv.customer_phone || inv.customerPhone || '').toLowerCase();
-      const cake = String(inv.cakeName || inv.cake_name || '').toLowerCase();
-      return num.includes(q) || name.includes(q) || phone.includes(q) || cake.includes(q);
+    const q = invoiceSearchQuery.trim();
+    if (q) {
+      if (!matchesOrderSearch(inv, q)) return false;
     }
+
+    if (invoiceFilter === 'all') return true;
+
+    // Nếu người dùng đang tìm kiếm theo mã đơn cụ thể (bắt đầu bằng #, chứa 'bk', hoặc số dài),
+    // ưu tiên hiển thị đơn tìm kiếm mà không bị giới hạn bởi tab phân loại
+    const isCodeSearch = Boolean(
+      q && (q.startsWith('#') || q.toLowerCase().includes('bk') || /^\d{4,}/.test(q))
+    );
+    if (!isCodeSearch) {
+      const isPreorder = inv.order_type === 'preorder' || !!inv.pickupDateTime;
+      const isTakeaway = !isPreorder;
+      const method = inv.payment_method || inv.paymentMethod || (inv.payments?.[0]?.method) || 'cash';
+
+      if (invoiceFilter === 'takeaway' && !isTakeaway) return false;
+      if (invoiceFilter === 'preorder' && !isPreorder) return false;
+      if (invoiceFilter === 'cash' && method !== 'cash') return false;
+      if (invoiceFilter === 'transfer' && method === 'cash') return false;
+    }
+
     return true;
   });
 
@@ -7142,6 +7203,18 @@ export default function POSPage() {
                     <span>Doanh thu chuyển khoản/Ví (+):</span>
                     <span className="font-bold">+{(shift.transferSales || 0).toLocaleString('vi-VN')}₫</span>
                   </div>
+                  {(shift.refundCash || 0) > 0 && (
+                    <div className="flex justify-between items-center text-rose-600">
+                      <span>Chi hoàn trả / đổi hàng tiền mặt (-):</span>
+                      <span className="font-bold">-{(shift.refundCash || 0).toLocaleString('vi-VN')}₫</span>
+                    </div>
+                  )}
+                  {(shift.refundTransfer || 0) > 0 && (
+                    <div className="flex justify-between items-center text-rose-500">
+                      <span>Chi hoàn trả chuyển khoản/Ví (-):</span>
+                      <span className="font-bold">-{(shift.refundTransfer || 0).toLocaleString('vi-VN')}₫</span>
+                    </div>
+                  )}
                   <div className="flex justify-between items-center pt-2 border-t border-amber-200 font-black text-sm text-zinc-950">
                     <span>Tiền mặt lý thuyết trong két (=):</span>
                     <span className="text-amber-700 font-mono text-base">{(expectedCashInRegister || 0).toLocaleString('vi-VN')}₫</span>

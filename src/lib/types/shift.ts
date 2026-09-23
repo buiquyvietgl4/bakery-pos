@@ -9,6 +9,8 @@ export interface ShiftState {
   openingCash: number; // Tiền vốn đầu ca (tiền lẻ mở két)
   cashSales: number; // Tổng doanh thu bán tiền mặt trong ca
   transferSales: number; // Tổng doanh thu chuyển khoản/ví điện tử trong ca
+  refundCash?: number; // Tiền mặt đã chi hoàn trả / đổi trả trong ca
+  refundTransfer?: number; // Tiền chuyển khoản đã chi hoàn trả trong ca
   orderCount: number; // Tổng số đơn hàng bán trong ca
   openedBy?: string; // Tên nhân viên/thu ngân mở ca
   notes?: string;
@@ -27,9 +29,11 @@ export interface ShiftRecord {
   openingCash: number; // Tiền vốn đầu ca
   cashSales: number; // Doanh thu tiền mặt
   transferSales: number; // Doanh thu chuyển khoản/momo
-  totalRevenue: number; // Tổng doanh thu cả ca (tiền mặt + CK)
+  refundCash?: number; // Tiền mặt đã chi hoàn trả
+  refundTransfer?: number; // Tiền CK đã chi hoàn trả
+  totalRevenue: number; // Tổng doanh thu thuần cả ca
   orderCount: number; // Số lượng đơn hàng bán
-  expectedCash: number; // Tiền mặt lý thuyết trong két = openingCash + cashSales
+  expectedCash: number; // Tiền mặt lý thuyết trong két = openingCash + cashSales - refundCash
   closingCash: number; // Tiền mặt thực tế thu ngân đếm được
   difference: number; // Chênh lệch quỹ = closingCash - expectedCash (0: Khớp, >0: Thừa, <0: Thiếu)
   status: ShiftStatus; // Trạng thái cân quỹ

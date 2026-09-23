@@ -106,13 +106,20 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
     });
   }, [orders, prevStartDateMs, prevEndDateMs]);
 
-  // 2. Doanh thu thuần
+  const getOrderNetRevenue = (o: any) => {
+    if (o.status === 'refunded' || o.status === 'cancelled') return 0;
+    const amt = Number(o.total_amount || o.totalPrice || 0);
+    const refunded = Number(o.refunded_amount || 0);
+    return Math.max(0, amt - refunded);
+  };
+
+  // 2. Doanh thu thuần (đã trừ hoàn trả / đổi hàng)
   const totalRevenue = useMemo(() => {
-    return periodOrders.reduce((acc, o) => acc + Number(o.total_amount || o.totalPrice || 0), 0);
+    return periodOrders.reduce((acc, o) => acc + getOrderNetRevenue(o), 0);
   }, [periodOrders]);
 
   const prevRevenue = useMemo(() => {
-    return prevPeriodOrders.reduce((acc, o) => acc + Number(o.total_amount || o.totalPrice || 0), 0);
+    return prevPeriodOrders.reduce((acc, o) => acc + getOrderNetRevenue(o), 0);
   }, [prevPeriodOrders]);
 
   const revGrowthPct = useMemo(() => {
@@ -121,11 +128,11 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
     return Math.round(diff);
   }, [totalRevenue, prevRevenue]);
 
-  // Phân tách Doanh thu Tiền mặt & VietQR
+  // Phân tách Doanh thu Tiền mặt & VietQR thuần
   const cashRevenue = useMemo(() => {
     return periodOrders
       .filter(isOrderCash)
-      .reduce((acc, o) => acc + Number(o.total_amount || o.totalPrice || 0), 0);
+      .reduce((acc, o) => acc + getOrderNetRevenue(o), 0);
   }, [periodOrders]);
 
   const bankRevenue = totalRevenue - cashRevenue;

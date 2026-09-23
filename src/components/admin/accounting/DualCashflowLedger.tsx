@@ -110,10 +110,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
         if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
         const isIncome = c.type === 'income' || c.type === 'in';
         const isCash = !c.method || c.method === 'cash' || c.source === 'cash';
-        return isIncome && isCash;
+        if (!isIncome || !isCash) return false;
+        if (!c.date) return true;
+        const t = new Date(c.date).getTime();
+        return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
       .reduce((s, c) => s + Number(c.amount || 0), 0);
-  }, [cashflow]);
+  }, [cashflow, startDateMs, endDateMs]);
 
   const cfCashExpense = useMemo(() => {
     return cashflow
@@ -121,10 +124,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
         if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
         const isExpense = c.type === 'expense' || c.type === 'out';
         const isCash = !c.method || c.method === 'cash' || c.source === 'cash';
-        return isExpense && isCash;
+        if (!isExpense || !isCash) return false;
+        if (!c.date) return true;
+        const t = new Date(c.date).getTime();
+        return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
       .reduce((s, c) => s + Number(c.amount || 0), 0);
-  }, [cashflow]);
+  }, [cashflow, startDateMs, endDateMs]);
 
   const cfBankIncome = useMemo(() => {
     return cashflow
@@ -132,10 +138,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
         if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
         const isIncome = c.type === 'income' || c.type === 'in';
         const isBank = c.method === 'bank' || c.source === 'bank';
-        return isIncome && isBank;
+        if (!isIncome || !isBank) return false;
+        if (!c.date) return true;
+        const t = new Date(c.date).getTime();
+        return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
       .reduce((s, c) => s + Number(c.amount || 0), 0);
-  }, [cashflow]);
+  }, [cashflow, startDateMs, endDateMs]);
 
   const cfBankExpense = useMemo(() => {
     return cashflow
@@ -143,10 +152,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
         if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
         const isExpense = c.type === 'expense' || c.type === 'out';
         const isBank = c.method === 'bank' || c.source === 'bank';
-        return isExpense && isBank;
+        if (!isExpense || !isBank) return false;
+        if (!c.date) return true;
+        const t = new Date(c.date).getTime();
+        return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
       .reduce((s, c) => s + Number(c.amount || 0), 0);
-  }, [cashflow]);
+  }, [cashflow, startDateMs, endDateMs]);
 
   // Tổng hợp bao gồm cả cashflow
   const totalCashIncome = cashSalesIncome + cfCashIncome;
@@ -195,14 +207,14 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
       });
     });
 
-    // Các phiếu khác từ cashflow state
+    // Các phiếu khác từ cashflow state (hoàn trả, đổi hàng, nạp/rút quỹ)
     cashflow.forEach((c) => {
       if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return;
       list.push({
         id: c.id || 'cf-' + Math.random(),
-        date: c.date ? `${c.date}T10:00:00` : new Date().toISOString(),
+        date: c.date ? (String(c.date).includes('T') ? c.date : `${c.date}T10:00:00`) : new Date().toISOString(),
         type: c.type || 'expense',
-        source: c.source || 'cash',
+        source: c.source || c.method || 'cash',
         category: c.category || 'Thu chi khác',
         desc: c.desc || 'Nghiệp vụ quỹ',
         amount: Number(c.amount || 0),

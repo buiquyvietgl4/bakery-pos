@@ -43,6 +43,7 @@ import {
 } from '@/lib/types/orderReturn';
 import { getVietqrConfig, VietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 import { useAuth } from '@/lib/auth/AuthContext';
+import { matchesOrderSearch } from '@/lib/utils/orderSearch';
 import { soundManager } from '@/lib/utils/audioAlert';
 import {
   broadcastReturnApprovalRequest,
@@ -145,14 +146,8 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
 
   // Lọc tìm hóa đơn
   const filteredOrders = useMemo(() => {
-    if (!searchQuery.trim()) return ordersList.slice(0, 8);
-    const q = searchQuery.toLowerCase().trim();
-    return ordersList.filter((o) => {
-      const num = (o.order_number || o.orderNumber || '').toLowerCase();
-      const phone = (o.customer_phone || o.customerPhone || '').toLowerCase();
-      const name = (o.customer_name || o.customerName || '').toLowerCase();
-      return num.includes(q) || phone.includes(q) || name.includes(q);
-    });
+    if (!searchQuery.trim()) return ordersList.slice(0, 15);
+    return ordersList.filter((o) => matchesOrderSearch(o, searchQuery));
   }, [ordersList, searchQuery]);
 
   // Lọc sản phẩm đổi
@@ -565,6 +560,8 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
         exchange_difference: returnType === 'exchange' ? exchangeDifference : undefined,
         exchange_payment_detail: exchangePaymentDetail,
         reason_summary: returnedItemsList.map((ri) => `${ri.quantity}x ${ri.product_name} (${ri.reason})`).join(', '),
+        customer_name: selectedOrder?.customer_name || selectedOrder?.customerName || '',
+        customer_phone: selectedOrder?.customer_phone || selectedOrder?.customerPhone || '',
         approved_by: approverName || cashierName || 'Quản lý',
         created_at: new Date().toISOString(),
       };

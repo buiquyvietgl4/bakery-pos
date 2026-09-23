@@ -46,6 +46,8 @@ export function createInitialShift(openingCash: number = 0, openedBy: string = '
     openingCash,
     cashSales: 0,
     transferSales: 0,
+    refundCash: 0,
+    refundTransfer: 0,
     orderCount: 0,
     openedBy,
   };
@@ -74,6 +76,8 @@ export function getCurrentShiftLocally(): ShiftState {
           openingCash: Number(parsed.openingCash !== undefined ? parsed.openingCash : 0),
           cashSales: Number(parsed.cashSales ?? 0),
           transferSales: Number(parsed.transferSales ?? 0),
+          refundCash: Number(parsed.refundCash ?? 0),
+          refundTransfer: Number(parsed.refundTransfer ?? 0),
           orderCount: Number(parsed.orderCount ?? 0),
           openedBy: parsed.openedBy || 'Thu Ngân',
           notes: parsed.notes,
@@ -140,6 +144,8 @@ export async function fetchCurrentShiftFromDb(): Promise<ShiftState> {
             openingCash: Number(parsed.openingCash !== undefined ? parsed.openingCash : fallback.openingCash),
             cashSales: Number(parsed.cashSales ?? 0),
             transferSales: Number(parsed.transferSales ?? 0),
+            refundCash: Number(parsed.refundCash ?? 0),
+            refundTransfer: Number(parsed.refundTransfer ?? 0),
             orderCount: Number(parsed.orderCount ?? 0),
             openedBy: parsed.openedBy || fallback.openedBy || 'Thu Ngân',
             notes: parsed.notes,
@@ -248,7 +254,9 @@ export function getShiftHistoryLocally(): ShiftRecord[] {
                 openingCash: Math.round(Number(item.openingCash ?? 0)),
                 cashSales: Math.round(Number(item.cashSales ?? 0)),
                 transferSales: Math.round(Number(item.transferSales ?? 0)),
-                totalRevenue: Math.round(Number(item.totalRevenue ?? (Number(item.cashSales || 0) + Number(item.transferSales || 0)))),
+                refundCash: Math.round(Number(item.refundCash ?? 0)),
+                refundTransfer: Math.round(Number(item.refundTransfer ?? 0)),
+                totalRevenue: Math.round(Number(item.totalRevenue ?? Math.max(0, (Number(item.cashSales || 0) + Number(item.transferSales || 0)) - (Number(item.refundCash || 0) + Number(item.refundTransfer || 0))))),
                 status: diff === 0 ? 'balanced' : diff > 0 ? 'surplus' : 'shortage',
               };
             });
@@ -320,7 +328,9 @@ export async function fetchShiftHistoryFromDb(): Promise<ShiftRecord[]> {
                 openingCash: Math.round(Number(item.openingCash ?? 0)),
                 cashSales: Math.round(Number(item.cashSales ?? 0)),
                 transferSales: Math.round(Number(item.transferSales ?? 0)),
-                totalRevenue: Math.round(Number(item.totalRevenue ?? (Number(item.cashSales || 0) + Number(item.transferSales || 0)))),
+                refundCash: Math.round(Number(item.refundCash ?? 0)),
+                refundTransfer: Math.round(Number(item.refundTransfer ?? 0)),
+                totalRevenue: Math.round(Number(item.totalRevenue ?? Math.max(0, (Number(item.cashSales || 0) + Number(item.transferSales || 0)) - (Number(item.refundCash || 0) + Number(item.refundTransfer || 0))))),
                 status: diff === 0 ? 'balanced' : diff > 0 ? 'surplus' : 'shortage',
               };
             });
@@ -409,10 +419,12 @@ export async function closeShiftAndOpenNew(params: {
   const openingCash = Number(current.openingCash || 0);
   const cashSales = Number(current.cashSales || 0);
   const transferSales = Number(current.transferSales || 0);
-  const totalRevenue = cashSales + transferSales;
+  const refundCash = Number(current.refundCash || 0);
+  const refundTransfer = Number(current.refundTransfer || 0);
+  const totalRevenue = Math.max(0, (cashSales + transferSales) - (refundCash + refundTransfer));
   const orderCount = Number(current.orderCount || 0);
 
-  const expectedCash = openingCash + cashSales;
+  const expectedCash = Math.max(0, openingCash + cashSales - refundCash);
   const closingCash = Number(params.closingCash || 0);
   const difference = closingCash - expectedCash;
 
@@ -434,6 +446,8 @@ export async function closeShiftAndOpenNew(params: {
     openingCash,
     cashSales,
     transferSales,
+    refundCash,
+    refundTransfer,
     totalRevenue,
     orderCount,
     expectedCash,
@@ -539,6 +553,8 @@ export function printShiftHandoverReceipt(record: ShiftRecord, storeInfo?: any):
   <div class="row"><span>Tiền vốn đầu ca:</span><span class="font-bold">${formatVnd(record.openingCash)}</span></div>
   <div class="row"><span>Doanh thu tiền mặt (+):</span><span class="font-bold">${formatVnd(record.cashSales)}</span></div>
   <div class="row"><span>Doanh thu CK/Ví (+):</span><span class="font-bold">${formatVnd(record.transferSales)}</span></div>
+  ${(record.refundCash || 0) > 0 ? `<div class="row" style="color: #b91c1c;"><span>Chi hoàn trả tiền mặt (-):</span><span class="font-bold">-${formatVnd(record.refundCash || 0)}</span></div>` : ''}
+  ${(record.refundTransfer || 0) > 0 ? `<div class="row" style="color: #b91c1c;"><span>Chi hoàn trả CK/Ví (-):</span><span class="font-bold">-${formatVnd(record.refundTransfer || 0)}</span></div>` : ''}
   <div class="row font-bold" style="font-size: 13px;"><span>TỔNG DOANH THU:</span><span>${formatVnd(record.totalRevenue)}</span></div>
 
   <div class="divider"></div>
