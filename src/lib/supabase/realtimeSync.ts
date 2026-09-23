@@ -2059,6 +2059,8 @@ export function parseOrderBakeShortage(order: any): OrderBakeShortageInfo {
   // 1. Kiểm tra trạng thái đã hoàn thành nướng đủ
   const isExplicitlyDone = Boolean(
     order.bake_status === 'done' || 
+    order.status === 'ready' ||
+    order.status === 'completed' ||
     notes.includes('ĐÃ BẾP LÀM XONG ĐỦ') ||
     notes.includes('✓ ĐÃ BẾP LÀM XONG ĐỦ')
   );

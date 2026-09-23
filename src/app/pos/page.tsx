@@ -1943,6 +1943,20 @@ export default function POSPage() {
             // Đơn vừa được POS hoàn tất trong 60s, không để polling đè lại trạng thái cũ
             return;
           }
+          const STATUS_RANK: Record<string, number> = {
+            pending: 1,
+            preparing: 2,
+            ready: 3,
+            completed: 4,
+            cancelled: 0,
+          };
+          const existRank = STATUS_RANK[exist.status || ''] || 0;
+          const finalRank = STATUS_RANK[finalStatus || ''] || 0;
+          if (existRank > finalRank && finalStatus !== 'cancelled') {
+            // Local đang ở bước cao hơn (ví dụ đã ready/completed trong khi Supabase vẫn pending/preparing)
+            // TUYỆT ĐỐI không để dữ liệu Supabase đang trễ kéo lùi trạng thái đơn!
+            return;
+          }
           exist.status = finalStatus;
           if (finalStatus === 'completed') {
             exist.remaining_amount = 0;
