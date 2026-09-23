@@ -172,6 +172,26 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
     ];
   }, [selectedOrder]);
 
+  // Toàn bộ các phiếu đổi trả trước đây của selectedOrder (nếu có)
+  const selectedOrderReturnRecords = useMemo(() => {
+    if (!selectedOrder) return [];
+    const orderNumClean = String(selectedOrder.order_number || selectedOrder.orderNumber || '').replace(/^#/, '').trim().toLowerCase();
+    const orderIdClean = String(selectedOrder.id || '').replace(/^#/, '').trim().toLowerCase();
+    let records: OrderReturnRecord[] = selectedOrder.return_records || [];
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = JSON.parse(localStorage.getItem('bakery_order_returns') || '[]');
+        const extra = stored.filter((r: any) => {
+          const rNum = String(r.order_number || '').replace(/^#/, '').trim().toLowerCase();
+          const rId = String(r.order_id || '').replace(/^#/, '').trim().toLowerCase();
+          return (rNum && rNum === orderNumClean) || (rId && rId === orderIdClean);
+        });
+        records = [...records, ...extra].filter((r, i, arr) => arr.findIndex(x => x.id === r.id) === i);
+      } catch {}
+    }
+    return records;
+  }, [selectedOrder]);
+
   // Tính tổng tiền hoàn lại từ các món đã chọn trả
   const refundTotalAmount = useMemo(() => {
     let sum = 0;
@@ -909,6 +929,17 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
 
                     {/* BẢNG CHỌN MÓN CẦN TRẢ */}
                     <div className="space-y-2">
+                      {selectedOrderReturnRecords.length > 0 && (
+                        <div className="p-2.5 rounded-2xl bg-amber-50/90 border border-amber-200 text-amber-900 text-xs flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span>
+                              Đơn này đã có <b>{selectedOrderReturnRecords.length} phiếu đổi/trả</b> trước đó. Hệ thống đã tự động khấu trừ số lượng các món đã trả.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between text-xs font-bold text-zinc-700">
                         <span>1. Chọn các món khách trả lại:</span>
                         <span className="text-[11px] text-zinc-400">Chọn số lượng {'>'} 0 để hoàn trả</span>
@@ -922,7 +953,24 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                             restocked: true,
                             notes: '',
                           };
-                          const maxQty = Number(it.quantity || 1);
+
+                          const totalBought = Number(it.quantity || 1);
+                          const itName = String(it.product_name_snapshot || it.product?.name || it.name || '').trim().toLowerCase();
+                          const itId = String(it.product_id || it.product?.id || '').trim().toLowerCase();
+
+                          // Tính số lượng món này đã hoàn trả trước đó từ các phiếu của selectedOrder
+                          let alreadyReturnedCount = 0;
+                          selectedOrderReturnRecords.forEach((pr) => {
+                            pr.items?.forEach((pri: any) => {
+                              const priName = String(pri.product_name || '').trim().toLowerCase();
+                              const priId = String(pri.product_id || '').trim().toLowerCase();
+                              if ((itId && priId && itId === priId) || (itName && priName && itName === priName)) {
+                                alreadyReturnedCount += Number(pri.quantity || 0);
+                              }
+                            });
+                          });
+
+                          const availableToReturn = Math.max(0, totalBought - alreadyReturnedCount);
                           const unitPrice = Number(
                             it.unit_price ||
                             it.product?.selling_price ||
@@ -947,35 +995,47 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                                     {it.product_name_snapshot || it.product?.name || it.name || 'Bánh'}
                                   </div>
                                   <div className="text-[11px] text-zinc-500">
-                                    Đã mua: <b>{maxQty} cái</b> • Giá: {unitPrice.toLocaleString('vi-VN')}₫/cái
+                                    Đã mua: <b>{totalBought} cái</b>
+                                    {alreadyReturnedCount > 0 && (
+                                      <span className="text-rose-600 font-bold ml-1.5">
+                                        • Đã trả trước đó: {alreadyReturnedCount} (còn lại: {availableToReturn})
+                                      </span>
+                                    )}
+                                    <span className="ml-1.5">• Giá: {unitPrice.toLocaleString('vi-VN')}₫/cái</span>
                                   </div>
                                 </div>
 
                                 {/* Bộ đếm số lượng trả */}
                                 <div className="flex items-center gap-2">
-                                  <div className="flex items-center bg-white border border-stone-200 rounded-xl p-0.5">
-                                    <button
-                                      type="button"
-                                      data-testid={`btn-decrease-return-${idx}`}
-                                      disabled={state.qty === 0}
-                                      onClick={() => handleItemQtyChange(idx, -1, maxQty)}
-                                      className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:bg-stone-100 disabled:opacity-30 cursor-pointer"
-                                    >
-                                      <Minus className="w-3.5 h-3.5" />
-                                    </button>
-                                    <span className="w-8 text-center font-black text-xs text-zinc-900">
-                                      {state.qty}
+                                  {availableToReturn === 0 ? (
+                                    <span className="text-[11px] font-bold text-zinc-500 bg-zinc-200/80 px-2.5 py-1 rounded-xl">
+                                      Đã trả hết ({totalBought}/{totalBought})
                                     </span>
-                                    <button
-                                      type="button"
-                                      data-testid={`btn-increase-return-${idx}`}
-                                      disabled={state.qty >= maxQty}
-                                      onClick={() => handleItemQtyChange(idx, 1, maxQty)}
-                                      className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:bg-stone-100 disabled:opacity-30 cursor-pointer"
-                                    >
-                                      <Plus className="w-3.5 h-3.5" />
-                                    </button>
-                                  </div>
+                                  ) : (
+                                    <div className="flex items-center bg-white border border-stone-200 rounded-xl p-0.5">
+                                      <button
+                                        type="button"
+                                        data-testid={`btn-decrease-return-${idx}`}
+                                        disabled={state.qty === 0}
+                                        onClick={() => handleItemQtyChange(idx, -1, availableToReturn)}
+                                        className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:bg-stone-100 disabled:opacity-30 cursor-pointer"
+                                      >
+                                        <Minus className="w-3.5 h-3.5" />
+                                      </button>
+                                      <span className="w-8 text-center font-black text-xs text-zinc-900">
+                                        {state.qty}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        data-testid={`btn-increase-return-${idx}`}
+                                        disabled={state.qty >= availableToReturn}
+                                        onClick={() => handleItemQtyChange(idx, 1, availableToReturn)}
+                                        className="w-7 h-7 rounded-lg flex items-center justify-center text-zinc-600 hover:bg-stone-100 disabled:opacity-30 cursor-pointer"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
 

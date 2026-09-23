@@ -687,6 +687,16 @@ export default function POSPage() {
     return [];
   });
 
+  const [allOrderReturns, setAllOrderReturns] = useState<OrderReturnRecord[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const raw = localStorage.getItem('bakery_order_returns');
+        if (raw) return JSON.parse(raw);
+      } catch {}
+    }
+    return [];
+  });
+
   // ── ÂM BÁO & CẢNH BÁO ĐƠN SẮP PHẢI GIAO ──
   const [soundEnabled, setSoundEnabled] = useState(() => soundManager.isEnabled());
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -2392,6 +2402,7 @@ export default function POSPage() {
       const existingReturns = JSON.parse(localStorage.getItem('bakery_order_returns') || '[]');
       const updatedReturns = [returnRecord, ...existingReturns];
       localStorage.setItem('bakery_order_returns', JSON.stringify(updatedReturns));
+      setAllOrderReturns(updatedReturns);
 
       const orderNum = returnRecord.order_number;
       const normOrderNum = String(orderNum || '').replace(/^#/, '').trim().toLowerCase();
@@ -2399,7 +2410,14 @@ export default function POSPage() {
         const updated = prev.map((o) => {
           const currentNum = String(o.order_number || o.orderNumber || '').replace(/^#/, '').trim().toLowerCase();
           if (currentNum === normOrderNum) {
-            const isFullRefund = returnRecord.return_type === 'refund' && returnRecord.items.reduce((s, it) => s + it.quantity, 0) >= (o.items?.reduce((s: number, it: any) => s + it.quantity, 0) || 1);
+            const previousReturnedItemsQty = (o.return_records || []).reduce((sum: number, rec: any) => {
+              return sum + (rec.items?.reduce((s: number, it: any) => s + Number(it.quantity || 0), 0) || 0);
+            }, 0);
+            const currentReturnQty = returnRecord.items.reduce((s, it) => s + Number(it.quantity || 0), 0);
+            const totalReturnedQty = previousReturnedItemsQty + currentReturnQty;
+            const originalOrderTotalItems = o.items?.reduce((s: number, it: any) => s + Number(it.quantity || 1), 0) || 1;
+
+            const isFullRefund = totalReturnedQty >= originalOrderTotalItems;
             const newStatus = isFullRefund ? 'refunded' : 'partially_refunded';
             const existingHistory = o.return_records || [];
             return {
@@ -6803,6 +6821,28 @@ export default function POSPage() {
                   const remaining = Number(inv.remaining_amount ?? inv.remainingAmount ?? fromNotes.remaining_amount ?? Math.max(0, total - deposit));
                   const items = Array.isArray(inv.items) ? inv.items : [];
 
+                  // Tìm kiếm toàn bộ các phiếu hoàn trả / đổi hàng liên kết với đơn này
+                  const orderNumClean = String(orderNum || '').replace(/^#/, '').trim().toLowerCase();
+                  const orderIdClean = String(inv.id || '').replace(/^#/, '').trim().toLowerCase();
+
+                  const invReturnRecords: OrderReturnRecord[] = [
+                    ...(inv.return_records || []),
+                    ...allOrderReturns.filter((r) => {
+                      const rNum = String(r.order_number || '').replace(/^#/, '').trim().toLowerCase();
+                      const rId = String(r.order_id || '').replace(/^#/, '').trim().toLowerCase();
+                      return (rNum && rNum === orderNumClean) || (rId && rId === orderIdClean);
+                    }),
+                  ].filter((rec, idx, self) => self.findIndex((x) => x.id === rec.id) === idx);
+
+                  const invRefundedAmount = Number(inv.refunded_amount || 0) || invReturnRecords.reduce((s, r) => s + Number(r.refund_amount || 0), 0);
+
+                  // Kiểm tra tổng số lượng bánh đã trả so với tổng số lượng mua
+                  const totalBoughtItemsQty = items.reduce((s: number, it: any) => s + Number(it.quantity || 1), 0) || 1;
+                  const totalReturnedItemsQty = invReturnRecords.reduce((sum, r) => {
+                    return sum + (r.items?.reduce((s, ri) => s + Number(ri.quantity || 0), 0) || 0);
+                  }, 0);
+                  const isAllReturned = (totalReturnedItemsQty >= totalBoughtItemsQty && totalBoughtItemsQty > 0) || inv.status === 'refunded';
+
                   return (
                     <div
                       key={inv.id || orderNum}
@@ -6821,17 +6861,25 @@ export default function POSPage() {
 
                         <div className="flex items-center gap-1.5">
                           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                            inv.status === 'completed'
+                            isAllReturned
+                              ? 'bg-red-100 text-red-700'
+                              : invReturnRecords.length > 0
+                              ? 'bg-orange-100 text-orange-700'
+                              : inv.status === 'completed'
                               ? 'bg-emerald-100 text-emerald-800'
                               : inv.status === 'ready'
                               ? 'bg-blue-100 text-blue-800'
-                              : inv.status === 'refunded'
-                              ? 'bg-red-100 text-red-700'
-                              : inv.status === 'partially_refunded'
-                              ? 'bg-orange-100 text-orange-700'
                               : 'bg-amber-100 text-amber-800'
                           }`}>
-                            {inv.status === 'completed' ? '✓ Đã hoàn tất' : inv.status === 'ready' ? 'Sẵn sàng giao' : inv.status === 'refunded' ? '↩ Đã trả hàng' : inv.status === 'partially_refunded' ? '↩ Đã đổi hàng' : 'Đang xử lý'}
+                            {isAllReturned
+                              ? '↩ Đã hoàn trả đủ'
+                              : invReturnRecords.length > 0
+                              ? '↩ Đã đổi/trả 1 phần'
+                              : inv.status === 'completed'
+                              ? '✓ Đã hoàn tất'
+                              : inv.status === 'ready'
+                              ? 'Sẵn sàng giao'
+                              : 'Đang xử lý'}
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-700">
                             {inv.payment_method === 'cash' || inv.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / Ví'}
@@ -6903,17 +6951,80 @@ export default function POSPage() {
                       {/* Items list */}
                       <div className="text-xs divide-y divide-zinc-200/50 bg-white/70 rounded-xl p-2.5 border border-zinc-200/60 space-y-1">
                         {items.length > 0 ? (
-                          items.map((it: any, idx: number) => (
-                            <div key={idx} className="flex justify-between py-1 text-zinc-800">
-                              <span>
-                                <span className="font-bold text-amber-700 mr-1.5">{it.quantity}x</span>
-                                {it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm'}
-                              </span>
-                              <span className="font-bold">
-                                {(((Number(it.unit_price) || Number(it.product?.selling_price) || Number(it.product?.price) || 0) * (Number(it.quantity) || 1))).toLocaleString('vi-VN')}₫
-                              </span>
-                            </div>
-                          ))
+                          items.map((it: any, idx: number) => {
+                            const itName = String(it.product_name_snapshot || it.product?.name || it.name || '').trim().toLowerCase();
+                            const itId = String(it.product_id || it.product?.id || '').trim().toLowerCase();
+
+                            // Tìm trong các phiếu đổi trả xem món này đã trả/đổi bao nhiêu
+                            let itReturnedQty = 0;
+                            let itExchangedQty = 0;
+                            const itReasons: string[] = [];
+
+                            invReturnRecords.forEach((r) => {
+                              r.items?.forEach((ri) => {
+                                const riName = String(ri.product_name || '').trim().toLowerCase();
+                                const riId = String(ri.product_id || '').trim().toLowerCase();
+                                if ((itId && riId && itId === riId) || (itName && riName && itName === riName)) {
+                                  if (r.return_type === 'exchange') {
+                                    itExchangedQty += Number(ri.quantity || 0);
+                                  } else {
+                                    itReturnedQty += Number(ri.quantity || 0);
+                                  }
+                                  if (ri.reason) {
+                                    const rText = ri.reason === 'damaged' ? 'Lỗi/hỏng' : ri.reason === 'expired' ? 'Cận date' : ri.reason === 'wrong_item' ? 'Nhầm món' : 'Khách đổi ý';
+                                    if (!itReasons.includes(rText)) itReasons.push(rText);
+                                  }
+                                }
+                              });
+                            });
+
+                            const totalThisItemReturned = itReturnedQty + itExchangedQty;
+                            const itOriginalQty = Number(it.quantity || 1);
+                            const remainingQty = Math.max(0, itOriginalQty - totalThisItemReturned);
+                            const itemUnitPrice = Number(it.unit_price) || Number(it.product?.selling_price) || Number(it.product?.price) || 0;
+
+                            return (
+                              <div key={idx} className="flex flex-col py-1 text-zinc-800 space-y-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="flex-1">
+                                    <span className="font-bold text-amber-700 mr-1.5">{itOriginalQty}x</span>
+                                    <span className={remainingQty === 0 && totalThisItemReturned > 0 ? "line-through text-zinc-400 font-medium" : "font-medium"}>
+                                      {it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm'}
+                                    </span>
+                                  </div>
+                                  <span className={remainingQty === 0 && totalThisItemReturned > 0 ? "font-bold line-through text-zinc-400" : "font-bold"}>
+                                    {(itemUnitPrice * itOriginalQty).toLocaleString('vi-VN')}₫
+                                  </span>
+                                </div>
+
+                                {/* Chi tiết số lượng trả / đổi cho món này nếu có */}
+                                {totalThisItemReturned > 0 && (
+                                  <div className="flex flex-wrap items-center gap-1.5 pl-4 text-[10px]">
+                                    {itReturnedQty > 0 && (
+                                      <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
+                                        ↩ Đã hoàn trả: {itReturnedQty} cái
+                                        {itReasons.length > 0 && ` (${itReasons.join(', ')})`}
+                                      </span>
+                                    )}
+                                    {itExchangedQty > 0 && (
+                                      <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
+                                        ⇄ Đã đổi sang món khác: {itExchangedQty} cái
+                                      </span>
+                                    )}
+                                    {remainingQty > 0 ? (
+                                      <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                                        Còn giữ lại: {remainingQty} cái
+                                      </span>
+                                    ) : (
+                                      <span className="font-semibold text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200">
+                                        Đã trả đủ ({itOriginalQty}/{itOriginalQty})
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })
                         ) : (
                           <div className="flex justify-between py-1 text-zinc-800">
                             <span>{inv.cakeName || 'Đơn hàng bánh'}</span>
@@ -6922,10 +7033,109 @@ export default function POSPage() {
                         )}
                       </div>
 
+                      {/* BẢNG CHI TIẾT CÁC PHIẾU ĐỔI TRẢ & HOÀN TIỀN CỦA ĐƠN HÀNG */}
+                      {invReturnRecords.length > 0 && (
+                        <div className="bg-rose-50/70 border border-rose-200/90 rounded-xl p-3 text-xs space-y-2 animate-in fade-in-50">
+                          <div className="flex flex-wrap items-center justify-between gap-1 border-b border-rose-200/80 pb-1.5">
+                            <div className="flex items-center gap-1.5 font-bold text-rose-900">
+                              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                              <span>LỊCH SỬ ĐỔI TRẢ / HOÀN TIỀN ({invReturnRecords.length} phiếu)</span>
+                            </div>
+                            {invRefundedAmount > 0 && (
+                              <span className="font-bold text-rose-700 bg-rose-100/90 px-2 py-0.5 rounded-full text-[11px] border border-rose-200">
+                                Tổng hoàn tiền: -{invRefundedAmount.toLocaleString('vi-VN')}₫
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="space-y-2">
+                            {invReturnRecords.map((r, rIdx) => {
+                              const rMethodStr = r.refund_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản';
+                              return (
+                                <div key={r.id || rIdx} className="bg-white/90 p-2.5 rounded-lg border border-rose-100 space-y-1.5 shadow-xs">
+                                  <div className="flex items-center justify-between text-[11px] font-bold">
+                                    <span className={r.return_type === 'exchange' ? "text-amber-800 flex items-center gap-1" : "text-rose-700 flex items-center gap-1"}>
+                                      {r.return_type === 'exchange' ? '⇄ Phiếu Đổi Hàng' : '↩ Phiếu Trả Hàng Hoàn Tiền'} #{r.id}
+                                    </span>
+                                    <span className="text-zinc-500 font-normal">
+                                      {r.created_at ? new Date(r.created_at).toLocaleString('vi-VN') : ''}
+                                    </span>
+                                  </div>
+
+                                  {/* Các món bánh đã hoàn trả */}
+                                  <div className="space-y-1 pl-2 border-l-2 border-rose-300">
+                                    <div className="text-[11px] font-bold text-rose-800">Bánh hoàn trả lại tiệm:</div>
+                                    {r.items?.map((ri: any, idx: number) => (
+                                      <div key={idx} className="flex justify-between items-center text-[11px]">
+                                        <span className="text-zinc-800">
+                                          • <b className="text-rose-700">{ri.quantity}x</b> {ri.product_name}
+                                          {ri.reason && (
+                                            <span className="text-zinc-500 italic">
+                                              {' '}({ri.reason === 'damaged' ? 'Bánh lỗi/hỏng' : ri.reason === 'expired' ? 'Cận date' : ri.reason === 'wrong_item' ? 'Nhầm món' : 'Khách đổi ý'})
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span className="font-bold text-rose-600">
+                                          -{(Number(ri.refund_subtotal) || (Number(ri.unit_price || 0) * Number(ri.quantity || 1))).toLocaleString('vi-VN')}₫
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+
+                                  {/* Nếu là đổi hàng, hiển thị bánh đổi sang */}
+                                  {r.return_type === 'exchange' && r.exchange_replacement_items && r.exchange_replacement_items.length > 0 && (
+                                    <div className="space-y-1 pl-2 border-l-2 border-amber-300 pt-1">
+                                      <div className="text-[11px] font-bold text-amber-800">Bánh mới đổi sang:</div>
+                                      {r.exchange_replacement_items.map((ep: any, idx: number) => (
+                                        <div key={idx} className="flex justify-between items-center text-[11px]">
+                                          <span className="text-zinc-800">
+                                            • <b className="text-amber-700">{ep.quantity}x</b> {ep.product_name}
+                                          </span>
+                                          <span className="font-bold text-zinc-900">
+                                            +{(Number(ep.line_total) || (Number(ep.unit_price || 0) * Number(ep.quantity || 1))).toLocaleString('vi-VN')}₫
+                                          </span>
+                                        </div>
+                                      ))}
+                                      {r.exchange_difference !== undefined && (
+                                        <div className="flex justify-between text-[11px] font-bold pt-0.5 text-zinc-900">
+                                          <span>{r.exchange_difference > 0 ? 'Khách bù thêm:' : r.exchange_difference < 0 ? 'Tiệm hoàn lại:' : 'Đổi ngang giá:'}</span>
+                                          <span className={r.exchange_difference > 0 ? "text-emerald-700" : "text-rose-600"}>
+                                            {Math.abs(r.exchange_difference).toLocaleString('vi-VN')}₫ ({rMethodStr})
+                                          </span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+
+                                  <div className="flex flex-wrap items-center justify-between text-[10px] text-zinc-500 pt-1 border-t border-zinc-100">
+                                    <span>Người duyệt: <b>{r.approved_by || 'Quản lý'}</b></span>
+                                    {r.refund_amount > 0 && (
+                                      <span className="font-bold text-rose-600">
+                                        Đã chi hoàn trả: {r.refund_amount.toLocaleString('vi-VN')}₫ ({rMethodStr})
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
                       {/* Totals & Actions */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-200 text-xs">
-                        <div className="space-x-3">
-                          <span>Tổng cộng: <b className="text-zinc-900">{(total || 0).toLocaleString('vi-VN')}₫</b></span>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <span>Tổng ban đầu: <b className="text-zinc-900">{(total || 0).toLocaleString('vi-VN')}₫</b></span>
+                          {invRefundedAmount > 0 && (
+                            <span className="text-rose-600 font-bold bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+                              Đã hoàn lại: -{(invRefundedAmount || 0).toLocaleString('vi-VN')}₫
+                            </span>
+                          )}
+                          {invRefundedAmount > 0 && (
+                            <span className="text-zinc-700">
+                              Thực thu: <b className="text-emerald-700">{Math.max(0, total - invRefundedAmount).toLocaleString('vi-VN')}₫</b>
+                            </span>
+                          )}
                           {deposit > 0 && (
                             <span className="text-emerald-700">Đã cọc: <b>{(deposit || 0).toLocaleString('vi-VN')}₫</b></span>
                           )}
@@ -7010,16 +7220,11 @@ export default function POSPage() {
                             <span>In Tem Hộp</span>
                           </button>
 
-                          {/* Nút Đổi Trả / Hoàn Tiền — hoặc hiện trạng thái nếu đơn đã hoàn trả */}
-                          {inv.status === 'refunded' ? (
+                          {/* Nút Đổi Trả / Hoàn Tiền */}
+                          {isAllReturned ? (
                             <span className="px-2.5 py-1.5 rounded-xl bg-red-50 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1">
                               <RotateCcw className="w-3.5 h-3.5 text-red-400" />
-                              <span>Đã trả hàng</span>
-                            </span>
-                          ) : inv.status === 'partially_refunded' ? (
-                            <span className="px-2.5 py-1.5 rounded-xl bg-orange-50 text-orange-600 border border-orange-200 text-xs font-bold flex items-center gap-1">
-                              <RotateCcw className="w-3.5 h-3.5 text-orange-400" />
-                              <span>Đã đổi hàng</span>
+                              <span>Đã trả toàn bộ</span>
                             </span>
                           ) : (
                             <button
@@ -7028,11 +7233,15 @@ export default function POSPage() {
                                 setOrderToReturn(inv);
                                 setIsReturnExchangeModalOpen(true);
                               }}
-                              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                              title="Tạo phiếu đổi hàng hoặc hoàn tiền cho đơn này"
+                              className={`px-2.5 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+                                invReturnRecords.length > 0
+                                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-300'
+                                  : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border-rose-200'
+                              }`}
+                              title={invReturnRecords.length > 0 ? "Đổi hoặc trả thêm cho các món còn lại trong đơn" : "Tạo phiếu đổi hàng hoặc hoàn tiền cho đơn này"}
                             >
-                              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                              <span>Đổi / Trả</span>
+                              <RotateCcw className={`w-3.5 h-3.5 ${invReturnRecords.length > 0 ? 'text-amber-600' : 'text-rose-600'}`} />
+                              <span>{invReturnRecords.length > 0 ? 'Đổi / Trả Tiếp' : 'Đổi / Trả'}</span>
                             </button>
                           )}
 
