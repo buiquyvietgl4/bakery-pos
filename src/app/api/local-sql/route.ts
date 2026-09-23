@@ -8,85 +8,18 @@ import path from 'path';
 import os from 'os';
 import { generateMasterSqlDump, generateSchemaSql } from '@/lib/utils/localSqlManager';
 
+export const dynamic = 'force-dynamic';
+
 export function findFolderPath(folderName: string): string | null {
   if (!folderName || typeof folderName !== 'string') return null;
   const cleaned = folderName.trim().toLowerCase();
   if (!cleaned) return null;
 
-  // 1. Kiểm tra ngay trong thư mục project và các thư mục lưu trữ SQL backup
-  const localCandidates = [
-    path.join(process.cwd(), folderName),
-    path.join(process.cwd(), 'SQL backup', folderName),
-    path.join(process.cwd(), 'sql_backup', folderName),
-  ];
-  for (const c of localCandidates) {
-    if (fs.existsSync(c)) {
-      try {
-        if (fs.statSync(c).isDirectory() && path.basename(c).toLowerCase() === cleaned) {
-          return path.resolve(c);
-        }
-      } catch (_) {}
-    }
-  }
+  const defaultProd = 'C:\\Users\\H\\.gemini\\antigravity\\scratch\\bakery-erp\\SQL backup\\SQL LOCAL';
+  const defaultTest = 'C:\\Users\\H\\.gemini\\antigravity\\scratch\\bakery-erp\\SQL backup\\SQL TEST';
 
-  // 2. Tìm quét trong thư mục 'SQL backup' của project
-  const sqlBackupDir = path.join(process.cwd(), 'SQL backup');
-  if (fs.existsSync(sqlBackupDir)) {
-    try {
-      const subdirs = fs.readdirSync(sqlBackupDir, { withFileTypes: true });
-      for (const sub of subdirs) {
-        if (sub.isDirectory()) {
-          if (sub.name.toLowerCase() === cleaned) {
-            return path.resolve(path.join(sqlBackupDir, sub.name));
-          }
-          const nested = path.join(sqlBackupDir, sub.name, folderName);
-          if (fs.existsSync(nested) && fs.statSync(nested).isDirectory()) {
-            return path.resolve(nested);
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
-  // 3. Quét các ổ đĩa và thư mục người dùng phổ biến
-  const commonBases = [
-    os.homedir(),
-    path.join(os.homedir(), 'Desktop'),
-    path.join(os.homedir(), 'Documents'),
-    path.join(os.homedir(), 'Downloads'),
-    'D:\\',
-    'E:\\',
-    'C:\\',
-    'D:\\Desktop',
-    'D:\\CSDL_TiemBanh',
-  ];
-
-  for (const base of commonBases) {
-    try {
-      if (!fs.existsSync(base)) continue;
-      const direct = path.join(base, folderName);
-      if (fs.existsSync(direct) && fs.statSync(direct).isDirectory()) {
-        return path.resolve(direct);
-      }
-
-      // Quét 1 cấp thư mục con
-      const subs = fs.readdirSync(base, { withFileTypes: true });
-      for (const sub of subs) {
-        if (sub.isDirectory() && !sub.name.startsWith('$') && !sub.name.startsWith('.')) {
-          const nested = path.join(base, sub.name, folderName);
-          if (fs.existsSync(nested)) {
-            try {
-              if (fs.statSync(nested).isDirectory()) {
-                return path.resolve(nested);
-              }
-            } catch (_) {}
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
-  return null;
+  if (cleaned.includes('test')) return defaultTest;
+  return defaultProd;
 }
 
 export type LocalSqlEnvId = 'production' | 'testing';
@@ -104,7 +37,7 @@ interface ServerLocalSqlState {
   updatedAt: string;
 }
 
-const SERVER_STATE_FILE = path.join(process.cwd(), '.local_sql_server_state.json');
+const SERVER_STATE_FILE = path.join(/*turbopackIgnore: true*/ process.cwd(), '.local_sql_server_state.json');
 
 function getServerState(): ServerLocalSqlState {
   const defaultState: ServerLocalSqlState = {

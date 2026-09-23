@@ -84,15 +84,15 @@ const DEFAULT_LOCAL_ENVS: Record<LocalSqlEnvironmentId, LocalSqlEnvironmentConfi
     id: 'production',
     name: 'Local SQL Chính (Vận Hành)',
     description: 'Dữ liệu bán hàng, công thức và sổ sách kế toán thực tế của tiệm bánh.',
-    folderName: '',
-    folderPath: '',
+    folderName: 'SQL LOCAL',
+    folderPath: 'C:\\Users\\H\\.gemini\\antigravity\\scratch\\bakery-erp\\SQL backup\\SQL LOCAL',
   },
   testing: {
     id: 'testing',
     name: 'Local SQL Thử Nghiệm (Test)',
     description: 'Môi trường test độc lập để thử nghiệm tính năng, tạo đơn ảo mà không ảnh hưởng CSDL chính.',
-    folderName: '',
-    folderPath: '',
+    folderName: 'SQL TEST',
+    folderPath: 'C:\\Users\\H\\.gemini\\antigravity\\scratch\\bakery-erp\\SQL backup\\SQL TEST',
   },
 };
 
@@ -100,8 +100,8 @@ const DEFAULT_CONFIG: SqlModeConfig = {
   mode: 'online',
   activeLocalEnv: 'production',
   localEnvs: DEFAULT_LOCAL_ENVS,
-  localFolderName: '',
-  localFolderPath: '',
+  localFolderName: 'SQL LOCAL',
+  localFolderPath: 'C:\\Users\\H\\.gemini\\antigravity\\scratch\\bakery-erp\\SQL backup\\SQL LOCAL',
   autoSyncToFolder: true,
 };
 
@@ -130,6 +130,16 @@ export function getSqlModeConfig(): SqlModeConfig {
       if (parsed.localFolderPath && !localEnvs.production.folderPath) {
         localEnvs.production.folderPath = parsed.localFolderPath;
         localEnvs.production.folderName = parsed.localFolderName || '';
+      }
+
+      // Tự động bổ sung đường dẫn đầy đủ nếu chỉ lưu mỗi tên thư mục
+      if (!localEnvs.production.folderPath) {
+        localEnvs.production.folderPath = 'C:\\Users\\H\\.gemini\\antigravity\\scratch\\bakery-erp\\SQL backup\\SQL LOCAL';
+        if (!localEnvs.production.folderName) localEnvs.production.folderName = 'SQL LOCAL';
+      }
+      if (!localEnvs.testing.folderPath) {
+        localEnvs.testing.folderPath = 'C:\\Users\\H\\.gemini\\antigravity\\scratch\\bakery-erp\\SQL backup\\SQL TEST';
+        if (!localEnvs.testing.folderName) localEnvs.testing.folderName = 'SQL TEST';
       }
 
       const currentEnvConfig = localEnvs[activeEnv] || localEnvs.production;
