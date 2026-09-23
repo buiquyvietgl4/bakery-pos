@@ -1019,7 +1019,14 @@ export default function AdminDashboard() {
         const raw = localStorage.getItem('bakery_orders');
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (Array.isArray(parsed) && parsed.length > 0) setPosOrders(parsed);
+          const rawDel = localStorage.getItem('bakery_deleted_order_keys');
+          const delSet = rawDel ? new Set(JSON.parse(rawDel).map(String)) : null;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const cleanList = delSet 
+              ? parsed.filter((o: any) => !delSet.has(String(o.order_number)) && !delSet.has(String(o.id))) 
+              : parsed;
+            setPosOrders(cleanList);
+          }
         }
       } catch {}
     }
@@ -1038,7 +1045,7 @@ export default function AdminDashboard() {
     let debounceTimer: any = null;
     const handleUpdate = (e?: Event) => {
       // Chỉ phản hồi nếu là event đơn hàng thật sự, bỏ qua các key storage khác
-      if (e && 'key' in e && (e as StorageEvent).key && (e as StorageEvent).key !== 'bakery_orders') {
+      if (e && 'key' in e && (e as StorageEvent).key && (e as StorageEvent).key !== 'bakery_orders' && (e as StorageEvent).key !== 'bakery_deleted_order_keys') {
         return;
       }
       if (debounceTimer) clearTimeout(debounceTimer);
@@ -1046,11 +1053,29 @@ export default function AdminDashboard() {
         reloadAdminOrders(false);
       }, 1500);
     };
+
+    const handleOrderDeleted = (e: any) => {
+      const detail = e.detail;
+      const targetId = detail?.id || detail?.orderId ? String(detail.id || detail.orderId) : null;
+      const targetNum = detail?.orderNum || detail?.orderNumber ? String(detail.orderNum || detail.orderNumber) : null;
+      setPosOrders((prev) => (prev || []).filter((o) => {
+        if (!o) return false;
+        const oid = String(o.id || '');
+        const onum = String(o.order_number || o.orderNumber || '');
+        if (targetId && oid === targetId) return false;
+        if (targetNum && (onum === targetNum || onum === `${targetNum}-LAM` || onum.replace(/-LAM$/, '') === targetNum)) return false;
+        return true;
+      }));
+      reloadAdminOrders(true);
+    };
+
     window.addEventListener('bakery_orders_updated', handleUpdate);
+    window.addEventListener('bakery_order_deleted', handleOrderDeleted);
     window.addEventListener('storage', handleUpdate);
     return () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('bakery_orders_updated', handleUpdate);
+      window.removeEventListener('bakery_order_deleted', handleOrderDeleted);
       window.removeEventListener('storage', handleUpdate);
     };
   }, []);
@@ -2080,9 +2105,13 @@ export default function AdminDashboard() {
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_recipes', JSON.stringify(updated));
       }
+      autoSyncToLocalSqlFolder().catch(() => {});
       broadcastRecipeChange('delete', { id });
       try {
-        if (navigator.onLine) {
+        if (navigator.onLine && !isLocalMode()) {
+          try {
+            await supabase.from('recipe_items').delete().eq('recipe_id', id);
+          } catch {}
           await supabase.from('recipes').delete().eq('id', id);
         }
       } catch (err) {

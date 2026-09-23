@@ -455,6 +455,19 @@ class AutoOrderWatcher {
   private saveOrderToLocalStorage(order: any) {
     if (typeof window === 'undefined') return;
     try {
+      const rawDel = localStorage.getItem('bakery_deleted_order_keys');
+      if (rawDel) {
+        const delArr = JSON.parse(rawDel);
+        if (Array.isArray(delArr)) {
+          const delSet = new Set(delArr.map(String));
+          const oId = String(order.id || '');
+          const oNum = String(order.order_number || '');
+          if ((oId && delSet.has(oId)) || (oNum && (delSet.has(oNum) || delSet.has(oNum.replace(/-LAM$/, ''))))) {
+            return;
+          }
+        }
+      }
+
       const fromN = parsePreorderFromNotes(order.notes);
       const isShip = (order.delivery_method || fromN.delivery_method) === 'shipping';
       const isPre = order.order_type === 'preorder' || (order.order_number && order.order_number.startsWith('BK-PRE')) || !!order.preorder_pickup_at;

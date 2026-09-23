@@ -35,8 +35,12 @@ export default function AdminBakeApprovalWatcher() {
       if (!Array.isArray(orders)) return;
 
       const pendings: BakeApprovalPayload[] = [];
+      const rawDel = localStorage.getItem('bakery_deleted_order_keys');
+      const delSet = rawDel ? new Set(JSON.parse(rawDel).map(String)) : null;
+
       orders.forEach((o: any) => {
         if (!o || o.status === 'completed' || o.status === 'cancelled') return;
+        if (delSet && (delSet.has(String(o.order_number)) || delSet.has(String(o.id)))) return;
         const isBakePending = Boolean(
           o.bake_approval_status === 'pending' || 
           o.notes?.includes('YÊU CẦU DUYỆT NƯỚNG XONG')

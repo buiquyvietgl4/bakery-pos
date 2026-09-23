@@ -873,10 +873,23 @@ export default function KitchenPage() {
     setSelectedRecipe(null);
   };
 
+  const getDeletedOrderKeys = (): Set<string> => {
+    if (typeof window === 'undefined') return new Set();
+    try {
+      const raw = localStorage.getItem('bakery_deleted_order_keys');
+      if (raw) {
+        const arr = JSON.parse(raw);
+        if (Array.isArray(arr)) return new Set(arr.map(String));
+      }
+    } catch {}
+    return new Set();
+  };
+
   // 1. Tải toàn bộ đơn bếp từ nguồn Offline-first (localStorage) và Supabase
   const loadOrders = useCallback(async () => {
     try {
       let localOrders: KDSOrder[] = [];
+      const deletedKeys = getDeletedOrderKeys();
 
       if (typeof window !== 'undefined') {
         const hasSeeded = localStorage.getItem('bakery_kds_seeded');
@@ -890,7 +903,16 @@ export default function KitchenPage() {
             const parsed = JSON.parse(rawLocal);
             if (Array.isArray(parsed)) {
               localOrders = parsed
-                .filter((o: any) => o && typeof o === 'object')
+                .filter((o: any) => {
+                  if (!o || typeof o !== 'object') return false;
+                  const oid = String(o.id || o.local_id || '');
+                  const onum = String(o.order_number || o.orderNumber || '');
+                  const pnum = String(o.parent_order_number || '');
+                  if (oid && deletedKeys.has(oid)) return false;
+                  if (onum && (deletedKeys.has(onum) || deletedKeys.has(onum.replace(/-LAM$/, '')))) return false;
+                  if (pnum && deletedKeys.has(pnum)) return false;
+                  return true;
+                })
                 .map((o: any) => {
                   const fromNotes = parsePreorderFromNotes(o.notes);
                   const isShip = (o.delivery_method || o.deliveryMethod) === 'shipping' || fromNotes.delivery_method === 'shipping';
@@ -1022,6 +1044,10 @@ export default function KitchenPage() {
             // 2. Phủ dữ liệu Supabase lên (dữ liệu Supabase là chân lý giữa các thiết bị)
             data.forEach((so: any) => {
               if (!so || !so.order_number) return;
+              const soId = String(so.id || '');
+              const soNum = String(so.order_number || '');
+              if (soId && deletedKeys.has(soId)) return;
+              if (soNum && (deletedKeys.has(soNum) || deletedKeys.has(soNum.replace(/-LAM$/, '')))) return;
               const existing = mergedMap.get(so.order_number);
               const sbNotes = parsePreorderFromNotes(so.notes);
               const isShip = so.delivery_method === 'shipping' || existing?.delivery_method === 'shipping' || sbNotes.delivery_method === 'shipping';
@@ -1179,6 +1205,10 @@ export default function KitchenPage() {
       // Bỏ qua đơn mang về thuần túy 100% là bánh/hàng bán sẵn nhập quầy không cần thợ bếp chế biến
       const activeOrders = (localOrders || []).filter((o) => {
         if (!o || !(o.status === 'pending' || o.status === 'preparing' || o.status === 'ready')) return false;
+        const oid = String(o.id || '');
+        const onum = String(o.order_number || (o as any).orderNumber || '');
+        if (oid && deletedKeys.has(oid)) return false;
+        if (onum && (deletedKeys.has(onum) || deletedKeys.has(onum.replace(/-LAM$/, '')))) return false;
         const compT = recentlyCompletedOrdersRef.current.get(o.order_number);
         if (compT && Date.now() - compT < 60000) return false;
         const items = o.items || [];
@@ -1199,6 +1229,10 @@ export default function KitchenPage() {
         // Bảo toàn các đơn vừa nhận qua Realtime Broadcast mà chưa kịp đồng bộ xong xuống local/Supabase
         (prev || []).forEach((po) => {
           if (!po || !po.order_number) return;
+          const pId = String(po.id || '');
+          const pNum = String(po.order_number || '');
+          if (pId && deletedKeys.has(pId)) return;
+          if (pNum && (deletedKeys.has(pNum) || deletedKeys.has(pNum.replace(/-LAM$/, '')))) return;
           const compT = recentlyCompletedOrdersRef.current.get(po.order_number);
           if (compT && Date.now() - compT < 60000) return;
           if (!activeMap.has(po.order_number)) {
@@ -1227,9 +1261,25 @@ export default function KitchenPage() {
     };
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'bakery_orders' || e.key === 'bakery_preorders') {
+      if (e.key === 'bakery_orders' || e.key === 'bakery_preorders' || e.key === 'bakery_deleted_order_keys') {
         loadOrders();
       }
+    };
+
+    // Phản hồi tức thì khi một đơn hàng bị xóa vĩnh viễn ở máy POS
+    const handleOrderDeleted = (e: any) => {
+      const detail = e.detail;
+      const targetId = detail?.id || detail?.orderId ? String(detail.id || detail.orderId) : null;
+      const targetNum = detail?.orderNum || detail?.orderNumber ? String(detail.orderNum || detail.orderNumber) : null;
+      setOrders((prev) => (prev || []).filter((o) => {
+        if (!o) return false;
+        const oid = String(o.id || '');
+        const onum = String(o.order_number || (o as any).orderNumber || '');
+        if (targetId && oid === targetId) return false;
+        if (targetNum && (onum === targetNum || onum === `${targetNum}-LAM` || onum.replace(/-LAM$/, '') === targetNum)) return false;
+        return true;
+      }));
+      loadOrders();
     };
 
     // Tự động kết nối lại WebSocket Realtime và tải đơn ngay khi bật lại màn hình điện thoại hoặc vào lại mạng
@@ -1241,6 +1291,7 @@ export default function KitchenPage() {
     };
 
     window.addEventListener('bakery_orders_updated', handleLocalUpdate);
+    window.addEventListener('bakery_order_deleted', handleOrderDeleted);
     window.addEventListener('storage', handleStorageChange);
     document.addEventListener('visibilitychange', handleWakeOrOnline);
     window.addEventListener('online', handleWakeOrOnline);
@@ -1587,6 +1638,7 @@ export default function KitchenPage() {
 
     return () => {
       window.removeEventListener('bakery_orders_updated', handleLocalUpdate);
+      window.removeEventListener('bakery_order_deleted', handleOrderDeleted);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('bakery_recipes_updated', handleRecipesUpdate);
       document.removeEventListener('visibilitychange', handleWakeOrOnline);

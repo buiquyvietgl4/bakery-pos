@@ -855,10 +855,20 @@ export default function POSPage() {
         }).catch(() => {});
       } catch {}
 
-      // 8. Bắn sự kiện cập nhật toàn cục
+      // 8. Bắn sự kiện cập nhật toàn cục & phát sóng Realtime đa thiết bị
+      if (rawNum) {
+        broadcastOrderStatusUpdate(rawNum, 'cancelled').catch(() => {});
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('bakery_orders_updated'));
-        window.dispatchEvent(new CustomEvent('bakery_order_deleted', { detail: { orderNum, orderId } }));
+        window.dispatchEvent(new CustomEvent('bakery_order_deleted', { 
+          detail: { 
+            orderNum, 
+            orderId, 
+            orderNumber: rawNum, 
+            id: order.id 
+          } 
+        }));
       }
 
       // 9. Toast thông báo
@@ -10027,7 +10037,10 @@ export default function POSPage() {
                               <td className="py-2 text-center">
                                 <button
                                   type="button"
-                                  onClick={() => deleteSpoilageLog(log.id)}
+                                  onClick={() => {
+                                    deleteSpoilageLog(log.id);
+                                    reloadSpoilage();
+                                  }}
                                   className="p-1 text-zinc-300 hover:text-rose-600 rounded transition cursor-pointer"
                                   title="Xóa nhật ký này"
                                 >

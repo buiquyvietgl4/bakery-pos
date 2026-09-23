@@ -141,7 +141,27 @@ class OfflineSyncWorker {
         if (key && !pendingMap.has(key)) pendingMap.set(key, o);
       });
 
-      const ordersToSync = Array.from(pendingMap.values());
+      // Lọc bỏ bất kỳ đơn nào đã bị xóa vĩnh viễn khỏi hàng đợi đẩy lên đám mây
+      const deletedKeys = new Set<string>();
+      try {
+        const rawDel = localStorage.getItem('bakery_deleted_order_keys');
+        if (rawDel) {
+          const arr = JSON.parse(rawDel);
+          if (Array.isArray(arr)) arr.forEach((k: any) => deletedKeys.add(String(k)));
+        }
+      } catch {}
+
+      let ordersToSync = Array.from(pendingMap.values());
+      if (deletedKeys.size > 0) {
+        ordersToSync = ordersToSync.filter((o) => {
+          const k1 = o.order_number ? String(o.order_number) : '';
+          const k2 = o.orderNumber ? String(o.orderNumber) : '';
+          const k3 = o.id ? String(o.id) : '';
+          const k4 = o.local_id ? String(o.local_id) : '';
+          return !deletedKeys.has(k1) && !deletedKeys.has(k2) && !deletedKeys.has(k3) && !deletedKeys.has(k4);
+        });
+      }
+
       if (ordersToSync.length === 0) {
         this.notifyQueueChanged(0);
         return { syncedCount: 0, errors: [] };
