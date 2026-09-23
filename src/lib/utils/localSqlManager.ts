@@ -116,7 +116,7 @@ export async function requestLocalSqlDirPermission(dirHandle?: any, envId?: Loca
 /**
  * Chọn thư mục lưu CSDL Local trên máy tính (sử dụng File System Access API)
  */
-export async function selectLocalSqlDirectory(envId?: LocalSqlEnvironmentId): Promise<{ success: boolean; folderName?: string; error?: string }> {
+export async function selectLocalSqlDirectory(envId?: LocalSqlEnvironmentId): Promise<{ success: boolean; folderName?: string; folderPath?: string; error?: string }> {
   if (typeof window === 'undefined' || !('showDirectoryPicker' in window)) {
     return {
       success: false,
@@ -134,7 +134,21 @@ export async function selectLocalSqlDirectory(envId?: LocalSqlEnvironmentId): Pr
       const targetEnv = envId || getActiveLocalEnv();
       await storeLocalSqlDirHandle(dirHandle, targetEnv);
       const folderName = dirHandle.name || `Thư mục Local SQL ${targetEnv === 'production' ? 'Chính' : 'Test'}`;
-      saveLocalEnvConfig(targetEnv, { folderName });
+
+      // Tự động truy vấn máy chủ để lấy đường dẫn ổ đĩa tuyệt đối (C:\... hoặc D:\...)
+      let resolvedServerPath = '';
+      try {
+        const findRes = await fetch(`/api/local-sql?find_name=${encodeURIComponent(folderName)}`);
+        const findData = await findRes.json();
+        if (findData.success && findData.path) {
+          resolvedServerPath = findData.path;
+        }
+      } catch (_) {}
+
+      saveLocalEnvConfig(targetEnv, {
+        folderName,
+        ...(resolvedServerPath ? { folderPath: resolvedServerPath } : {}),
+      });
 
       // Lập tức xuất dữ liệu khởi tạo vào thư mục vừa chọn
       try {
@@ -145,7 +159,7 @@ export async function selectLocalSqlDirectory(envId?: LocalSqlEnvironmentId): Pr
         console.warn('Lỗi ghi file SQL ban đầu vào thư mục:', e);
       }
 
-      return { success: true, folderName };
+      return { success: true, folderName, folderPath: resolvedServerPath };
     }
     return { success: false, error: 'Chưa chọn thư mục' };
   } catch (err: any) {

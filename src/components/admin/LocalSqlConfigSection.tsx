@@ -107,7 +107,22 @@ export default function LocalSqlConfigSection() {
   useEffect(() => {
     const envConfig = config.localEnvs[selectedEnvId];
     if (envConfig) {
-      setServerDirPathInput(envConfig.folderPath || '');
+      if (envConfig.folderPath) {
+        setServerDirPathInput(envConfig.folderPath);
+      } else if (envConfig.folderName) {
+        // Tự động dò tìm đường dẫn tuyệt đối trên máy chủ theo tên thư mục đã chọn
+        fetch(`/api/local-sql?find_name=${encodeURIComponent(envConfig.folderName)}`)
+          .then((r) => r.json())
+          .then((d) => {
+            if (d.success && d.path) {
+              setServerDirPathInput(d.path);
+              saveLocalEnvConfig(selectedEnvId, { folderPath: d.path });
+            }
+          })
+          .catch(() => {});
+      } else {
+        setServerDirPathInput('');
+      }
       setTestFolderResult(null);
     }
   }, [selectedEnvId, config]);
@@ -129,9 +144,12 @@ export default function LocalSqlConfigSection() {
     try {
       const res = await selectLocalSqlDirectory(selectedEnvId);
       if (res.success) {
+        if (res.folderPath) {
+          setServerDirPathInput(res.folderPath);
+        }
         showNotice(
           'success',
-          `Đã liên kết thư mục "${res.folderName}" cho môi trường ${selectedEnvId === 'production' ? 'Local SQL Chính' : 'Local SQL Thử Nghiệm'} thành công!`
+          `Đã liên kết thư mục "${res.folderName}" cho môi trường ${selectedEnvId === 'production' ? 'Local SQL Chính' : 'Local SQL Thử Nghiệm'} thành công!${res.folderPath ? ` (Đường dẫn: ${res.folderPath})` : ''}`
         );
       } else if (res.error && res.error !== 'Đã hủy chọn thư mục') {
         showNotice('error', res.error);
@@ -571,6 +589,46 @@ export default function LocalSqlConfigSection() {
             </button>
           </div>
 
+          {/* THẺ TRẠNG THÁI THƯ MỤC ĐANG LIÊN KẾT */}
+          <div className="p-3.5 rounded-2xl border transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-stone-50/90 border-stone-200">
+            <div className="flex items-center gap-3 min-w-0">
+              <div
+                className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-white shrink-0 shadow-2xs ${
+                  currentEnvConfig.folderName || currentEnvConfig.folderPath || serverDirPathInput
+                    ? 'bg-emerald-600'
+                    : 'bg-zinc-400'
+                }`}
+              >
+                <Folder className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-bold text-zinc-800">Thư mục đang chọn:</span>
+                  <span className="px-2 py-0.5 rounded-lg text-xs font-mono font-bold bg-white border border-zinc-200 text-zinc-900 shadow-2xs">
+                    {currentEnvConfig.folderName || (serverDirPathInput ? serverDirPathInput.split(/[/\\]/).pop() : 'Chưa chọn thư mục')}
+                  </span>
+                  {(currentEnvConfig.folderName || currentEnvConfig.folderPath || serverDirPathInput) && (
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300 flex items-center gap-1">
+                      <Check className="w-3 h-3 text-emerald-600" />
+                      <span>Đã liên kết</span>
+                    </span>
+                  )}
+                </div>
+                <div
+                  className="text-[11px] text-zinc-500 font-mono truncate mt-0.5"
+                  title={serverDirPathInput || currentEnvConfig.folderPath || 'Trình duyệt đang giữ quyền truy cập thư mục trực tiếp'}
+                >
+                  Đường dẫn ổ đĩa: <span className="text-zinc-800 font-semibold">{serverDirPathInput || currentEnvConfig.folderPath || '(Trình duyệt bảo mật đang giữ quyền truy cập trực tiếp qua File System Handle)'}</span>
+                </div>
+              </div>
+            </div>
+            {currentEnvConfig.lastSyncAt && (
+              <span className="text-[11px] text-zinc-500 shrink-0 self-start sm:self-center">
+                Lần xuất gần nhất: <span className="font-semibold text-zinc-700">{new Date(currentEnvConfig.lastSyncAt).toLocaleTimeString('vi-VN')}</span>
+              </span>
+            )}
+          </div>
+
           {/* Ô NHẬP ĐƯỜNG DẪN Ổ ĐĨA MÁY CHỦ */}
           <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
             <span className="text-xs text-zinc-600 font-medium shrink-0">
@@ -581,9 +639,12 @@ export default function LocalSqlConfigSection() {
               value={serverDirPathInput}
               onChange={(e) => setServerDirPathInput(e.target.value)}
               placeholder={
-                selectedEnvId === 'production'
-                  ? 'VD: D:\\CSDL_TiemBanh\\Chinh hoặc C:\\BakerySQL\\Production'
-                  : 'VD: D:\\CSDL_TiemBanh\\Test hoặc C:\\BakerySQL\\Testing'
+                currentEnvConfig.folderPath ||
+                (currentEnvConfig.folderName ? `Thư mục đã chọn: ${currentEnvConfig.folderName}` : (
+                  selectedEnvId === 'production'
+                    ? 'VD: D:\\CSDL_TiemBanh\\Chinh hoặc C:\\BakerySQL\\Production'
+                    : 'VD: D:\\CSDL_TiemBanh\\Test hoặc C:\\BakerySQL\\Testing'
+                ))
               }
               className="flex-1 px-3 py-1.5 text-xs bg-white border border-zinc-300 rounded-xl focus:outline-hidden focus:ring-1 focus:ring-amber-500 font-mono"
             />

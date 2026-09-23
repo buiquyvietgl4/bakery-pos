@@ -3959,6 +3959,18 @@ export default function POSPage() {
                 <span className="hidden xl:inline">{isLocalMode() ? 'Local SQL' : 'Cloud SQL'}</span>
               </Link>
 
+              {/* Nút Đổi Trả Trên Mobile */}
+              <button
+                onClick={() => {
+                  setOrderToReturn(null);
+                  setIsReturnExchangeModalOpen(true);
+                }}
+                className="w-9 h-9 rounded-2xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 flex items-center justify-center shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
+                title="Đổi trả hàng hoặc hoàn tiền"
+              >
+                <RotateCcw className="w-4 h-4 text-rose-600" />
+              </button>
+
               {/* Nút Menu Cài Đặt Hợp Nhất Trên Mobile */}
               <div className="relative shrink-0">
                 <button
