@@ -6752,9 +6752,13 @@ export default function POSPage() {
                               ? 'bg-emerald-100 text-emerald-800'
                               : inv.status === 'ready'
                               ? 'bg-blue-100 text-blue-800'
+                              : inv.status === 'refunded'
+                              ? 'bg-red-100 text-red-700'
+                              : inv.status === 'partially_refunded'
+                              ? 'bg-orange-100 text-orange-700'
                               : 'bg-amber-100 text-amber-800'
                           }`}>
-                            {inv.status === 'completed' ? '✓ Đã hoàn tất' : inv.status === 'ready' ? 'Sẵn sàng giao' : 'Đang xử lý'}
+                            {inv.status === 'completed' ? '✓ Đã hoàn tất' : inv.status === 'ready' ? 'Sẵn sàng giao' : inv.status === 'refunded' ? '↩ Đã trả hàng' : inv.status === 'partially_refunded' ? '↩ Đã đổi hàng' : 'Đang xử lý'}
                           </span>
                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-700">
                             {inv.payment_method === 'cash' || inv.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / Ví'}
@@ -6933,19 +6937,31 @@ export default function POSPage() {
                             <span>In Tem Hộp</span>
                           </button>
 
-                          {/* Nút Đổi Trả / Hoàn Tiền */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setOrderToReturn(inv);
-                              setIsReturnExchangeModalOpen(true);
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
-                            title="Tạo phiếu đổi hàng hoặc hoàn tiền cho đơn này"
-                          >
-                            <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Đổi / Trả</span>
-                          </button>
+                          {/* Nút Đổi Trả / Hoàn Tiền — hoặc hiện trạng thái nếu đơn đã hoàn trả */}
+                          {inv.status === 'refunded' ? (
+                            <span className="px-2.5 py-1.5 rounded-xl bg-red-50 text-red-600 border border-red-200 text-xs font-bold flex items-center gap-1">
+                              <RotateCcw className="w-3.5 h-3.5 text-red-400" />
+                              <span>Đã trả hàng</span>
+                            </span>
+                          ) : inv.status === 'partially_refunded' ? (
+                            <span className="px-2.5 py-1.5 rounded-xl bg-orange-50 text-orange-600 border border-orange-200 text-xs font-bold flex items-center gap-1">
+                              <RotateCcw className="w-3.5 h-3.5 text-orange-400" />
+                              <span>Đã đổi hàng</span>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setOrderToReturn(inv);
+                                setIsReturnExchangeModalOpen(true);
+                              }}
+                              className="px-2.5 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                              title="Tạo phiếu đổi hàng hoặc hoàn tiền cho đơn này"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Đổi / Trả</span>
+                            </button>
+                          )}
 
                           <button
                             type="button"

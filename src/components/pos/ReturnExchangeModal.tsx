@@ -448,13 +448,16 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
       return;
     }
 
-    // 2. Kích hoạt phương thức duyệt theo cài đặt (2 lựa chọn: 1 là xác nhận mã, 2 là gửi thông báo duyệt)
+    // 2. Kích hoạt phương thức duyệt theo cài đặt (3 lựa chọn)
     const approvalMode = securityConfig?.returnApprovalMode || 'pin';
-    if (approvalMode === 'admin_approval') {
-      // Lựa chọn 2: Gửi thông báo cho Admin duyệt (Realtime 2 bước)
+    if (approvalMode === 'none') {
+      // Lựa chọn 1: Không cần xác nhận — hoàn tất ngay
+      await executeFinalizeReturn(user?.name || 'Thu Ngân');
+    } else if (approvalMode === 'admin_approval') {
+      // Lựa chọn 3: Gửi thông báo cho Admin duyệt (Realtime 2 bước)
       handleSendApprovalToAdmin();
     } else {
-      // Lựa chọn 1: Xác nhận bằng mã PIN Quản Lý
+      // Lựa chọn 2: Xác nhận bằng mã PIN Quản Lý
       setIsPinModalOpen(true);
     }
   };
@@ -598,7 +601,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
               <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-[11px] font-bold text-zinc-600">
                 <span>Duyệt:</span>
                 <span className="text-zinc-900 font-black">
-                  {(securityConfig?.returnApprovalMode || 'pin') === 'admin_approval' ? '📱 Gửi Admin (2 Bước)' : '🔑 Mã PIN Quản Lý'}
+                  {(securityConfig?.returnApprovalMode || 'pin') === 'none' ? '🔓 Không cần xác nhận' : (securityConfig?.returnApprovalMode || 'pin') === 'admin_approval' ? '📱 Gửi Admin (2 Bước)' : '🔑 Mã PIN Quản Lý'}
                 </span>
               </div>
               <button

@@ -68,7 +68,7 @@ export const DEFAULT_PERMISSIONS: RolePermissionsConfig = {
   },
 };
 
-export type ReturnApprovalMode = 'pin' | 'admin_approval';
+export type ReturnApprovalMode = 'none' | 'pin' | 'admin_approval';
 
 export interface SecurityConfig {
   adminUsername: string;
