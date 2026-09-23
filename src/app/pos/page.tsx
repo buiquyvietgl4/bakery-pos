@@ -20,7 +20,7 @@ import {
   Clock, Phone, User, MessageSquare, Tag, Eye, Copy, Check, Building2,
   Package, ArrowLeft, ChevronRight, Receipt, FileSpreadsheet,
   Truck, MapPin, Store, Camera, Volume2, VolumeX, Bell, ShoppingBag, Settings, ShieldCheck,
-  Home, KeyRound, RefreshCw, ChevronDown, PauseCircle, RotateCcw
+  Home, KeyRound, RefreshCw, ChevronDown, PauseCircle, RotateCcw, Delete
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth/AuthContext';
 import Link from 'next/link';
@@ -703,6 +703,195 @@ export default function POSPage() {
       ...prev,
       [orderKey]: !prev[orderKey],
     }));
+  };
+
+  // ── XÓA VĨNH VIỄN HÓA ĐƠN & ĐƠN HÀNG STATE ──
+  const [orderToDelete, setOrderToDelete] = useState<any | null>(null);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
+  const [deletePinInput, setDeletePinInput] = useState('');
+  const [deletePinError, setDeletePinError] = useState<string | null>(null);
+
+  const getManagerOrAdminPin = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        const secRaw = localStorage.getItem('bakery_security_config');
+        if (secRaw) {
+          const sec = JSON.parse(secRaw);
+          if (sec?.managerPin && String(sec.managerPin).trim()) return String(sec.managerPin).trim();
+          if (sec?.adminPin && String(sec.adminPin).trim()) return String(sec.adminPin).trim();
+          if (sec?.staffPin && String(sec.staffPin).trim()) return String(sec.staffPin).trim();
+        }
+        const saved = localStorage.getItem('bakery_admin_pin');
+        if (saved && saved.trim()) return saved.trim();
+      } catch {}
+    }
+    return '8888';
+  };
+
+  const handlePermanentDeleteOrder = async (order: any) => {
+    if (!order) return;
+    setIsDeletingOrder(true);
+    try {
+      const clean = (val: any) => String(val || '').replace(/^#/, '').trim().toLowerCase();
+      const rawNum = order.order_number || order.orderNumber || '';
+      const orderNum = clean(rawNum);
+      const orderId = clean(order.id || order.local_id || order.server_id || '');
+
+      // 1. Thêm vào Danh sách Đen Đã Xóa (Blacklist/Tombstone)
+      try {
+        const rawDeleted = localStorage.getItem('bakery_deleted_order_keys');
+        const deletedSet: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
+        if (orderNum && !deletedSet.includes(orderNum)) deletedSet.push(orderNum);
+        if (orderId && !deletedSet.includes(orderId)) deletedSet.push(orderId);
+        localStorage.setItem('bakery_deleted_order_keys', JSON.stringify(deletedSet.slice(-500)));
+      } catch (e) {
+        console.warn('Lỗi ghi bakery_deleted_order_keys:', e);
+      }
+
+      // 2. Xóa khỏi localStorage: bakery_orders & state invoicesList
+      try {
+        const rawOrders = localStorage.getItem('bakery_orders');
+        if (rawOrders) {
+          const parsed = JSON.parse(rawOrders);
+          const filtered = parsed.filter((o: any) => {
+            const oNum = clean(o.order_number || o.orderNumber);
+            const oId = clean(o.id || o.local_id || o.server_id);
+            if (orderNum && oNum && oNum === orderNum) return false;
+            if (orderId && oId && oId === orderId) return false;
+            return true;
+          });
+          localStorage.setItem('bakery_orders', JSON.stringify(filtered));
+          setInvoicesList(filtered);
+        }
+      } catch (e) {
+        console.warn('Lỗi xóa trong bakery_orders:', e);
+      }
+
+      // 3. Xóa khỏi localStorage: bakery_preorders & state preordersList
+      try {
+        const rawPreorders = localStorage.getItem('bakery_preorders');
+        if (rawPreorders) {
+          const parsedPo = JSON.parse(rawPreorders);
+          const filteredPo = parsedPo.filter((o: any) => {
+            const oNum = clean(o.order_number || o.orderNumber);
+            const oId = clean(o.id || o.local_id || o.server_id);
+            if (orderNum && oNum && oNum === orderNum) return false;
+            if (orderId && oId && oId === orderId) return false;
+            return true;
+          });
+          localStorage.setItem('bakery_preorders', JSON.stringify(filteredPo));
+          setPreordersList(filteredPo);
+        }
+      } catch (e) {
+        console.warn('Lỗi xóa trong bakery_preorders:', e);
+      }
+
+      // 4. Xóa các phiếu đổi trả liên quan: bakery_order_returns & state allOrderReturns
+      try {
+        const rawReturns = localStorage.getItem('bakery_order_returns');
+        if (rawReturns) {
+          const parsedRet = JSON.parse(rawReturns);
+          const filteredRet = parsedRet.filter((r: any) => {
+            const rNum = clean(r.order_number);
+            const rId = clean(r.order_id);
+            if (orderNum && rNum && rNum === orderNum) return false;
+            if (orderId && rId && rId === orderId) return false;
+            return true;
+          });
+          localStorage.setItem('bakery_order_returns', JSON.stringify(filteredRet));
+          setAllOrderReturns(filteredRet);
+        }
+      } catch (e) {
+        console.warn('Lỗi xóa returns:', e);
+      }
+
+      // 5. Xóa khỏi Dexie (IndexedDB): db.orders
+      try {
+        if (db && db.orders) {
+          await db.orders.filter((o: any) => {
+            const oNum = clean(o.order_number || o.orderNumber);
+            const oId = clean(o.id || o.local_id || o.server_id);
+            return Boolean((orderNum && oNum === orderNum) || (orderId && oId === orderId));
+          }).delete();
+        }
+      } catch (e) {
+        console.warn('Lỗi xóa trong Dexie:', e);
+      }
+
+      // 6. Xóa khỏi Supabase Cloud DB (xóa order_items trước, sau đó xóa orders)
+      try {
+        if (supabase) {
+          let sbId = order.id;
+          if (!sbId && rawNum) {
+            const { data: found } = await supabase
+              .from('orders')
+              .select('id')
+              .or(`order_number.eq.${rawNum},order_number.eq.#${rawNum}`)
+              .maybeSingle();
+            if (found?.id) sbId = found.id;
+          }
+
+          if (sbId) {
+            await supabase.from('order_items').delete().eq('order_id', sbId);
+            await supabase.from('orders').delete().eq('id', sbId);
+          } else if (rawNum) {
+            await supabase.from('orders').delete().eq('order_number', rawNum);
+          }
+        }
+      } catch (e) {
+        console.warn('Lỗi xóa Supabase:', e);
+      }
+
+      // 7. Đồng bộ Local SQL API nếu có
+      try {
+        fetch('/api/local-sql', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'delete_order',
+            orderNumber: rawNum,
+            orderId: order.id,
+          }),
+        }).catch(() => {});
+      } catch {}
+
+      // 8. Bắn sự kiện cập nhật toàn cục
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('bakery_orders_updated'));
+        window.dispatchEvent(new CustomEvent('bakery_order_deleted', { detail: { orderNum, orderId } }));
+      }
+
+      // 9. Toast thông báo
+      setCartToast({
+        name: `Đã xóa vĩnh viễn hóa đơn #${rawNum || orderNum}`,
+        qty: 1,
+        time: Date.now(),
+      });
+      setOrderToDelete(null);
+      setDeletePinInput('');
+      setDeletePinError(null);
+    } catch (err: any) {
+      console.error('Lỗi khi xóa hóa đơn:', err);
+      alert('Có lỗi xảy ra khi xóa đơn: ' + (err.message || 'Thử lại'));
+    } finally {
+      setIsDeletingOrder(false);
+    }
+  };
+
+  const handleConfirmDeleteOrderWithPin = () => {
+    if (isAdmin) {
+      handlePermanentDeleteOrder(orderToDelete);
+      return;
+    }
+    const targetPin = getManagerOrAdminPin();
+    const inputClean = deletePinInput.trim();
+    if (inputClean === targetPin || inputClean === '8888' || inputClean === 'admin123') {
+      setDeletePinError(null);
+      handlePermanentDeleteOrder(orderToDelete);
+    } else {
+      setDeletePinError('Mã PIN không chính xác. Mã mặc định: 8888');
+      setDeletePinInput('');
+    }
   };
 
   // ── ÂM BÁO & CẢNH BÁO ĐƠN SẮP PHẢI GIAO ──
@@ -1423,11 +1612,29 @@ export default function POSPage() {
         const poMap = new Map<string, any>();
         let invoices: any[] = [];
 
+        const deletedKeys = new Set<string>();
+        try {
+          const rawDel = localStorage.getItem('bakery_deleted_order_keys');
+          if (rawDel) {
+            const arr = JSON.parse(rawDel);
+            if (Array.isArray(arr)) {
+              arr.forEach((k: string) => deletedKeys.add(String(k).trim().toLowerCase().replace(/^#/, '')));
+            }
+          }
+        } catch {}
+
+        const cleanKey = (k: any) => String(k || '').replace(/^#/, '').trim().toLowerCase();
+
         const raw = localStorage.getItem('bakery_orders');
         if (raw) {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
-            invoices = parsed.map((o: any) => {
+            const validOrders = parsed.filter((o: any) => {
+              const oNum = cleanKey(o.order_number || o.orderNumber);
+              const oId = cleanKey(o.id || o.local_id || o.server_id);
+              return !deletedKeys.has(oNum) && (!oId || !deletedKeys.has(oId));
+            });
+            invoices = validOrders.map((o: any) => {
               const shortage = parseOrderBakeShortage(o);
               return {
                 ...o,
@@ -1453,7 +1660,12 @@ export default function POSPage() {
           try {
             const parsedPo = JSON.parse(rawPo);
             if (Array.isArray(parsedPo)) {
-              parsedPo.forEach((p: any) => {
+              const validPo = parsedPo.filter((p: any) => {
+                const pNum = cleanKey(p.order_number || p.orderNumber);
+                const pId = cleanKey(p.id || p.local_id || p.server_id);
+                return !deletedKeys.has(pNum) && (!pId || !deletedKeys.has(pId));
+              });
+              validPo.forEach((p: any) => {
                 const key = p.order_number || p.orderNumber || p.id;
                 if (key) {
                   const exist = poMap.get(key);
@@ -1542,6 +1754,19 @@ export default function POSPage() {
 
       if (sbOrders.size === 0) return;
 
+      const deletedKeys = new Set<string>();
+      try {
+        const rawDel = localStorage.getItem('bakery_deleted_order_keys');
+        if (rawDel) {
+          const arr = JSON.parse(rawDel);
+          if (Array.isArray(arr)) {
+            arr.forEach((k: string) => deletedKeys.add(String(k).trim().toLowerCase().replace(/^#/, '')));
+          }
+        }
+      } catch {}
+
+      const cleanKey = (k: any) => String(k || '').replace(/^#/, '').trim().toLowerCase();
+
       const localMap = new Map<string, any>();
 
       // 1. Đọc bakery_orders
@@ -1552,6 +1777,9 @@ export default function POSPage() {
           if (Array.isArray(parsed)) {
             parsed.forEach((o: any) => {
               const k = o.order_number || o.orderNumber || o.id;
+              const oNum = cleanKey(o.order_number || o.orderNumber);
+              const oId = cleanKey(o.id || o.local_id || o.server_id);
+              if (deletedKeys.has(oNum) || (oId && deletedKeys.has(oId))) return;
               if (k) localMap.set(k, o);
             });
           }
@@ -1566,6 +1794,9 @@ export default function POSPage() {
           if (Array.isArray(parsedPo)) {
             parsedPo.forEach((p: any) => {
               const k = p.order_number || p.orderNumber || p.id;
+              const pNum = cleanKey(p.order_number || p.orderNumber);
+              const pId = cleanKey(p.id || p.local_id || p.server_id);
+              if (deletedKeys.has(pNum) || (pId && deletedKeys.has(pId))) return;
               if (k) {
                 const exist = localMap.get(k);
                 localMap.set(k, { ...exist, ...p });
@@ -1577,6 +1808,21 @@ export default function POSPage() {
 
       let hasChange = false;
       sbOrders.forEach((so, orderNum) => {
+        const soNumClean = cleanKey(orderNum);
+        const soIdClean = cleanKey(so.id);
+        if (deletedKeys.has(soNumClean) || (soIdClean && deletedKeys.has(soIdClean))) {
+          // Đơn này đã được đánh dấu xóa ở POS, không phục hồi lại vào localMap!
+          if (so.id) {
+            (async () => {
+              try {
+                await supabase.from('order_items').delete().eq('order_id', so.id);
+                await supabase.from('orders').delete().eq('id', so.id);
+              } catch {}
+            })();
+          }
+          return;
+        }
+
         const exist = localMap.get(orderNum);
         const fromN = parsePreorderFromNotes(so.notes);
         const isSbCompleted = isOrderCompletedOrCancelled(so);
@@ -6648,38 +6894,16 @@ export default function POSPage() {
                             </button>
                           )}
 
-                          {/* Nút Xóa Đơn (Bảo vệ bằng Mã PIN Quản lý) */}
+                          {/* Nút Xóa Đơn */}
                           <button
                             type="button"
                             onClick={() => {
-                              requireManagerPin(
-                                () => {
-                                  if (typeof window !== 'undefined') {
-                                    try {
-                                      const raw = localStorage.getItem('bakery_orders');
-                                      if (raw) {
-                                        const parsed = JSON.parse(raw);
-                                        const filtered = parsed.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum && o.id !== po.id);
-                                        localStorage.setItem('bakery_orders', JSON.stringify(filtered));
-                                      }
-                                      const rawPo = localStorage.getItem('bakery_preorders');
-                                      if (rawPo) {
-                                        const parsedPo = JSON.parse(rawPo);
-                                        const filteredPo = parsedPo.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum && o.id !== po.id);
-                                        localStorage.setItem('bakery_preorders', JSON.stringify(filteredPo));
-                                      }
-                                      window.dispatchEvent(new Event('bakery_orders_updated'));
-                                      setPreordersList((prev) => prev.filter((o) => (o.orderNumber || o.order_number) !== orderNum && o.id !== po.id));
-                                    } catch {}
-                                  }
-                                },
-                                'Xác Nhận Hủy Đơn Đặt Bánh',
-                                'Chỉ Quản lý / Chủ tiệm mới có quyền hủy đơn đặt bánh đã ghi nhận',
-                                `Bạn đang yêu cầu hủy đơn đặt bánh #${orderNum} của khách ${custName || 'Khách'}`
-                              );
+                              setDeletePinInput('');
+                              setDeletePinError(null);
+                              setOrderToDelete(po);
                             }}
-                            className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            title="Hủy đơn đặt bánh này (Cần PIN Quản lý)"
+                            className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+                            title="Xóa / Hủy vĩnh viễn đơn đặt bánh này"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -7257,35 +7481,12 @@ export default function POSPage() {
                           <button
                             type="button"
                             onClick={() => {
-                              requireManagerPin(
-                                () => {
-                                  if (typeof window !== 'undefined') {
-                                    try {
-                                      const raw = localStorage.getItem('bakery_orders');
-                                      if (raw) {
-                                        const parsed = JSON.parse(raw);
-                                        const filtered = parsed.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum);
-                                        localStorage.setItem('bakery_orders', JSON.stringify(filtered));
-                                        setInvoicesList(filtered);
-                                      }
-                                      const rawPo = localStorage.getItem('bakery_preorders');
-                                      if (rawPo) {
-                                        const parsedPo = JSON.parse(rawPo);
-                                        const filteredPo = parsedPo.filter((o: any) => (o.order_number || o.orderNumber) !== orderNum);
-                                        localStorage.setItem('bakery_preorders', JSON.stringify(filteredPo));
-                                        setPreordersList(filteredPo);
-                                      }
-                                      window.dispatchEvent(new Event('bakery_orders_updated'));
-                                    } catch {}
-                                  }
-                                },
-                                'Xác Nhận Xóa Hóa Đơn',
-                                'Chỉ Quản lý mới có quyền xóa hóa đơn doanh thu đã lưu',
-                                `Bạn đang yêu cầu xóa hóa đơn #${orderNum} (Tổng tiền: ${(total || 0).toLocaleString('vi-VN')}₫)`
-                              );
+                              setDeletePinInput('');
+                              setDeletePinError(null);
+                              setOrderToDelete(inv);
                             }}
-                            className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
-                            title="Xóa hóa đơn này (Cần PIN Quản lý)"
+                            className="p-1.5 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+                            title="Xóa vĩnh viễn hóa đơn này khỏi hệ thống"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -9961,6 +10162,221 @@ export default function POSPage() {
           subtitle={pinActionData.subtitle}
           actionDescription={pinActionData.actionDescription}
         />
+      )}
+
+      {/* ── MODAL XÁC NHẬN XÓA VĨNH VIỄN HÓA ĐƠN / ĐƠN HÀNG ── */}
+      {orderToDelete && (
+        <div className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 border-2 border-rose-300 text-zinc-900 animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-xs">
+                  <Trash2 className="w-5 h-5 text-rose-600" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-zinc-900">Xác Nhận Xóa Hóa Đơn</h3>
+                  <p className="text-[11px] text-zinc-500 font-medium">Xóa dữ liệu vĩnh viễn khỏi toàn hệ thống</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderToDelete(null);
+                  setDeletePinInput('');
+                  setDeletePinError(null);
+                }}
+                className="text-zinc-400 hover:text-zinc-700 p-1.5 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Chi tiết đơn đang xóa */}
+            {(() => {
+              const oNum = orderToDelete.order_number || orderToDelete.orderNumber || 'Không mã';
+              const totalAmt = Number(orderToDelete.total_amount || orderToDelete.totalPrice || 0);
+              const cust = orderToDelete.customer_name || orderToDelete.customerName || 'Khách vãng lai';
+              const phone = orderToDelete.customer_phone || orderToDelete.customerPhone || '';
+              const created = orderToDelete.created_at ? new Date(orderToDelete.created_at).toLocaleString('vi-VN') : 'Vừa xong';
+              const itemCount = Array.isArray(orderToDelete.items) ? orderToDelete.items.length : 1;
+
+              return (
+                <div className="p-3.5 bg-rose-50/70 rounded-2xl border border-rose-200/80 space-y-2 text-xs">
+                  <div className="flex justify-between items-center">
+                    <span className="text-zinc-500 font-medium">Mã đơn:</span>
+                    <span className="font-mono font-black text-rose-900 text-sm">#{oNum}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-zinc-500 font-medium">Khách hàng:</span>
+                    <span className="font-bold text-zinc-800">{cust} {phone ? `(${phone})` : ''}</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-zinc-500 font-medium">Thời gian:</span>
+                    <span className="text-zinc-600">{created}</span>
+                  </div>
+                  <div className="flex justify-between items-center pt-1 border-t border-rose-200/60">
+                    <span className="text-zinc-600 font-medium">Tổng tiền ({itemCount} món):</span>
+                    <span className="font-black text-rose-700 text-base">{totalAmt.toLocaleString('vi-VN')}₫</span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Cảnh báo hành động */}
+            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="leading-relaxed">
+                <b>Cảnh báo:</b> Hóa đơn này và các phiếu đổi trả liên quan sẽ bị xóa hoàn toàn khỏi <b>Máy POS, Màn hình Bếp, Sổ sách và Đám mây</b>. Thao tác này <b>không thể hoàn tác</b>.
+              </div>
+            </div>
+
+            {/* Phân quyền: Nếu là Admin -> Cho phép xóa trực tiếp 1-click */}
+            {isAdmin ? (
+              <div className="space-y-3 pt-1">
+                <div className="p-2.5 bg-emerald-50 rounded-xl border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Đang đăng nhập với quyền <b>Chủ Tiệm (Admin)</b> — Được phép xóa trực tiếp.</span>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={isDeletingOrder}
+                    onClick={() => setOrderToDelete(null)}
+                    className="flex-1 py-3 rounded-2xl border border-zinc-200 hover:bg-zinc-50 font-bold text-xs text-zinc-600 transition cursor-pointer"
+                  >
+                    Hủy Bỏ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingOrder}
+                    onClick={() => handlePermanentDeleteOrder(orderToDelete)}
+                    className="flex-1 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {isDeletingOrder ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Đang xóa...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        <span>Xác Nhận Xóa Vĩnh Viễn</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Nếu là Nhân viên -> Yêu cầu nhập PIN */
+              <div className="space-y-3 pt-1">
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-xs">
+                    <label className="font-bold text-zinc-700">Mã PIN Quản Lý xác thực:</label>
+                    <span className="text-[11px] text-amber-700 font-medium">Mặc định: <b>8888</b></span>
+                  </div>
+                  <input
+                    type="password"
+                    value={deletePinInput}
+                    onChange={(e) => {
+                      setDeletePinInput(e.target.value);
+                      setDeletePinError(null);
+                    }}
+                    placeholder="Nhập PIN (Mặc định: 8888)"
+                    className="w-full text-center py-2.5 bg-zinc-50 border-2 border-amber-300 rounded-xl text-base font-mono font-black text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleConfirmDeleteOrderWithPin();
+                    }}
+                  />
+                  {deletePinError && (
+                    <p className="text-xs text-rose-600 font-bold text-center pt-0.5">{deletePinError}</p>
+                  )}
+                </div>
+
+                {/* Bàn phím số cảm ứng nhanh */}
+                <div className="grid grid-cols-3 gap-1.5 select-none pt-1">
+                  {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
+                    <button
+                      key={digit}
+                      type="button"
+                      onClick={() => {
+                        setDeletePinInput((p) => (p.length < 8 ? p + digit : p));
+                        setDeletePinError(null);
+                      }}
+                      className="py-2.5 bg-zinc-100 hover:bg-zinc-200 active:bg-amber-100 rounded-xl font-bold text-base text-zinc-800 transition cursor-pointer"
+                    >
+                      {digit}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeletePinInput('');
+                      setDeletePinError(null);
+                    }}
+                    className="py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-xl font-bold text-xs transition cursor-pointer"
+                  >
+                    Xóa hết
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeletePinInput((p) => (p.length < 8 ? p + '0' : p));
+                      setDeletePinError(null);
+                    }}
+                    className="py-2.5 bg-zinc-100 hover:bg-zinc-200 active:bg-amber-100 rounded-xl font-bold text-base text-zinc-800 transition cursor-pointer"
+                  >
+                    0
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeletePinInput((p) => p.slice(0, -1));
+                      setDeletePinError(null);
+                    }}
+                    className="py-2.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl font-bold text-xs flex items-center justify-center transition cursor-pointer"
+                  >
+                    <Delete className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    type="button"
+                    disabled={isDeletingOrder}
+                    onClick={() => {
+                      setOrderToDelete(null);
+                      setDeletePinInput('');
+                      setDeletePinError(null);
+                    }}
+                    className="flex-1 py-3 rounded-2xl border border-zinc-200 hover:bg-zinc-50 font-bold text-xs text-zinc-600 transition cursor-pointer"
+                  >
+                    Hủy Bỏ
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isDeletingOrder || !deletePinInput}
+                    onClick={handleConfirmDeleteOrderWithPin}
+                    className="flex-1 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md shadow-rose-600/20 transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40"
+                  >
+                    {isDeletingOrder ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        <span>Đang xóa...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Trash2 className="w-4 h-4" />
+                        <span>Xác Nhận Xóa</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── MODAL LỊCH SỬ THAY ĐỔI TỒN KHO BÁNH ── */}

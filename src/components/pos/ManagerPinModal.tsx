@@ -58,13 +58,13 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
 
   const handleVerify = (inputPin: string) => {
     const targetPin = getTargetPin();
-    if (inputPin === targetPin || inputPin === 'admin123') {
+    if (inputPin === targetPin || inputPin === 'admin123' || inputPin === '8888') {
       setErrorMsg(null);
       onSuccess();
       onClose();
     } else {
       setIsShaking(true);
-      setErrorMsg('Mã PIN không chính xác. Vui lòng thử lại!');
+      setErrorMsg('Mã PIN không chính xác. Thử mã mặc định 8888 hoặc mật khẩu Admin!');
       setPin('');
       setTimeout(() => setIsShaking(false), 500);
       inputRef.current?.focus();
@@ -146,10 +146,14 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
                 setPin(e.target.value);
                 setErrorMsg(null);
               }}
-              placeholder="Nhập PIN (VD: admin123)"
+              placeholder="Nhập mã PIN (Mặc định: 8888)"
               className="w-full text-center py-3 bg-zinc-50 border-2 border-amber-300 rounded-2xl text-lg font-mono font-black text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white tracking-widest"
               autoFocus
             />
+          </div>
+
+          <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-xl text-center font-medium">
+            Mã PIN mặc định: <b className="font-mono text-amber-950 font-bold">8888</b> (hoặc mật khẩu Admin)
           </div>
 
           {/* Dấu chấm bảo mật (PIN Dots) */}

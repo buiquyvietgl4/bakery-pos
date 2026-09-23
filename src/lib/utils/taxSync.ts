@@ -440,12 +440,31 @@ let inflightTaxOrdersPromise: Promise<any[]> | null = null;
 const TAX_ORDERS_CACHE_TTL_MS = 25_000; // 25 giây cache
 
 export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
+  let deletedKeys = new Set<string>();
+  if (typeof window !== 'undefined') {
+    try {
+      const rawDel = localStorage.getItem('bakery_deleted_order_keys');
+      if (rawDel) {
+        const arr = JSON.parse(rawDel);
+        if (Array.isArray(arr)) {
+          arr.forEach((k: string) => deletedKeys.add(String(k).trim().toLowerCase().replace(/^#/, '')));
+        }
+      }
+    } catch {}
+  }
+
   const localOrdersRaw = typeof window !== 'undefined' ? localStorage.getItem('bakery_orders') : null;
   let localOrders: any[] = [];
   if (localOrdersRaw) {
     try {
       const parsed = JSON.parse(localOrdersRaw);
-      if (Array.isArray(parsed)) localOrders = parsed;
+      if (Array.isArray(parsed)) {
+        localOrders = parsed.filter((lo: any) => {
+          const loNum = String(lo.order_number || lo.orderNumber || '').replace(/^#/, '').trim().toLowerCase();
+          const loId = String(lo.id || lo.local_id || lo.server_id || '').replace(/^#/, '').trim().toLowerCase();
+          return !deletedKeys.has(loNum) && (!loId || !deletedKeys.has(loId));
+        });
+      }
     } catch {}
   }
 
@@ -506,6 +525,11 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
 
         // 1. Nguồn chân lý từ Supabase SQL (đầy đủ order_items chuẩn, kết hợp metadata cục bộ)
         dbOrders.forEach((so) => {
+          const soNum = String(so.order_number || '').replace(/^#/, '').trim().toLowerCase();
+          const soId = String(so.id || '').replace(/^#/, '').trim().toLowerCase();
+          if (deletedKeys.has(soNum) || (soId && deletedKeys.has(soId))) {
+            return;
+          }
           const key = String(so.order_number || so.id);
           const existing = localByNumber.get(key);
           const items = Array.isArray(so.order_items) && so.order_items.length > 0
