@@ -697,6 +697,14 @@ export default function POSPage() {
     return [];
   });
 
+  const [expandedReturnOrders, setExpandedReturnOrders] = useState<Record<string, boolean>>({});
+  const toggleReturnDetails = (orderKey: string) => {
+    setExpandedReturnOrders((prev) => ({
+      ...prev,
+      [orderKey]: !prev[orderKey],
+    }));
+  };
+
   // ── ÂM BÁO & CẢNH BÁO ĐƠN SẮP PHẢI GIAO ──
   const [soundEnabled, setSoundEnabled] = useState(() => soundManager.isEnabled());
   const [currentTime, setCurrentTime] = useState(() => new Date());
@@ -6958,7 +6966,6 @@ export default function POSPage() {
                             // Tìm trong các phiếu đổi trả xem món này đã trả/đổi bao nhiêu
                             let itReturnedQty = 0;
                             let itExchangedQty = 0;
-                            const itReasons: string[] = [];
 
                             invReturnRecords.forEach((r) => {
                               r.items?.forEach((ri) => {
@@ -6970,10 +6977,6 @@ export default function POSPage() {
                                   } else {
                                     itReturnedQty += Number(ri.quantity || 0);
                                   }
-                                  if (ri.reason) {
-                                    const rText = ri.reason === 'damaged' ? 'Lỗi/hỏng' : ri.reason === 'expired' ? 'Cận date' : ri.reason === 'wrong_item' ? 'Nhầm món' : 'Khách đổi ý';
-                                    if (!itReasons.includes(rText)) itReasons.push(rText);
-                                  }
                                 }
                               });
                             });
@@ -6983,45 +6986,30 @@ export default function POSPage() {
                             const remainingQty = Math.max(0, itOriginalQty - totalThisItemReturned);
                             const itemUnitPrice = Number(it.unit_price) || Number(it.product?.selling_price) || Number(it.product?.price) || 0;
 
-                            return (
-                              <div key={idx} className="flex flex-col py-1 text-zinc-800 space-y-1">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1">
-                                    <span className="font-bold text-amber-700 mr-1.5">{itOriginalQty}x</span>
-                                    <span className={remainingQty === 0 && totalThisItemReturned > 0 ? "line-through text-zinc-400 font-medium" : "font-medium"}>
-                                      {it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm'}
-                                    </span>
-                                  </div>
-                                  <span className={remainingQty === 0 && totalThisItemReturned > 0 ? "font-bold line-through text-zinc-400" : "font-bold"}>
-                                    {(itemUnitPrice * itOriginalQty).toLocaleString('vi-VN')}₫
-                                  </span>
-                                </div>
+                            const displayedReturnedQty = Math.min(itOriginalQty, itReturnedQty);
+                            const displayedExchangedQty = Math.min(Math.max(0, itOriginalQty - displayedReturnedQty), itExchangedQty);
 
-                                {/* Chi tiết số lượng trả / đổi cho món này nếu có */}
-                                {totalThisItemReturned > 0 && (
-                                  <div className="flex flex-wrap items-center gap-1.5 pl-4 text-[10px]">
-                                    {itReturnedQty > 0 && (
-                                      <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200">
-                                        ↩ Đã hoàn trả: {itReturnedQty} cái
-                                        {itReasons.length > 0 && ` (${itReasons.join(', ')})`}
-                                      </span>
-                                    )}
-                                    {itExchangedQty > 0 && (
-                                      <span className="inline-flex items-center gap-1 font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                                        ⇄ Đã đổi sang món khác: {itExchangedQty} cái
-                                      </span>
-                                    )}
-                                    {remainingQty > 0 ? (
-                                      <span className="font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
-                                        Còn giữ lại: {remainingQty} cái
-                                      </span>
-                                    ) : (
-                                      <span className="font-semibold text-zinc-500 bg-zinc-100 px-1.5 py-0.5 rounded border border-zinc-200">
-                                        Đã trả đủ ({itOriginalQty}/{itOriginalQty})
-                                      </span>
-                                    )}
-                                  </div>
-                                )}
+                            return (
+                              <div key={idx} className="flex justify-between items-center py-1 text-zinc-800 gap-2">
+                                <div className="flex items-center gap-1.5 min-w-0 flex-1 flex-wrap">
+                                  <span className="font-bold text-amber-700">{itOriginalQty}x</span>
+                                  <span className={remainingQty === 0 && totalThisItemReturned > 0 ? "line-through text-zinc-400 font-medium" : "font-medium text-zinc-900"}>
+                                    {it.product_name_snapshot || it.product?.name || it.name || 'Sản phẩm'}
+                                  </span>
+                                  {displayedReturnedQty > 0 && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200 shrink-0">
+                                      Hoàn trả {displayedReturnedQty}x
+                                    </span>
+                                  )}
+                                  {displayedExchangedQty > 0 && (
+                                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200 shrink-0">
+                                      Đã đổi {displayedExchangedQty}x
+                                    </span>
+                                  )}
+                                </div>
+                                <span className={remainingQty === 0 && totalThisItemReturned > 0 ? "font-bold line-through text-zinc-400 shrink-0" : "font-bold text-zinc-900 shrink-0"}>
+                                  {(itemUnitPrice * itOriginalQty).toLocaleString('vi-VN')}₫
+                                </span>
                               </div>
                             );
                           })
@@ -7033,94 +7021,115 @@ export default function POSPage() {
                         )}
                       </div>
 
-                      {/* BẢNG CHI TIẾT CÁC PHIẾU ĐỔI TRẢ & HOÀN TIỀN CỦA ĐƠN HÀNG */}
-                      {invReturnRecords.length > 0 && (
-                        <div className="bg-rose-50/70 border border-rose-200/90 rounded-xl p-3 text-xs space-y-2 animate-in fade-in-50">
-                          <div className="flex flex-wrap items-center justify-between gap-1 border-b border-rose-200/80 pb-1.5">
-                            <div className="flex items-center gap-1.5 font-bold text-rose-900">
-                              <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
-                              <span>LỊCH SỬ ĐỔI TRẢ / HOÀN TIỀN ({invReturnRecords.length} phiếu)</span>
-                            </div>
-                            {invRefundedAmount > 0 && (
-                              <span className="font-bold text-rose-700 bg-rose-100/90 px-2 py-0.5 rounded-full text-[11px] border border-rose-200">
-                                Tổng hoàn tiền: -{invRefundedAmount.toLocaleString('vi-VN')}₫
+                      {/* BẢNG THÔNG TIN ĐỔI TRẢ (THU GỌN MẶC ĐỊNH ĐỂ KHÔNG CHIẾM DIỆN TÍCH) */}
+                      {invReturnRecords.length > 0 && (() => {
+                        const orderKey = String(inv.id || orderNum);
+                        const isExpanded = Boolean(expandedReturnOrders[orderKey]);
+
+                        return (
+                          <div className="pt-0.5 space-y-1.5">
+                            {/* Nút thu gọn / mở rộng dạng thanh ghim tinh gọn */}
+                            <button
+                              type="button"
+                              onClick={() => toggleReturnDetails(orderKey)}
+                              className="w-full px-2.5 py-1.5 rounded-xl bg-rose-50/70 hover:bg-rose-100/80 text-rose-800 border border-rose-200/80 text-xs font-semibold flex items-center justify-between transition cursor-pointer"
+                            >
+                              <div className="flex items-center gap-1.5">
+                                <RotateCcw className="w-3.5 h-3.5 text-rose-600" />
+                                <span>Đã đổi/trả ({invReturnRecords.length} phiếu)</span>
+                                {invRefundedAmount > 0 && (
+                                  <span className="font-bold text-rose-700 ml-1">
+                                    • Hoàn: -{invRefundedAmount.toLocaleString('vi-VN')}₫
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[11px] font-bold text-rose-600 flex items-center gap-0.5">
+                                {isExpanded ? 'Thu gọn ▲' : 'Xem chi tiết ▼'}
                               </span>
-                            )}
-                          </div>
+                            </button>
 
-                          <div className="space-y-2">
-                            {invReturnRecords.map((r, rIdx) => {
-                              const rMethodStr = r.refund_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản';
-                              return (
-                                <div key={r.id || rIdx} className="bg-white/90 p-2.5 rounded-lg border border-rose-100 space-y-1.5 shadow-xs">
-                                  <div className="flex items-center justify-between text-[11px] font-bold">
-                                    <span className={r.return_type === 'exchange' ? "text-amber-800 flex items-center gap-1" : "text-rose-700 flex items-center gap-1"}>
-                                      {r.return_type === 'exchange' ? '⇄ Phiếu Đổi Hàng' : '↩ Phiếu Trả Hàng Hoàn Tiền'} #{r.id}
-                                    </span>
-                                    <span className="text-zinc-500 font-normal">
-                                      {r.created_at ? new Date(r.created_at).toLocaleString('vi-VN') : ''}
-                                    </span>
-                                  </div>
+                            {/* Chỉ mở rộng ra khi người dùng chủ động bấm vào xem chi tiết */}
+                            {isExpanded && (
+                              <div className="bg-white p-2.5 rounded-xl border border-rose-200 shadow-xs space-y-2 text-xs animate-in fade-in-50">
+                                <div className="text-[11px] font-bold text-rose-900 border-b border-rose-100 pb-1 flex justify-between">
+                                  <span>Chi tiết các phiếu đổi trả:</span>
+                                  <span className="font-mono text-rose-700">Tổng hoàn: -{invRefundedAmount.toLocaleString('vi-VN')}₫</span>
+                                </div>
+                                <div className="space-y-2">
+                                  {invReturnRecords.map((r, rIdx) => {
+                                    const rMethodStr = r.refund_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản';
+                                    return (
+                                      <div key={r.id || rIdx} className="bg-stone-50/70 p-2 rounded-lg border border-stone-200/80 space-y-1">
+                                        <div className="flex items-center justify-between text-[11px] font-bold">
+                                          <span className={r.return_type === 'exchange' ? "text-amber-800" : "text-rose-700"}>
+                                            {r.return_type === 'exchange' ? '⇄ Phiếu Đổi Hàng' : '↩ Phiếu Trả Hàng'} #{r.id}
+                                          </span>
+                                          <span className="text-zinc-500 font-normal text-[10px]">
+                                            {r.created_at ? new Date(r.created_at).toLocaleTimeString('vi-VN') + ' ' + new Date(r.created_at).toLocaleDateString('vi-VN') : ''}
+                                          </span>
+                                        </div>
 
-                                  {/* Các món bánh đã hoàn trả */}
-                                  <div className="space-y-1 pl-2 border-l-2 border-rose-300">
-                                    <div className="text-[11px] font-bold text-rose-800">Bánh hoàn trả lại tiệm:</div>
-                                    {r.items?.map((ri: any, idx: number) => (
-                                      <div key={idx} className="flex justify-between items-center text-[11px]">
-                                        <span className="text-zinc-800">
-                                          • <b className="text-rose-700">{ri.quantity}x</b> {ri.product_name}
-                                          {ri.reason && (
-                                            <span className="text-zinc-500 italic">
-                                              {' '}({ri.reason === 'damaged' ? 'Bánh lỗi/hỏng' : ri.reason === 'expired' ? 'Cận date' : ri.reason === 'wrong_item' ? 'Nhầm món' : 'Khách đổi ý'})
+                                        {/* Các món bánh đã hoàn trả */}
+                                        <div className="space-y-0.5 pl-2 border-l-2 border-rose-300 text-[11px]">
+                                          {r.items?.map((ri: any, idx: number) => (
+                                            <div key={idx} className="flex justify-between items-center">
+                                              <span className="text-zinc-800">
+                                                • <b className="text-rose-700">{ri.quantity}x</b> {ri.product_name}
+                                                {ri.reason && (
+                                                  <span className="text-zinc-500 italic text-[10px]">
+                                                    {' '}({ri.reason === 'damaged' ? 'Lỗi/hỏng' : ri.reason === 'expired' ? 'Cận date' : ri.reason === 'wrong_item' ? 'Nhầm món' : 'Khách đổi ý'})
+                                                  </span>
+                                                )}
+                                              </span>
+                                              <span className="font-bold text-rose-600">
+                                                -{(Number(ri.refund_subtotal) || (Number(ri.unit_price || 0) * Number(ri.quantity || 1))).toLocaleString('vi-VN')}₫
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+
+                                        {/* Nếu là đổi hàng, hiển thị bánh đổi sang */}
+                                        {r.return_type === 'exchange' && r.exchange_replacement_items && r.exchange_replacement_items.length > 0 && (
+                                          <div className="space-y-0.5 pl-2 border-l-2 border-amber-300 pt-0.5 text-[11px]">
+                                            <div className="text-[10px] font-bold text-amber-800">Đổi sang:</div>
+                                            {r.exchange_replacement_items.map((ep: any, idx: number) => (
+                                              <div key={idx} className="flex justify-between items-center">
+                                                <span className="text-zinc-800">
+                                                  • <b className="text-amber-700">{ep.quantity}x</b> {ep.product_name}
+                                                </span>
+                                                <span className="font-bold text-zinc-900">
+                                                  +{(Number(ep.line_total) || (Number(ep.unit_price || 0) * Number(ep.quantity || 1))).toLocaleString('vi-VN')}₫
+                                                </span>
+                                              </div>
+                                            ))}
+                                            {r.exchange_difference !== undefined && (
+                                              <div className="flex justify-between text-[11px] font-bold pt-0.5 text-zinc-900">
+                                                <span>{r.exchange_difference > 0 ? 'Khách bù:' : r.exchange_difference < 0 ? 'Tiệm hoàn:' : 'Đổi ngang:'}</span>
+                                                <span className={r.exchange_difference > 0 ? "text-emerald-700" : "text-rose-600"}>
+                                                  {Math.abs(r.exchange_difference).toLocaleString('vi-VN')}₫ ({rMethodStr})
+                                                </span>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+
+                                        <div className="flex flex-wrap items-center justify-between text-[10px] text-zinc-500 pt-0.5 border-t border-stone-200">
+                                          <span>Duyệt: <b>{r.approved_by || 'Quản lý'}</b></span>
+                                          {r.refund_amount > 0 && (
+                                            <span className="font-bold text-rose-600">
+                                              Đã chi hoàn: {r.refund_amount.toLocaleString('vi-VN')}₫ ({rMethodStr})
                                             </span>
                                           )}
-                                        </span>
-                                        <span className="font-bold text-rose-600">
-                                          -{(Number(ri.refund_subtotal) || (Number(ri.unit_price || 0) * Number(ri.quantity || 1))).toLocaleString('vi-VN')}₫
-                                        </span>
+                                        </div>
                                       </div>
-                                    ))}
-                                  </div>
-
-                                  {/* Nếu là đổi hàng, hiển thị bánh đổi sang */}
-                                  {r.return_type === 'exchange' && r.exchange_replacement_items && r.exchange_replacement_items.length > 0 && (
-                                    <div className="space-y-1 pl-2 border-l-2 border-amber-300 pt-1">
-                                      <div className="text-[11px] font-bold text-amber-800">Bánh mới đổi sang:</div>
-                                      {r.exchange_replacement_items.map((ep: any, idx: number) => (
-                                        <div key={idx} className="flex justify-between items-center text-[11px]">
-                                          <span className="text-zinc-800">
-                                            • <b className="text-amber-700">{ep.quantity}x</b> {ep.product_name}
-                                          </span>
-                                          <span className="font-bold text-zinc-900">
-                                            +{(Number(ep.line_total) || (Number(ep.unit_price || 0) * Number(ep.quantity || 1))).toLocaleString('vi-VN')}₫
-                                          </span>
-                                        </div>
-                                      ))}
-                                      {r.exchange_difference !== undefined && (
-                                        <div className="flex justify-between text-[11px] font-bold pt-0.5 text-zinc-900">
-                                          <span>{r.exchange_difference > 0 ? 'Khách bù thêm:' : r.exchange_difference < 0 ? 'Tiệm hoàn lại:' : 'Đổi ngang giá:'}</span>
-                                          <span className={r.exchange_difference > 0 ? "text-emerald-700" : "text-rose-600"}>
-                                            {Math.abs(r.exchange_difference).toLocaleString('vi-VN')}₫ ({rMethodStr})
-                                          </span>
-                                        </div>
-                                      )}
-                                    </div>
-                                  )}
-
-                                  <div className="flex flex-wrap items-center justify-between text-[10px] text-zinc-500 pt-1 border-t border-zinc-100">
-                                    <span>Người duyệt: <b>{r.approved_by || 'Quản lý'}</b></span>
-                                    {r.refund_amount > 0 && (
-                                      <span className="font-bold text-rose-600">
-                                        Đã chi hoàn trả: {r.refund_amount.toLocaleString('vi-VN')}₫ ({rMethodStr})
-                                      </span>
-                                    )}
-                                  </div>
+                                    );
+                                  })}
                                 </div>
-                              );
-                            })}
+                              </div>
+                            )}
                           </div>
-                        </div>
-                      )}
+                        );
+                      })()}
 
                       {/* Totals & Actions */}
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-zinc-200 text-xs">
