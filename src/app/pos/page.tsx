@@ -855,6 +855,70 @@ export default function POSPage() {
         }).catch(() => {});
       } catch {}
 
+      // 7.1. Tự động điều chỉnh Ca bán hàng hiện tại (Shift Reconciliation):
+      // Nếu đơn thuộc ca hiện tại, tự động trừ tiền mặt / chuyển khoản đã thu và giảm số lượng đơn
+      // để Két tiền thực tế không bị báo lệch tiền (thiếu quỹ) khi kết ca!
+      try {
+        if (shift && shift.isOpen) {
+          const shiftOpenTime = shift.openedAt ? new Date(shift.openedAt).getTime() : 0;
+          const orderCreateTime = order.created_at ? new Date(order.created_at).getTime() : Date.now();
+          const isCurrentShiftOrder = !shiftOpenTime || orderCreateTime >= (shiftOpenTime - 60000);
+
+          if (isCurrentShiftOrder) {
+            let cashToDeduct = 0;
+            let transferToDeduct = 0;
+
+            if (Array.isArray(order.payments) && order.payments.length > 0) {
+              order.payments.forEach((pm: any) => {
+                if (pm.method === 'cash') cashToDeduct += Number(pm.amount || 0);
+                else transferToDeduct += Number(pm.amount || 0);
+              });
+            } else {
+              const method = (order.payment_method || order.paymentMethod || '').toLowerCase();
+              const amt = Number(order.total_amount || order.totalPrice || order.deposit_amount || 0);
+              if (method === 'cash') cashToDeduct = amt;
+              else if (method === 'transfer' || method === 'momo') transferToDeduct = amt;
+              else if (method === 'split') {
+                cashToDeduct = Number(order.split_cash_amount || order.splitCashAmount || 0);
+                transferToDeduct = Number(order.split_transfer_amount || order.splitTransferAmount || 0);
+              }
+            }
+
+            if (cashToDeduct > 0 || transferToDeduct > 0 || (shift.orderCount || 0) > 0) {
+              setShift((prev) => {
+                const updated: ShiftState = {
+                  ...prev,
+                  orderCount: Math.max(0, (prev.orderCount || 0) - 1),
+                  cashSales: Math.max(0, (prev.cashSales || 0) - cashToDeduct),
+                  transferSales: Math.max(0, (prev.transferSales || 0) - transferToDeduct),
+                };
+                saveCurrentShiftLocally(updated);
+                saveCurrentShiftToDb(updated).catch(() => {});
+                return updated;
+              });
+            }
+          }
+        }
+      } catch (shiftErr) {
+        console.warn('Lỗi hoàn tiền ca bán khi xóa đơn:', shiftErr);
+      }
+
+      // 7.2. Tự động hoàn trả tồn kho các sản phẩm bánh trong đơn (Stock Restore)
+      // Vì đơn bị xóa/hủy do lập nhầm, số bánh thực tế vẫn ở quầy bán
+      try {
+        if (Array.isArray(order.items) && order.items.length > 0) {
+          order.items.forEach((item: any) => {
+            const pId = item.product_id || item.productId;
+            const pQty = Number(item.quantity || 0);
+            if (pId && pQty > 0) {
+              addProductStock(pId, pQty, `Hoàn lại tồn kho do xóa hóa đơn #${rawNum || orderNum}`);
+            }
+          });
+        }
+      } catch (stockErr) {
+        console.warn('Lỗi hoàn tồn kho khi xóa đơn:', stockErr);
+      }
+
       // 8. Bắn sự kiện cập nhật toàn cục & phát sóng Realtime đa thiết bị
       if (rawNum) {
         broadcastOrderStatusUpdate(rawNum, 'cancelled').catch(() => {});
@@ -10038,11 +10102,16 @@ export default function POSPage() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    deleteSpoilageLog(log.id);
-                                    reloadSpoilage();
+                                    if (confirm(`Xác nhận xóa nhật ký báo hủy bánh "${log.productName}"?\nSố lượng (${log.quantity} ${log.unit}) sẽ được tự động hoàn trả lại vào tồn kho quầy bán.`)) {
+                                      if (log.productId && log.quantity > 0) {
+                                        addProductStock(log.productId, log.quantity, `Hoàn tồn kho do xóa báo hỏng bánh "${log.productName}"`);
+                                      }
+                                      deleteSpoilageLog(log.id);
+                                      reloadSpoilage();
+                                    }
                                   }}
                                   className="p-1 text-zinc-300 hover:text-rose-600 rounded transition cursor-pointer"
-                                  title="Xóa nhật ký này"
+                                  title="Xóa nhật ký này và hoàn lại tồn kho"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
