@@ -1949,10 +1949,20 @@ export default function POSPage() {
             ready: 3,
             completed: 4,
             cancelled: 0,
+            refunded: 0,
+            partially_refunded: 0,
           };
           const existRank = STATUS_RANK[exist.status || ''] || 0;
           const finalRank = STATUS_RANK[finalStatus || ''] || 0;
-          if (existRank > finalRank && finalStatus !== 'cancelled') {
+          const isRemake = Boolean(
+            so.remake_reason ||
+            exist.remake_reason ||
+            so.notes?.includes('làm lại từ đầu') ||
+            exist.notes?.includes('làm lại từ đầu')
+          );
+          const isTerminal = finalStatus === 'cancelled' || finalStatus === 'refunded' || finalStatus === 'partially_refunded';
+
+          if (existRank > finalRank && !isTerminal && !isRemake) {
             // Local đang ở bước cao hơn (ví dụ đã ready/completed trong khi Supabase vẫn pending/preparing)
             // TUYỆT ĐỐI không để dữ liệu Supabase đang trễ kéo lùi trạng thái đơn!
             return;
@@ -2038,9 +2048,7 @@ export default function POSPage() {
         if (payload && payload.order_number) {
           const matchNumbers = new Set<string>();
           matchNumbers.add(payload.order_number);
-          if (payload.order_number.endsWith('-LAM')) {
-            matchNumbers.add(payload.order_number.replace(/-LAM$/, ''));
-          } else {
+          if (!payload.order_number.endsWith('-LAM')) {
             matchNumbers.add(`${payload.order_number}-LAM`);
           }
 

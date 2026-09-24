@@ -196,6 +196,7 @@ export default function AdminBakeApprovalWatcher() {
 
                 return {
                   ...o,
+                  status: 'ready',
                   need_bake_qty: 0,
                   bake_status: 'done',
                   bake_approval_status: 'approved',
@@ -219,11 +220,45 @@ export default function AdminBakeApprovalWatcher() {
             localStorage.setItem('bakery_orders', JSON.stringify(updated));
           }
         }
+
+        // Cập nhật cả bakery_preorders nếu có
+        const rawPo = localStorage.getItem('bakery_preorders');
+        if (rawPo) {
+          const parsedPo = JSON.parse(rawPo);
+          if (Array.isArray(parsedPo)) {
+            const updatedPo = parsedPo.map((po: any) => {
+              if (po.order_number === orderNum || po.orderNumber === orderNum || po.id === orderNum) {
+                return {
+                  ...po,
+                  status: 'ready',
+                  need_bake_qty: 0,
+                  bake_status: 'done',
+                  bake_approval_status: 'approved',
+                  ready_stock_qty: fullQty,
+                  notes: updatedNotes,
+                  updated_at: new Date().toISOString(),
+                };
+              }
+              return po;
+            });
+            localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo));
+          }
+        }
+
+        // Đặt khóa trạng thái 'ready' bền vững để tránh Supabase polling kéo lùi trạng thái
+        try {
+          const rawLocks = localStorage.getItem('bakery_kds_status_locks') || sessionStorage.getItem('bakery_kds_status_locks');
+          const locks = rawLocks ? JSON.parse(rawLocks) : {};
+          locks[orderNum] = { status: 'ready', timestamp: Date.now() };
+          localStorage.setItem('bakery_kds_status_locks', JSON.stringify(locks));
+          sessionStorage.setItem('bakery_kds_status_locks', JSON.stringify(locks));
+        } catch {}
       }
 
       // 2. Cập nhật Dexie Offline DB
       try {
         (db.orders.where('order_number').equals(orderNum) as any).modify({
+          status: 'ready',
           need_bake_qty: 0,
           bake_status: 'done',
           bake_approval_status: 'approved',
@@ -237,6 +272,7 @@ export default function AdminBakeApprovalWatcher() {
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         try {
           await supabase.from('orders').update({
+            status: 'ready',
             notes: updatedNotes,
             updated_at: new Date().toISOString(),
           }).eq('order_number', orderNum);
@@ -292,6 +328,7 @@ export default function AdminBakeApprovalWatcher() {
     const orderNum = req.order_number;
 
     try {
+      let rejectedNotes = '';
       // 1. Cập nhật localStorage
       if (typeof window !== 'undefined') {
         const raw = localStorage.getItem('bakery_orders');
@@ -301,6 +338,7 @@ export default function AdminBakeApprovalWatcher() {
             const updated = parsed.map((o: any) => {
               if (o.order_number === orderNum || o.orderNumber === orderNum || o.id === orderNum) {
                 let n = (o.notes || '').replace(/\[⏳\s*YÊU CẦU DUYỆT NƯỚNG XONG:\s*\d+\s*CÁI\]/gi, '').trim();
+                rejectedNotes = n;
                 return {
                   ...o,
                   bake_approval_status: 'rejected',
@@ -313,6 +351,46 @@ export default function AdminBakeApprovalWatcher() {
             localStorage.setItem('bakery_orders', JSON.stringify(updated));
           }
         }
+
+        // Cập nhật cả bakery_preorders nếu có
+        const rawPo = localStorage.getItem('bakery_preorders');
+        if (rawPo) {
+          const parsedPo = JSON.parse(rawPo);
+          if (Array.isArray(parsedPo)) {
+            const updatedPo = parsedPo.map((po: any) => {
+              if (po.order_number === orderNum || po.orderNumber === orderNum || po.id === orderNum) {
+                let n = (po.notes || '').replace(/\[⏳\s*YÊU CẦU DUYỆT NƯỚNG XONG:\s*\d+\s*CÁI\]/gi, '').trim();
+                return {
+                  ...po,
+                  bake_approval_status: 'rejected',
+                  notes: n,
+                  updated_at: new Date().toISOString(),
+                };
+              }
+              return po;
+            });
+            localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo));
+          }
+        }
+      }
+
+      // Cập nhật Dexie DB
+      try {
+        (db.orders.where('order_number').equals(orderNum) as any).modify({
+          bake_approval_status: 'rejected',
+          notes: rejectedNotes,
+          updated_at: new Date().toISOString(),
+        });
+      } catch {}
+
+      // Cập nhật Supabase
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        try {
+          await supabase.from('orders').update({
+            notes: rejectedNotes,
+            updated_at: new Date().toISOString(),
+          }).eq('order_number', orderNum);
+        } catch {}
       }
 
       // 2. Phát sóng Realtime

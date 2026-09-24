@@ -145,11 +145,11 @@ export interface ActiveOvenBatch {
 }
 
 // 🛡️ BỘ NHỚ KHÓA TRẠNG THÁI BỀN VỮNG (PERSISTENT STATUS LOCKS):
-// Giúp duy trì trạng thái khi người dùng thoát ra vào lại hoặc reload trang
-const getPersistentStatusLocks = (): Map<string, { status: string; timestamp: number }> => {
+// Lưu vào localStorage để duy trì trạng thái kể cả khi người dùng đóng tab, thoát ra vào lại hoặc reload trang
+const getPersistentStatusLocks = (): Map<string, { status: string; timestamp: number; isRemake?: boolean }> => {
   if (typeof window === 'undefined') return new Map();
   try {
-    const raw = sessionStorage.getItem('bakery_kds_status_locks');
+    const raw = localStorage.getItem('bakery_kds_status_locks') || sessionStorage.getItem('bakery_kds_status_locks');
     if (raw) {
       const obj = JSON.parse(raw);
       return new Map(Object.entries(obj));
@@ -158,18 +158,19 @@ const getPersistentStatusLocks = (): Map<string, { status: string; timestamp: nu
   return new Map();
 };
 
-const savePersistentStatusLock = (orderNum: string, status: string) => {
+const savePersistentStatusLock = (orderNum: string, status: string, isRemake: boolean = false) => {
   if (typeof window === 'undefined' || !orderNum) return;
   try {
     const locks = getPersistentStatusLocks();
-    locks.set(orderNum, { status, timestamp: Date.now() });
+    locks.set(orderNum, { status, timestamp: Date.now(), isRemake });
     const now = Date.now();
     const cleanObj: Record<string, any> = {};
     locks.forEach((val, key) => {
-      if (now - val.timestamp < 300000) { // Giữ trong 5 phút
+      if (now - val.timestamp < 600000) { // Giữ vững chắc trong 10 phút
         cleanObj[key] = val;
       }
     });
+    localStorage.setItem('bakery_kds_status_locks', JSON.stringify(cleanObj));
     sessionStorage.setItem('bakery_kds_status_locks', JSON.stringify(cleanObj));
   } catch {}
 };
@@ -183,6 +184,7 @@ const deletePersistentStatusLock = (orderNum: string) => {
     locks.forEach((val, key) => {
       cleanObj[key] = val;
     });
+    localStorage.setItem('bakery_kds_status_locks', JSON.stringify(cleanObj));
     sessionStorage.setItem('bakery_kds_status_locks', JSON.stringify(cleanObj));
   } catch {}
 };
@@ -425,7 +427,7 @@ export default function KitchenPage() {
   // ── KHÓA CHỐNG LÙI TRẠNG THÁI (OPTIMISTIC TRANSITION LOCK) ──
   // Khi thợ bếp ấn chuyển bước hoặc hoàn thành đơn, ghi nhận ngay vào lock để
   // ngăn chặn dữ liệu Supabase/polling trả về trạng thái cũ đè ngược làm đơn bị hiện lại!
-  const localStatusLocksRef = useRef<Map<string, { status: string; timestamp: number }>>(new Map());
+  const localStatusLocksRef = useRef<Map<string, { status: string; timestamp: number; isRemake?: boolean }>>(new Map());
   const recentlyCompletedOrdersRef = useRef<Map<string, number>>(new Map());
   const dbChangeDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const reconciledOrdersRef = useRef<Set<string>>(new Set());
@@ -1096,7 +1098,7 @@ export default function KitchenPage() {
               const isShip = so.delivery_method === 'shipping' || existing?.delivery_method === 'shipping' || sbNotes.delivery_method === 'shipping';
 
               // 🛡️ KHÓA CHỐNG LÙI TRẠNG THÁI (OPTIMISTIC LOCK & MONOTONIC STATUS):
-              // Nếu người dùng vừa ấn chuyển bước trên máy này trong 120s qua, giữ nguyên trạng thái mới
+              // Nếu người dùng vừa ấn chuyển bước trên máy này trong 10 phút qua, giữ nguyên trạng thái mới
               // không để dữ liệu Supabase đang trễ/chưa kịp cập nhật kéo lùi đơn lại!
               const STATUS_RANK: Record<string, number> = {
                 pending: 1,
@@ -1104,6 +1106,8 @@ export default function KitchenPage() {
                 ready: 3,
                 completed: 4,
                 cancelled: 0,
+                refunded: 0,
+                partially_refunded: 0,
               };
               const localRank = STATUS_RANK[existing?.status || ''] || 0;
               const sbRank = STATUS_RANK[so.status || ''] || 0;
@@ -1111,14 +1115,25 @@ export default function KitchenPage() {
 
               const persistentLocks = getPersistentStatusLocks();
               const lock = localStatusLocksRef.current.get(so.order_number) || persistentLocks.get(so.order_number);
-              if (lock && Date.now() - lock.timestamp < 120000) {
+              const isRemake = Boolean(
+                (lock && lock.status === 'pending' && lock.isRemake) ||
+                existing?.remake_reason ||
+                so.remake_reason ||
+                existing?.notes?.includes('làm lại từ đầu') ||
+                so.notes?.includes('làm lại từ đầu')
+              );
+              const isTerminal = so.status === 'cancelled' || so.status === 'refunded' || so.status === 'partially_refunded';
+
+              if (lock && Date.now() - lock.timestamp < 600000) {
                 if (so.status === lock.status) {
                   localStatusLocksRef.current.delete(so.order_number);
                   deletePersistentStatusLock(so.order_number);
                 } else {
                   resolvedStatus = lock.status as any;
                 }
-              } else if (localRank > sbRank && so.status !== 'cancelled') {
+              } else if (isRemake && existing?.status === 'pending') {
+                resolvedStatus = 'pending';
+              } else if (localRank > sbRank && !isTerminal && !isRemake) {
                 // Local đã ở bước cao hơn (ví dụ đã ready/completed trong khi Supabase vẫn pending/preparing)
                 // TUYỆT ĐỐI không để dữ liệu Supabase đang trễ kéo lùi trạng thái đơn!
                 resolvedStatus = existing!.status as any;
@@ -1142,6 +1157,14 @@ export default function KitchenPage() {
                 so.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ') || 
                 existing?.notes?.includes('ĐÃ BẾP LÀM XONG ĐỦ');
 
+              let mergedNotes = so.notes || existing?.notes || '';
+              if (isSbDone) {
+                const fullQty = existing?.orderQuantity || so.orderQuantity || 1;
+                mergedNotes = mergedNotes
+                  .replace(/\[⏳\s*(?:CHỜ|CẦN)\s+BẾP\s+LÀM\s*\d+\s*CÁI(?:\s*\(ĐÃ CÓ SẴN\s*\d+(?:\/\d+)?\s*CÁI\))?\]/gi, `[✓ ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI]`)
+                  .replace(/(?:CHỜ|CẦN)\s+BẾP\s+LÀM\s*\d+\s*CÁI/gi, `ĐÃ BẾP LÀM XONG ĐỦ ${fullQty} CÁI`);
+              }
+
               const merged: KDSOrder = {
                 id: String(so.id || existing?.id || so.order_number),
                 order_number: String(so.order_number || existing?.order_number || 'BK-XXX'),
@@ -1152,7 +1175,7 @@ export default function KitchenPage() {
                 delivery_method: isShip ? ('shipping' as const) : ('pickup' as const),
                 shipping_address: so.shipping_address || existing?.shipping_address || sbNotes.shipping_address || '',
                 shipping_fee: so.shipping_fee || existing?.shipping_fee || 0,
-                notes: so.notes || existing?.notes || '',
+                notes: mergedNotes,
                 customer_name: so.customer_name || existing?.customer_name || sbNotes.customer_name || '',
                 customer_phone: so.customer_phone || existing?.customer_phone || sbNotes.customer_phone || '',
                 cake_message: so.cake_message || existing?.cake_message || sbNotes.cake_message || '',
@@ -1370,9 +1393,7 @@ export default function KitchenPage() {
       onStatusUpdate: (payload) => {
         if (!payload || !payload.order_number) return;
         const targetNums = new Set<string>([payload.order_number]);
-        if (payload.order_number.endsWith('-LAM')) {
-          targetNums.add(payload.order_number.replace(/-LAM$/, ''));
-        } else {
+        if (!payload.order_number.endsWith('-LAM')) {
           targetNums.add(`${payload.order_number}-LAM`);
         }
         const isEvtDone = payload.status === 'ready' || payload.status === 'completed';
@@ -2161,12 +2182,21 @@ export default function KitchenPage() {
   ) => {
     const orderId = order.id;
     const orderNum = order.order_number || orderId;
+    const remakeNoteTag = `[LÀM LẠI TỪ ĐẦU: ${reason}]`;
+    const updatedNotes = notes 
+      ? `${order.notes || ''} ${remakeNoteTag} ${notes}`.trim()
+      : `${order.notes || ''} ${remakeNoteTag}`.trim();
+
+    // 0. ĐẶT KHÓA TRẠNG THÁI LÀM LẠI:
+    // Ngăn chặn monotonic status rank hoặc dữ liệu cũ từ Supabase kéo ngược lại ready/preparing
+    localStatusLocksRef.current.set(orderNum, { status: 'pending', timestamp: Date.now(), isRemake: true });
+    savePersistentStatusLock(orderNum, 'pending', true);
 
     // 1. Cập nhật ngay trên giao diện React đưa về status: 'pending'
     setOrders((prev) =>
       prev.map((o) =>
         o.id === orderId || o.order_number === orderId || o.order_number === orderNum
-          ? { ...o, status: 'pending' as const, remake_reason: reason, remake_notes: notes }
+          ? { ...o, status: 'pending' as const, remake_reason: reason, remake_notes: notes, notes: updatedNotes }
           : o
       )
     );
@@ -2189,6 +2219,7 @@ export default function KitchenPage() {
                 return {
                   ...o,
                   status: 'pending',
+                  notes: updatedNotes,
                   updated_at: new Date().toISOString(),
                   remake_reason: reason,
                   remake_notes: notes,
@@ -2207,7 +2238,7 @@ export default function KitchenPage() {
           if (Array.isArray(parsedPo)) {
             const updatedPo = parsedPo.map((po: any) => {
               if (po.id === orderId || po.orderNumber === orderId || po.orderNumber === orderNum) {
-                return { ...po, status: 'pending', remake_reason: reason };
+                return { ...po, status: 'pending', remake_reason: reason, notes: updatedNotes, updated_at: new Date().toISOString() };
               }
               return po;
             });
@@ -2221,15 +2252,25 @@ export default function KitchenPage() {
       }
     }
 
+    // Cập nhật Dexie Offline DB
+    try {
+      (db.orders.where('order_number').equals(orderNum) as any).modify({
+        status: 'pending',
+        notes: updatedNotes,
+        updated_at: new Date().toISOString(),
+      });
+    } catch {}
+
     // 3. Phát sóng realtime sang các thiết bị khác (POS, máy tính, tablet)
     await broadcastOrderStatusUpdate(orderNum, 'pending', {
       ...order,
       status: 'pending',
+      notes: updatedNotes,
       remake_reason: reason,
     });
 
     // 4. Đồng bộ Supabase Database
-    syncOrderToSupabase({ ...order, status: 'pending', remake_reason: reason }, 'pending');
+    syncOrderToSupabase({ ...order, status: 'pending', notes: updatedNotes, remake_reason: reason }, 'pending');
 
     // 5. Ghi nhận hao hụt vào Spoilage Manager nếu được chọn
     if (logSpoilage) {
@@ -2542,6 +2583,19 @@ export default function KitchenPage() {
                 : o
             );
             localStorage.setItem('bakery_orders', JSON.stringify(updated));
+          }
+        }
+
+        const rawPo = localStorage.getItem('bakery_preorders');
+        if (rawPo) {
+          const parsedPo = JSON.parse(rawPo);
+          if (Array.isArray(parsedPo)) {
+            const updatedPo = parsedPo.map((po: any) =>
+              po.order_number === orderNum || po.orderNumber === orderNum || po.id === order.id
+                ? { ...po, bake_approval_status: 'pending', notes, updated_at: new Date().toISOString() }
+                : po
+            );
+            localStorage.setItem('bakery_preorders', JSON.stringify(updatedPo));
           }
         }
         window.dispatchEvent(new Event('bakery_orders_updated'));

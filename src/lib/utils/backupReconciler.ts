@@ -120,10 +120,27 @@ async function fetchCurrentSystemState() {
       dbOrders.forEach((dbo: any) => {
         const idx = currentOrders.findIndex((o) => o.order_number === dbo.order_number || o.id === dbo.id);
         if (idx >= 0) {
-          const STATUS_RANK: Record<string, number> = { pending: 1, preparing: 2, ready: 3, completed: 4, cancelled: 0 };
+          const STATUS_RANK: Record<string, number> = {
+            pending: 1,
+            preparing: 2,
+            ready: 3,
+            completed: 4,
+            cancelled: 0,
+            refunded: 0,
+            partially_refunded: 0,
+          };
           const localRank = STATUS_RANK[currentOrders[idx].status || ''] || 0;
           const dbRank = STATUS_RANK[dbo.status || ''] || 0;
-          const bestStatus = localRank > dbRank && dbo.status !== 'cancelled' ? currentOrders[idx].status : (dbo.status || currentOrders[idx].status);
+          const isRemake = Boolean(
+            dbo.remake_reason ||
+            currentOrders[idx].remake_reason ||
+            dbo.notes?.includes('làm lại từ đầu') ||
+            currentOrders[idx].notes?.includes('làm lại từ đầu')
+          );
+          const isTerminal = dbo.status === 'cancelled' || dbo.status === 'refunded' || dbo.status === 'partially_refunded';
+          const bestStatus = (localRank > dbRank && !isTerminal && !isRemake)
+            ? currentOrders[idx].status
+            : (dbo.status || currentOrders[idx].status);
           currentOrders[idx] = { ...currentOrders[idx], ...dbo, status: bestStatus };
         } else {
           currentOrders.unshift(dbo);

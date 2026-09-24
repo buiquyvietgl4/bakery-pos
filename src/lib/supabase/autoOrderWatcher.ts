@@ -147,12 +147,10 @@ class AutoOrderWatcher {
   public markOrderCompletedLocally(orderNum: string, status: string = 'completed', orderData?: any) {
     if (!orderNum || typeof window === 'undefined') return;
 
-    // 1. Xóa ngay khỏi bộ đệm cảnh báo quá hạn cho cả mã gốc và mã -LAM
+    // 1. Xóa ngay khỏi bộ đệm cảnh báo quá hạn cho cả mã gốc và mã -LAM nếu là đơn chính
     const relatedNumbers = new Set<string>();
     relatedNumbers.add(orderNum);
-    if (orderNum.endsWith('-LAM')) {
-      relatedNumbers.add(orderNum.replace(/-LAM$/, ''));
-    } else {
+    if (!orderNum.endsWith('-LAM')) {
       relatedNumbers.add(`${orderNum}-LAM`);
     }
 

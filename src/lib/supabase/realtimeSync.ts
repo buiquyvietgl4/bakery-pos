@@ -1648,13 +1648,12 @@ export async function syncOrderToSupabase(
 
   try {
     // 1. Thử cập nhật trạng thái nếu đơn đã tồn tại trong Supabase
-    // Đồng bộ đồng thời cả mã đơn chính lẫn mã đơn bếp làm thêm (${orderNum}-LAM) nếu có
+    // Nếu là đơn chính hoàn thành/hủy thì liên đới cả đơn bếp làm bù (${orderNum}-LAM)
+    // TUYỆT ĐỐI không liên đới ngược từ đơn -LAM sang làm hoàn thành cả đơn chính!
     const targetNumbers = new Set<string>();
     targetNumbers.add(orderNum);
     if (order.linked_bake_order_number) targetNumbers.add(order.linked_bake_order_number);
-    if (orderNum.endsWith('-LAM')) {
-      targetNumbers.add(orderNum.replace(/-LAM$/, ''));
-    } else {
+    if (!orderNum.endsWith('-LAM')) {
       targetNumbers.add(`${orderNum}-LAM`);
     }
 
