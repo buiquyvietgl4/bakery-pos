@@ -235,10 +235,11 @@ export async function POST(req: NextRequest) {
     // 3. Cập nhật mốc Epoch vào Supabase để bảo vệ chống đẩy ngược
     try {
       await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_RESET_EPOCH_ID},name.eq.${DB_ROW_RESET_EPOCH_NAME}`);
+      const epochPayload = JSON.stringify({ epoch: resetEpoch, mode: resetMode });
       const { error: epochErr } = await supabase.from('recipes').insert({
         id: DB_ROW_RESET_EPOCH_ID,
         name: DB_ROW_RESET_EPOCH_NAME,
-        notes: String(resetEpoch),
+        notes: epochPayload,
         is_active: false,
       });
       if (epochErr) {

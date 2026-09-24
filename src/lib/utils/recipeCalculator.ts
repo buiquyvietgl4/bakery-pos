@@ -150,6 +150,13 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
     );
 
     if (cleanRecipes.length === 0) {
+      if (typeof window !== 'undefined') {
+        const resetEpoch = localStorage.getItem('bakery_system_reset_epoch');
+        if (resetEpoch) {
+          localStorage.removeItem('bakery_recipes');
+          return [];
+        }
+      }
       return fallback;
     }
 

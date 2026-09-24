@@ -1429,8 +1429,22 @@ export default function AdminDashboard() {
             .eq('is_active', true)
             .order('created_at', { ascending: false });
 
-          if (!sbErr && prodData && prodData.length > 0) {
-            currentProds = mergeProductLists(currentProds, prodData);
+          if (!sbErr && prodData) {
+            if (prodData.length === 0) {
+              const { getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+              if (getLocalResetEpoch() > 0) {
+                currentProds = [];
+                setProducts([]);
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('bakery_products');
+                }
+                try {
+                  await db.products.clear();
+                } catch {}
+              }
+            } else {
+              currentProds = mergeProductLists(currentProds, prodData);
+            }
           }
         } catch (e) {
           console.warn('Lỗi tải sản phẩm từ Supabase:', e);

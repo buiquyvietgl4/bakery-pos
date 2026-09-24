@@ -632,37 +632,13 @@ export default function POSPage() {
             });
           }
         }
-        if (poMap.size > 0 || hasSeeded) return prunePreordersCache(Array.from(poMap.values()), MAX_CACHED_PREORDERS);
+        const resetEpoch = localStorage.getItem('bakery_system_reset_epoch');
+        if (poMap.size > 0 || hasSeeded || resetEpoch) {
+          return prunePreordersCache(Array.from(poMap.values()), MAX_CACHED_PREORDERS);
+        }
       } catch {}
     }
-    return [
-      {
-        id: 'pre-1',
-        orderNumber: 'BK-PRE-20260908-01',
-        customerName: 'Chị Lan Anh',
-        customerPhone: '0912 345 678',
-        pickupDateTime: '17:30 ngày mai (08/09)',
-        cakeName: 'Bánh Bông Lan Trứng Muối 18cm',
-        cakeMessage: 'Mừng Sinh Nhật Bé Bắp 3 tuổi',
-        totalPrice: 365000,
-        depositAmount: 200000,
-        remainingAmount: 165000,
-        status: 'pending',
-      },
-      {
-        id: 'pre-2',
-        orderNumber: 'BK-PRE-20260909-02',
-        customerName: 'Anh Tuấn',
-        customerPhone: '0988 776 655',
-        pickupDateTime: '10:00 ngày 09/09',
-        cakeName: 'Bánh Kem Bắp Phô Mai 20cm',
-        cakeMessage: 'Happy Birthday My Love',
-        totalPrice: 420000,
-        depositAmount: 420000,
-        remainingAmount: 0,
-        status: 'preparing',
-      }
-    ];
+    return [];
   });
 
   // ── ĐƠN CHỜ SHIP / CHỜ GIAO QUẦY (BƯỚC 3 BẾP SẴN SÀNG) ──
@@ -1335,16 +1311,30 @@ export default function POSPage() {
             .order('category')
             .order('name');
 
-          if (!error && data && data.length > 0) {
-            const merged = mergeProductLists(currentProducts, data);
-            setProducts(merged);
-            if (typeof window !== 'undefined') {
-              localStorage.setItem('bakery_products', JSON.stringify(merged));
+          if (!error && data) {
+            if (data.length === 0) {
+              const { getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+              if (getLocalResetEpoch() > 0) {
+                setProducts([]);
+                if (typeof window !== 'undefined') {
+                  localStorage.removeItem('bakery_products');
+                }
+                try {
+                  await db.products.clear();
+                } catch {}
+                return;
+              }
+            } else {
+              const merged = mergeProductLists(currentProducts, data);
+              setProducts(merged);
+              if (typeof window !== 'undefined') {
+                localStorage.setItem('bakery_products', JSON.stringify(merged));
+              }
+              try {
+                await db.products.clear();
+                await db.products.bulkPut(merged);
+              } catch {}
             }
-            try {
-              await db.products.clear();
-              await db.products.bulkPut(merged);
-            } catch {}
           }
         } catch (sbErr) {
           console.warn('Lỗi đồng bộ sản phẩm từ Supabase tại POS:', sbErr);
@@ -1726,7 +1716,11 @@ export default function POSPage() {
                 const key = p.order_number || p.orderNumber || p.id;
                 if (key) poMap.set(key, p);
               });
+          } else {
+            setInvoicesList([]);
           }
+        } else {
+          setInvoicesList([]);
         }
 
         const rawPo = localStorage.getItem('bakery_preorders');
@@ -1761,6 +1755,8 @@ export default function POSPage() {
 
         if (poMap.size > 0) {
           setPreordersList(prunePreordersCache(Array.from(poMap.values()), MAX_CACHED_PREORDERS));
+        } else {
+          setPreordersList([]);
         }
       } catch (e) {
         console.warn('Lỗi đồng bộ orders:', e);

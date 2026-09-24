@@ -451,6 +451,10 @@ function ensureSyncChannel() {
           console.warn('🚨 [SYSTEM_GLOBAL_WIPE] Nhận lệnh Reset Toàn Bộ Dữ Liệu từ Admin!', payload);
           if (typeof window !== 'undefined') {
             window.dispatchEvent(new CustomEvent('bakery_system_wiped', { detail: payload }));
+            if (payload.mode === 'full') {
+              window.dispatchEvent(new Event('bakery_products_updated'));
+              window.dispatchEvent(new Event('bakery_recipes_updated'));
+            }
           }
           systemGlobalWipeListeners.forEach((cb) => {
             try {

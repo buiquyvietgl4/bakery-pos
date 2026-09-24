@@ -89,22 +89,39 @@ export async function checkServerResetEpoch(): Promise<{ shouldAbort: boolean; s
       return { shouldAbort: false, serverEpoch: localEpoch };
     }
 
-    const serverEpoch = parseInt(data.notes, 10) || 0;
+    let serverEpoch = 0;
+    let serverMode: ResetMode = 'operational';
+    try {
+      const parsed = JSON.parse(data.notes);
+      if (typeof parsed === 'object' && parsed !== null) {
+        serverEpoch = Number(parsed.epoch) || 0;
+        serverMode = parsed.mode === 'full' ? 'full' : 'operational';
+      } else {
+        serverEpoch = parseInt(data.notes, 10) || 0;
+      }
+    } catch {
+      serverEpoch = parseInt(data.notes, 10) || 0;
+    }
+
     if (serverEpoch > localEpoch) {
       console.warn(
-        `🚨 [ZERO-RESURRECTION GUARD] Phát hiện CSDL đã được Reset Hệ Thống tại mốc ${serverEpoch} (Máy cục bộ đang ở mốc cũ ${localEpoch})! LẬP TỨC HỦY TIẾN TRÌNH ĐẨY DỮ LIỆU CŨ VÀ LÀM SẠCH BỘ NHỚ TRÌNH DUYỆT!`
+        `🚨 [ZERO-RESURRECTION GUARD] Phát hiện CSDL đã được Reset Hệ Thống (Mode: ${serverMode}) tại mốc ${serverEpoch} (Máy cục bộ đang ở mốc cũ ${localEpoch})! LẬP TỨC HỦY TIẾN TRÌNH ĐẨY DỮ LIỆU CŨ VÀ LÀM SẠCH BỘ NHỚ TRÌNH DUYỆT!`
       );
 
       // Cập nhật epoch ngay để không lặp lại
       setLocalResetEpoch(serverEpoch);
 
       // Tự động xóa sạch bộ nhớ cũ trước mốc reset (Bảo tồn bất kỳ đơn hàng nào mới tạo SAU mốc serverEpoch)
-      await clearAllClientStorage('operational', serverEpoch);
+      await clearAllClientStorage(serverMode, serverEpoch);
 
       // Báo sự kiện làm mới giao diện
       window.dispatchEvent(new Event('bakery_orders_updated'));
       window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
-      window.dispatchEvent(new CustomEvent('bakery_system_wiped', { detail: { epoch: serverEpoch, mode: 'operational' } }));
+      if (serverMode === 'full') {
+        window.dispatchEvent(new Event('bakery_products_updated'));
+        window.dispatchEvent(new Event('bakery_recipes_updated'));
+      }
+      window.dispatchEvent(new CustomEvent('bakery_system_wiped', { detail: { epoch: serverEpoch, mode: serverMode } }));
 
       return { shouldAbort: true, serverEpoch };
     }
@@ -228,6 +245,8 @@ export async function clearAllClientStorage(
         localStorage.setItem('bakery_notification_history', '[]');
         localStorage.setItem('bakery_notifs_initialized', 'true');
         window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
+        window.dispatchEvent(new Event('bakery_products_updated'));
+        window.dispatchEvent(new Event('bakery_recipes_updated'));
       }
     } catch (lsErr) {
       console.warn('Lỗi dọn localStorage:', lsErr);
