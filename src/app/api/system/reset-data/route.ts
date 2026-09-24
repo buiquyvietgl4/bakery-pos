@@ -85,7 +85,7 @@ function resetLocalSqlFiles(mode: 'operational' | 'full', epoch: number) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { mode, adminPassword, epoch } = body;
+    const { mode, adminPassword, epoch, validateOnly } = body;
 
     const resetMode: 'operational' | 'full' = mode === 'full' ? 'full' : 'operational';
     const resetEpoch = Number(epoch) || Date.now();
@@ -125,6 +125,11 @@ export async function POST(req: NextRequest) {
         { success: false, error: 'Mật khẩu Quản trị viên (Admin) không chính xác! Không thể thực hiện lệnh reset.' },
         { status: 401 }
       );
+    }
+
+    // Nếu chỉ là bước kiểm tra xác thực trước (Pre-flight validation)
+    if (validateOnly) {
+      return NextResponse.json({ success: true, message: 'Xác thực mật khẩu Quản trị viên thành công.' });
     }
 
     console.log(`🧹 [SYSTEM RESET] Bắt đầu xóa dữ liệu CSDL ở chế độ: ${resetMode.toUpperCase()}, Epoch: ${resetEpoch}`);

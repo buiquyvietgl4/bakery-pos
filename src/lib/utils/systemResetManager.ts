@@ -364,11 +364,34 @@ export async function executeSystemReset(options: {
   const newEpoch = Date.now();
 
   try {
-    // 0. 🔥 LỆNH BẢO VỆ TỐI HẬU: NGẮT NGAY AUTO BACKUP VÀ LẬP TỨC TẠO FILE SAO LƯU CUỐI CÙNG TRƯỚC KHI RESET
-    // Dù người dùng có chọn hay không chọn backupFirst, hệ thống vẫn lưu snapshot an toàn vào ổ cứng!
+    // 0. BƯỚC KIỂM TRA TIỀN TRÌNH: XÁC THỰC MẬT KHẨU ADMIN VỚI MÁY CHỦ (PRE-FLIGHT CHECK)
+    // Nếu mật khẩu sai hoặc mất mạng, dừng ngay lập tức: không ngắt Auto Backup, không xóa, không phát sóng!
+    const verifyRes = await fetch('/api/system/reset-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode,
+        adminPassword,
+        epoch: newEpoch,
+        validateOnly: true,
+      }),
+    });
+
+    const verifyJson = await verifyRes.json();
+    if (!verifyJson.success) {
+      return {
+        success: false,
+        message: verifyJson.error || 'Mật khẩu Quản trị viên không chính xác!',
+        error: verifyJson.error,
+      };
+    }
+
+    // 1. 🔥 LỆNH BẢO VỆ TỐI HẬU: NGẮT NGAY AUTO BACKUP VÀ LẬP TỨC TẠO FILE SAO LƯU CUỐI CÙNG TRƯỚC KHI RESET
+    // Khi mật khẩu đã xác thực chuẩn xác 100%, tiến hành ngắt watcher và chụp ảnh dữ liệu tối hậu
+    const { gatherFullBakeryData, saveCriticalPreResetBackup, stopAutoBackupWatcher, startAutoBackupWatcher } = await import('@/lib/utils/backupManager');
+    stopAutoBackupWatcher(); // Tạm dừng Auto Backup để không ghi đè rỗng khi reset
+
     try {
-      const { gatherFullBakeryData, saveCriticalPreResetBackup, stopAutoBackupWatcher } = await import('@/lib/utils/backupManager');
-      stopAutoBackupWatcher(); // Tạm dừng Auto Backup để không ghi đè rỗng khi reset
       const fullBackup = await gatherFullBakeryData();
       const hasProducts = fullBackup.products && fullBackup.products.length > 0;
       const hasOrders = fullBackup.orders && fullBackup.orders.length > 0;
@@ -379,19 +402,9 @@ export async function executeSystemReset(options: {
       console.warn('Lỗi lưu critical pre-reset backup:', saveErr);
     }
 
-    // 1. Tự động sao lưu tải file về máy qua trình duyệt nếu được chọn
+    // 2. Tự động sao lưu tải file về máy qua trình duyệt nếu được chọn
     if (backupFirst) {
       await downloadPreResetBackup();
-    }
-
-    // 2. Phát sóng khẩn cấp tới mọi máy khác qua WebSocket Realtime
-    try {
-      await broadcastSystemGlobalWipe({
-        mode,
-        epoch: newEpoch,
-      });
-    } catch (bErr) {
-      console.warn('Lỗi phát sóng broadcastSystemGlobalWipe:', bErr);
     }
 
     // 3. Gọi API Server thực hiện xóa trên Database SQL
@@ -407,6 +420,8 @@ export async function executeSystemReset(options: {
 
     const resJson = await res.json();
     if (!resJson.success) {
+      // Khôi phục lại Auto Backup nếu server báo lỗi xóa SQL
+      startAutoBackupWatcher();
       return {
         success: false,
         message: resJson.error || 'Lỗi từ máy chủ khi thực hiện reset CSDL',
@@ -414,13 +429,23 @@ export async function executeSystemReset(options: {
       };
     }
 
-    // 4. Lưu local epoch mới
+    // 4. Phát sóng khẩn cấp tới mọi máy khác qua WebSocket Realtime SAU KHI CSDL SQL ĐÃ XÓA THÀNH CÔNG
+    try {
+      await broadcastSystemGlobalWipe({
+        mode,
+        epoch: newEpoch,
+      });
+    } catch (bErr) {
+      console.warn('Lỗi phát sóng broadcastSystemGlobalWipe:', bErr);
+    }
+
+    // 5. Lưu local epoch mới
     setLocalResetEpoch(newEpoch);
 
-    // 5. Xóa sạch bộ nhớ cục bộ của máy hiện tại (bảo tồn newEpoch)
+    // 6. Xóa sạch bộ nhớ cục bộ của máy hiện tại (bảo tồn newEpoch)
     await clearAllClientStorage(mode, newEpoch);
 
-    // 6. Đảm bảo chắc chắn local epoch được lưu
+    // 7. Đảm bảo chắc chắn local epoch được lưu
     setLocalResetEpoch(newEpoch);
 
     return {
@@ -432,6 +457,10 @@ export async function executeSystemReset(options: {
     };
   } catch (err: any) {
     console.error('Lỗi executeSystemReset:', err);
+    try {
+      const { startAutoBackupWatcher } = await import('@/lib/utils/backupManager');
+      startAutoBackupWatcher();
+    } catch {}
     return {
       success: false,
       message: err?.message || 'Có lỗi xảy ra trong quá trình thiết lập lại hệ thống',
