@@ -364,7 +364,22 @@ export async function executeSystemReset(options: {
   const newEpoch = Date.now();
 
   try {
-    // 1. Tự động sao lưu trước khi xóa nếu được chọn
+    // 0. 🔥 LỆNH BẢO VỆ TỐI HẬU: NGẮT NGAY AUTO BACKUP VÀ LẬP TỨC TẠO FILE SAO LƯU CUỐI CÙNG TRƯỚC KHI RESET
+    // Dù người dùng có chọn hay không chọn backupFirst, hệ thống vẫn lưu snapshot an toàn vào ổ cứng!
+    try {
+      const { gatherFullBakeryData, saveCriticalPreResetBackup, stopAutoBackupWatcher } = await import('@/lib/utils/backupManager');
+      stopAutoBackupWatcher(); // Tạm dừng Auto Backup để không ghi đè rỗng khi reset
+      const fullBackup = await gatherFullBakeryData();
+      const hasProducts = fullBackup.products && fullBackup.products.length > 0;
+      const hasOrders = fullBackup.orders && fullBackup.orders.length > 0;
+      if (hasProducts || hasOrders) {
+        await saveCriticalPreResetBackup(fullBackup);
+      }
+    } catch (saveErr) {
+      console.warn('Lỗi lưu critical pre-reset backup:', saveErr);
+    }
+
+    // 1. Tự động sao lưu tải file về máy qua trình duyệt nếu được chọn
     if (backupFirst) {
       await downloadPreResetBackup();
     }

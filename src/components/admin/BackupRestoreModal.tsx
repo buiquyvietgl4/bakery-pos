@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Database, HardDrive, Download, Upload, RefreshCw, CheckCircle2, 
   AlertTriangle, X, Folder, Clock, ShieldCheck, FileText, Image as ImageIcon,
-  Check, ArrowRight, Layers, HelpCircle, AlertCircle, Trash2
+  Check, ArrowRight, Layers, HelpCircle, AlertCircle, Trash2, RotateCcw, Shield
 } from 'lucide-react';
 import { 
   BakeryBackupData, 
@@ -108,6 +108,18 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
       totalOrders: number;
       totalImages: number;
       createdAt?: string;
+    } | null;
+    latestPreResetBackup?: {
+      filename: string;
+      folderPath: string;
+      mtime: string;
+      sizeBytes: number;
+      metadata?: {
+        totalProducts: number;
+        totalOrders: number;
+        totalImages: number;
+        createdAt?: string;
+      } | null;
     } | null;
   } | null>(null);
 
@@ -274,17 +286,20 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
   };
 
   // ── HÀNH ĐỘNG NẠP NHANH FILE SAO LƯU TỪ Ổ CỨNG MÁY CHỦ ──
-  const handleLoadServerBackup = async () => {
+  const handleLoadServerBackup = async (specificFilename?: string) => {
     setIsParsingFile(true);
     setReconciliationReport(null);
     setPushResult(null);
     try {
-      const res = await fetch('/api/local-sql?load_backup=true');
+      const url = specificFilename
+        ? `/api/local-sql?load_backup=true&file=${encodeURIComponent(specificFilename)}`
+        : '/api/local-sql?load_backup=true';
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Không thể tải file sao lưu từ máy chủ.');
       const resJson = await res.json();
       if (!resJson.success || !resJson.data) throw new Error(resJson.error || 'Dữ liệu file sao lưu không hợp lệ');
 
-      setSelectedFileName(resJson.filename || 'latest_backup.bakery.json');
+      setSelectedFileName(resJson.filename || specificFilename || 'latest_backup.bakery.json');
       const json = normalizeBackupData(resJson.data);
       setSelectedBackupData(json);
       setIsReconciling(true);
@@ -715,6 +730,48 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
           {activeTab === 'restore' && (
             <div className="space-y-6">
               
+              {/* PHAO CỨU SINH TỐI HẬU: BẢN SAO LƯU TRƯỚC KHI RESET */}
+              {serverBackupInfo?.latestPreResetBackup && (
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border-2 border-emerald-300 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white shrink-0 shadow-md">
+                      <Shield className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-emerald-900 bg-emerald-200/80 px-2.5 py-0.5 rounded-full border border-emerald-300">
+                          🛡️ Bản Sao Lưu Tối Hậu Trước Khi Reset
+                        </span>
+                        <span className="text-xs text-gray-500 font-medium">
+                          {new Date(serverBackupInfo.latestPreResetBackup.mtime).toLocaleString('vi-VN')}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900 mt-1">
+                        Hệ thống đã tự động chụp lại dữ liệu tiệm bánh ngay trước lệnh Reset gần nhất
+                      </h4>
+                      <p className="text-xs text-gray-600 mt-0.5">
+                        Tệp: <code className="font-mono font-semibold text-emerald-900 bg-white px-1 py-0.5 rounded border border-emerald-200">{serverBackupInfo.latestPreResetBackup.filename}</code>
+                        {serverBackupInfo.latestPreResetBackup.metadata && (
+                          <span className="text-emerald-700 font-bold ml-1.5">
+                            ({serverBackupInfo.latestPreResetBackup.metadata.totalProducts} bánh, {serverBackupInfo.latestPreResetBackup.metadata.totalOrders} đơn hàng)
+                          </span>
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleLoadServerBackup(serverBackupInfo.latestPreResetBackup?.filename)}
+                    disabled={isParsingFile || isReconciling}
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-2 shrink-0 transition-all cursor-pointer active:scale-95"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    Khôi Phục Bản Này Ngay
+                  </button>
+                </div>
+              )}
+
               {/* BƯỚC 1: CHỌN FILE SAO LƯU */}
               <div
                 onDragOver={(e) => {
@@ -754,7 +811,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                   {serverBackupInfo?.exists && (
                     <button
                       type="button"
-                      onClick={handleLoadServerBackup}
+                      onClick={() => handleLoadServerBackup()}
                       disabled={isParsingFile || isReconciling}
                       className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md flex items-center gap-2 transition-all cursor-pointer"
                     >

@@ -123,6 +123,63 @@ export async function GET(req: NextRequest) {
           };
         } catch {}
       }
+
+      // Quét tìm bản sao lưu bảo vệ an toàn trước khi Reset (Pre-Reset Safety Backup)
+      let latestPreResetBackup: any = null;
+      try {
+        const candidateDirs = [backupDir, path.join(process.cwd(), 'SQL backup')];
+        let newestMtime = 0;
+        let bestFile = '';
+        let bestDirPath = '';
+
+        for (const cDir of candidateDirs) {
+          if (fs.existsSync(cDir)) {
+            const files = fs.readdirSync(cDir);
+            for (const f of files) {
+              if (
+                f.startsWith('SAO_LUU_CUOI_TRUOC_KHI_RESET_') ||
+                f.startsWith('SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_') ||
+                f.startsWith('final_pre_reset_backup_')
+              ) {
+                try {
+                  const stat = fs.statSync(path.join(cDir, f));
+                  if (stat.mtimeMs > newestMtime) {
+                    newestMtime = stat.mtimeMs;
+                    bestFile = f;
+                    bestDirPath = cDir;
+                  }
+                } catch {}
+              }
+            }
+          }
+        }
+
+        if (bestFile && bestDirPath) {
+          const fullPath = path.join(bestDirPath, bestFile);
+          const stat = fs.statSync(fullPath);
+          let preMeta: any = null;
+          try {
+            const raw = fs.readFileSync(fullPath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            preMeta = {
+              totalProducts: parsed.metadata?.totalProducts ?? parsed.products?.length ?? parsed.dexie_products?.length ?? 0,
+              totalOrders: parsed.metadata?.totalOrders ?? parsed.orders?.length ?? parsed.dexie_orders?.length ?? 0,
+              totalImages: parsed.metadata?.totalImages ?? parsed.images?.length ?? 0,
+              createdAt: parsed.metadata?.createdAt || parsed.exported_at || stat.mtime.toISOString(),
+            };
+          } catch {}
+          latestPreResetBackup = {
+            filename: bestFile,
+            folderPath: bestDirPath,
+            mtime: stat.mtime.toISOString(),
+            sizeBytes: stat.size,
+            metadata: preMeta,
+          };
+        }
+      } catch (scanErr) {
+        console.warn('Lỗi quét pre-reset backup:', scanErr);
+      }
+
       return NextResponse.json({
         success: true,
         exists,
@@ -132,20 +189,31 @@ export async function GET(req: NextRequest) {
         mtime,
         sizeBytes,
         metadata,
+        latestPreResetBackup,
       });
     }
 
     // Đọc trực tiếp nội dung tệp sao lưu tự động mới nhất từ ổ cứng (phục vụ nút Nạp nhanh)
     if (searchParams.get('load_backup') === 'true') {
+      const requestedFile = searchParams.get('file') || 'latest_backup.bakery.json';
+      const safeFilename = path.basename(requestedFile);
       const backupDir = path.join(process.cwd(), 'SQL backup', 'auto backup');
-      const targetFilePath = path.join(backupDir, 'latest_backup.bakery.json');
+      let targetFilePath = path.join(backupDir, safeFilename);
+
+      if (!fs.existsSync(targetFilePath)) {
+        const rootPath = path.join(process.cwd(), 'SQL backup', safeFilename);
+        if (fs.existsSync(rootPath)) {
+          targetFilePath = rootPath;
+        }
+      }
+
       if (fs.existsSync(targetFilePath)) {
         try {
           const content = fs.readFileSync(targetFilePath, 'utf-8');
           const parsed = JSON.parse(content);
           return NextResponse.json({
             success: true,
-            filename: 'latest_backup.bakery.json',
+            filename: safeFilename,
             data: parsed,
           });
         } catch (err: any) {
@@ -291,22 +359,46 @@ export async function POST(req: NextRequest) {
       }
 
       const jsonString = JSON.stringify(backupData, null, 2);
-      const targetFilename = 'latest_backup.bakery.json';
-      const targetFilePath = path.join(backupDir, targetFilename);
+      const incomingProdCount = backupData.metadata?.totalProducts ?? backupData.products?.length ?? 0;
+      const incomingOrderCount = backupData.metadata?.totalOrders ?? backupData.orders?.length ?? 0;
+
+      let targetFilename = 'latest_backup.bakery.json';
+      let targetFilePath = path.join(backupDir, targetFilename);
+
+      // 🛡️ BẢO VỆ CHỐNG GHI ĐÈ TRẮNG DỮ LIỆU SAU RESET:
+      // Nếu dữ liệu mới là 0 bánh & 0 đơn, nhưng file latest_backup hiện có trên đĩa đang chứa dữ liệu thực tế (> 0):
+      // Tuyệt đối không ghi đè lên latest_backup.bakery.json!
+      if (incomingProdCount === 0 && incomingOrderCount === 0 && fs.existsSync(targetFilePath)) {
+        try {
+          const existingRaw = fs.readFileSync(targetFilePath, 'utf-8');
+          const existingParsed = JSON.parse(existingRaw);
+          const existingProd = existingParsed.metadata?.totalProducts ?? existingParsed.products?.length ?? 0;
+          const existingOrder = existingParsed.metadata?.totalOrders ?? existingParsed.orders?.length ?? 0;
+          if (existingProd > 0 || existingOrder > 0) {
+            targetFilename = 'post_reset_empty_state.bakery.json';
+            targetFilePath = path.join(backupDir, targetFilename);
+          }
+        } catch {}
+      }
 
       fs.writeFileSync(targetFilePath, jsonString, 'utf-8');
 
       // Tự động dọn dẹp các file sao lưu cũ tạm thời trong thư mục nếu cần, chỉ giữ lại file latest_backup
+      // TUYỆT ĐỐI KHÔNG XÓA CÁC FILE SAO LƯU CUỐI TRƯỚC KHI RESET!
       try {
         const files = fs.readdirSync(backupDir);
         for (const f of files) {
           if (
             f !== targetFilename &&
+            f !== 'latest_backup.bakery.json' &&
             f !== 'THU_MUC_SAO_LUU_TIEM_BANH.txt' &&
             f !== 'bakery_master.sql' &&
             f !== 'bakery_schema.sql' &&
             f !== 'bakery_local_db.json' &&
             f !== 'HUONG_DAN_CHAY_SQL_LOCAL.txt' &&
+            !f.startsWith('SAO_LUU_CUOI_TRUOC_KHI_RESET_') &&
+            !f.startsWith('SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_') &&
+            !f.startsWith('final_pre_reset_backup_') &&
             (f.endsWith('.bakery.json') || f.startsWith('bakery_backup_') || f.includes('.temp.'))
           ) {
             try {
@@ -372,6 +464,9 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
             f !== 'bakery_schema.sql' &&
             f !== 'bakery_local_db.json' &&
             f !== 'HUONG_DAN_CHAY_SQL_LOCAL.txt' &&
+            !f.startsWith('SAO_LUU_CUOI_TRUOC_KHI_RESET_') &&
+            !f.startsWith('SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_') &&
+            !f.startsWith('final_pre_reset_backup_') &&
             (f.endsWith('.bakery.json') || f.startsWith('bakery_backup_') || f.includes('.temp.'))
           ) {
             try {
@@ -387,6 +482,47 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
         message: deletedCount > 0
           ? `Đã dọn dẹp ${deletedCount} tệp sao lưu cũ trong thư mục ổ cứng!`
           : `Thư mục ổ cứng máy tính đã sạch sẽ, chỉ giữ duy nhất tệp dữ liệu mới nhất.`,
+      });
+    }
+
+    // 3d. Tạo Bản Sao Lưu Bảo Vệ Tối Hậu Trước Khi Reset Hệ Thống (Không bao giờ bị xóa, lưu đa tầng)
+    if (action === 'save_critical_pre_reset_backup') {
+      const backupDir = body.folderPath
+        ? path.resolve(body.folderPath)
+        : path.join(process.cwd(), 'SQL backup', 'auto backup');
+
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+
+      const backupData = body.data;
+      if (!backupData) {
+        return NextResponse.json({ success: false, error: 'Thiếu dữ liệu để lưu' }, { status: 400 });
+      }
+
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      const preResetFilename = `SAO_LUU_CUOI_TRUOC_KHI_RESET_${timeStr}.bakery.json`;
+      const targetFilePath = path.join(backupDir, preResetFilename);
+      const jsonString = JSON.stringify(backupData, null, 2);
+
+      fs.writeFileSync(targetFilePath, jsonString, 'utf-8');
+
+      // Lưu thêm 1 bản dự phòng kép vào thư mục cha 'SQL backup'
+      try {
+        const rootBackupDir = path.join(process.cwd(), 'SQL backup');
+        if (fs.existsSync(rootBackupDir)) {
+          fs.writeFileSync(path.join(rootBackupDir, preResetFilename), jsonString, 'utf-8');
+        }
+      } catch {}
+
+      return NextResponse.json({
+        success: true,
+        filename: preResetFilename,
+        path: targetFilePath,
+        sizeBytes: Buffer.byteLength(jsonString, 'utf-8'),
+        savedAt: now.toISOString(),
       });
     }
 

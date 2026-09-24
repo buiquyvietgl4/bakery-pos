@@ -200,9 +200,14 @@ export async function cleanupOldBackupsInDirectory(
 
     for (const name of fileNames) {
       // Chỉ giữ lại keepFile và file README hướng dẫn. Xóa tất cả các file sao lưu cũ khác
+      // TUYỆT ĐỐI KHÔNG XÓA CÁC BẢN SAO LƯU CUỐI TRƯỚC KHI RESET!
       if (
         name !== keepFile &&
+        name !== 'latest_backup.bakery.json' &&
         name !== 'THU_MUC_SAO_LUU_TIEM_BANH.txt' &&
+        !name.startsWith('SAO_LUU_CUOI_TRUOC_KHI_RESET_') &&
+        !name.startsWith('SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_') &&
+        !name.startsWith('final_pre_reset_backup_') &&
         (name.endsWith('.bakery.json') || name.startsWith('bakery_backup_') || name.includes('.temp.'))
       ) {
         try {
@@ -273,15 +278,34 @@ async function writeFilesToDirHandle(
   jsonString: string,
   fullData?: BakeryBackupData
 ): Promise<string> {
-  const targetFilename = 'latest_backup.bakery.json';
+  let targetFilename = 'latest_backup.bakery.json';
+  const prodCount = fullData?.metadata?.totalProducts ?? fullData?.products?.length ?? 0;
+  const orderCount = fullData?.metadata?.totalOrders ?? fullData?.orders?.length ?? 0;
 
-  // 1. Ghi đè vào file sao lưu duy nhất latest_backup.bakery.json
+  // 🛡️ BẢO VỆ CHỐNG GHI ĐÈ TRẮNG DỮ LIỆU SAU RESET:
+  // Nếu dữ liệu mới là 0 bánh & 0 đơn, nhưng file latest_backup hiện có trên đĩa đang chứa dữ liệu thực tế (> 0):
+  // Tuyệt đối không ghi đè lên latest_backup.bakery.json!
+  if (prodCount === 0 && orderCount === 0) {
+    try {
+      const existingFileHandle = await dirHandle.getFileHandle(targetFilename, { create: false });
+      const existingFile = await existingFileHandle.getFile();
+      const existingText = await existingFile.text();
+      const parsed = JSON.parse(existingText);
+      const exProd = parsed.metadata?.totalProducts ?? parsed.products?.length ?? 0;
+      const exOrder = parsed.metadata?.totalOrders ?? parsed.orders?.length ?? 0;
+      if (exProd > 0 || exOrder > 0) {
+        targetFilename = 'post_reset_empty_state.bakery.json';
+      }
+    } catch {}
+  }
+
+  // 1. Ghi vào file
   const fileHandle = await dirHandle.getFileHandle(targetFilename, { create: true });
   const writable = await fileHandle.createWritable();
   await writable.write(jsonString);
   await writable.close();
 
-  // 2. 🔥 Tự động quét và xóa sạch các file sao lưu cũ để dung lượng KHÔNG bị phình to
+  // 2. 🔥 Tự động quét và xóa sạch các file sao lưu cũ để dung lượng KHÔNG bị phình to (miễn nhiễm với pre-reset backup)
   await cleanupOldBackupsInDirectory(dirHandle, targetFilename);
 
   // 3. Cập nhật file hướng dẫn nhận biết thư mục tự động
@@ -364,6 +388,68 @@ export async function selectBackupDirectory(): Promise<{ success: boolean; folde
     }
     return { success: false, error: err.message || 'Lỗi khi mở cửa sổ chọn thư mục' };
   }
+}
+
+// ── BẢO VỆ TỐI HẬU: LƯU BẢN SAO LƯU CUỐI CÙNG TRƯỚC KHI RESET HỆ THỐNG ──
+// Tệp này được bảo vệ miễn nhiễm, không bao giờ bị bất kỳ tiến trình dọn dẹp nào xóa
+export async function saveCriticalPreResetBackup(
+  fullData: BakeryBackupData
+): Promise<{ success: boolean; filename?: string; error?: string }> {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  const preResetFilename = `SAO_LUU_CUOI_TRUOC_KHI_RESET_${timeStr}.bakery.json`;
+  const jsonString = JSON.stringify(fullData, null, 2);
+
+  // 1. Lưu vào Server Local Disk qua API máy chủ
+  try {
+    const currentCfg = getAutoBackupConfig();
+    await fetch('/api/local-sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save_critical_pre_reset_backup',
+        data: fullData,
+        folderPath: currentCfg.folderPath || undefined,
+      }),
+    });
+  } catch (err) {
+    console.warn('[SafetyNet] Server pre-reset backup error:', err);
+  }
+
+  // 2. Lưu vào thư mục máy tính trình duyệt nếu có dirHandle được cấp quyền
+  if (isFileSystemAccessSupported()) {
+    try {
+      const dirHandle = await getStoredDirectoryHandle();
+      if (dirHandle) {
+        let perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+          const fileHandle = await dirHandle.getFileHandle(preResetFilename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(jsonString);
+          await writable.close();
+        }
+      }
+    } catch (dhErr) {
+      console.warn('[SafetyNet] DirHandle pre-reset backup error:', dhErr);
+    }
+  }
+
+  // 3. Lưu vào IndexedDB dự phòng với khóa chuyên dụng 'pre_reset_safety_vault'
+  try {
+    const db = await openHandleDB();
+    const tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
+    const store = tx.objectStore(SNAPSHOT_STORE);
+    store.put({
+      id: 'pre_reset_safety_vault',
+      savedAt: now.toISOString(),
+      filename: preResetFilename,
+      data: fullData,
+    });
+  } catch {}
+
+  console.log(`🛡️ [SafetyNet] Đã bảo lưu vĩnh viễn dữ liệu tiệm bánh trước khi Reset: ${preResetFilename}`);
+  return { success: true, filename: preResetFilename };
 }
 
 // ── HÀM BĂM DATA HASH ĐỂ PHÁT HIỆN DỮ LIỆU MỚI ──
