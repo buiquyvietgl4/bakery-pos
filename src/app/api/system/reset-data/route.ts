@@ -207,13 +207,16 @@ export async function POST(req: NextRequest) {
 
     // 3. Cập nhật mốc Epoch vào Supabase để bảo vệ chống đẩy ngược
     try {
-      await supabase.from('recipes').upsert({
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_RESET_EPOCH_ID},name.eq.${DB_ROW_RESET_EPOCH_NAME}`);
+      const { error: epochErr } = await supabase.from('recipes').insert({
         id: DB_ROW_RESET_EPOCH_ID,
         name: DB_ROW_RESET_EPOCH_NAME,
         notes: String(resetEpoch),
         is_active: false,
-        updated_at: new Date().toISOString(),
       });
+      if (epochErr) {
+        console.warn('Lỗi ghi reset epoch vào Supabase:', epochErr);
+      }
     } catch (epochErr) {
       console.warn('Lỗi ghi reset epoch vào Supabase:', epochErr);
     }
