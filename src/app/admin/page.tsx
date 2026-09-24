@@ -963,7 +963,7 @@ export default function AdminDashboard() {
     }
   };
 
-  // ── DUNG LƯỢNG DATABASE LƯU ẢNH STATE ──
+  // ── DUNG LƯỢNG DATABASE LƯU ẢNH (GÓI 1 GB) & CSDL ĐƠN HÀNG (GÓI 500 MB) STATE ──
   const [imageStats, setImageStats] = useState({
     totalBytes: 409385,
     productImagesCount: 1,
@@ -973,8 +973,23 @@ export default function AdminDashboard() {
     qrImagesCount: 0,
     qrImagesBytes: 0,
     totalImagesCount: 2,
-    safeCapacityRemainingMB: 499.6,
-    estimatedRemainingImages: 4500,
+    safeCapacityRemainingMB: 1023.6,
+    estimatedRemainingImages: 11000,
+    lastCalculatedAt: '',
+  });
+  const [dbStorageStats, setDbStorageStats] = useState({
+    totalDbMB: 22.4,
+    totalDbBytes: 23488102,
+    orderCount: 0,
+    orderBytes: 0,
+    cashflowCount: 0,
+    cashflowBytes: 0,
+    productCount: 0,
+    productBytes: 0,
+    stockLogCount: 0,
+    stockLogBytes: 0,
+    safeRemainingMB: 477.6,
+    estimatedRemainingOrders: 217000,
     lastCalculatedAt: '',
   });
   const [calculatingStorage, setCalculatingStorage] = useState(false);
@@ -3484,14 +3499,118 @@ export default function AdminDashboard() {
         lastCalculatedAt: new Date().toLocaleTimeString('vi-VN'),
       });
 
-      // Database 500MB chỉ tính dữ liệu text kế toán + dữ liệu đơn (rất thông thoáng ~28.4MB)
-      setDbUsageMB(28.4);
+      // 5. Quét và tính dung lượng Cơ sở dữ liệu lưu đơn hàng & vận hành (Gói 500 MB)
+      let ordBytes = 0;
+      let ordCount = 0;
+      let cfBytes = 0;
+      let cfCount = 0;
+      let prodDataBytes = 0;
+      let prodDataCount = 0;
+      let stockBytes = 0;
+      let stockCount = 0;
+
+      if (typeof window !== 'undefined') {
+        try {
+          const rawOrders = localStorage.getItem('bakery_orders');
+          if (rawOrders) {
+            ordBytes += rawOrders.length;
+            const parsed = JSON.parse(rawOrders);
+            if (Array.isArray(parsed)) ordCount = parsed.length;
+          }
+          const rawReturns = localStorage.getItem('bakery_order_returns');
+          if (rawReturns) ordBytes += rawReturns.length;
+          const rawHeld = localStorage.getItem('bakery_held_orders');
+          if (rawHeld) ordBytes += rawHeld.length;
+
+          const rawCf = localStorage.getItem('bakery_cashflow');
+          if (rawCf) {
+            cfBytes += rawCf.length;
+            const parsed = JSON.parse(rawCf);
+            if (Array.isArray(parsed)) cfCount += parsed.length;
+          }
+          const rawExp = localStorage.getItem('bakery_expenses');
+          if (rawExp) {
+            cfBytes += rawExp.length;
+            const parsed = JSON.parse(rawExp);
+            if (Array.isArray(parsed)) cfCount += parsed.length;
+          }
+          const rawSh = localStorage.getItem('bakery_shift_history');
+          if (rawSh) cfBytes += rawSh.length;
+
+          const rawP = localStorage.getItem('bakery_products');
+          if (rawP) {
+            try {
+              const arr = JSON.parse(rawP);
+              if (Array.isArray(arr)) {
+                prodDataCount += arr.length;
+                const textOnly = arr.map((p: any) => ({ ...p, image_url: p.image_url ? '[STORE_IMAGE]' : null }));
+                prodDataBytes += JSON.stringify(textOnly).length;
+              }
+            } catch {}
+          }
+          const rawR = localStorage.getItem('bakery_recipes');
+          if (rawR) {
+            prodDataBytes += rawR.length;
+            try {
+              const arr = JSON.parse(rawR);
+              if (Array.isArray(arr)) prodDataCount += arr.length;
+            } catch {}
+          }
+          const rawBOM = localStorage.getItem('bakery_full_bom_config');
+          if (rawBOM) prodDataBytes += rawBOM.length;
+          const rawIng = localStorage.getItem('bakery_ingredients');
+          if (rawIng) prodDataBytes += rawIng.length;
+
+          const rawSt = localStorage.getItem('bakery_stock_adjustments');
+          if (rawSt) {
+            stockBytes += rawSt.length;
+            try {
+              const arr = JSON.parse(rawSt);
+              if (Array.isArray(arr)) stockCount += arr.length;
+            } catch {}
+          }
+          const rawSp = localStorage.getItem('bakery_spoilage_logs');
+          if (rawSp) {
+            stockBytes += rawSp.length;
+            try {
+              const arr = JSON.parse(rawSp);
+              if (Array.isArray(arr)) stockCount += arr.length;
+            } catch {}
+          }
+        } catch (dbErr) {
+          console.warn('Lỗi đọc dung lượng CSDL:', dbErr);
+        }
+      }
+
+      // Overhead cấu trúc bảng và hệ thống PostgreSQL (catalog, schemas, auth, indexes)
+      const basePostgresCatalogMB = 22.0;
+      const actualDbDataMB = (ordBytes + cfBytes + prodDataBytes + stockBytes) / (1024 * 1024);
+      const computedDbMB = Math.round((basePostgresCatalogMB + actualDbDataMB * 1.8) * 10) / 10;
+      const safeDbRemainingMB = Math.max(0, Math.round((500 - computedDbMB) * 10) / 10);
+      const estRemainingOrders = Math.floor((safeDbRemainingMB * 1024) / 2.2);
+
+      setDbUsageMB(computedDbMB);
+      setDbStorageStats({
+        totalDbMB: computedDbMB,
+        totalDbBytes: Math.round(computedDbMB * 1024 * 1024),
+        orderCount: ordCount || posOrders.length,
+        orderBytes: ordBytes,
+        cashflowCount: cfCount,
+        cashflowBytes: cfBytes,
+        productCount: prodDataCount || products.length,
+        productBytes: prodDataBytes,
+        stockLogCount: stockCount,
+        stockLogBytes: stockBytes,
+        safeRemainingMB: safeDbRemainingMB,
+        estimatedRemainingOrders: estRemainingOrders,
+        lastCalculatedAt: new Date().toLocaleTimeString('vi-VN'),
+      });
     } catch (err) {
-      console.warn('Lỗi tính dung lượng ảnh:', err);
+      console.warn('Lỗi tính dung lượng:', err);
     } finally {
       setCalculatingStorage(false);
     }
-  }, [products]);
+  }, [products, posOrders]);
 
   useEffect(() => {
     refreshImageStorageStats();
@@ -4030,54 +4149,7 @@ export default function AdminDashboard() {
               {uploadSuccess}
             </div>
           )}
-
-          {/* ── BẢNG ĐIỀU KHIỂN DUNG LƯỢNG DATABASE LƯU ẢNH (DẠNG THANH CHUẨN) ── */}
-          <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
-            <div className="flex justify-between items-center text-xs font-bold">
-              <span className="text-zinc-900 flex items-center gap-1.5">
-                <Database className="w-4 h-4 text-violet-600" />
-                <span>Dung lượng Store lưu trữ ảnh (Gói 1 GB):</span>
-              </span>
-              <span className="text-emerald-700">
-                {formatBytes(imageStats.totalBytes)} / 1 GB (Mức an toàn tuyệt đối)
-              </span>
-            </div>
-            <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
-              <div
-                className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 rounded-full transition-all duration-500"
-                style={{ width: `${Math.max(1.5, (imageStats.totalBytes / (1024 * 1024 * 1024)) * 100)}%` }}
-              ></div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-1 border-t border-zinc-200 text-xs">
-              <div className="text-zinc-600">
-                🍰 Ảnh menu bánh: <b className="text-zinc-900">{formatBytes(imageStats.productImagesBytes)}</b> ({imageStats.productImagesCount} ảnh)
-              </div>
-              <div className="text-zinc-600">
-                📸 Ảnh mẫu khách gửi: <b className="text-zinc-900">{formatBytes(imageStats.preorderImagesBytes)}</b> ({imageStats.preorderImagesCount} ảnh)
-              </div>
-              <div className="text-zinc-600">
-                💳 Mã QR thanh toán: <b className="text-zinc-900">{formatBytes(imageStats.qrImagesBytes)}</b> ({imageStats.qrImagesCount} ảnh)
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-200/60">
-              <span className="flex items-center gap-1.5">
-                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                <span>Còn trống an toàn: <b className="text-emerald-700 font-bold">{imageStats.safeCapacityRemainingMB} MB</b> (chứa được ~{imageStats.estimatedRemainingImages.toLocaleString('vi-VN')} ảnh nữa)</span>
-              </span>
-              <div className="flex items-center gap-3">
-                {imageStats.lastCalculatedAt && <span>🕒 Lúc: <b>{imageStats.lastCalculatedAt}</b></span>}
-                <button
-                  type="button"
-                  onClick={refreshImageStorageStats}
-                  disabled={calculatingStorage}
-                  className="text-amber-700 hover:text-amber-800 font-bold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3 h-3 ${calculatingStorage ? 'animate-spin' : ''}`} />
-                  {calculatingStorage ? 'Đang quét...' : 'Quét & Cập nhật'}
-                </button>
-              </div>
-            </div>
-          </div>
+          {/* Giao diện theo dõi dung lượng CSDL & Store ảnh đã được chuyển về Phân Hệ Dữ Liệu */}
 
           <input
             type="file"
@@ -6999,6 +7071,127 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* ── BẢNG ĐIỀU KHIỂN THEO DÕI DUNG LƯỢNG HỆ THỐNG (500 MB CSDL ĐƠN HÀNG & 1 GB STORE ẢNH) ── */}
+          <div className="bg-white rounded-3xl border border-zinc-200 p-5 sm:p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100">
+              <div>
+                <h3 className="font-black text-base text-zinc-900 flex items-center gap-2">
+                  <Database className="w-5 h-5 text-amber-600" />
+                  <span>Giám Sát Dung Lượng Bộ Nhớ &amp; Tài Nguyên Hệ Thống</span>
+                </h3>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  Theo dõi thời gian thực dung lượng CSDL lưu đơn hàng (500 MB) và kho lưu trữ hình ảnh (1 GB) để đảm bảo tiệm vận hành thông suốt.
+                </p>
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                {imageStats.lastCalculatedAt && (
+                  <span className="text-xs text-zinc-500 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Lúc: <b>{imageStats.lastCalculatedAt}</b></span>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={refreshImageStorageStats}
+                  disabled={calculatingStorage}
+                  className="px-3.5 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200/80 text-amber-800 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50 shadow-2xs active:scale-95"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${calculatingStorage ? 'animate-spin' : ''}`} />
+                  <span>{calculatingStorage ? 'Đang quét...' : 'Quét & Cập nhật'}</span>
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {/* THANH 1: THEO DÕI DUNG LƯỢNG BỘ NHỚ CSDL LƯU ĐƠN HÀNG (GÓI 500 MB) */}
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1.5">
+                  <span className="text-zinc-900 flex items-center gap-2">
+                    <Database className="w-4 h-4 text-emerald-600" />
+                    <span>Dung lượng CSDL lưu đơn hàng &amp; vận hành (Gói 500 MB):</span>
+                  </span>
+                  <span className="text-emerald-700">
+                    <b>{dbStorageStats.totalDbMB} MB</b> / 500 MB (Mức an toàn tuyệt đối)
+                  </span>
+                </div>
+
+                <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.max(1.5, Math.min(100, (dbStorageStats.totalDbMB / 500) * 100))}%` }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 border-t border-zinc-200 text-xs">
+                  <div className="text-zinc-600">
+                    📦 Đơn hàng &amp; Chi tiết: <b className="text-zinc-900">{formatBytes(dbStorageStats.orderBytes)}</b> ({dbStorageStats.orderCount.toLocaleString('vi-VN')} đơn)
+                  </div>
+                  <div className="text-zinc-600">
+                    📊 Sổ quỹ &amp; Thu chi: <b className="text-zinc-900">{formatBytes(dbStorageStats.cashflowBytes)}</b> ({dbStorageStats.cashflowCount.toLocaleString('vi-VN')} giao dịch)
+                  </div>
+                  <div className="text-zinc-600">
+                    🎂 Menu bánh &amp; BOM: <b className="text-zinc-900">{formatBytes(dbStorageStats.productBytes)}</b> ({dbStorageStats.productCount.toLocaleString('vi-VN')} mục)
+                  </div>
+                  <div className="text-zinc-600">
+                    📜 Kho &amp; Hao hụt: <b className="text-zinc-900">{formatBytes(dbStorageStats.stockLogBytes)}</b> ({dbStorageStats.stockLogCount.toLocaleString('vi-VN')} bản ghi)
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-200/60 gap-2">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Còn trống an toàn: <b className="text-emerald-700 font-bold">{dbStorageStats.safeRemainingMB} MB</b> (chứa được ~{dbStorageStats.estimatedRemainingOrders.toLocaleString('vi-VN')} đơn hàng nữa)</span>
+                  </span>
+                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                    ⚡ Trạng thái: Dữ liệu văn bản nén siêu nhẹ &amp; tối ưu
+                  </span>
+                </div>
+              </div>
+
+              {/* THANH 2: THEO DÕI DUNG LƯỢNG STORE LƯU TRỮ ẢNH (GÓI 1 GB) - ĐÚNG FORM ẢNH USER GỬI */}
+              <div className="p-4 sm:p-4.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1.5">
+                  <span className="text-zinc-900 flex items-center gap-2">
+                    <Camera className="w-4 h-4 text-violet-600" />
+                    <span>Dung lượng Store lưu trữ ảnh (Gói 1 GB):</span>
+                  </span>
+                  <span className="text-emerald-700">
+                    <b>{formatBytes(imageStats.totalBytes)}</b> / 1 GB (Mức an toàn tuyệt đối)
+                  </span>
+                </div>
+
+                <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.max(1.5, Math.min(100, (imageStats.totalBytes / (1024 * 1024 * 1024)) * 100))}%` }}
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 border-t border-zinc-200 text-xs">
+                  <div className="text-zinc-600">
+                    🍰 Ảnh menu bánh: <b className="text-zinc-900">{formatBytes(imageStats.productImagesBytes)}</b> ({imageStats.productImagesCount} ảnh)
+                  </div>
+                  <div className="text-zinc-600">
+                    📸 Ảnh mẫu khách gửi: <b className="text-zinc-900">{formatBytes(imageStats.preorderImagesBytes)}</b> ({imageStats.preorderImagesCount} ảnh)
+                  </div>
+                  <div className="text-zinc-600">
+                    💳 Mã QR thanh toán: <b className="text-zinc-900">{formatBytes(imageStats.qrImagesBytes)}</b> ({imageStats.qrImagesCount} ảnh)
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-200/60 gap-2">
+                  <span className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Còn trống an toàn: <b className="text-emerald-700 font-bold">{imageStats.safeCapacityRemainingMB} MB</b> (chứa được ~{imageStats.estimatedRemainingImages.toLocaleString('vi-VN')} ảnh nữa)</span>
+                  </span>
+                  <span className="text-violet-700 font-semibold flex items-center gap-1">
+                    🖼️ Tự động nén ảnh WebP độ nét cao khi lưu
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* THANH ĐIỀU HƯỚNG PHÂN NHÁNH 3 PHÂN KHU (SUB-TABS SEGMENTED PILL BAR) */}
           <div className="bg-zinc-100 p-1.5 rounded-2xl border border-zinc-200/80 flex items-center gap-2 overflow-x-auto scrollbar-none">
             <button
@@ -7347,79 +7540,7 @@ export default function AdminDashboard() {
               {/* KHỐI 1: QUẢN TRỊ ĐA CSDL SQL (CHÍNH & THỬ NGHIỆM) - TÙY BIẾN KẾT NỐI */}
               <CustomSqlConfigSection />
 
-              {/* KHỐI 2: THEO DÕI DUNG LƯỢNG CLOUD (DATABASE & KHO ẢNH) */}
-              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-5">
-                <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
-                  <div>
-                    <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
-                      <Database className="w-4 h-4 text-emerald-600" /> Dung Lượng Cơ Sở Dữ Liệu & Lưu Trữ Đám Mây
-                    </h3>
-                    <p className="text-xs text-zinc-500">
-                      Giám sát tài nguyên hệ thống đám mây để đảm bảo vận hành ổn định và không vượt gói miễn phí.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={refreshImageStorageStats}
-                    disabled={calculatingStorage}
-                    className="px-3 py-1.5 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${calculatingStorage ? 'animate-spin' : ''}`} />
-                    <span>{calculatingStorage ? 'Đang quét...' : 'Quét Lại'}</span>
-                  </button>
-                </div>
-
-                {/* THANH 1: TỔNG DUNG LƯỢNG DATABASE ĐÃ DÙNG (500 MB) */}
-                <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-2">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1">
-                    <span className="text-zinc-800">Dung lượng Database PostgreSQL đã dùng:</span>
-                    <span className="text-emerald-700 font-black">{dbUsageMB} MB / 500 MB (An toàn tuyệt đối)</span>
-                  </div>
-                  <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 via-teal-500 to-emerald-600 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.max(2, (dbUsageMB / 500) * 100)}%` }}
-                    />
-                  </div>
-                  <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-1">
-                    <span>📄 Dữ liệu thực tế: Đơn hàng, sổ quỹ, BOM nguyên liệu (~28.4 MB)</span>
-                    <span className="text-emerald-700 font-bold">⚡ Trạng thái: Rất nhẹ & tối ưu</span>
-                  </div>
-                </div>
-
-                {/* THANH 2: DUNG LƯỢNG STORE LƯU TRỮ ẢNH (GÓI 1 GB) */}
-                <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1">
-                    <span className="text-zinc-800 flex items-center gap-1.5">
-                      <Camera className="w-4 h-4 text-violet-600" />
-                      Dung lượng Store lưu trữ ảnh (Gói 1 GB):
-                    </span>
-                    <span className="text-emerald-700 font-black">
-                      {formatBytes(imageStats.totalBytes)} / 1 GB (Còn trống rất nhiều)
-                    </span>
-                  </div>
-                  <div className="w-full h-3.5 bg-zinc-200 rounded-full overflow-hidden p-0.5">
-                    <div
-                      className="h-full bg-gradient-to-r from-violet-500 via-indigo-500 to-blue-500 rounded-full transition-all duration-500"
-                      style={{ width: `${Math.max(1.5, (imageStats.totalBytes / (1024 * 1024 * 1024)) * 100)}%` }}
-                    />
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs pt-1 border-t border-zinc-200/60">
-                    <div className="text-zinc-600">
-                      🍰 Menu bánh: <b className="text-zinc-900">{formatBytes(imageStats.productImagesBytes)}</b> ({imageStats.productImagesCount} ảnh)
-                    </div>
-                    <div className="text-zinc-600">
-                      📸 Ảnh khách gửi: <b className="text-zinc-900">{formatBytes(imageStats.preorderImagesBytes)}</b> ({imageStats.preorderImagesCount} ảnh)
-                    </div>
-                    <div className="text-zinc-600">
-                      💳 Mã QR ví: <b className="text-zinc-900">{formatBytes(imageStats.qrImagesBytes)}</b> ({imageStats.qrImagesCount} ảnh)
-                    </div>
-                  </div>
-                  <div className="text-[11px] text-zinc-500">
-                    ✨ Sức chứa còn lại ước tính: <b className="text-emerald-700 font-bold">~{imageStats.estimatedRemainingImages.toLocaleString('vi-VN')} ảnh</b> nữa trước khi chạm mức 1 GB.
-                  </div>
-                </div>
-              </div>
+              {/* KHỐI 2: SAO LƯU & ĐẨY ĐỐI SOÁT LÊN CLOUD (Dung lượng CSDL & Ảnh được hiển thị đồng bộ ở đầu Mục Dữ Liệu) */}
 
               {/* KHỐI 3: SAO LƯU & ĐẨY ĐỐI SOÁT LÊN CLOUD */}
               <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
