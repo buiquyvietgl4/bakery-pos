@@ -100,6 +100,61 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    // Kiểm tra tệp sao lưu tự động (Auto Backup) trên máy tính chủ
+    if (searchParams.get('check_backup') === 'true') {
+      const backupDir = path.join(process.cwd(), 'SQL backup', 'auto backup');
+      const targetFilePath = path.join(backupDir, 'latest_backup.bakery.json');
+      const exists = fs.existsSync(targetFilePath);
+      let mtime: string | null = null;
+      let sizeBytes = 0;
+      let metadata: any = null;
+      if (exists) {
+        try {
+          const stat = fs.statSync(targetFilePath);
+          mtime = stat.mtime.toISOString();
+          sizeBytes = stat.size;
+          const content = fs.readFileSync(targetFilePath, 'utf-8');
+          const parsed = JSON.parse(content);
+          metadata = {
+            totalProducts: parsed.metadata?.totalProducts ?? parsed.products?.length ?? 0,
+            totalOrders: parsed.metadata?.totalOrders ?? parsed.orders?.length ?? 0,
+            totalImages: parsed.metadata?.totalImages ?? parsed.images?.length ?? 0,
+            createdAt: parsed.metadata?.createdAt || mtime,
+          };
+        } catch {}
+      }
+      return NextResponse.json({
+        success: true,
+        exists,
+        folderPath: backupDir,
+        folderName: 'SQL backup/auto backup',
+        filename: 'latest_backup.bakery.json',
+        mtime,
+        sizeBytes,
+        metadata,
+      });
+    }
+
+    // Đọc trực tiếp nội dung tệp sao lưu tự động mới nhất từ ổ cứng (phục vụ nút Nạp nhanh)
+    if (searchParams.get('load_backup') === 'true') {
+      const backupDir = path.join(process.cwd(), 'SQL backup', 'auto backup');
+      const targetFilePath = path.join(backupDir, 'latest_backup.bakery.json');
+      if (fs.existsSync(targetFilePath)) {
+        try {
+          const content = fs.readFileSync(targetFilePath, 'utf-8');
+          const parsed = JSON.parse(content);
+          return NextResponse.json({
+            success: true,
+            filename: 'latest_backup.bakery.json',
+            data: parsed,
+          });
+        } catch (err: any) {
+          return NextResponse.json({ success: false, error: 'Lỗi giải mã file JSON: ' + err.message }, { status: 500 });
+        }
+      }
+      return NextResponse.json({ success: false, error: 'Không tìm thấy file sao lưu trên ổ cứng' }, { status: 404 });
+    }
+
     // Nếu không truyền dir, trả về trạng thái máy chủ (cho các máy con qua port đồng bộ)
     if (!dir) {
       return NextResponse.json({
@@ -217,6 +272,121 @@ export async function POST(req: NextRequest) {
         message: `Thư mục "${targetDir}" đã sẵn sàng trên ổ đĩa máy tính chủ.`,
         path: targetDir,
         serverState: getServerState(),
+      });
+    }
+
+    // 3b. Lưu tệp Sao lưu tự động (Auto Backup) trực tiếp vào ổ đĩa máy tính (Chạy ngầm không bao giờ mất quyền)
+    if (action === 'save_backup') {
+      const backupDir = body.folderPath
+        ? path.resolve(body.folderPath)
+        : path.join(process.cwd(), 'SQL backup', 'auto backup');
+
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+
+      const backupData = body.data;
+      if (!backupData) {
+        return NextResponse.json({ success: false, error: 'Thiếu dữ liệu backup để lưu' }, { status: 400 });
+      }
+
+      const jsonString = JSON.stringify(backupData, null, 2);
+      const targetFilename = 'latest_backup.bakery.json';
+      const targetFilePath = path.join(backupDir, targetFilename);
+
+      fs.writeFileSync(targetFilePath, jsonString, 'utf-8');
+
+      // Tự động dọn dẹp các file sao lưu cũ tạm thời trong thư mục nếu cần, chỉ giữ lại file latest_backup
+      try {
+        const files = fs.readdirSync(backupDir);
+        for (const f of files) {
+          if (
+            f !== targetFilename &&
+            f !== 'THU_MUC_SAO_LUU_TIEM_BANH.txt' &&
+            f !== 'bakery_master.sql' &&
+            f !== 'bakery_schema.sql' &&
+            f !== 'bakery_local_db.json' &&
+            f !== 'HUONG_DAN_CHAY_SQL_LOCAL.txt' &&
+            (f.endsWith('.bakery.json') || f.startsWith('bakery_backup_') || f.includes('.temp.'))
+          ) {
+            try {
+              fs.unlinkSync(path.join(backupDir, f));
+            } catch {}
+          }
+        }
+      } catch {}
+
+      // Tạo/Cập nhật file README hướng dẫn
+      try {
+        const sizeKb = Math.round(Buffer.byteLength(jsonString, 'utf-8') / 1024);
+        const prodCount = backupData.metadata?.totalProducts ?? backupData.products?.length ?? 0;
+        const orderCount = backupData.metadata?.totalOrders ?? backupData.orders?.length ?? 0;
+        const imgCount = backupData.metadata?.totalImages ?? backupData.images?.length ?? 0;
+
+        const infoText = 
+`=============================================================
+THƯ MỤC NHẬN DỮ LIỆU SAO LƯU TỰ ĐỘNG - TIỆM BÁNH ERP & POS
+=============================================================
+• Thư mục: ${path.basename(backupDir)} (${backupDir})
+• Trạng thái: ĐÃ KẾT NỐI & TỰ ĐỘNG CẬP NHẬT LIÊN TỤC
+• Cơ chế lưu trữ: CHỈ GIỮ 1 FILE MỚI NHẤT (Tự động cập nhật không bao giờ mất quyền)
+• Tệp sao lưu gần nhất: ${targetFilename} (${sizeKb} KB)
+• Lần cập nhật mới nhất: ${new Date().toLocaleString('vi-VN')}
+• Thống kê dữ liệu: ${prodCount} loại bánh, ${orderCount} đơn hàng, ${imgCount} hình ảnh
+
+Dữ liệu được cập nhật tự động định kỳ và mỗi khi:
+- Quầy POS hoàn tất đơn hàng hoặc đơn đặt bánh mới
+- Quản lý cập nhật bánh, giá bán, công thức BOM, kho nguyên liệu
+- Ghi nhận hao hụt, phiếu chi OPEX, sổ thu chi két
+
+Để phục hồi dữ liệu: Mở menu Quản trị Admin -> Bấm "Sao Lưu / Phục Hồi" -> 
+Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" trong thư mục này.
+=============================================================`;
+        fs.writeFileSync(path.join(backupDir, 'THU_MUC_SAO_LUU_TIEM_BANH.txt'), infoText, 'utf-8');
+      } catch {}
+
+      return NextResponse.json({
+        success: true,
+        method: 'server_disk',
+        filename: targetFilename,
+        path: targetFilePath,
+        folderPath: backupDir,
+        sizeBytes: Buffer.byteLength(jsonString, 'utf-8'),
+        savedAt: new Date().toISOString(),
+      });
+    }
+
+    // 3c. Dọn dẹp các tệp sao lưu cũ thừa trong thư mục máy tính
+    if (action === 'clean_backup') {
+      const backupDir = body.folderPath
+        ? path.resolve(body.folderPath)
+        : path.join(process.cwd(), 'SQL backup', 'auto backup');
+      let deletedCount = 0;
+      if (fs.existsSync(backupDir)) {
+        const files = fs.readdirSync(backupDir);
+        for (const f of files) {
+          if (
+            f !== 'latest_backup.bakery.json' &&
+            f !== 'THU_MUC_SAO_LUU_TIEM_BANH.txt' &&
+            f !== 'bakery_master.sql' &&
+            f !== 'bakery_schema.sql' &&
+            f !== 'bakery_local_db.json' &&
+            f !== 'HUONG_DAN_CHAY_SQL_LOCAL.txt' &&
+            (f.endsWith('.bakery.json') || f.startsWith('bakery_backup_') || f.includes('.temp.'))
+          ) {
+            try {
+              fs.unlinkSync(path.join(backupDir, f));
+              deletedCount++;
+            } catch {}
+          }
+        }
+      }
+      return NextResponse.json({
+        success: true,
+        deletedCount,
+        message: deletedCount > 0
+          ? `Đã dọn dẹp ${deletedCount} tệp sao lưu cũ trong thư mục ổ cứng!`
+          : `Thư mục ổ cứng máy tính đã sạch sẽ, chỉ giữ duy nhất tệp dữ liệu mới nhất.`,
       });
     }
 

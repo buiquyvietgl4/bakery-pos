@@ -25,7 +25,7 @@ const SNAPSHOT_STORE = 'snapshots';
 const DEFAULT_CONFIG: AutoBackupConfig = {
   enabled: true,
   intervalMinutes: 15,
-  folderName: 'Mặc định (Tải về máy tính)',
+  folderName: 'SQL backup/auto backup',
   totalBackupsSaved: 0,
   autoSaveImages: true,
   keepOnlyLatest: true,
@@ -37,7 +37,11 @@ export function getAutoBackupConfig(): AutoBackupConfig {
   try {
     const raw = localStorage.getItem(CONFIG_KEY);
     if (raw) {
-      return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+      const parsed = JSON.parse(raw);
+      if (parsed.folderName && parsed.folderName.includes('Mặc định')) {
+        parsed.folderName = 'SQL backup/auto backup';
+      }
+      return { ...DEFAULT_CONFIG, ...parsed };
     }
   } catch {}
   return DEFAULT_CONFIG;
@@ -205,32 +209,49 @@ export async function cleanupOldBackupsInDirectory(
 
 // ── HÀNH ĐỘNG DỌN DẸP FILE CŨ CHỦ ĐỘNG TỪ GIAO DIỆN ──
 export async function cleanOldBackupsNow(): Promise<{ success: boolean; deletedCount: number; message: string }> {
-  if (!isFileSystemAccessSupported()) {
-    return { success: false, deletedCount: 0, message: 'Trình duyệt không hỗ trợ thao tác trực tiếp trên thư mục máy tính.' };
-  }
+  let totalDeleted = 0;
+
+  // 1. Dọn dẹp trên thư mục máy tính ổ cứng qua Server Local API
   try {
-    const dirHandle = await getStoredDirectoryHandle();
-    if (!dirHandle) {
-      return { success: false, deletedCount: 0, message: 'Chưa có thư mục nào được liên kết.' };
-    }
-    const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') {
-      const newPerm = await dirHandle.requestPermission({ mode: 'readwrite' });
-      if (newPerm !== 'granted') {
-        return { success: false, deletedCount: 0, message: 'Chưa được cấp quyền truy cập thư mục.' };
+    const sRes = await fetch('/api/local-sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clean_backup' }),
+    });
+    if (sRes.ok) {
+      const sJson = await sRes.json();
+      if (sJson.success && sJson.deletedCount) {
+        totalDeleted += sJson.deletedCount;
       }
     }
-    const res = await cleanupOldBackupsInDirectory(dirHandle, 'latest_backup.bakery.json');
-    return {
-      success: true,
-      deletedCount: res.deletedCount,
-      message: res.deletedCount > 0
-        ? `Đã dọn dẹp thành công ${res.deletedCount} tệp sao lưu cũ. Thư mục hiện chỉ giữ duy nhất 1 file dữ liệu mới nhất!`
-        : `Thư mục đã sạch sẽ! Hiện chỉ lưu duy nhất 1 bản sao lưu mới nhất.`,
-    };
-  } catch (err: any) {
-    return { success: false, deletedCount: 0, message: err.message || 'Lỗi khi quét thư mục' };
+  } catch {}
+
+  // 2. Dọn dẹp trên thư mục trình duyệt (nếu có Directory Handle được cấp quyền)
+  if (isFileSystemAccessSupported()) {
+    try {
+      const dirHandle = await getStoredDirectoryHandle();
+      if (dirHandle) {
+        let perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+        if (perm !== 'granted') {
+          try {
+            perm = await dirHandle.requestPermission({ mode: 'readwrite' });
+          } catch {}
+        }
+        if (perm === 'granted') {
+          const res = await cleanupOldBackupsInDirectory(dirHandle, 'latest_backup.bakery.json');
+          totalDeleted += res.deletedCount;
+        }
+      }
+    } catch {}
   }
+
+  return {
+    success: true,
+    deletedCount: totalDeleted,
+    message: totalDeleted > 0
+      ? `Đã dọn dẹp thành công ${totalDeleted} tệp sao lưu cũ thừa. Thư mục hiện chỉ giữ duy nhất 1 file dữ liệu mới nhất!`
+      : `Thư mục sao lưu trên máy tính đã sạch sẽ! Hiện chỉ lưu duy nhất 1 bản sao lưu mới nhất.`,
+  };
 }
 
 // ── HÀM GHI TẬP TIN TRỰC TIẾP VÀO DIRECTORY HANDLE (CHỈ GIỮ 1 BẢN MỚI NHẤT, TỰ ĐỘNG XÓA FILE CŨ) ──
@@ -786,7 +807,7 @@ export async function saveBackupToFile(
   data: BakeryBackupData,
   manualDownload = false,
   allowPromptPermission = false
-): Promise<{ success: boolean; method: 'directory' | 'download' | 'indexeddb'; filename: string; sizeBytes: number; error?: string }> {
+): Promise<{ success: boolean; method: 'directory' | 'server_disk' | 'download' | 'indexeddb'; filename: string; sizeBytes: number; folderPath?: string; error?: string }> {
   const filename = 'latest_backup.bakery.json';
   const jsonString = JSON.stringify(data, null, 2);
   const sizeBytes = new Blob([jsonString]).size;
@@ -794,7 +815,37 @@ export async function saveBackupToFile(
   // Luôn lưu một bản sao an toàn vào IndexedDB dự phòng
   storeSnapshotInIndexedDB(data);
 
-  // 1. Thử ghi vào thư mục máy tính nếu có File System Access API
+  let savedMethod: 'directory' | 'server_disk' | 'download' | 'indexeddb' = 'indexeddb';
+  let writtenFilename = filename;
+  let serverFolderPath: string | undefined = undefined;
+
+  // 1. Ghi trực tiếp vào thư mục ổ cứng máy tính thông qua Server Local API (Không bao giờ mất quyền, chạy ngầm 100% tin cậy)
+  if (!manualDownload) {
+    try {
+      const currentCfg = getAutoBackupConfig();
+      const res = await fetch('/api/local-sql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'save_backup',
+          data,
+          folderPath: currentCfg.folderPath || undefined,
+        }),
+      });
+      if (res.ok) {
+        const resJson = await res.json();
+        if (resJson.success) {
+          savedMethod = 'server_disk';
+          writtenFilename = resJson.filename || filename;
+          serverFolderPath = resJson.folderPath;
+        }
+      }
+    } catch (apiErr) {
+      console.warn('[AutoBackup] Server API backup fallback:', apiErr);
+    }
+  }
+
+  // 2. Thử ghi thêm vào thư mục máy tính nếu người dùng đã chọn qua File System Access API
   if (!manualDownload && isFileSystemAccessSupported()) {
     try {
       const dirHandle = await getStoredDirectoryHandle();
@@ -811,16 +862,9 @@ export async function saveBackupToFile(
         }
 
         if (perm === 'granted') {
-          const writtenFilename = await writeFilesToDirHandle(dirHandle, jsonString, data);
-
-          const currentCfg = getAutoBackupConfig();
-          saveAutoBackupConfig({
-            lastBackupAt: new Date().toISOString(),
-            lastBackupHash: data.dataHash,
-            totalBackupsSaved: (currentCfg.totalBackupsSaved || 0) + 1,
-          });
-
-          return { success: true, method: 'directory', filename: writtenFilename, sizeBytes };
+          const clientWrittenFilename = await writeFilesToDirHandle(dirHandle, jsonString, data);
+          writtenFilename = clientWrittenFilename;
+          savedMethod = 'directory';
         } else {
           console.warn(`[AutoBackup] Thư mục "${dirHandle.name}" đang ở trạng thái quyền: "${perm}".`);
           if (typeof window !== 'undefined') {
@@ -829,11 +873,11 @@ export async function saveBackupToFile(
         }
       }
     } catch (err: any) {
-      console.warn('Lỗi ghi file vào thư mục máy tính:', err);
+      console.warn('Lỗi ghi file vào thư mục máy tính qua browser handle:', err);
     }
   }
 
-  // 2. Nếu là thao tác tải thủ công do người dùng bấm nút tải
+  // 3. Nếu là thao tác tải thủ công do người dùng bấm nút tải
   if (manualDownload && typeof window !== 'undefined') {
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -844,24 +888,30 @@ export async function saveBackupToFile(
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
-    const currentCfg = getAutoBackupConfig();
-    saveAutoBackupConfig({
-      lastBackupAt: new Date().toISOString(),
-      lastBackupHash: data.dataHash,
-      totalBackupsSaved: (currentCfg.totalBackupsSaved || 0) + 1,
-    });
-
-    return { success: true, method: 'download', filename, sizeBytes };
+    savedMethod = 'download';
   }
 
-  // Nếu là chạy ngầm tự động và chưa ghi được vào ổ đĩa do thiếu quyền: đã lưu IndexedDB thành công
+  // 🔥 LUÔN LUÔN CẬP NHẬT TRẠNG THÁI CẤU HÌNH VÀ THỜI GIAN SAO LƯU GẦN NHẤT
+  const currentCfg = getAutoBackupConfig();
+  const updatedCfg = saveAutoBackupConfig({
+    lastBackupAt: new Date().toISOString(),
+    lastBackupHash: data.dataHash,
+    totalBackupsSaved: (currentCfg.totalBackupsSaved || 0) + 1,
+    folderName: savedMethod === 'server_disk' && (!currentCfg.folderName || currentCfg.folderName.includes('Mặc định'))
+      ? 'SQL backup/auto backup'
+      : currentCfg.folderName,
+  });
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('bakery_backup_saved', { detail: { filename: writtenFilename, method: savedMethod, cfg: updatedCfg } }));
+  }
+
   return { 
     success: true, 
-    method: 'indexeddb', 
-    filename, 
+    method: savedMethod, 
+    filename: writtenFilename, 
     sizeBytes, 
-    error: 'Đã lưu an toàn vào cơ sở dữ liệu trình duyệt (cần cấp lại quyền thư mục máy tính để ghi ra file)' 
+    folderPath: serverFolderPath,
   };
 }
 
@@ -869,6 +919,7 @@ export async function saveBackupToFile(
 let autoBackupIntervalTimer: NodeJS.Timeout | null = null;
 let isWatcherInitialized = false;
 let backupDebounceTimeout: NodeJS.Timeout | null = null;
+let handleDataChangeRef: (() => void) | null = null;
 
 // Hàm kiểm tra và thực hiện sao lưu nếu thỏa mãn điều kiện
 export async function triggerAutoBackupIfDue(onBackupSaved?: (filename: string) => void): Promise<boolean> {
@@ -877,8 +928,8 @@ export async function triggerAutoBackupIfDue(onBackupSaved?: (filename: string) 
 
   try {
     const fullData = await gatherFullBakeryData();
-    // Nếu có thay đổi so với hash lần trước
-    if (fullData.dataHash !== config.lastBackupHash) {
+    // Nếu có thay đổi so với hash lần trước HOẶC chưa từng có bản sao lưu nào
+    if (!config.lastBackupAt || fullData.dataHash !== config.lastBackupHash) {
       const res = await saveBackupToFile(fullData, false, false);
       if (res.success) {
         console.log(`✅ [AutoBackup] Đã tự động sao lưu dữ liệu mới: ${res.filename} (${res.method})`);
@@ -919,18 +970,18 @@ export function startAutoBackupWatcher(onBackupSaved?: (filename: string) => voi
   }, 60000);
 
   // 3. Lắng nghe các sự kiện phát sinh dữ liệu (Tạo đơn hàng, xuất nhập kho, thay đổi giá bánh)
-  const handleDataChange = () => {
+  handleDataChangeRef = () => {
     if (backupDebounceTimeout) clearTimeout(backupDebounceTimeout);
     backupDebounceTimeout = setTimeout(() => {
       triggerAutoBackupIfDue(onBackupSaved);
     }, 4000); // Đợi 4 giây sau thao tác cuối cùng để gom cụm sao lưu
   };
 
-  window.addEventListener('bakery_orders_updated', handleDataChange);
-  window.addEventListener('bakery_products_updated', handleDataChange);
-  window.addEventListener('bakery_stocks_updated', handleDataChange);
-  window.addEventListener('bakery_spoilage_updated', handleDataChange);
-  window.addEventListener('storage', handleDataChange);
+  window.addEventListener('bakery_orders_updated', handleDataChangeRef);
+  window.addEventListener('bakery_products_updated', handleDataChangeRef);
+  window.addEventListener('bakery_stocks_updated', handleDataChangeRef);
+  window.addEventListener('bakery_spoilage_updated', handleDataChangeRef);
+  window.addEventListener('storage', handleDataChangeRef);
 }
 
 export function stopAutoBackupWatcher() {
@@ -941,6 +992,14 @@ export function stopAutoBackupWatcher() {
   if (backupDebounceTimeout) {
     clearTimeout(backupDebounceTimeout);
     backupDebounceTimeout = null;
+  }
+  if (handleDataChangeRef && typeof window !== 'undefined') {
+    window.removeEventListener('bakery_orders_updated', handleDataChangeRef);
+    window.removeEventListener('bakery_products_updated', handleDataChangeRef);
+    window.removeEventListener('bakery_stocks_updated', handleDataChangeRef);
+    window.removeEventListener('bakery_spoilage_updated', handleDataChangeRef);
+    window.removeEventListener('storage', handleDataChangeRef);
+    handleDataChangeRef = null;
   }
   isWatcherInitialized = false;
 }

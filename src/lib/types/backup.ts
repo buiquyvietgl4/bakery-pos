@@ -198,6 +198,7 @@ export interface AutoBackupConfig {
   enabled: boolean;
   intervalMinutes: number; // 5, 15, 30, 60, 1440 (daily)
   folderName: string; // Display name of folder, e.g. "D:\Backup_TiemBanh"
+  folderPath?: string; // Đường dẫn tuyệt đối trên ổ đĩa máy tính
   lastBackupAt?: string;
   lastBackupHash?: string;
   totalBackupsSaved: number;

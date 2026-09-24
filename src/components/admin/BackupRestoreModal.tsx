@@ -89,11 +89,57 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
   const [pushResult, setPushResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── SERVER DISK BACKUP STATE ──
+  const [serverBackupInfo, setServerBackupInfo] = useState<{
+    exists: boolean;
+    folderPath?: string;
+    folderName?: string;
+    filename?: string;
+    mtime?: string | null;
+    sizeBytes?: number;
+    metadata?: {
+      totalProducts: number;
+      totalOrders: number;
+      totalImages: number;
+      createdAt?: string;
+    } | null;
+  } | null>(null);
+
+  const fetchServerBackupInfo = async () => {
+    try {
+      const res = await fetch('/api/local-sql?check_backup=true');
+      if (res.ok) {
+        const json = await res.json();
+        if (json.success) {
+          setServerBackupInfo(json);
+        }
+      }
+    } catch {}
+  };
+
   useEffect(() => {
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && isOpen) {
       setIsApiSupported(isFileSystemAccessSupported());
       setConfig(getAutoBackupConfig());
       updatePermStatus();
+      fetchServerBackupInfo();
+
+      const handleBackupSaved = () => {
+        setConfig(getAutoBackupConfig());
+        fetchServerBackupInfo();
+        updatePermStatus();
+      };
+      const handleConfigUpdated = () => {
+        setConfig(getAutoBackupConfig());
+      };
+
+      window.addEventListener('bakery_backup_saved', handleBackupSaved);
+      window.addEventListener('bakery_backup_config_updated', handleConfigUpdated);
+
+      return () => {
+        window.removeEventListener('bakery_backup_saved', handleBackupSaved);
+        window.removeEventListener('bakery_backup_config_updated', handleConfigUpdated);
+      };
     }
   }, [isOpen]);
 
@@ -157,10 +203,13 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
         const sizeKb = Math.round(res.sizeBytes / 1024);
         const methodText = res.method === 'directory' 
           ? `thư mục máy tính "${config.folderName}"` 
+          : res.method === 'server_disk'
+          ? `thư mục ổ cứng máy tính "${res.folderPath || 'SQL backup/auto backup'}"`
           : res.method === 'download'
           ? 'thư mục Tải về (Downloads)'
           : 'bộ nhớ IndexedDB trình duyệt';
         updatePermStatus();
+        fetchServerBackupInfo();
         setBackupSuccessMsg(`Sao lưu thành công! Đã lưu file ${res.filename} (${sizeKb} KB, ${fullData.metadata.totalProducts} bánh, ${fullData.metadata.totalOrders} đơn, ${fullData.metadata.totalImages} ảnh) vào ${methodText}.`);
         setConfig(getAutoBackupConfig());
       } else {
@@ -170,6 +219,31 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
       setBackupErrorMsg(err.message || 'Lỗi khi sao lưu dữ liệu');
     } finally {
       setIsSavingBackup(false);
+    }
+  };
+
+  // ── HÀNH ĐỘNG NẠP NHANH FILE SAO LƯU TỪ Ổ CỨNG MÁY CHỦ ──
+  const handleLoadServerBackup = async () => {
+    setIsParsingFile(true);
+    setReconciliationReport(null);
+    setPushResult(null);
+    try {
+      const res = await fetch('/api/local-sql?load_backup=true');
+      if (!res.ok) throw new Error('Không thể tải file sao lưu từ máy chủ.');
+      const resJson = await res.json();
+      if (!resJson.success || !resJson.data) throw new Error(resJson.error || 'Dữ liệu file sao lưu không hợp lệ');
+
+      setSelectedFileName(resJson.filename || 'latest_backup.bakery.json');
+      const json = normalizeBackupData(resJson.data);
+      setSelectedBackupData(json);
+      setIsReconciling(true);
+      const report = await reconcileBackupWithCurrentState(json);
+      setReconciliationReport(report);
+    } catch (err: any) {
+      alert('Lỗi nạp bản sao lưu từ ổ cứng: ' + (err.message || 'Không thể đọc tệp'));
+    } finally {
+      setIsParsingFile(false);
+      setIsReconciling(false);
     }
   };
 
@@ -360,39 +434,33 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                       <Folder className="h-4 w-4 text-amber-600" />
                       Vị trí thư mục lưu trữ trên máy tính:
                     </span>
-                    {isApiSupported ? (
-                      permStatus === 'granted' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                          <Check className="h-3.5 w-3.5" /> Đã kết nối & Tự động ghi vào ổ cứng
-                        </span>
-                      ) : permStatus === 'prompt' ? (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-100 px-2.5 py-1 rounded-full border border-amber-300 animate-pulse">
-                          <AlertCircle className="h-3.5 w-3.5" /> Cần cấp lại quyền truy cập
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                          <Check className="h-3 w-3" /> Hỗ trợ ghi trực tiếp vào ổ cứng (Chrome/Edge)
-                        </span>
-                      )
+                    {serverBackupInfo?.exists ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                        <Check className="h-3.5 w-3.5" /> Đã kết nối ổ cứng máy tính (Tự động ghi ngầm 100%)
+                      </span>
+                    ) : isApiSupported && permStatus === 'granted' ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                        <Check className="h-3.5 w-3.5" /> Đã kết nối & Tự động ghi vào ổ cứng
+                      </span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                        Chế độ tải về file tự động
+                      <span className="inline-flex items-center gap-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
+                        <Check className="h-3 w-3" /> Tự động ghi trực tiếp qua Server Local
                       </span>
                     )}
                   </div>
 
                   {permStatus === 'prompt' && (
-                    <div className="p-3 bg-amber-100/90 border border-amber-300 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                      <div className="flex items-center gap-2 text-amber-950 font-bold">
-                        <AlertCircle className="w-4 h-4 text-amber-700 shrink-0" />
-                        <span>Trình duyệt yêu cầu xác nhận lại quyền ghi vào thư mục máy tính.</span>
+                    <div className="p-3 bg-amber-50/90 border border-amber-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 text-amber-950 font-medium">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span>Hệ thống luôn tự động lưu ngầm vào ổ cứng máy tính. Bạn có thể cấp thêm quyền để trình duyệt đồng thời ghi vào thư mục tùy chọn riêng.</span>
                       </div>
                       <button
                         type="button"
                         onClick={handleRequestPermission}
-                        className="px-3.5 py-2 bg-amber-700 hover:bg-amber-800 text-white font-black rounded-xl shrink-0 cursor-pointer shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
+                        className="px-3.5 py-1.5 bg-amber-700 hover:bg-amber-800 text-white font-bold rounded-lg shrink-0 cursor-pointer shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5"
                       >
-                        <ShieldCheck className="w-4 h-4" /> Bấm Để Cấp Quyền & Lưu Ngay
+                        <ShieldCheck className="w-3.5 h-3.5" /> Cấp Quyền Trình Duyệt
                       </button>
                     </div>
                   )}
@@ -400,7 +468,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                   <div className="flex flex-col sm:flex-row items-center gap-3">
                     <div className="flex-1 w-full flex items-center gap-3 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-700 shadow-inner">
                       <HardDrive className="h-4 w-4 text-gray-500 shrink-0" />
-                      <span className="truncate">{config.folderName}</span>
+                      <span className="truncate">{serverBackupInfo?.folderPath || config.folderName}</span>
                     </div>
                     {isApiSupported && (
                       <button
@@ -409,7 +477,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                         className="w-full sm:w-auto px-4 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors border border-amber-300 shrink-0"
                       >
                         <Folder className="h-4 w-4 text-amber-700" />
-                        {folderSelecting ? 'Đang mở hộp thoại...' : 'Chọn thư mục lưu...'}
+                        {folderSelecting ? 'Đang mở hộp thoại...' : 'Chọn thư mục lưu khác...'}
                       </button>
                     )}
                   </div>
@@ -469,9 +537,14 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                     <Download className="h-4 w-4 text-amber-700" />
                     Sao Lưu Tức Thì & Đóng Gói Toàn Diện
                   </h4>
-                  {config.lastBackupAt && (
-                    <span className="text-xs text-amber-800">
-                      Lần sao lưu gần nhất: {new Date(config.lastBackupAt).toLocaleString('vi-VN')}
+                  {(config.lastBackupAt || serverBackupInfo?.mtime) && (
+                    <span className="text-xs text-amber-800 font-medium">
+                      Lần sao lưu gần nhất: {new Date(config.lastBackupAt || serverBackupInfo!.mtime!).toLocaleString('vi-VN')}
+                      {serverBackupInfo?.metadata && (
+                        <span className="text-emerald-700 font-semibold ml-1.5">
+                          ({serverBackupInfo.metadata.totalProducts} bánh, {serverBackupInfo.metadata.totalOrders} đơn hàng)
+                        </span>
+                      )}
                     </span>
                   )}
                 </div>
@@ -551,7 +624,18 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                 <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
                   Hỗ trợ cả file sao lưu tự động định kỳ, file xuất thủ công, và file an toàn trước khi Reset hệ thống.
                 </p>
-                <div className="mt-4 flex justify-center gap-3">
+                <div className="mt-4 flex flex-wrap justify-center gap-3">
+                  {serverBackupInfo?.exists && (
+                    <button
+                      type="button"
+                      onClick={handleLoadServerBackup}
+                      disabled={isParsingFile || isReconciling}
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md flex items-center gap-2 transition-all cursor-pointer"
+                    >
+                      <Database className="h-4 w-4" />
+                      ⚡ Nạp nhanh tệp từ ổ cứng ({serverBackupInfo.metadata ? `${serverBackupInfo.metadata.totalProducts} bánh, ${serverBackupInfo.metadata.totalOrders} đơn` : 'latest_backup.bakery.json'})
+                    </button>
+                  )}
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isParsingFile || isReconciling}
