@@ -1685,13 +1685,15 @@ export default function AdminDashboard() {
         console.warn('🚨 [ADMIN] NHẬN LỆNH GLOBAL RESET TỪ MÁY CHỦ:', payload);
         try {
           (window as any).__IS_SYSTEM_WIPING__ = true;
-          const { clearAllClientStorage } = await import('@/lib/utils/systemResetManager');
-          await clearAllClientStorage(payload.mode, payload.epoch);
+          const { clearAllClientStorage, setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+          if (payload?.epoch) setLocalResetEpoch(payload.epoch);
+          await clearAllClientStorage(payload?.mode || 'operational', payload?.epoch);
         } catch (e) {
           console.error('[ADMIN] Lỗi khi dọn dẹp bộ nhớ reset:', e);
         }
-        alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nTrang quản trị sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
-        window.location.reload();
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       },
     });
 
@@ -1737,10 +1739,14 @@ export default function AdminDashboard() {
       setAdminPendingTransfers(getStoredPendingTransfers());
     };
 
+    let isAdminWiping = false;
     const handleSystemWiped = () => {
+      if (isAdminWiping) return;
+      isAdminWiping = true;
       console.warn('🚨 [ADMIN] Window Event: bakery_system_wiped');
-      alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nTrang quản trị sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
-      window.location.reload();
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     };
 
     window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);

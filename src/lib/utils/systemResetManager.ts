@@ -103,6 +103,7 @@ export async function checkServerResetEpoch(): Promise<{ shouldAbort: boolean; s
 
       // Báo sự kiện làm mới giao diện
       window.dispatchEvent(new Event('bakery_orders_updated'));
+      window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
       window.dispatchEvent(new CustomEvent('bakery_system_wiped', { detail: { epoch: serverEpoch, mode: 'operational' } }));
 
       return { shouldAbort: true, serverEpoch };
@@ -182,6 +183,11 @@ export async function clearAllClientStorage(
     try {
       if (mode === 'operational') {
         for (const key of OPERATIONAL_DATA_KEYS) {
+          if (key === 'bakery_notification_history') {
+            localStorage.setItem('bakery_notification_history', '[]');
+            localStorage.setItem('bakery_notifs_initialized', 'true');
+            continue;
+          }
           if (keepAfterEpoch && keepAfterEpoch > 0) {
             const raw = localStorage.getItem(key);
             if (raw) {
@@ -209,6 +215,9 @@ export async function clearAllClientStorage(
             localStorage.removeItem(key);
           }
         }
+        localStorage.setItem('bakery_notification_history', '[]');
+        localStorage.setItem('bakery_notifs_initialized', 'true');
+        window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
       } else {
         // Mode Full: Xóa sạch toàn bộ, giữ lại cấu hình kết nối DB nếu có
         const multiSqlConfig = localStorage.getItem('bakery_multi_sql_config');
@@ -216,6 +225,9 @@ export async function clearAllClientStorage(
         if (multiSqlConfig) {
           localStorage.setItem('bakery_multi_sql_config', multiSqlConfig);
         }
+        localStorage.setItem('bakery_notification_history', '[]');
+        localStorage.setItem('bakery_notifs_initialized', 'true');
+        window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
       }
     } catch (lsErr) {
       console.warn('Lỗi dọn localStorage:', lsErr);

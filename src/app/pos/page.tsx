@@ -1773,6 +1773,16 @@ export default function POSPage() {
     if (typeof navigator === 'undefined' || !navigator.onLine) return;
     if (typeof document !== 'undefined' && document.hidden) return;
     try {
+      // 1. Kiểm tra mốc Reset Hệ Thống từ CSDL Supabase (Zero-Resurrection Guard)
+      const { checkServerResetEpoch, getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+      const resetCheck = await checkServerResetEpoch();
+      if (resetCheck.shouldAbort) {
+        setPreordersList([]);
+        setInvoicesList([]);
+        reloadOrdersData();
+        return;
+      }
+
       const orderFields = `
         id,
         order_number,
@@ -1826,7 +1836,28 @@ export default function POSPage() {
         if (o && o.order_number) sbOrders.set(o.order_number, o);
       });
 
-      if (sbOrders.size === 0) return;
+      if (sbOrders.size === 0) {
+        const localEpoch = getLocalResetEpoch();
+        if (localEpoch > 0) {
+          // Supabase đã sạch sẽ sau mốc reset -> Dọn sạch đơn cục bộ trước/tại mốc reset
+          const raw = localStorage.getItem('bakery_orders');
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const fresh = parsed.filter((o: any) => {
+                  const t = new Date(o.created_at || o.createdAt || 0).getTime();
+                  return t > localEpoch;
+                });
+                localStorage.setItem('bakery_orders', JSON.stringify(fresh));
+              }
+            } catch {}
+          }
+          localStorage.removeItem('bakery_preorders');
+          reloadOrdersData();
+        }
+        return;
+      }
 
       const deletedKeys = new Set<string>();
       try {
@@ -1881,6 +1912,19 @@ export default function POSPage() {
       }
 
       let hasChange = false;
+
+      // 3. Nếu hệ thống đã từng Reset (localEpoch > 0), loại bỏ mọi đơn cũ <= localEpoch không còn trên Supabase
+      const localEpoch = getLocalResetEpoch();
+      if (localEpoch > 0) {
+        for (const [k, o] of localMap.entries()) {
+          const t = new Date(o.created_at || o.createdAt || 0).getTime();
+          const oNum = o.order_number || o.orderNumber;
+          if (t <= localEpoch && !sbOrders.has(oNum)) {
+            localMap.delete(k);
+            hasChange = true;
+          }
+        }
+      }
       sbOrders.forEach((so, orderNum) => {
         const soNumClean = cleanKey(orderNum);
         const soIdClean = cleanKey(so.id);
@@ -2309,13 +2353,18 @@ export default function POSPage() {
         console.warn('🚨 [POS] NHẬN LỆNH GLOBAL RESET TỪ MÁY CHỦ:', payload);
         try {
           (window as any).__IS_SYSTEM_WIPING__ = true;
-          const { clearAllClientStorage } = await import('@/lib/utils/systemResetManager');
-          await clearAllClientStorage(payload.mode, payload.epoch);
+          const { clearAllClientStorage, setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+          if (payload?.epoch) setLocalResetEpoch(payload.epoch);
+          await clearAllClientStorage(payload?.mode || 'operational', payload?.epoch);
+          setPreordersList([]);
+          setInvoicesList([]);
+          reloadOrdersData();
         } catch (e) {
           console.error('[POS] Lỗi khi dọn dẹp bộ nhớ reset:', e);
         }
-        alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nỨng dụng sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
-        window.location.reload();
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       },
     });
 
@@ -2335,10 +2384,17 @@ export default function POSPage() {
     };
     window.addEventListener(TRANSFER_VERIFY_UPDATED_EVENT, handleTransferVerifyUpdated);
 
-    const handleSystemWiped = () => {
-      console.warn('🚨 [POS] Window Event: bakery_system_wiped');
-      alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nỨng dụng sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
-      window.location.reload();
+    let isPosWiping = false;
+    const handleSystemWiped = (e: any) => {
+      if (isPosWiping) return;
+      isPosWiping = true;
+      console.warn('🚨 [POS] Window Event: bakery_system_wiped', e?.detail);
+      setPreordersList([]);
+      setInvoicesList([]);
+      reloadOrdersData();
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     };
     window.addEventListener('bakery_system_wiped', handleSystemWiped);
 

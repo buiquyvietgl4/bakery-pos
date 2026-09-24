@@ -118,15 +118,27 @@ export function getNotificationHistory(): NotificationLogItem[] {
   if (typeof window === 'undefined') return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_DEMO_NOTIFS));
-      return INITIAL_DEMO_NOTIFS;
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+      return [];
     }
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed;
+
+    // Khi raw là null (chưa có key trong localStorage)
+    const isInitialized = localStorage.getItem('bakery_notifs_initialized');
+    const resetEpoch = localStorage.getItem('bakery_system_reset_epoch');
+    if (isInitialized === 'true' || Boolean(resetEpoch)) {
+      // Hệ thống đã từng khởi tạo hoặc đã từng có mốc reset -> Không tự ý re-seed thông báo mẫu
+      localStorage.setItem(STORAGE_KEY, '[]');
+      return [];
     }
-    return [];
+
+    // Chỉ nạp demo ở lần đầu tiên chạy ứng dụng trên máy mới
+    localStorage.setItem('bakery_notifs_initialized', 'true');
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_DEMO_NOTIFS));
+    return INITIAL_DEMO_NOTIFS;
   } catch (e) {
     console.warn('Lỗi đọc lịch sử thông báo:', e);
     return [];
@@ -169,9 +181,8 @@ export async function saveNotificationHistoryToDb(list: NotificationLogItem[]): 
  * Tải lịch sử thông báo từ Supabase Cloud SQL
  */
 export async function fetchNotificationHistoryFromDb(): Promise<NotificationLogItem[]> {
-  const fallback = getNotificationHistory();
-  if (isLocalMode()) return fallback;
-  if (typeof navigator !== 'undefined' && !navigator.onLine) return fallback;
+  if (isLocalMode()) return getNotificationHistory();
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return getNotificationHistory();
 
   try {
     const { data, error } = await supabase
@@ -181,22 +192,39 @@ export async function fetchNotificationHistoryFromDb(): Promise<NotificationLogI
       .limit(1)
       .maybeSingle();
 
-    if (!error && data?.notes) {
-      const parsed = JSON.parse(data.notes);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        if (typeof window !== 'undefined') {
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-            dispatchChange();
-          } catch {}
+    if (!error) {
+      if (data?.notes) {
+        const parsed = JSON.parse(data.notes);
+        if (Array.isArray(parsed)) {
+          if (typeof window !== 'undefined') {
+            try {
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+              localStorage.setItem('bakery_notifs_initialized', 'true');
+              dispatchChange();
+            } catch {}
+          }
+          return parsed;
         }
-        return parsed;
+      } else {
+        // CSDL không có bản ghi (đã bị xóa do reset hoặc chưa lưu)
+        if (typeof window !== 'undefined') {
+          const resetEpoch = localStorage.getItem('bakery_system_reset_epoch');
+          const isInit = localStorage.getItem('bakery_notifs_initialized');
+          if (resetEpoch || isInit) {
+            try {
+              localStorage.setItem(STORAGE_KEY, '[]');
+              localStorage.setItem('bakery_notifs_initialized', 'true');
+              dispatchChange();
+            } catch {}
+            return [];
+          }
+        }
       }
     }
   } catch (err) {
     console.warn('Lỗi fetchNotificationHistoryFromDb:', err);
   }
-  return fallback;
+  return getNotificationHistory();
 }
 
 /**
@@ -298,8 +326,17 @@ export function deleteNotification(id: string): void {
 export function clearNotificationHistory(): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.setItem(STORAGE_KEY, '[]');
+    localStorage.setItem('bakery_notifs_initialized', 'true');
     dispatchChange();
+
+    if (!isLocalMode() && navigator.onLine) {
+      supabase
+        .from('recipes')
+        .delete()
+        .or(`id.eq.${DB_ROW_NOTIFICATION_HISTORY_ID},name.eq.${DB_ROW_NOTIFICATION_HISTORY_NAME}`)
+        .then(() => {}, () => {});
+    }
   } catch (e) {
     console.warn('Lỗi xóa toàn bộ lịch sử thông báo:', e);
   }

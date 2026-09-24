@@ -1042,6 +1042,15 @@ export default function KitchenPage() {
       // 2. Đồng bộ từ Supabase nếu có kết nối mạng và tab đang hiển thị
       if (typeof navigator !== 'undefined' && navigator.onLine && (typeof document === 'undefined' || !document.hidden)) {
         try {
+          // Kiểm tra mốc Reset Hệ Thống từ Supabase (Zero-Resurrection Guard)
+          const { checkServerResetEpoch, getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+          const resetCheck = await checkServerResetEpoch();
+          if (resetCheck.shouldAbort) {
+            setOrders([]);
+            setUnreadNotifs(0);
+            return;
+          }
+
           const { data, error } = await supabase
             .from('orders')
             .select(`
@@ -1070,21 +1079,41 @@ export default function KitchenPage() {
             .order('created_at', { ascending: false })
             .limit(50);
 
-          if (!error && data && data.length > 0) {
-            // Map từ Supabase
-            const sbMap = new Map<string, any>();
-            data.forEach((so: any) => {
-              if (so.order_number) sbMap.set(so.order_number, so);
-            });
+          if (!error && data) {
+            if (data.length === 0) {
+              const localEpoch = getLocalResetEpoch();
+              if (localEpoch > 0) {
+                // Supabase đã sạch sẽ sau mốc reset -> Dọn sạch đơn cục bộ trước/tại mốc reset
+                const fresh = localOrders.filter((lo) => {
+                  const t = new Date(lo.created_at || (lo as any).createdAt || 0).getTime();
+                  return t > localEpoch;
+                });
+                setOrders(fresh);
+                localStorage.setItem('bakery_orders', JSON.stringify(fresh));
+                return;
+              }
+            } else {
+              // Map từ Supabase
+              const sbMap = new Map<string, any>();
+              data.forEach((so: any) => {
+                if (so.order_number) sbMap.set(so.order_number, so);
+              });
 
-            // TẤT CẢ MÁY DÙNG CHUNG CSDL CHỦ: Không tự ý quét đẩy đơn từ trình duyệt cục bộ lên CSDL.
-            // Đơn hàng chỉ được tạo khi có giao dịch mua thật tại POS.
-            const mergedMap = new Map<string, KDSOrder>();
+              // TẤT CẢ MÁY DÙNG CHUNG CSDL CHỦ: Không tự ý quét đẩy đơn từ trình duyệt cục bộ lên CSDL.
+              // Đơn hàng chỉ được tạo khi có giao dịch mua thật tại POS.
+              const mergedMap = new Map<string, KDSOrder>();
+              const localEpoch = getLocalResetEpoch();
 
-            // 1. Đưa các đơn cục bộ vào trước
-            localOrders.forEach((lo) => {
-              if (lo.order_number) mergedMap.set(lo.order_number, lo);
-            });
+              // 1. Đưa các đơn cục bộ vào trước (chỉ giữ đơn hợp lệ sau mốc reset)
+              localOrders.forEach((lo) => {
+                if (lo.order_number) {
+                  if (localEpoch > 0) {
+                    const t = new Date(lo.created_at || (lo as any).createdAt || 0).getTime();
+                    if (t <= localEpoch && !sbMap.has(lo.order_number)) return;
+                  }
+                  mergedMap.set(lo.order_number, lo);
+                }
+              });
 
             // 2. Phủ dữ liệu Supabase lên (dữ liệu Supabase là chân lý giữa các thiết bị)
             data.forEach((so: any) => {
@@ -1284,7 +1313,8 @@ export default function KitchenPage() {
               } catch {}
             }
           }
-        } catch (sbErr) {
+        }
+      } catch (sbErr) {
           console.warn('Supabase KDS notice:', sbErr);
         }
       }
@@ -1734,13 +1764,17 @@ export default function KitchenPage() {
         console.warn('🚨 [KITCHEN] NHẬN LỆNH GLOBAL RESET TỪ MÁY CHỦ:', payload);
         try {
           (window as any).__IS_SYSTEM_WIPING__ = true;
-          const { clearAllClientStorage } = await import('@/lib/utils/systemResetManager');
-          await clearAllClientStorage(payload.mode, payload.epoch);
+          const { clearAllClientStorage, setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+          if (payload?.epoch) setLocalResetEpoch(payload.epoch);
+          await clearAllClientStorage(payload?.mode || 'operational', payload?.epoch);
+          setOrders([]);
+          setUnreadNotifs(0);
         } catch (e) {
           console.error('[KITCHEN] Lỗi khi dọn dẹp bộ nhớ reset:', e);
         }
-        alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nBếp sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
-        window.location.reload();
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
       },
     });
 
@@ -1756,10 +1790,16 @@ export default function KitchenPage() {
     };
     window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);
 
-    const handleSystemWiped = () => {
-      console.warn('🚨 [KITCHEN] Window Event: bakery_system_wiped');
-      alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nBếp sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
-      window.location.reload();
+    let isKitchenWiping = false;
+    const handleSystemWiped = (e: any) => {
+      if (isKitchenWiping) return;
+      isKitchenWiping = true;
+      console.warn('🚨 [KITCHEN] Window Event: bakery_system_wiped', e?.detail);
+      setOrders([]);
+      setUnreadNotifs(0);
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
     };
     window.addEventListener('bakery_system_wiped', handleSystemWiped);
 

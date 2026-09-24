@@ -151,8 +151,26 @@ export async function POST(req: NextRequest) {
       console.warn('Xóa shifts:', e?.message || e);
     }
 
-    // 2.4 Xóa các bản ghi giao dịch vận hành trong bảng recipes
+    // 2.4 Xóa các bản ghi giao dịch vận hành trong bảng recipes (bao gồm lịch sử thông báo, ca làm việc, hao hụt, thu chi...)
     try {
+      const operationalRecipeIds = [
+        '00000000-0000-0000-0000-000000000013', // SYS_CONFIG_NOTIFICATION_HISTORY
+        '00000000-0000-0000-0000-000000000012', // SYS_CONFIG_CURRENT_SHIFT
+        '00000000-0000-0000-0000-000000000030', // SYS_CONFIG_SHIFT_HISTORY
+        '00000000-0000-0000-0000-000000000010', // SYS_CONFIG_EXPENSES
+        '00000000-0000-0000-0000-000000000011', // SYS_CONFIG_CASHFLOW
+        '00000000-0000-0000-0000-00000000000a', // DB_ROW_CLOSINGS
+        '00000000-0000-0000-0000-000000000008', // SPOILAGE_LIST
+        '00000000-0000-0000-0000-000000000009', // DB_ROW_STOCK_ADJUSTMENTS
+        '00000000-0000-0000-0000-000000000015', // MATERIAL_STOCK_ADJUSTMENTS
+        '00000000-0000-0000-0000-000000000031', // MATERIAL_TRANSACTIONS
+        '00000000-0000-0000-0000-00000000000d', // DB_ROW_PENDING_TRANSFERS
+        '00000000-0000-0000-0000-000000000023', // DB_ROW_RESOLVED_TRANSFERS
+        '00000000-0000-0000-0000-000000000028', // DB_ROW_PENDING_RETURNS
+        '00000000-0000-0000-0000-000000000022', // DB_ROW_OVEN_BATCHES
+      ];
+      await supabase.from('recipes').delete().in('id', operationalRecipeIds);
+
       await supabase.from('recipes').delete().in('name', [
         'SPOILAGE_LIST',
         'DB_ROW_SPOILAGE_LIST',
@@ -160,10 +178,19 @@ export async function POST(req: NextRequest) {
         'MATERIAL_TRANSACTIONS',
         'SYS_CONFIG_CURRENT_SHIFT',
         'SYS_CONFIG_SHIFT_HISTORY',
+        'SYS_CONFIG_NOTIFICATION_HISTORY',
         'NOTIFICATION_HISTORY',
+        'bakery_notification_history',
         'DB_ROW_STOCK_ADJUSTMENTS',
         'material_stock_adjustments',
         'material_transactions',
+        'SYS_CONFIG_EXPENSES',
+        'SYS_CONFIG_CASHFLOW',
+        'DB_ROW_CLOSINGS',
+        'DB_ROW_PENDING_TRANSFERS',
+        'DB_ROW_RESOLVED_TRANSFERS',
+        'DB_ROW_PENDING_RETURNS',
+        'DB_ROW_OVEN_BATCHES',
       ]);
     } catch (e: any) {
       console.warn('Xóa recipes operational rows:', e?.message || e);
