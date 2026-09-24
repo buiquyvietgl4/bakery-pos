@@ -23,7 +23,8 @@ import {
   checkDirectoryPermission,
   requestDirectoryPermission,
   cleanOldBackupsNow,
-  normalizeBackupData
+  normalizeBackupData,
+  clearStoredDirectoryHandle
 } from '@/lib/utils/backupManager';
 import { 
   reconcileBackupWithCurrentState, 
@@ -45,6 +46,11 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
   const [backupErrorMsg, setBackupErrorMsg] = useState<string | null>(null);
   const [folderSelecting, setFolderSelecting] = useState(false);
   const [isCleaningOldFiles, setIsCleaningOldFiles] = useState(false);
+
+  // Custom folder path input
+  const [customPathInput, setCustomPathInput] = useState<string>('');
+  const [showCustomPathForm, setShowCustomPathForm] = useState(false);
+  const [isSavingCustomPath, setIsSavingCustomPath] = useState(false);
 
   const handleCleanOldBackups = async () => {
     setIsCleaningOldFiles(true);
@@ -168,15 +174,60 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     try {
       const res = await selectBackupDirectory();
       if (res.success && res.folderName) {
-        setConfig(getAutoBackupConfig());
+        const updated = getAutoBackupConfig();
+        setConfig(updated);
         setPermStatus('granted');
-        setBackupSuccessMsg(`Đã kết nối thư mục "${res.folderName}" và tự động tạo bản sao lưu đầu tiên vào thư mục thành công!`);
+        fetchServerBackupInfo();
+        setBackupSuccessMsg(`Đã kết nối thư mục máy tính "${res.folderName}" và tự động tạo bản sao lưu đầu tiên thành công!`);
         setTimeout(() => setBackupSuccessMsg(null), 6000);
       } else if (res.error && res.error !== 'Đã hủy chọn thư mục') {
         setBackupErrorMsg(res.error);
       }
     } finally {
       setFolderSelecting(false);
+    }
+  };
+
+  const handleResetDefaultFolder = async () => {
+    await clearStoredDirectoryHandle();
+    const updated = saveAutoBackupConfig({
+      folderName: 'SQL backup/auto backup',
+      folderPath: undefined,
+    });
+    setConfig(updated);
+    setCustomPathInput('');
+    setShowCustomPathForm(false);
+    updatePermStatus();
+    fetchServerBackupInfo();
+    setBackupSuccessMsg('Đã đặt lại vị trí lưu trữ về thư mục mặc định: SQL backup/auto backup');
+    setTimeout(() => setBackupSuccessMsg(null), 5000);
+  };
+
+  const handleSaveCustomPath = async () => {
+    if (!customPathInput.trim()) return;
+    setIsSavingCustomPath(true);
+    setBackupErrorMsg(null);
+    try {
+      const trimmed = customPathInput.trim();
+      const folderName = trimmed.split(/[/\\\\]/).filter(Boolean).pop() || trimmed;
+      const updated = saveAutoBackupConfig({
+        folderPath: trimmed,
+        folderName,
+      });
+      setConfig(updated);
+      setShowCustomPathForm(false);
+      // Thực hiện sao lưu ngay một bản vào thư mục vừa nhập
+      const fullData = await gatherFullBakeryData();
+      const res = await saveBackupToFile(fullData, false, false);
+      if (res.success) {
+        fetchServerBackupInfo();
+        setBackupSuccessMsg(`Đã kết nối và lưu bản sao lưu mới nhất vào thư mục: "${trimmed}"`);
+        setTimeout(() => setBackupSuccessMsg(null), 6000);
+      }
+    } catch (e: any) {
+      setBackupErrorMsg(e.message || 'Lỗi lưu đường dẫn');
+    } finally {
+      setIsSavingCustomPath(false);
     }
   };
 
@@ -465,22 +516,97 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                     </div>
                   )}
 
-                  <div className="flex flex-col sm:flex-row items-center gap-3">
-                    <div className="flex-1 w-full flex items-center gap-3 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-700 shadow-inner">
-                      <HardDrive className="h-4 w-4 text-gray-500 shrink-0" />
-                      <span className="truncate">{serverBackupInfo?.folderPath || config.folderName}</span>
-                    </div>
-                    {isApiSupported && (
-                      <button
-                        onClick={handleChooseFolder}
-                        disabled={folderSelecting}
-                        className="w-full sm:w-auto px-4 py-2.5 bg-amber-100 hover:bg-amber-200 text-amber-900 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-colors border border-amber-300 shrink-0"
-                      >
-                        <Folder className="h-4 w-4 text-amber-700" />
-                        {folderSelecting ? 'Đang mở hộp thoại...' : 'Chọn thư mục lưu khác...'}
-                      </button>
-                    )}
-                  </div>
+                  {/* VỊ TRÍ VÀ TÙY CHỈNH THƯ MỤC */}
+                  {(() => {
+                    const isCustomFolder = (config.folderName && !config.folderName.includes('SQL backup/auto backup') && !config.folderName.includes('Mặc định')) || !!config.folderPath;
+                    const displayFolderName = config.folderPath || (isCustomFolder ? config.folderName : (serverBackupInfo?.folderPath || 'SQL backup/auto backup'));
+
+                    return (
+                      <div className="space-y-2.5">
+                        <div className="flex flex-col sm:flex-row items-center gap-3">
+                          <div className="flex-1 w-full flex items-center justify-between gap-3 bg-gray-50 border border-gray-300 rounded-xl px-4 py-2.5 text-sm font-medium text-gray-700 shadow-inner">
+                            <div className="flex items-center gap-2.5 truncate">
+                              <HardDrive className="h-4 w-4 text-amber-600 shrink-0" />
+                              <span className="truncate font-semibold text-gray-900" title={displayFolderName}>
+                                {displayFolderName}
+                              </span>
+                            </div>
+                            {isCustomFolder && (
+                              <span className="text-[10px] uppercase font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full shrink-0">
+                                Thư mục tùy chọn
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 w-full sm:w-auto">
+                            {isApiSupported && (
+                              <button
+                                type="button"
+                                onClick={handleChooseFolder}
+                                disabled={folderSelecting}
+                                className="flex-1 sm:flex-none px-4 py-2.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm shrink-0 cursor-pointer"
+                                title="Mở hộp thoại Windows để chọn thư mục lưu (D:\, USB, Google Drive...)"
+                              >
+                                <Folder className="h-4 w-4" />
+                                {folderSelecting ? 'Đang mở...' : 'Chọn thư mục khác...'}
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowCustomPathForm(!showCustomPathForm);
+                                if (!customPathInput) setCustomPathInput(config.folderPath || '');
+                              }}
+                              className="px-3 py-2.5 bg-white hover:bg-gray-100 text-gray-700 rounded-xl text-xs font-semibold border border-gray-300 shadow-sm shrink-0 transition-colors"
+                              title="Gõ đường dẫn ổ đĩa tùy chọn (Ví dụ: D:\SaoLuu)"
+                            >
+                              {showCustomPathForm ? 'Đóng nhập' : 'Nhập đường dẫn'}
+                            </button>
+
+                            {isCustomFolder && (
+                              <button
+                                type="button"
+                                onClick={handleResetDefaultFolder}
+                                className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 shadow-sm shrink-0 transition-colors"
+                                title="Quay lại thư mục mặc định: SQL backup/auto backup"
+                              >
+                                Về mặc định
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {showCustomPathForm && (
+                          <div className="p-3.5 bg-amber-50/90 border border-amber-200 rounded-xl space-y-2 animate-fade-in">
+                            <label className="text-xs font-bold text-amber-950 block">
+                              Nhập đường dẫn thư mục tuyệt đối trên máy tính của bạn:
+                            </label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="text"
+                                value={customPathInput}
+                                onChange={(e) => setCustomPathInput(e.target.value)}
+                                placeholder="Ví dụ: D:\SaoLuu_TiemBanh hoặc E:\BackupDrive"
+                                className="flex-1 bg-white border border-amber-300 rounded-lg px-3 py-2 text-xs font-mono text-gray-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleSaveCustomPath}
+                                disabled={isSavingCustomPath || !customPathInput.trim()}
+                                className="px-4 py-2 bg-amber-700 hover:bg-amber-800 text-white rounded-lg text-xs font-bold shadow-sm shrink-0 transition active:scale-95 disabled:opacity-50"
+                              >
+                                {isSavingCustomPath ? 'Đang lưu...' : 'Lưu đường dẫn'}
+                              </button>
+                            </div>
+                            <p className="text-[11px] text-amber-800">
+                              💡 Máy chủ sẽ tự động tạo thư mục (nếu chưa có) và ghi dữ liệu sao lưu thẳng vào đây mà không bao giờ bị trình duyệt chặn.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   <p className="text-xs text-gray-500">
                     💡 Bạn có thể chọn bất kỳ thư mục nào trên ổ đĩa máy tính (ví dụ: <code className="bg-gray-100 px-1 py-0.5 rounded text-amber-900 font-mono">D:\SaoLuu_TiemBanh</code> hoặc thư mục Google Drive/Dropbox trên PC).
                   </p>

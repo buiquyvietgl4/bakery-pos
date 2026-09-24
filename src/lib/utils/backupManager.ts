@@ -110,6 +110,19 @@ export async function getStoredDirectoryHandle(): Promise<any | null> {
   }
 }
 
+export async function clearStoredDirectoryHandle(): Promise<void> {
+  try {
+    const db = await openHandleDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE_NAME, 'readwrite');
+      const store = tx.objectStore(STORE_NAME);
+      const req = store.delete('backup_dir_handle');
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
+  } catch {}
+}
+
 // Lưu snapshot dự phòng vào IndexedDB phòng khi người dùng chưa cấp quyền ổ đĩa
 export async function storeSnapshotInIndexedDB(data: BakeryBackupData): Promise<void> {
   try {
