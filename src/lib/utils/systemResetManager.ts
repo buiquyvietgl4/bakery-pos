@@ -108,11 +108,14 @@ export async function checkServerResetEpoch(): Promise<{ shouldAbort: boolean; s
         `🚨 [ZERO-RESURRECTION GUARD] Phát hiện CSDL đã được Reset Hệ Thống (Mode: ${serverMode}) tại mốc ${serverEpoch} (Máy cục bộ đang ở mốc cũ ${localEpoch})! LẬP TỨC HỦY TIẾN TRÌNH ĐẨY DỮ LIỆU CŨ VÀ LÀM SẠCH BỘ NHỚ TRÌNH DUYỆT!`
       );
 
-      // Cập nhật epoch ngay để không lặp lại
+      // Cập nhật epoch ngay trước và sau khi dọn dẹp để không bao giờ bị mất mốc epoch
       setLocalResetEpoch(serverEpoch);
 
       // Tự động xóa sạch bộ nhớ cũ trước mốc reset (Bảo tồn bất kỳ đơn hàng nào mới tạo SAU mốc serverEpoch)
       await clearAllClientStorage(serverMode, serverEpoch);
+
+      // Khẳng định chắc chắn epoch sau khi dọn dẹp storage
+      setLocalResetEpoch(serverEpoch);
 
       // Báo sự kiện làm mới giao diện
       window.dispatchEvent(new Event('bakery_orders_updated'));
@@ -191,13 +194,22 @@ export async function clearAllClientStorage(
       console.warn('Lỗi dọn Dexie:', dexieErr);
     }
 
-    // 2. Dọn dẹp sessionStorage
+    // 2. Dọn dẹp sessionStorage (giữ lại cờ chống reload lặp nếu có)
     try {
+      const reloadGuard = sessionStorage.getItem('bakery_wiped_reloaded_epoch');
       sessionStorage.clear();
+      if (reloadGuard) {
+        sessionStorage.setItem('bakery_wiped_reloaded_epoch', reloadGuard);
+      }
     } catch {}
 
     // 3. Dọn dẹp localStorage
     try {
+      // Sao lưu các giá trị thiết yếu trước khi làm sạch để không làm mất cấu hình và không bị vòng lặp reset:
+      const multiSqlConfig = localStorage.getItem('bakery_multi_sql_config');
+      const currentUser = localStorage.getItem('bakery_current_user');
+      const savedEpoch = String(keepAfterEpoch || getLocalResetEpoch() || 0);
+
       if (mode === 'operational') {
         for (const key of OPERATIONAL_DATA_KEYS) {
           if (key === 'bakery_notification_history') {
@@ -234,13 +246,21 @@ export async function clearAllClientStorage(
         }
         localStorage.setItem('bakery_notification_history', '[]');
         localStorage.setItem('bakery_notifs_initialized', 'true');
+        if (savedEpoch && savedEpoch !== '0') {
+          localStorage.setItem(STORAGE_KEY_SYSTEM_RESET_EPOCH, savedEpoch);
+        }
         window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
       } else {
-        // Mode Full: Xóa sạch toàn bộ, giữ lại cấu hình kết nối DB nếu có
-        const multiSqlConfig = localStorage.getItem('bakery_multi_sql_config');
+        // Mode Full: Xóa sạch toàn bộ, giữ lại cấu hình kết nối DB, User và mốc Reset Epoch
         localStorage.clear();
         if (multiSqlConfig) {
           localStorage.setItem('bakery_multi_sql_config', multiSqlConfig);
+        }
+        if (currentUser) {
+          localStorage.setItem('bakery_current_user', currentUser);
+        }
+        if (savedEpoch && savedEpoch !== '0') {
+          localStorage.setItem(STORAGE_KEY_SYSTEM_RESET_EPOCH, savedEpoch);
         }
         localStorage.setItem('bakery_notification_history', '[]');
         localStorage.setItem('bakery_notifs_initialized', 'true');
@@ -370,8 +390,11 @@ export async function executeSystemReset(options: {
     // 4. Lưu local epoch mới
     setLocalResetEpoch(newEpoch);
 
-    // 5. Xóa sạch bộ nhớ cục bộ của máy hiện tại
-    await clearAllClientStorage(mode);
+    // 5. Xóa sạch bộ nhớ cục bộ của máy hiện tại (bảo tồn newEpoch)
+    await clearAllClientStorage(mode, newEpoch);
+
+    // 6. Đảm bảo chắc chắn local epoch được lưu
+    setLocalResetEpoch(newEpoch);
 
     return {
       success: true,

@@ -446,10 +446,17 @@ function ensureSyncChannel() {
           } catch {}
         }
       })
-      .on('broadcast', { event: 'system_global_wipe' }, ({ payload }: any) => {
+      .on('broadcast', { event: 'system_global_wipe' }, async ({ payload }: any) => {
         if (payload) {
           console.warn('🚨 [SYSTEM_GLOBAL_WIPE] Nhận lệnh Reset Toàn Bộ Dữ Liệu từ Admin!', payload);
           if (typeof window !== 'undefined') {
+            const { getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+            const localEpoch = getLocalResetEpoch();
+            const payloadEpoch = Number(payload.epoch) || 0;
+            if (payloadEpoch > 0 && payloadEpoch <= localEpoch) {
+              console.log('ℹ️ [realtimeSync] Bỏ qua broadcast reset đã xử lý:', payloadEpoch);
+              return;
+            }
             window.dispatchEvent(new CustomEvent('bakery_system_wiped', { detail: payload }));
             if (payload.mode === 'full') {
               window.dispatchEvent(new Event('bakery_products_updated'));
@@ -1697,11 +1704,12 @@ export async function syncOrderToSupabase(
 
   // 🛡️ ZERO-RESURRECTION GUARD: Kiểm tra CSDL xem có đợt Reset Hệ Thống nào không trước khi đẩy
   try {
-    const { checkServerResetEpoch } = await import('@/lib/utils/systemResetManager');
+    const { checkServerResetEpoch, getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
     const { shouldAbort, serverEpoch } = await checkServerResetEpoch();
-    if (shouldAbort) {
+    const effectiveEpoch = Math.max(serverEpoch, getLocalResetEpoch());
+    if (effectiveEpoch > 0) {
       const orderCreatedAt = new Date(order.created_at || order.createdAt || Date.now()).getTime();
-      if (orderCreatedAt <= serverEpoch) {
+      if (orderCreatedAt <= effectiveEpoch) {
         console.warn(`⛔ [syncOrderToSupabase] Chặn đẩy đơn cũ (#${orderNum}) tạo trước mốc Reset CSDL!`);
         return;
       }

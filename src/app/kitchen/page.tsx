@@ -1761,16 +1761,36 @@ export default function KitchenPage() {
         });
       },
       onSystemGlobalWipe: async (payload) => {
+        const { getLocalResetEpoch, clearAllClientStorage, setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+        const localEpoch = getLocalResetEpoch();
+        const payloadEpoch = Number(payload?.epoch) || 0;
+        if (payloadEpoch > 0 && payloadEpoch <= localEpoch) {
+          console.log('ℹ️ [KITCHEN] Bỏ qua lệnh reset đã xử lý hoặc cũ hơn epoch hiện tại:', payloadEpoch);
+          return;
+        }
+        if (typeof window !== 'undefined') {
+          const reloadedEpoch = sessionStorage.getItem('bakery_wiped_reloaded_epoch');
+          if (reloadedEpoch && Number(reloadedEpoch) === payloadEpoch) {
+            console.log('ℹ️ [KITCHEN] Tab đã reload cho epoch này rồi, dừng vòng lặp:', payloadEpoch);
+            return;
+          }
+        }
+        if ((window as any).__IS_RELOADING_FOR_WIPE__) return;
+        (window as any).__IS_RELOADING_FOR_WIPE__ = true;
+
         console.warn('🚨 [KITCHEN] NHẬN LỆNH GLOBAL RESET TỪ MÁY CHỦ:', payload);
         try {
           (window as any).__IS_SYSTEM_WIPING__ = true;
-          const { clearAllClientStorage, setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
-          if (payload?.epoch) setLocalResetEpoch(payload.epoch);
-          await clearAllClientStorage(payload?.mode || 'operational', payload?.epoch);
+          if (payloadEpoch > 0) setLocalResetEpoch(payloadEpoch);
+          await clearAllClientStorage(payload?.mode || 'operational', payloadEpoch);
+          if (payloadEpoch > 0) setLocalResetEpoch(payloadEpoch);
           setOrders([]);
           setUnreadNotifs(0);
         } catch (e) {
           console.error('[KITCHEN] Lỗi khi dọn dẹp bộ nhớ reset:', e);
+        }
+        if (payloadEpoch > 0) {
+          try { sessionStorage.setItem('bakery_wiped_reloaded_epoch', String(payloadEpoch)); } catch {}
         }
         setTimeout(() => {
           window.location.reload();
@@ -1791,10 +1811,27 @@ export default function KitchenPage() {
     window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);
 
     let isKitchenWiping = false;
-    const handleSystemWiped = (e: any) => {
-      if (isKitchenWiping) return;
+    const handleSystemWiped = async (e: any) => {
+      const payloadEpoch = Number(e?.detail?.epoch) || 0;
+      const { getLocalResetEpoch, setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+      const localEpoch = getLocalResetEpoch();
+      if (payloadEpoch > 0 && payloadEpoch <= localEpoch) {
+        return;
+      }
+      if (typeof window !== 'undefined') {
+        const reloadedEpoch = sessionStorage.getItem('bakery_wiped_reloaded_epoch');
+        if (reloadedEpoch && Number(reloadedEpoch) === payloadEpoch) {
+          return;
+        }
+      }
+      if (isKitchenWiping || (window as any).__IS_RELOADING_FOR_WIPE__) return;
       isKitchenWiping = true;
+      (window as any).__IS_RELOADING_FOR_WIPE__ = true;
       console.warn('🚨 [KITCHEN] Window Event: bakery_system_wiped', e?.detail);
+      if (payloadEpoch > 0) {
+        setLocalResetEpoch(payloadEpoch);
+        try { sessionStorage.setItem('bakery_wiped_reloaded_epoch', String(payloadEpoch)); } catch {}
+      }
       setOrders([]);
       setUnreadNotifs(0);
       setTimeout(() => {

@@ -173,13 +173,14 @@ class OfflineSyncWorker {
 
       // 🛡️ ZERO-RESURRECTION GUARD: Kiểm tra xem CSDL có đợt reset nào không
       try {
-        const { checkServerResetEpoch } = await import('@/lib/utils/systemResetManager');
+        const { checkServerResetEpoch, getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
         const { shouldAbort, serverEpoch } = await checkServerResetEpoch();
-        if (shouldAbort) {
+        const effectiveEpoch = Math.max(serverEpoch, getLocalResetEpoch());
+        if (effectiveEpoch > 0) {
           const originalCount = ordersToSync.length;
           ordersToSync = ordersToSync.filter((o) => {
             const t = new Date(o.created_at || o.createdAt || 0).getTime();
-            return t > serverEpoch;
+            return t > effectiveEpoch;
           });
           const discarded = originalCount - ordersToSync.length;
           if (discarded > 0) {

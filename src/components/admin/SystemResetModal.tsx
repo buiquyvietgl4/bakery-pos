@@ -67,6 +67,14 @@ export const SystemResetModal: React.FC<SystemResetModalProps> = ({
       setSuccessMsg(res.message);
       setLoading(false);
 
+      try {
+        const { getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+        const epoch = getLocalResetEpoch();
+        if (epoch > 0) {
+          sessionStorage.setItem('bakery_wiped_reloaded_epoch', String(epoch));
+        }
+      } catch {}
+
       // Bắt đầu đếm ngược làm mới giao diện
       let count = 3;
       setCountdown(count);
