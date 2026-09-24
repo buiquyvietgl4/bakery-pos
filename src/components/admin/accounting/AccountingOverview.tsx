@@ -123,7 +123,8 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   }, [prevPeriodOrders]);
 
   const revGrowthPct = useMemo(() => {
-    if (prevRevenue <= 0) return 12;
+    if (totalRevenue <= 0 && prevRevenue <= 0) return 0;
+    if (prevRevenue <= 0) return totalRevenue > 0 ? 100 : 0;
     const diff = ((totalRevenue - prevRevenue) / prevRevenue) * 100;
     return Math.round(diff);
   }, [totalRevenue, prevRevenue]);
@@ -194,12 +195,12 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   const netMarginPct = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0';
 
   // Tỷ lệ % trên doanh thu
-  const cogsPct = totalRevenue > 0 ? ((totalCOGS / totalRevenue) * 100).toFixed(1) : '36.5';
-  const opexPct = totalRevenue > 0 ? ((totalOpex / totalRevenue) * 100).toFixed(1) : '25.9';
-  const spoilagePct = totalRevenue > 0 ? ((spoilageCost / totalRevenue) * 100).toFixed(1) : '2.2';
-  const salaryPct = totalRevenue > 0 ? ((salaryExpense / totalRevenue) * 100).toFixed(1) : '15.1';
-  const rentPct = totalRevenue > 0 ? ((rentExpense / totalRevenue) * 100).toFixed(1) : '5.4';
-  const utilityPct = totalRevenue > 0 ? ((utilityExpense / totalRevenue) * 100).toFixed(1) : '5.4';
+  const cogsPct = totalRevenue > 0 ? ((totalCOGS / totalRevenue) * 100).toFixed(1) : '0.0';
+  const opexPct = totalRevenue > 0 ? ((totalOpex / totalRevenue) * 100).toFixed(1) : '0.0';
+  const spoilagePct = totalRevenue > 0 ? ((spoilageCost / totalRevenue) * 100).toFixed(1) : '0.0';
+  const salaryPct = totalRevenue > 0 ? ((salaryExpense / totalRevenue) * 100).toFixed(1) : '0.0';
+  const rentPct = totalRevenue > 0 ? ((rentExpense / totalRevenue) * 100).toFixed(1) : '0.0';
+  const utilityPct = totalRevenue > 0 ? ((utilityExpense / totalRevenue) * 100).toFixed(1) : '0.0';
 
   // 7. Sổ quỹ kép (Tiền mặt vs VietQR)
   const cashBalance = useMemo(() => {
@@ -326,8 +327,12 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
             <div className="text-lg sm:text-xl font-extrabold text-zinc-900 tracking-tight">
               {formatVND(totalRevenue)}
             </div>
-            <div className="text-[11px] font-bold text-emerald-600 mt-0.5">
-              +{revGrowthPct}% {comparisonLabel}
+            <div className={`text-[11px] font-bold ${revGrowthPct < 0 ? 'text-rose-600' : 'text-emerald-600'} mt-0.5`}>
+              {totalRevenue > 0 || prevRevenue > 0 ? (
+                `${revGrowthPct >= 0 ? `+${revGrowthPct}%` : `${revGrowthPct}%`} ${comparisonLabel}`
+              ) : (
+                `0% ${comparisonLabel}`
+              )}
             </div>
           </div>
           <div className="h-8 w-full">
@@ -450,8 +455,12 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
             <div className="text-lg sm:text-xl font-extrabold text-zinc-900 tracking-tight">
               {formatVND(netProfit)}
             </div>
-            <div className="text-[11px] font-bold text-emerald-600 mt-0.5">
-              +{revGrowthPct}% | {netMarginPct}% Margin
+            <div className={`text-[11px] font-bold ${revGrowthPct < 0 ? 'text-rose-600' : 'text-emerald-600'} mt-0.5`}>
+              {totalRevenue > 0 || prevRevenue > 0 ? (
+                `${revGrowthPct >= 0 ? `+${revGrowthPct}%` : `${revGrowthPct}%`} | ${netMarginPct}% Margin`
+              ) : (
+                `0% | ${netMarginPct}% Margin`
+              )}
             </div>
           </div>
           <div className="h-8 w-full -mb-1">
@@ -663,11 +672,15 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                   <tr className="hover:bg-zinc-50/50">
                     <td className="py-2.5 font-bold text-zinc-900">Doanh thu thuần</td>
                     <td className="py-2.5 text-right font-bold text-zinc-900">{formatVND(totalRevenue)}</td>
-                    <td className="py-2.5 text-right font-semibold">100.0%</td>
+                    <td className="py-2.5 text-right font-semibold">{totalRevenue > 0 ? '100.0%' : '0.0%'}</td>
                     <td className="py-2.5 text-right">
-                      <span className="inline-block px-1.5 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-bold text-[10px]">
-                        +{revGrowthPct}%
-                      </span>
+                      {totalRevenue > 0 || prevRevenue > 0 ? (
+                        <span className={`inline-block px-1.5 py-0.5 rounded-md ${revGrowthPct >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'} font-bold text-[10px]`}>
+                          {revGrowthPct >= 0 ? `+${revGrowthPct}%` : `${revGrowthPct}%`}
+                        </span>
+                      ) : (
+                        <span className="text-zinc-400 font-medium">-</span>
+                      )}
                     </td>
                   </tr>
 
@@ -690,14 +703,14 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                       <tr className="bg-zinc-50/40 text-zinc-600 text-[11px]">
                         <td className="py-1.5 pl-6">Bột, Bơ, Trứng, Sữa (BOM)</td>
                         <td className="py-1.5 text-right">{formatVND(flourCost)}</td>
-                        <td className="py-1.5 text-right">{totalRevenue > 0 ? ((flourCost / totalRevenue) * 100).toFixed(1) : '16.5'}%</td>
-                        <td className="py-1.5 text-right text-emerald-600 font-semibold">+0.5%</td>
+                        <td className="py-1.5 text-right">{totalRevenue > 0 ? ((flourCost / totalRevenue) * 100).toFixed(1) : '0.0'}%</td>
+                        <td className="py-1.5 text-right text-zinc-400 font-medium">-</td>
                       </tr>
                       <tr className="bg-zinc-50/40 text-zinc-600 text-[11px]">
                         <td className="py-1.5 pl-6">Bao bì & hộp bánh</td>
                         <td className="py-1.5 text-right">{formatVND(milkPackagingCost)}</td>
                         <td className="py-1.5 text-right">{totalRevenue > 0 ? ((milkPackagingCost / totalRevenue) * 100).toFixed(1) : '0.0'}%</td>
-                        <td className="py-1.5 text-right text-emerald-600 font-semibold">+1.4%</td>
+                        <td className="py-1.5 text-right text-zinc-400 font-medium">-</td>
                       </tr>
                     </>
                   )}
@@ -707,7 +720,13 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                     <td className="py-2.5">Lợi nhuận gộp</td>
                     <td className="py-2.5 text-right text-zinc-900">{formatVND(grossProfit)}</td>
                     <td className="py-2.5 text-right font-bold">{totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : '0.0'}%</td>
-                    <td className="py-2.5 text-right font-bold text-emerald-700">+{revGrowthPct}%</td>
+                    <td className="py-2.5 text-right font-bold text-emerald-700">
+                      {totalRevenue > 0 || prevRevenue > 0 ? (
+                        revGrowthPct >= 0 ? `+${revGrowthPct}%` : `${revGrowthPct}%`
+                      ) : (
+                        <span className="text-zinc-400 font-medium">-</span>
+                      )}
+                    </td>
                   </tr>
 
                   {/* Chi phí bán hàng & QL (collapsible) */}
@@ -730,19 +749,19 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                         <td className="py-1.5 pl-6">Lương NV</td>
                         <td className="py-1.5 text-right">{formatVND(salaryExpense)}</td>
                         <td className="py-1.5 text-right">{salaryPct}%</td>
-                        <td className="py-1.5 text-right text-zinc-400 font-medium">{salaryExpense > 0 ? '-' : '0₫'}</td>
+                        <td className="py-1.5 text-right text-zinc-400 font-medium">-</td>
                       </tr>
                       <tr className="bg-zinc-50/40 text-zinc-600 text-[11px]">
                         <td className="py-1.5 pl-6">Tiền mặt bằng</td>
                         <td className="py-1.5 text-right">{formatVND(rentExpense)}</td>
                         <td className="py-1.5 text-right">{rentPct}%</td>
-                        <td className="py-1.5 text-right text-zinc-400 font-medium">{rentExpense > 0 ? '-' : '0₫'}</td>
+                        <td className="py-1.5 text-right text-zinc-400 font-medium">-</td>
                       </tr>
                       <tr className="bg-zinc-50/40 text-zinc-600 text-[11px]">
                         <td className="py-1.5 pl-6">Điện, nước, gas</td>
                         <td className="py-1.5 text-right">{formatVND(utilityExpense)}</td>
                         <td className="py-1.5 text-right">{utilityPct}%</td>
-                        <td className="py-1.5 text-right text-zinc-400 font-medium">{utilityExpense > 0 ? '-' : '0₫'}</td>
+                        <td className="py-1.5 text-right text-zinc-400 font-medium">-</td>
                       </tr>
                     </>
                   )}
@@ -760,15 +779,21 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                     <td className="py-2 font-semibold">Lợi nhuận trước thuế</td>
                     <td className="py-2 text-right font-semibold">{formatVND(netProfit)}</td>
                     <td className="py-2 text-right font-medium">{netMarginPct}%</td>
-                    <td className="py-2 text-right font-medium text-zinc-600">2.2%</td>
+                    <td className="py-2 text-right font-medium text-zinc-400">-</td>
                   </tr>
 
                   {/* Lợi nhuận ròng (NỔI BẬT DÒNG CUỐI CHUẨN MOCKUP) */}
                   <tr className="bg-emerald-50/70 font-extrabold text-emerald-950 border-t-2 border-emerald-300">
                     <td className="py-3 font-extrabold">Lợi nhuận ròng</td>
                     <td className="py-3 text-right font-black text-emerald-900">{formatVND(netProfit)}</td>
-                    <td className="py-3 text-right font-black">100.0%</td>
-                    <td className="py-3 text-right font-black text-emerald-700">{netMarginPct}%</td>
+                    <td className="py-3 text-right font-black">{netMarginPct}%</td>
+                    <td className="py-3 text-right font-black text-emerald-700">
+                      {totalRevenue > 0 || prevRevenue > 0 ? (
+                        revGrowthPct >= 0 ? `+${revGrowthPct}%` : `${revGrowthPct}%`
+                      ) : (
+                        <span className="text-zinc-400 font-medium">-</span>
+                      )}
+                    </td>
                   </tr>
 
                 </tbody>
