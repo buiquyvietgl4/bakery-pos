@@ -167,6 +167,21 @@ class OfflineSyncWorker {
         return { syncedCount: 0, errors: [] };
       }
 
+      if (typeof window !== 'undefined' && (window as any).__IS_SYSTEM_WIPING__) {
+        return { syncedCount: 0, errors: [] };
+      }
+
+      // 🛡️ ZERO-RESURRECTION GUARD: Kiểm tra xem CSDL có đợt reset nào không
+      try {
+        const { checkServerResetEpoch } = await import('@/lib/utils/systemResetManager');
+        const { shouldAbort } = await checkServerResetEpoch();
+        if (shouldAbort) {
+          console.warn('⛔ [offlineSyncWorker] Hủy toàn bộ hàng đợi đẩy offline vì CSDL vừa được Reset!');
+          this.notifyQueueChanged(0);
+          return { syncedCount: 0, errors: [] };
+        }
+      } catch {}
+
       this.notifyQueueChanged(ordersToSync.length);
       console.log(`⏳ Tìm thấy ${ordersToSync.length} đơn hàng offline đang chờ đẩy lên Supabase SQL...`);
 

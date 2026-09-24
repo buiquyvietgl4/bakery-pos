@@ -32,6 +32,12 @@ type VietqrConfigCallback = (config: any) => void;
 type EwalletConfigCallback = (config: any) => void;
 export type SecurityConfigCallback = (config: any) => void;
 
+export type SystemGlobalWipePayload = {
+  mode: 'operational' | 'full';
+  epoch: number;
+};
+export type SystemGlobalWipeCallback = (payload: SystemGlobalWipePayload) => void;
+
 
 export interface BakeApprovalPayload {
   order_number: string;
@@ -134,6 +140,7 @@ const transferApprovalListeners = new Set<TransferApprovalCallback>();
 const transferApprovalResolvedListeners = new Set<TransferApprovalResolvedCallback>();
 const returnApprovalListeners = new Set<ReturnApprovalCallback>();
 const returnApprovalResolvedListeners = new Set<ReturnApprovalResolvedCallback>();
+const systemGlobalWipeListeners = new Set<SystemGlobalWipeCallback>();
 
 const recentlyNotifiedOrders = new Map<string, number>();
 
@@ -437,6 +444,21 @@ function ensureSyncChannel() {
             localStorage.setItem('bakery_delivery_alert_config', JSON.stringify(payload.config));
             window.dispatchEvent(new CustomEvent('bakery_delivery_alert_config_updated', { detail: payload.config }));
           } catch {}
+        }
+      })
+      .on('broadcast', { event: 'system_global_wipe' }, ({ payload }: any) => {
+        if (payload) {
+          console.warn('🚨 [SYSTEM_GLOBAL_WIPE] Nhận lệnh Reset Toàn Bộ Dữ Liệu từ Admin!', payload);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('bakery_system_wiped', { detail: payload }));
+          }
+          systemGlobalWipeListeners.forEach((cb) => {
+            try {
+              cb(payload);
+            } catch (e) {
+              console.warn('Lỗi systemGlobalWipeListener:', e);
+            }
+          });
         }
       })
       .on(
@@ -877,6 +899,24 @@ export async function broadcastDeliveryAlertConfig(config: any) {
 }
 
 /**
+ * Phát sóng khẩn cấp lệnh Reset Toàn Bộ Dữ Liệu tới tất cả thiết bị
+ */
+export async function broadcastSystemGlobalWipe(payload: SystemGlobalWipePayload) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'system_global_wipe',
+        payload,
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastSystemGlobalWipe:', err);
+  }
+}
+
+/**
  * Đăng ký lắng nghe sự kiện đồng bộ từ các thiết bị khác
  * An toàn tuyệt đối với React StrictMode và Remount
  */
@@ -899,6 +939,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   onTransferApprovalResolved?: TransferApprovalResolvedCallback;
   onReturnApprovalRequest?: ReturnApprovalCallback;
   onReturnApprovalResolved?: ReturnApprovalResolvedCallback;
+  onSystemGlobalWipe?: SystemGlobalWipeCallback;
 }) {
   ensureSyncChannel();
 
@@ -921,6 +962,7 @@ export function subscribeCrossDeviceSync(callbacks: {
     onTransferApprovalResolved,
     onReturnApprovalRequest,
     onReturnApprovalResolved,
+    onSystemGlobalWipe,
   } = callbacks;
 
   if (onStatusUpdate) statusListeners.add(onStatusUpdate);
@@ -941,6 +983,7 @@ export function subscribeCrossDeviceSync(callbacks: {
   if (onTransferApprovalResolved) transferApprovalResolvedListeners.add(onTransferApprovalResolved);
   if (onReturnApprovalRequest) returnApprovalListeners.add(onReturnApprovalRequest);
   if (onReturnApprovalResolved) returnApprovalResolvedListeners.add(onReturnApprovalResolved);
+  if (onSystemGlobalWipe) systemGlobalWipeListeners.add(onSystemGlobalWipe);
 
   return () => {
     if (onStatusUpdate) statusListeners.delete(onStatusUpdate);
@@ -961,6 +1004,7 @@ export function subscribeCrossDeviceSync(callbacks: {
     if (onTransferApprovalResolved) transferApprovalResolvedListeners.delete(onTransferApprovalResolved);
     if (onReturnApprovalRequest) returnApprovalListeners.delete(onReturnApprovalRequest);
     if (onReturnApprovalResolved) returnApprovalResolvedListeners.delete(onReturnApprovalResolved);
+    if (onSystemGlobalWipe) systemGlobalWipeListeners.delete(onSystemGlobalWipe);
   };
 }
 
@@ -1642,9 +1686,20 @@ export async function syncOrderToSupabase(
   nextStatus: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled'
 ) {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  if (typeof window !== 'undefined' && (window as any).__IS_SYSTEM_WIPING__) return;
 
   const orderNum = order.order_number || order.orderNumber;
   if (!orderNum) return;
+
+  // 🛡️ ZERO-RESURRECTION GUARD: Kiểm tra CSDL xem có đợt Reset Hệ Thống nào không trước khi đẩy
+  try {
+    const { checkServerResetEpoch } = await import('@/lib/utils/systemResetManager');
+    const { shouldAbort } = await checkServerResetEpoch();
+    if (shouldAbort) {
+      console.warn('⛔ [syncOrderToSupabase] Chặn đẩy dữ liệu cũ lên vì CSDL vừa được Reset!');
+      return;
+    }
+  } catch {}
 
   try {
     // 1. Thử cập nhật trạng thái nếu đơn đã tồn tại trong Supabase

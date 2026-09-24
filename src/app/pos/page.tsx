@@ -2305,6 +2305,18 @@ export default function POSPage() {
       onTransferApprovalResolved: (payload) => {
         incomingTransferApprovalResolvedRef.current(payload);
       },
+      onSystemGlobalWipe: async (payload) => {
+        console.warn('🚨 [POS] NHẬN LỆNH GLOBAL RESET TỪ MÁY CHỦ:', payload);
+        try {
+          (window as any).__IS_SYSTEM_WIPING__ = true;
+          const { clearAllClientStorage } = await import('@/lib/utils/systemResetManager');
+          await clearAllClientStorage(payload.mode);
+        } catch (e) {
+          console.error('[POS] Lỗi khi dọn dẹp bộ nhớ reset:', e);
+        }
+        alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nỨng dụng sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
+        window.location.reload();
+      },
     });
 
     const handleLocalPayment = (e: any) => {
@@ -2323,6 +2335,13 @@ export default function POSPage() {
     };
     window.addEventListener(TRANSFER_VERIFY_UPDATED_EVENT, handleTransferVerifyUpdated);
 
+    const handleSystemWiped = () => {
+      console.warn('🚨 [POS] Window Event: bakery_system_wiped');
+      alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nỨng dụng sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
+      window.location.reload();
+    };
+    window.addEventListener('bakery_system_wiped', handleSystemWiped);
+
     return () => {
       clearInterval(syncInterval);
       window.removeEventListener('online', handleOnline);
@@ -2332,6 +2351,7 @@ export default function POSPage() {
       window.removeEventListener('bakery_payment_received', handleLocalPayment);
       window.removeEventListener('transfer_approval_resolved', handleLocalTransferResolved);
       window.removeEventListener(TRANSFER_VERIFY_UPDATED_EVENT, handleTransferVerifyUpdated);
+      window.removeEventListener('bakery_system_wiped', handleSystemWiped);
       unsubscribeSync();
     };
   }, []);

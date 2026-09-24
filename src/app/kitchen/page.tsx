@@ -1730,6 +1730,18 @@ export default function KitchenPage() {
           if (recs && recs.length > 0) setRecipes(recs);
         });
       },
+      onSystemGlobalWipe: async (payload) => {
+        console.warn('🚨 [KITCHEN] NHẬN LỆNH GLOBAL RESET TỪ MÁY CHỦ:', payload);
+        try {
+          (window as any).__IS_SYSTEM_WIPING__ = true;
+          const { clearAllClientStorage } = await import('@/lib/utils/systemResetManager');
+          await clearAllClientStorage(payload.mode);
+        } catch (e) {
+          console.error('[KITCHEN] Lỗi khi dọn dẹp bộ nhớ reset:', e);
+        }
+        alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nBếp sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
+        window.location.reload();
+      },
     });
 
     // Tự động kéo danh sách công thức mới nhất từ Supabase Cloud
@@ -1744,11 +1756,19 @@ export default function KitchenPage() {
     };
     window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);
 
+    const handleSystemWiped = () => {
+      console.warn('🚨 [KITCHEN] Window Event: bakery_system_wiped');
+      alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nBếp sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
+      window.location.reload();
+    };
+    window.addEventListener('bakery_system_wiped', handleSystemWiped);
+
     return () => {
       window.removeEventListener('bakery_orders_updated', handleLocalUpdate);
       window.removeEventListener('bakery_order_deleted', handleOrderDeleted);
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener('bakery_recipes_updated', handleRecipesUpdate);
+      window.removeEventListener('bakery_system_wiped', handleSystemWiped);
       document.removeEventListener('visibilitychange', handleWakeOrOnline);
       window.removeEventListener('online', handleWakeOrOnline);
       clearInterval(pollTimer);

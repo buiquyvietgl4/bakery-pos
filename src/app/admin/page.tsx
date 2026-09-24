@@ -69,6 +69,7 @@ import {
 } from '@/lib/utils/materialStockAdjustmentManager';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
+import { SystemResetModal } from '@/components/admin/SystemResetModal';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { AccountingClosingSection } from '@/components/admin/AccountingClosingSection';
 import { fetchClosingRecordsFromDb } from '@/lib/utils/closingManager';
@@ -288,6 +289,7 @@ export default function AdminDashboard() {
   const [securityMsg, setSecurityMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
   const [isAdminSyncing, setIsAdminSyncing] = useState(false);
   const navScrollRef = useRef<HTMLDivElement>(null);
 
@@ -1679,6 +1681,18 @@ export default function AdminDashboard() {
           });
         }
       },
+      onSystemGlobalWipe: async (payload) => {
+        console.warn('🚨 [ADMIN] NHẬN LỆNH GLOBAL RESET TỪ MÁY CHỦ:', payload);
+        try {
+          (window as any).__IS_SYSTEM_WIPING__ = true;
+          const { clearAllClientStorage } = await import('@/lib/utils/systemResetManager');
+          await clearAllClientStorage(payload.mode);
+        } catch (e) {
+          console.error('[ADMIN] Lỗi khi dọn dẹp bộ nhớ reset:', e);
+        }
+        alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nTrang quản trị sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
+        window.location.reload();
+      },
     });
 
     // Lắng nghe thay đổi tồn kho từ POS hoặc các tab khác
@@ -1723,6 +1737,12 @@ export default function AdminDashboard() {
       setAdminPendingTransfers(getStoredPendingTransfers());
     };
 
+    const handleSystemWiped = () => {
+      console.warn('🚨 [ADMIN] Window Event: bakery_system_wiped');
+      alert('⚠️ HỆ THỐNG ĐÃ ĐƯỢC RESET TỪ MÁY CHỦ BỞI QUẢN TRỊ VIÊN.\nTrang quản trị sẽ tự động làm mới để cập nhật trạng thái mới nhất.');
+      window.location.reload();
+    };
+
     window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);
     window.addEventListener(EXPENSES_UPDATED_EVENT, handleExpensesUpdate);
     window.addEventListener(CASHFLOW_UPDATED_EVENT, handleCashflowUpdate);
@@ -1730,6 +1750,7 @@ export default function AdminDashboard() {
     window.addEventListener('bakery_pending_transfers_updated', handlePendingTransfersUpdate);
     window.addEventListener('transfer_approval_requested', handlePendingTransfersUpdate);
     window.addEventListener('transfer_approval_resolved', handlePendingTransfersUpdate);
+    window.addEventListener('bakery_system_wiped', handleSystemWiped);
 
     return () => {
       unsubscribeSync();
@@ -1744,6 +1765,7 @@ export default function AdminDashboard() {
       window.removeEventListener('transfer_approval_resolved', handlePendingTransfersUpdate);
       window.removeEventListener(MATERIAL_TRANSACTION_EVENT, handleMatUpdate);
       window.removeEventListener(MATERIAL_STOCK_ADJUSTMENT_EVENT, handleMatAdjUpdate);
+      window.removeEventListener('bakery_system_wiped', handleSystemWiped);
     };
   }, []);
 
@@ -6906,6 +6928,16 @@ export default function AdminDashboard() {
                 <Database className="w-4 h-4 text-white" />
                 <span>Sao Lưu & Phục Hồi SQL</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => setIsResetModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-xs font-black text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
+                title="Reset toàn bộ dữ liệu hệ thống (Giao dịch hoặc Toàn bộ) có bảo vệ Zero-Resurrection"
+              >
+                <Trash2 className="w-4 h-4 text-white" />
+                <span>Reset Dữ Liệu</span>
+              </button>
             </div>
           </div>
 
@@ -7350,6 +7382,29 @@ export default function AdminDashboard() {
                   >
                     <Database className="w-4 h-4" />
                     <span>Mở Công Cụ Sao Lưu & Đối Soát SQL</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* KHỐI 4: VÙNG NGUY HIỂM - RESET DỮ LIỆU TOÀN BỘ HỆ THỐNG */}
+              <div className="bg-red-50/60 rounded-3xl border border-red-200 p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h3 className="font-black text-sm text-red-900 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-red-600" />
+                      Vùng Nguy Hiểm: Khởi Tạo Lại (Reset) Dữ Liệu Hệ Thống
+                    </h3>
+                    <p className="text-xs text-red-700/80 max-w-xl">
+                      Xóa trắng dữ liệu giao dịch trên CSDL SQL và toàn bộ thiết bị (POS, Bếp, Mobile) với giao thức Zero-Resurrection chống nạp ngược dữ liệu cũ. Tự động sao lưu dự phòng trước khi xóa.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setIsResetModalOpen(true)}
+                    className="px-5 py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-black text-xs shrink-0 flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Reset Dữ Liệu Hệ Thống</span>
                   </button>
                 </div>
               </div>
@@ -9897,6 +9952,15 @@ export default function AdminDashboard() {
       <BackupRestoreModal
         isOpen={isBackupModalOpen}
         onClose={() => setIsBackupModalOpen(false)}
+      />
+
+      {/* ── MODAL RESET DỮ LIỆU TOÀN BỘ HỆ THỐNG ── */}
+      <SystemResetModal
+        isOpen={isResetModalOpen}
+        onClose={() => setIsResetModalOpen(false)}
+        onResetComplete={() => {
+          loadData();
+        }}
       />
     </div>
   );

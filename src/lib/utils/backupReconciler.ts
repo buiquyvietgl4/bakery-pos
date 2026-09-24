@@ -618,6 +618,21 @@ export async function executePushToSQL(
   try {
     notify(5, 'Đang chuẩn bị và kiểm tra kết nối Supabase...');
 
+    if (typeof window !== 'undefined' && (window as any).__IS_SYSTEM_WIPING__) {
+      return { success: false, message: 'Hệ thống đang trong quá trình reset, không thể đẩy dữ liệu.', details };
+    }
+    try {
+      const { checkServerResetEpoch } = await import('@/lib/utils/systemResetManager');
+      const { shouldAbort } = await checkServerResetEpoch();
+      if (shouldAbort) {
+        return {
+          success: false,
+          message: 'Phát hiện CSDL vừa được Reset Hệ Thống từ máy khác. Đã hủy tiến trình đẩy dữ liệu cũ lên CSDL!',
+          details,
+        };
+      }
+    } catch {}
+
     // ── BƯỚC 1: TẢI HÌNH ẢNH LÊN SUPABASE STORAGE BUCKET bakery-images ──
     notify(10, 'Đang khôi phục và tải hình ảnh lên Cloud Storage...');
     const uploadedImageUrlMap = new Map<string, string>();
