@@ -174,11 +174,21 @@ class OfflineSyncWorker {
       // 🛡️ ZERO-RESURRECTION GUARD: Kiểm tra xem CSDL có đợt reset nào không
       try {
         const { checkServerResetEpoch } = await import('@/lib/utils/systemResetManager');
-        const { shouldAbort } = await checkServerResetEpoch();
+        const { shouldAbort, serverEpoch } = await checkServerResetEpoch();
         if (shouldAbort) {
-          console.warn('⛔ [offlineSyncWorker] Hủy toàn bộ hàng đợi đẩy offline vì CSDL vừa được Reset!');
-          this.notifyQueueChanged(0);
-          return { syncedCount: 0, errors: [] };
+          const originalCount = ordersToSync.length;
+          ordersToSync = ordersToSync.filter((o) => {
+            const t = new Date(o.created_at || o.createdAt || 0).getTime();
+            return t > serverEpoch;
+          });
+          const discarded = originalCount - ordersToSync.length;
+          if (discarded > 0) {
+            console.warn(`⛔ [offlineSyncWorker] Đã loại bỏ ${discarded} đơn hàng cũ trước mốc Reset. Giữ lại ${ordersToSync.length} đơn sinh ra sau Reset.`);
+          }
+          if (ordersToSync.length === 0) {
+            this.notifyQueueChanged(0);
+            return { syncedCount: 0, errors: [] };
+          }
         }
       } catch {}
 

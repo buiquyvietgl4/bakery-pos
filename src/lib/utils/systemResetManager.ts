@@ -98,8 +98,8 @@ export async function checkServerResetEpoch(): Promise<{ shouldAbort: boolean; s
       // Cập nhật epoch ngay để không lặp lại
       setLocalResetEpoch(serverEpoch);
 
-      // Tự động xóa sạch bộ nhớ cũ trên máy này (Chế độ Full hoặc Operational)
-      await clearAllClientStorage('operational');
+      // Tự động xóa sạch bộ nhớ cũ trước mốc reset (Bảo tồn bất kỳ đơn hàng nào mới tạo SAU mốc serverEpoch)
+      await clearAllClientStorage('operational', serverEpoch);
 
       // Báo sự kiện làm mới giao diện
       window.dispatchEvent(new Event('bakery_orders_updated'));
@@ -117,8 +117,13 @@ export async function checkServerResetEpoch(): Promise<{ shouldAbort: boolean; s
 
 /**
  * Xóa sạch sẽ toàn bộ các vùng lưu trữ trình duyệt (localStorage, sessionStorage, IndexedDB Dexie, CacheStorage)
+ * @param mode 'operational' hoặc 'full'
+ * @param keepAfterEpoch Nếu truyền timestamp mốc reset, hệ thống sẽ BẢO TỒN các đơn/dữ liệu sinh ra SAU mốc này
  */
-export async function clearAllClientStorage(mode: ResetMode = 'operational'): Promise<void> {
+export async function clearAllClientStorage(
+  mode: ResetMode = 'operational',
+  keepAfterEpoch?: number
+): Promise<void> {
   if (typeof window === 'undefined') return;
 
   // Đặt cờ toàn cục ngăn chặn mọi tiến trình nền gửi request
@@ -127,8 +132,40 @@ export async function clearAllClientStorage(mode: ResetMode = 'operational'): Pr
   try {
     // 1. Dọn dẹp Dexie IndexedDB
     try {
-      if (db.orders) await db.orders.clear();
-      if (db.syncQueue) await db.syncQueue.clear();
+      if (db.orders) {
+        if (keepAfterEpoch && keepAfterEpoch > 0) {
+          const allOrders = await db.orders.toArray();
+          const staleIds = allOrders
+            .filter((o: any) => {
+              const t = new Date(o.created_at || o.createdAt || 0).getTime();
+              return t <= keepAfterEpoch;
+            })
+            .map((o: any) => o.id);
+          if (staleIds.length > 0) {
+            await db.orders.bulkDelete(staleIds);
+          }
+        } else {
+          await db.orders.clear();
+        }
+      }
+
+      if (db.syncQueue) {
+        if (keepAfterEpoch && keepAfterEpoch > 0) {
+          const allQueue = await db.syncQueue.toArray();
+          const staleQueueIds = allQueue
+            .filter((q: any) => {
+              const t = new Date(q.created_at || q.createdAt || q.payload?.created_at || 0).getTime();
+              return t <= keepAfterEpoch;
+            })
+            .map((q: any) => q.id);
+          if (staleQueueIds.length > 0) {
+            await db.syncQueue.bulkDelete(staleQueueIds);
+          }
+        } else {
+          await db.syncQueue.clear();
+        }
+      }
+
       if (mode === 'full' && db.products) {
         await db.products.clear();
       }
@@ -145,7 +182,32 @@ export async function clearAllClientStorage(mode: ResetMode = 'operational'): Pr
     try {
       if (mode === 'operational') {
         for (const key of OPERATIONAL_DATA_KEYS) {
-          localStorage.removeItem(key);
+          if (keepAfterEpoch && keepAfterEpoch > 0) {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              try {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                  // Giữ lại các bản ghi được tạo mới SAU mốc reset
+                  const kept = parsed.filter((item: any) => {
+                    const t = new Date(item.created_at || item.createdAt || 0).getTime();
+                    return t > keepAfterEpoch;
+                  });
+                  if (kept.length > 0) {
+                    localStorage.setItem(key, JSON.stringify(kept));
+                  } else {
+                    localStorage.removeItem(key);
+                  }
+                } else {
+                  localStorage.removeItem(key);
+                }
+              } catch {
+                localStorage.removeItem(key);
+              }
+            }
+          } else {
+            localStorage.removeItem(key);
+          }
         }
       } else {
         // Mode Full: Xóa sạch toàn bộ, giữ lại cấu hình kết nối DB nếu có

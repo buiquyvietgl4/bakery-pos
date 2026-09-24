@@ -2310,7 +2310,7 @@ export default function POSPage() {
         try {
           (window as any).__IS_SYSTEM_WIPING__ = true;
           const { clearAllClientStorage } = await import('@/lib/utils/systemResetManager');
-          await clearAllClientStorage(payload.mode);
+          await clearAllClientStorage(payload.mode, payload.epoch);
         } catch (e) {
           console.error('[POS] Lỗi khi dọn dẹp bộ nhớ reset:', e);
         }

@@ -1694,10 +1694,14 @@ export async function syncOrderToSupabase(
   // 🛡️ ZERO-RESURRECTION GUARD: Kiểm tra CSDL xem có đợt Reset Hệ Thống nào không trước khi đẩy
   try {
     const { checkServerResetEpoch } = await import('@/lib/utils/systemResetManager');
-    const { shouldAbort } = await checkServerResetEpoch();
+    const { shouldAbort, serverEpoch } = await checkServerResetEpoch();
     if (shouldAbort) {
-      console.warn('⛔ [syncOrderToSupabase] Chặn đẩy dữ liệu cũ lên vì CSDL vừa được Reset!');
-      return;
+      const orderCreatedAt = new Date(order.created_at || order.createdAt || Date.now()).getTime();
+      if (orderCreatedAt <= serverEpoch) {
+        console.warn(`⛔ [syncOrderToSupabase] Chặn đẩy đơn cũ (#${orderNum}) tạo trước mốc Reset CSDL!`);
+        return;
+      }
+      // Đơn hàng sinh ra SAU mốc Reset vẫn được phép đẩy lên máy chủ
     }
   } catch {}
 
