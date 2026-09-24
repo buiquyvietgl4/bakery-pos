@@ -907,12 +907,14 @@ export default function AdminDashboard() {
 
   const handleSelectOnlineBackupFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const text = event.target?.result as string;
+        let text = (event.target?.result as string) || '';
+        text = text.replace(/^\uFEFF/, '').trim();
         if (!text) return;
         setIsRestoringLocalSql(true);
         const parsed = JSON.parse(text);
@@ -927,11 +929,10 @@ export default function AdminDashboard() {
           setLocalSqlNotice({ type: 'error', text: res.message });
         }
       } catch (err: any) {
-        setLocalSqlNotice({ type: 'error', text: 'Tệp không đúng định dạng sao lưu (.bakery.json hoặc .json hợp lệ).' });
+        setLocalSqlNotice({ type: 'error', text: 'Tệp không đúng định dạng sao lưu (.bakery.json hoặc .json hợp lệ): ' + (err.message || '') });
       } finally {
         setIsRestoringLocalSql(false);
         setTimeout(() => setLocalSqlNotice(null), 8000);
-        if (localBackupFileInputRef.current) localBackupFileInputRef.current.value = '';
       }
     };
     reader.readAsText(file);

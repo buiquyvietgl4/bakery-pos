@@ -81,6 +81,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
   const [reconciliationReport, setReconciliationReport] = useState<ReconciliationReport | null>(null);
   const [activeEntityFilter, setActiveEntityFilter] = useState<EntityType | 'all'>('all');
   const [mergeMode, setMergeMode] = useState<MergeMode>('smart_merge');
+  const [isDragging, setIsDragging] = useState(false);
 
   // Push to SQL state
   const [isPushingToSQL, setIsPushingToSQL] = useState(false);
@@ -172,11 +173,8 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     }
   };
 
-  // ── HÀNH ĐỘNG ĐỌC FILE BACKUP TẢI LÊN ──
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // ── XỬ LÝ ĐỌC FILE SAO LƯU (HỖ TRỢ MỌI PHIÊN BẢN BACKUP, KỂ CẢ TRƯỚC RESET) ──
+  const processUploadedFile = (file: File) => {
     setSelectedFileName(file.name);
     setIsParsingFile(true);
     setReconciliationReport(null);
@@ -185,10 +183,17 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const rawJson = JSON.parse(event.target?.result as string);
+        let text = (event.target?.result as string) || '';
+        // Gỡ bỏ ký tự BOM (\uFEFF) nếu có từ Windows / Notepad
+        text = text.replace(/^\uFEFF/, '').trim();
+        if (!text) {
+          throw new Error('Tệp rỗng không có nội dung JSON');
+        }
+
+        const rawJson = JSON.parse(text);
         const json = normalizeBackupData(rawJson);
-        if (!json || !Array.isArray(json.products) || !Array.isArray(json.orders)) {
-          alert('Tệp sao lưu không hợp lệ hoặc sai định dạng Bakery ERP!');
+        if (!json || (!Array.isArray(json.products) && !Array.isArray(json.orders))) {
+          alert('Tệp sao lưu không hợp lệ hoặc không tìm thấy dữ liệu tiệm bánh trong file!');
           setIsParsingFile(false);
           return;
         }
@@ -199,13 +204,25 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
         const report = await reconcileBackupWithCurrentState(json);
         setReconciliationReport(report);
       } catch (err: any) {
-        alert('Lỗi đọc tệp sao lưu: ' + (err.message || 'File JSON bị lỗi'));
+        alert('Lỗi đọc tệp sao lưu: ' + (err.message || 'File JSON bị lỗi định dạng'));
       } finally {
         setIsParsingFile(false);
         setIsReconciling(false);
       }
     };
+    reader.onerror = () => {
+      alert('Không thể đọc file từ thiết bị của bạn.');
+      setIsParsingFile(false);
+      setIsReconciling(false);
+    };
     reader.readAsText(file);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = ''; // Cho phép chọn lại cùng 1 file
+    if (!file) return;
+    processUploadedFile(file);
   };
 
   // ── HÀNH ĐỘNG ĐẨY LÊN CSDL SQL ──
@@ -500,11 +517,28 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
             <div className="space-y-6">
               
               {/* BƯỚC 1: CHỌN FILE SAO LƯU */}
-              <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50/30 p-6 text-center hover:bg-amber-50/60 transition-colors">
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDragging(true);
+                }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDragging(false);
+                  const f = e.dataTransfer.files?.[0];
+                  if (f) processUploadedFile(f);
+                }}
+                className={`rounded-2xl border-2 border-dashed p-6 text-center transition-all ${
+                  isDragging
+                    ? 'border-amber-500 bg-amber-100/70 scale-[1.01] shadow-lg ring-2 ring-amber-400'
+                    : 'border-amber-300 bg-amber-50/30 hover:bg-amber-50/60'
+                }`}
+              >
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".json"
+                  accept=".json,.bakery.json,application/json"
                   onChange={handleFileUpload}
                   className="hidden"
                 />
@@ -515,13 +549,13 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                   {selectedFileName ? `Tệp đã nạp: ${selectedFileName}` : 'Chọn hoặc Kéo Thả Tệp Sao Lưu (.bakery.json)'}
                 </h3>
                 <p className="text-xs text-gray-500 mt-1 max-w-md mx-auto">
-                  Hệ thống sẽ tự động quét, phân tích và thực hiện <strong>đối soát thông minh</strong> để phân biệt cái nào đã có, cái nào mới, và cái nào trùng lặp.
+                  Hỗ trợ cả file sao lưu tự động định kỳ, file xuất thủ công, và file an toàn trước khi Reset hệ thống.
                 </p>
                 <div className="mt-4 flex justify-center gap-3">
                   <button
                     onClick={() => fileInputRef.current?.click()}
                     disabled={isParsingFile || isReconciling}
-                    className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold shadow-sm flex items-center gap-2 transition-all"
+                    className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-sm font-semibold shadow-sm flex items-center gap-2 transition-all cursor-pointer"
                   >
                     <Folder className="h-4 w-4" />
                     {selectedFileName ? 'Chọn tệp sao lưu khác...' : 'Duyệt tìm tệp trên máy tính'}

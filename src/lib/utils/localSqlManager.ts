@@ -1368,12 +1368,18 @@ export async function autoSyncToLocalSqlFolder(): Promise<boolean> {
  * Nạp bất kỳ đối tượng Backup Data nào vào môi trường Local
  * (Áp dụng cho: file .bakery.json tải từ Online SQL, file .json, hoặc clone từ Cloud)
  */
-export async function restoreLocalFromBackupData(data: any): Promise<{ success: boolean; message: string }> {
-  if (!data || typeof data !== 'object') {
+export async function restoreLocalFromBackupData(rawData: any): Promise<{ success: boolean; message: string }> {
+  if (!rawData || typeof rawData !== 'object') {
     return { success: false, message: 'Dữ liệu không hợp lệ.' };
   }
 
   try {
+    let data = rawData;
+    try {
+      const { normalizeBackupData } = await import('@/lib/utils/backupManager');
+      data = normalizeBackupData(rawData);
+    } catch {}
+
     // Chuyển đối tượng backup thành snapshot cho LocalStorage
     const localSnapshot: Record<string, any> = {};
 
@@ -1568,6 +1574,24 @@ export async function restoreLocalFromBackupData(data: any): Promise<{ success: 
     const prodCount = data.products?.length || 0;
     const orderCount = data.orders?.length || 0;
     const recCount = data.recipes?.length || 0;
+
+    try {
+      const { setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+      setLocalResetEpoch(0);
+      localStorage.removeItem('bakery_system_reset_epoch');
+      localStorage.removeItem('bakery_deleted_order_keys');
+      localStorage.removeItem('bakery_kds_status_locks');
+      sessionStorage.removeItem('bakery_wiped_reloaded_epoch');
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('bakery_products_updated'));
+      window.dispatchEvent(new Event('bakery_orders_updated'));
+      window.dispatchEvent(new Event('bakery_recipes_updated'));
+      window.dispatchEvent(new Event('bakery_stocks_updated'));
+      window.dispatchEvent(new Event('bakery_spoilage_updated'));
+      window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
+    }
 
     return {
       success: true,

@@ -305,14 +305,20 @@ export async function clearAllClientStorage(
 export async function downloadPreResetBackup(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   try {
+    const { gatherFullBakeryData } = await import('@/lib/utils/backupManager');
+    const fullBackup = await gatherFullBakeryData();
+
     const backupPayload: Record<string, any> = {
+      ...fullBackup,
       app: 'Bakery ERP - Hệ Thống Quản Lý Tiệm Bánh',
-      exported_at: new Date().toISOString(),
+      exported_at: fullBackup.exportedAt,
       created_by: 'Bản Sao Lưu An Toàn Trước Khi Reset Hệ Thống',
       localStorage: {},
+      dexie_orders: fullBackup.orders,
+      dexie_products: fullBackup.products,
     };
 
-    // Đóng gói tất cả keys trong localStorage
+    // Đóng gói tất cả keys trong localStorage để bảo đảm tương thích ngược 100%
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith('bakery_')) {
@@ -324,12 +330,6 @@ export async function downloadPreResetBackup(): Promise<boolean> {
         }
       }
     }
-
-    // Đóng gói đơn hàng từ Dexie
-    try {
-      backupPayload.dexie_orders = await db.orders.toArray();
-      backupPayload.dexie_products = await db.products.toArray();
-    } catch {}
 
     const blob = new Blob([JSON.stringify(backupPayload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
