@@ -472,6 +472,25 @@ function ensureSyncChannel() {
           });
         }
       })
+      .on('broadcast', { event: 'system_backup_restored' }, async ({ payload }: any) => {
+        console.log('📦 [REALTIME] Nhận thông báo đã khôi phục bản sao lưu dữ liệu toàn hệ thống!', payload);
+        if (typeof window !== 'undefined') {
+          try {
+            const { setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+            setLocalResetEpoch(0);
+            localStorage.removeItem('bakery_system_reset_epoch');
+            localStorage.removeItem('bakery_deleted_order_keys');
+            localStorage.removeItem('bakery_kds_status_locks');
+            sessionStorage.removeItem('bakery_wiped_reloaded_epoch');
+          } catch {}
+          window.dispatchEvent(new Event('bakery_products_updated'));
+          window.dispatchEvent(new Event('bakery_recipes_updated'));
+          window.dispatchEvent(new Event('bakery_orders_updated'));
+          window.dispatchEvent(new Event('bakery_stocks_updated'));
+          window.dispatchEvent(new Event('bakery_spoilage_updated'));
+          window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
+        }
+      })
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'orders' },
@@ -924,6 +943,28 @@ export async function broadcastSystemGlobalWipe(payload: SystemGlobalWipePayload
     }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastSystemGlobalWipe:', err);
+  }
+}
+
+/**
+ * Phát sóng sự kiện đã khôi phục bản sao lưu dữ liệu toàn hệ thống tới tất cả thiết bị
+ */
+export async function broadcastSystemBackupRestored(payload: {
+  restored_at: string;
+  products_count?: number;
+  orders_count?: number;
+}) {
+  try {
+    const channel = ensureSyncChannel();
+    if (channel) {
+      await channel.send({
+        type: 'broadcast',
+        event: 'system_backup_restored',
+        payload,
+      });
+    }
+  } catch (err) {
+    console.warn('Lỗi phát sóng broadcastSystemBackupRestored:', err);
   }
 }
 

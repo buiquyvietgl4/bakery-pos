@@ -86,6 +86,18 @@ export async function checkServerResetEpoch(): Promise<{ shouldAbort: boolean; s
       .maybeSingle();
 
     if (error || !data || !data.notes) {
+      // Nếu server không còn mốc Reset (vì đã khôi phục bản sao lưu) nhưng máy này vẫn còn localEpoch cũ > 0:
+      // Tự động gỡ bỏ mốc Reset cục bộ để máy này đồng bộ và hiển thị đầy đủ dữ liệu đã khôi phục
+      if (!error && !data && localEpoch > 0) {
+        setLocalResetEpoch(0);
+        try {
+          localStorage.removeItem(STORAGE_KEY_SYSTEM_RESET_EPOCH);
+          localStorage.removeItem('bakery_deleted_order_keys');
+          localStorage.removeItem('bakery_kds_status_locks');
+          sessionStorage.removeItem('bakery_wiped_reloaded_epoch');
+        } catch {}
+        return { shouldAbort: false, serverEpoch: 0 };
+      }
       return { shouldAbort: false, serverEpoch: localEpoch };
     }
 

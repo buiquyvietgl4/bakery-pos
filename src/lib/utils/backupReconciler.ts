@@ -621,17 +621,6 @@ export async function executePushToSQL(
     if (typeof window !== 'undefined' && (window as any).__IS_SYSTEM_WIPING__) {
       return { success: false, message: 'Hệ thống đang trong quá trình reset, không thể đẩy dữ liệu.', details };
     }
-    try {
-      const { checkServerResetEpoch } = await import('@/lib/utils/systemResetManager');
-      const { shouldAbort } = await checkServerResetEpoch();
-      if (shouldAbort) {
-        return {
-          success: false,
-          message: 'Phát hiện CSDL vừa được Reset Hệ Thống từ máy khác. Đã hủy tiến trình đẩy dữ liệu cũ lên CSDL!',
-          details,
-        };
-      }
-    } catch {}
 
     // ── BƯỚC 1: TẢI HÌNH ẢNH LÊN SUPABASE STORAGE BUCKET bakery-images ──
     notify(10, 'Đang khôi phục và tải hình ảnh lên Cloud Storage...');
@@ -690,36 +679,50 @@ export async function executePushToSQL(
         const bp = item.backupItem;
         const newImgUrl = uploadedImageUrlMap.get(bp.id) || uploadedImageUrlMap.get('img-prod-' + bp.id) || bp.image_url;
 
-        const prodRecord = {
+        // Chỉ gửi các cột hợp lệ tồn tại trong CSDL Supabase table products:
+        // ['id', 'name', 'category', 'image_url', 'base_cost_price', 'selling_price', 'food_cost_pct', 'is_active', 'is_preorder_only', 'recipe_id', 'created_at', 'updated_at']
+        const dbProdRecord: any = {
           id: bp.id,
           name: bp.name,
           category: bp.category || 'Bánh Kem',
           selling_price: Number(bp.selling_price || bp.price || 0),
           base_cost_price: Number(bp.base_cost_price || bp.import_price || Math.round((bp.selling_price || 0) * 0.33)),
-          import_price: bp.import_price !== undefined ? Number(bp.import_price) : undefined,
-          product_type: bp.product_type || 'produced',
-          supplier_name: bp.supplier_name || null,
-          barcode: bp.barcode || null,
-          image_url: newImgUrl,
+          image_url: newImgUrl || null,
           is_preorder_only: bp.is_preorder_only ?? false,
           is_active: bp.is_active ?? true,
+          updated_at: new Date().toISOString(),
+        };
+        if (bp.created_at) {
+          dbProdRecord.created_at = bp.created_at;
+        }
+
+        // Bản ghi đầy đủ mở rộng cho LocalStorage và IndexedDB Dexie
+        const localProdRecord = {
+          ...dbProdRecord,
+          product_type: bp.product_type || 'produced',
+          import_price: bp.import_price !== undefined ? Number(bp.import_price) : undefined,
+          supplier_name: bp.supplier_name || null,
+          barcode: bp.barcode || null,
         };
 
         try {
-          await supabase.from('products').upsert(prodRecord, { onConflict: 'id' });
+          const { error: prodErr } = await supabase.from('products').upsert(dbProdRecord, { onConflict: 'id' });
+          if (prodErr) {
+            console.warn('Lỗi upsert product Supabase:', prodErr.message);
+          }
         } catch (dbErr) {
           console.warn('Lỗi upsert product Supabase:', dbErr);
         }
 
         try {
-          await db.products.put(prodRecord as any);
+          await db.products.put(localProdRecord as any);
         } catch {}
 
         const idx = currentProds.findIndex((p) => p.id === bp.id || p.name?.toLowerCase().trim() === bp.name?.toLowerCase().trim());
         if (idx >= 0) {
-          currentProds[idx] = { ...currentProds[idx], ...prodRecord };
+          currentProds[idx] = { ...currentProds[idx], ...localProdRecord };
         } else {
-          currentProds.unshift(prodRecord);
+          currentProds.unshift(localProdRecord);
         }
 
         details.productsPushed++;
@@ -801,7 +804,9 @@ export async function executePushToSQL(
 
       for (const item of recipesToPush) {
         const br = item.backupItem;
-        const recipeId = br.id || 'rec-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6);
+        const isValidUUID = (id?: string) =>
+          Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+        const recipeId = isValidUUID(br.id) ? br.id : crypto.randomUUID();
 
         try {
           await supabase.from('recipes').delete().eq('name', br.name);
@@ -859,52 +864,73 @@ export async function executePushToSQL(
         if (raw) currentOrders = JSON.parse(raw);
       } catch {}
 
-      for (const item of ordersToPush) {
+      const isValidUUID = (id?: string) =>
+        Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+
+      const orderPayloads: any[] = [];
+      const orderItemsToInsert: any[] = [];
+      const orderIdsToClearItems: string[] = [];
+
+      for (let i = 0; i < ordersToPush.length; i++) {
+        const item = ordersToPush[i];
         const bo = item.backupItem;
-        const newRefImg = uploadedImageUrlMap.get(bo.order_number) || uploadedImageUrlMap.get('img-order-' + bo.order_number) || bo.reference_image_url;
+        const newRefImg =
+          uploadedImageUrlMap.get(bo.order_number) ||
+          uploadedImageUrlMap.get('img-order-' + bo.order_number) ||
+          bo.reference_image_url;
+
+        // Chuẩn hóa order_type theo check constraint của PostgreSQL ('dine_in' | 'takeaway' | 'preorder')
+        const dbType = ['dine_in', 'takeaway', 'preorder'].includes(bo.order_type) ? bo.order_type : 'preorder';
+
+        // Chuẩn hóa status theo check constraint của PostgreSQL ('pending' | 'preparing' | 'ready' | 'completed' | 'cancelled')
+        const dbStatus =
+          bo.status === 'refunded' || bo.status === 'partially_refunded'
+            ? 'completed'
+            : ['pending', 'preparing', 'ready', 'completed', 'cancelled'].includes(bo.status)
+            ? bo.status
+            : 'completed';
+
+        // Đảm bảo ID là UUID hợp lệ cho PostgreSQL
+        const orderId = isValidUUID(bo.id)
+          ? bo.id
+          : isValidUUID(bo.local_id)
+          ? bo.local_id
+          : crypto.randomUUID();
 
         const orderPayload: any = {
+          id: orderId,
           order_number: bo.order_number,
-          order_type: bo.order_type || 'preorder',
-          status: bo.status || 'pending',
+          order_type: dbType,
+          status: dbStatus,
           created_at: bo.created_at || new Date().toISOString(),
           updated_at: bo.updated_at || new Date().toISOString(),
-          preorder_pickup_at: bo.preorder_pickup_at || bo.pickupDateTime,
-          customer_name: bo.customer_name,
-          customer_phone: bo.customer_phone,
-          cake_message: bo.cake_message,
+          preorder_pickup_at: bo.preorder_pickup_at || bo.pickupDateTime || null,
+          customer_name: bo.customer_name || null,
+          customer_phone: bo.customer_phone || null,
+          cake_message: bo.cake_message || null,
           total_amount: Number(bo.total_amount || 0),
           subtotal: Number(bo.subtotal || bo.total_amount || 0),
           notes: bo.notes || '',
         };
 
-        if (bo.id) orderPayload.id = bo.id;
+        orderPayloads.push(orderPayload);
+        orderIdsToClearItems.push(orderId);
 
-        try {
-          const { data: upsertedOrder, error: orderErr } = await supabase
-            .from('orders')
-            .upsert(orderPayload, { onConflict: 'order_number' })
-            .select('id')
-            .single();
-
-          if (!orderErr && upsertedOrder && Array.isArray(bo.items) && bo.items.length > 0) {
-            await supabase.from('order_items').delete().eq('order_id', upsertedOrder.id);
-
-            const itemsToInsert = bo.items.map((it: any) => ({
-              order_id: upsertedOrder.id,
+        if (Array.isArray(bo.items) && bo.items.length > 0) {
+          bo.items.forEach((it: any) => {
+            orderItemsToInsert.push({
+              order_id: orderId,
               product_name_snapshot: it.product_name_snapshot || it.name || 'Bánh',
               quantity: Number(it.quantity || 1),
               unit_price: Number(it.unit_price || 0),
               notes: it.notes || '',
-            }));
-            await supabase.from('order_items').insert(itemsToInsert);
-          }
-        } catch (ordErr) {
-          console.warn('Lỗi push order Supabase:', ordErr);
+            });
+          });
         }
 
-        const ordWithRef = { ...bo, reference_image_url: newRefImg };
-        const idx = currentOrders.findIndex((o) => o.order_number === bo.order_number || o.id === bo.id);
+        // Lưu giữ nguyên trạng thái chi tiết (refunded, return_records, v.v.) vào bộ nhớ cục bộ
+        const ordWithRef = { ...bo, id: orderId, reference_image_url: newRefImg };
+        const idx = currentOrders.findIndex((o) => o.order_number === bo.order_number || o.id === orderId);
         if (idx >= 0) {
           currentOrders[idx] = { ...currentOrders[idx], ...ordWithRef };
         } else {
@@ -914,12 +940,54 @@ export async function executePushToSQL(
         details.ordersPushed++;
       }
 
+      // Đẩy orders lên Supabase theo batch 50 để tối ưu tốc độ và an toàn
+      for (let i = 0; i < orderPayloads.length; i += 50) {
+        const chunk = orderPayloads.slice(i, i + 50);
+        try {
+          const { error: ordErr } = await supabase.from('orders').upsert(chunk, { onConflict: 'id' });
+          if (ordErr) {
+            console.warn('Lỗi upsert chunk orders Supabase:', ordErr.message);
+          }
+        } catch (ordErr) {
+          console.warn('Lỗi push order batch Supabase:', ordErr);
+        }
+        notify(
+          75 + Math.round((i / orderPayloads.length) * 12),
+          `Đang lưu đơn hàng lên CSDL (${Math.min(i + 50, orderPayloads.length)}/${orderPayloads.length})...`
+        );
+      }
+
+      // Xóa items cũ và chèn items mới theo batch 100
+      try {
+        for (let i = 0; i < orderIdsToClearItems.length; i += 50) {
+          const idChunk = orderIdsToClearItems.slice(i, i + 50);
+          await supabase.from('order_items').delete().in('order_id', idChunk);
+        }
+        for (let i = 0; i < orderItemsToInsert.length; i += 100) {
+          const chunk = orderItemsToInsert.slice(i, i + 100);
+          await supabase.from('order_items').insert(chunk);
+        }
+      } catch (itemErr) {
+        console.warn('Lỗi lưu order_items Supabase:', itemErr);
+      }
+
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_orders', JSON.stringify(currentOrders));
+        const preorders = currentOrders.filter(
+          (o: any) => o.order_type === 'preorder' || Boolean(o.preorder_pickup_at || o.pickupDateTime)
+        );
+        if (preorders.length > 0) {
+          localStorage.setItem('bakery_preorders', JSON.stringify(preorders));
+        }
+        try {
+          if (db.orders) {
+            await db.orders.bulkPut(currentOrders);
+          }
+        } catch {}
       }
     }
 
-    // ── BƯỚC 6: LỊCH SỬ KHO, HAO HỤT, THU CHI ──
+    // ── BƯỚC 6: LỊCH SỬ KHO, HAO HỤT, THU CHI & NGHIỆP VỤ ──
     notify(90, 'Đang cập nhật Nhật ký biến động kho & Sổ thu chi...');
     const newStockLogs = report.byEntity.stock_adjustments.items
       .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
@@ -956,6 +1024,28 @@ export async function executePushToSQL(
       } catch {}
     }
 
+    if (backupData.shifts && Array.isArray(backupData.shifts)) {
+      try {
+        localStorage.setItem('bakery_shift_history', JSON.stringify(backupData.shifts));
+      } catch {}
+    }
+    if (backupData.current_shift) {
+      try {
+        localStorage.setItem('bakery_current_shift', JSON.stringify(backupData.current_shift));
+      } catch {}
+    }
+    if (backupData.order_returns && Array.isArray(backupData.order_returns)) {
+      try {
+        localStorage.setItem('bakery_order_returns', JSON.stringify(backupData.order_returns));
+      } catch {}
+    }
+    if (backupData.notification_history && Array.isArray(backupData.notification_history)) {
+      try {
+        localStorage.setItem('bakery_notification_history', JSON.stringify(backupData.notification_history));
+        localStorage.setItem('bakery_notifs_initialized', 'true');
+      } catch {}
+    }
+
     if (backupData.settings) {
       try {
         if (backupData.settings.vietqr) {
@@ -971,7 +1061,42 @@ export async function executePushToSQL(
           localStorage.setItem('bakery_store_branding', JSON.stringify(backupData.settings.branding));
           window.dispatchEvent(new CustomEvent('bakery_branding_updated', { detail: backupData.settings.branding }));
         }
+        if (backupData.settings.full_cake_bom_config) {
+          localStorage.setItem('bakery_full_bom_config', JSON.stringify(backupData.settings.full_cake_bom_config));
+        }
       } catch {}
+    }
+
+    // ── BƯỚC 7: GỠ BỎ MỐC RESET ĐỂ CÁC MÁY KHÁC ĐÓN NHẬN DỮ LIỆU KHÔI PHỤC ──
+    notify(95, 'Đang gỡ bỏ mốc Reset và phát sóng đồng bộ toàn bộ máy...');
+    try {
+      // 1. Xóa mốc SYSTEM_RESET_EPOCH trên Supabase để không chặn dữ liệu sao lưu
+      await supabase
+        .from('recipes')
+        .delete()
+        .or('id.eq.00000000-0000-0000-0000-000000000099,name.eq.SYSTEM_RESET_EPOCH');
+
+      // 2. Xóa mốc local epoch & cờ xóa đơn trên máy này
+      const { setLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
+      setLocalResetEpoch(0);
+      localStorage.removeItem('bakery_system_reset_epoch');
+      localStorage.removeItem('bakery_deleted_order_keys');
+      localStorage.removeItem('bakery_kds_status_locks');
+      sessionStorage.removeItem('bakery_wiped_reloaded_epoch');
+    } catch (e) {
+      console.warn('Lỗi gỡ bỏ SYSTEM_RESET_EPOCH sau khi khôi phục:', e);
+    }
+
+    // 3. Phát sóng khẩn cấp tới mọi máy khác để cập nhật giao diện và xóa mốc chặn reset
+    try {
+      const { broadcastSystemBackupRestored } = await import('@/lib/supabase/realtimeSync');
+      await broadcastSystemBackupRestored({
+        restored_at: new Date().toISOString(),
+        products_count: details.productsPushed,
+        orders_count: details.ordersPushed,
+      });
+    } catch (bErr) {
+      console.warn('Lỗi broadcastSystemBackupRestored:', bErr);
     }
 
     // ── BƯỚC 7: BẮN SỰ KIỆN ĐỒNG BỘ GIAO DIỆN TOÀN HỆ THỐNG ──

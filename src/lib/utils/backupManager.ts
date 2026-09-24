@@ -944,3 +944,180 @@ export function stopAutoBackupWatcher() {
   }
   isWatcherInitialized = false;
 }
+
+/**
+ * Chuẩn hóa tệp sao lưu: hỗ trợ cả chuẩn BakeryBackupData (v2) và tệp pre-reset dump (SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_...)
+ */
+export function normalizeBackupData(rawJson: any): BakeryBackupData {
+  if (!rawJson || typeof rawJson !== 'object') {
+    throw new Error('Dữ liệu sao lưu không đúng định dạng JSON');
+  }
+
+  // Nếu đã đúng chuẩn schemaVersion v2 và có mảng sản phẩm
+  if (rawJson.schemaVersion === 'bakery-backup-v2' && Array.isArray(rawJson.products)) {
+    return rawJson as BakeryBackupData;
+  }
+
+  // Nếu là tệp sao lưu an toàn trước khi reset (dump từ localStorage + dexie)
+  const ls = rawJson.localStorage || {};
+
+  // 1. Sản phẩm (kết hợp cả ls.bakery_products và rawJson.dexie_products để không bao giờ bị thiếu bánh và ảnh)
+  const prodMap = new Map<string, any>();
+  if (Array.isArray(rawJson.dexie_products)) {
+    rawJson.dexie_products.forEach((p: any) => {
+      const k = p.id || p.name?.toLowerCase().trim();
+      if (k) prodMap.set(k, p);
+    });
+  }
+  if (Array.isArray(ls.bakery_products)) {
+    ls.bakery_products.forEach((p: any) => {
+      const k = p.id || p.name?.toLowerCase().trim();
+      if (k) {
+        const existing = prodMap.get(k);
+        prodMap.set(k, { ...(existing || {}), ...p, image_url: p.image_url || existing?.image_url });
+      }
+    });
+  }
+  const products = Array.from(prodMap.values());
+
+  // 2. Đơn hàng (kết hợp bakery_orders, bakery_preorders, dexie_orders)
+  const orderMap = new Map<string, any>();
+  if (Array.isArray(rawJson.dexie_orders)) {
+    rawJson.dexie_orders.forEach((o: any) => {
+      const k = o.order_number || o.orderNumber || o.id;
+      if (k) orderMap.set(k, { ...o, order_number: k });
+    });
+  }
+  if (Array.isArray(ls.bakery_orders)) {
+    ls.bakery_orders.forEach((o: any) => {
+      const k = o.order_number || o.orderNumber || o.id;
+      if (k) orderMap.set(k, { ...o, order_number: k });
+    });
+  }
+  if (Array.isArray(ls.bakery_preorders)) {
+    ls.bakery_preorders.forEach((o: any) => {
+      const k = o.order_number || o.orderNumber || o.id;
+      if (k && !orderMap.has(k)) orderMap.set(k, { ...o, order_number: k });
+    });
+  }
+  const orders = Array.from(orderMap.values());
+
+  // 3. Công thức
+  const recipes = Array.isArray(ls.bakery_recipes) ? ls.bakery_recipes : [];
+
+  // 4. Nguyên vật liệu
+  const ingredients = Array.isArray(ls.bakery_ingredients) ? ls.bakery_ingredients : [];
+
+  // 5. Nhật ký kho, hao hụt, giao dịch vật tư
+  const stock_adjustments = Array.isArray(ls.bakery_stock_adjustment_logs) ? ls.bakery_stock_adjustment_logs : [];
+  const spoilage_logs = Array.isArray(ls.bakery_spoilage_logs) ? ls.bakery_spoilage_logs : [];
+  const material_transactions = Array.isArray(ls.bakery_material_transactions) ? ls.bakery_material_transactions : [];
+  const material_stock_adjustments = Array.isArray(ls.bakery_material_stock_adjustments) ? ls.bakery_material_stock_adjustments : [];
+
+  // 6. Chi phí, sổ quỹ
+  const expenses = Array.isArray(ls.bakery_expenses) ? ls.bakery_expenses : [];
+  const cashflow = Array.isArray(ls.bakery_cashflow) ? ls.bakery_cashflow : [];
+
+  // 7. Ca làm việc, chốt ca, trả hàng
+  const shifts = Array.isArray(ls.bakery_shift_history) ? ls.bakery_shift_history : [];
+  const current_shift = ls.bakery_current_shift || null;
+  const order_returns = Array.isArray(ls.bakery_order_returns) ? ls.bakery_order_returns : [];
+  const pending_transfers = Array.isArray(ls.bakery_pending_transfers) ? ls.bakery_pending_transfers : [];
+  const resolved_transfers = Array.isArray(ls.bakery_resolved_transfers) ? ls.bakery_resolved_transfers : [];
+  const oven_batches = Array.isArray(ls.bakery_oven_batches) ? ls.bakery_oven_batches : [];
+  const notification_history = Array.isArray(ls.bakery_notification_history) ? ls.bakery_notification_history : [];
+  const held_orders = Array.isArray(ls.bakery_held_orders) ? ls.bakery_held_orders : [];
+
+  // 8. Cấu hình hệ thống
+  const settings: any = {
+    vietqr: ls.bakery_vietqr_config || null,
+    ewallet: ls.bakery_ewallet_config || null,
+    branding: ls.bakery_store_branding || null,
+    telegram: ls.bakery_telegram_config || null,
+    security: ls.bakery_security_config || null,
+    full_cake_bom_config: ls.bakery_full_bom_config || null,
+    autobank: ls.bakery_autobank_config || null,
+    transfer_verify: ls.bakery_transfer_verification_config || null,
+  };
+
+  // 9. Thu thập hình ảnh từ sản phẩm và đơn hàng
+  const images: BackupImageItem[] = [];
+  const seenHashes = new Set<string>();
+
+  products.forEach((p: any) => {
+    if (p.image_url && p.image_url.startsWith('data:image/')) {
+      const hash = 'img-' + p.image_url.length + '-' + p.image_url.slice(-25).replace(/[^a-zA-Z0-9]/g, '');
+      if (!seenHashes.has(hash)) {
+        seenHashes.add(hash);
+        images.push({
+          id: 'img-prod-' + p.id,
+          name: p.name || 'Ảnh bánh',
+          type: 'product',
+          dataUrl: p.image_url,
+          hash,
+          associatedId: p.id,
+          sizeBytes: Math.round((p.image_url.length * 3) / 4),
+        });
+      }
+    }
+  });
+
+  orders.forEach((o: any) => {
+    const refUrl = o.reference_image_url || o.referenceImageUrl;
+    if (refUrl && refUrl.startsWith('data:image/')) {
+      const hash = 'img-' + refUrl.length + '-' + refUrl.slice(-25).replace(/[^a-zA-Z0-9]/g, '');
+      if (!seenHashes.has(hash)) {
+        seenHashes.add(hash);
+        images.push({
+          id: 'img-order-' + (o.order_number || o.id),
+          name: `Ảnh mẫu #${o.order_number || o.id}`,
+          type: 'preorder',
+          dataUrl: refUrl,
+          hash,
+          associatedId: o.order_number || o.id,
+          sizeBytes: Math.round((refUrl.length * 3) / 4),
+        });
+      }
+    }
+  });
+
+  const estSize = JSON.stringify(rawJson).length;
+
+  return {
+    schemaVersion: 'bakery-backup-v2',
+    exportedAt: rawJson.exported_at || new Date().toISOString(),
+    storeName: ls.bakery_store_branding?.storeName || 'Tiệm Bánh Hạnh Phúc (Bakery ERP)',
+    dataHash: 'converted-prereset-data',
+    metadata: {
+      totalProducts: products.length,
+      totalOrders: orders.length,
+      totalRecipes: recipes.length,
+      totalIngredients: ingredients.length,
+      totalStockLogs: stock_adjustments.length,
+      totalSpoilageLogs: spoilage_logs.length,
+      totalExpenses: expenses.length,
+      totalImages: images.length,
+      estimatedSizeBytes: estSize,
+    },
+    products,
+    recipes,
+    ingredients,
+    stock_adjustments,
+    spoilage_logs,
+    material_transactions,
+    material_stock_adjustments,
+    orders,
+    order_returns,
+    held_orders,
+    expenses,
+    cashflow,
+    images,
+    shifts,
+    current_shift,
+    pending_transfers,
+    resolved_transfers,
+    oven_batches,
+    notification_history,
+    settings,
+  };
+}

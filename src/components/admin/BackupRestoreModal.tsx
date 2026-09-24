@@ -22,7 +22,8 @@ import {
   isFileSystemAccessSupported,
   checkDirectoryPermission,
   requestDirectoryPermission,
-  cleanOldBackupsNow
+  cleanOldBackupsNow,
+  normalizeBackupData
 } from '@/lib/utils/backupManager';
 import { 
   reconcileBackupWithCurrentState, 
@@ -184,14 +185,15 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     const reader = new FileReader();
     reader.onload = async (event) => {
       try {
-        const json = JSON.parse(event.target?.result as string);
-        if (!json.schemaVersion || !json.products || !json.orders) {
+        const rawJson = JSON.parse(event.target?.result as string);
+        const json = normalizeBackupData(rawJson);
+        if (!json || !Array.isArray(json.products) || !Array.isArray(json.orders)) {
           alert('Tệp sao lưu không hợp lệ hoặc sai định dạng Bakery ERP!');
           setIsParsingFile(false);
           return;
         }
 
-        setSelectedBackupData(json as BakeryBackupData);
+        setSelectedBackupData(json);
         // Tự động kích hoạt đối soát ngay sau khi đọc file
         setIsReconciling(true);
         const report = await reconcileBackupWithCurrentState(json);
