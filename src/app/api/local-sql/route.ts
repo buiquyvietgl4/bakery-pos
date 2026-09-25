@@ -180,6 +180,66 @@ export async function GET(req: NextRequest) {
         console.warn('Lỗi quét pre-reset backup:', scanErr);
       }
 
+      // Quét tìm và tự động dọn dẹp các bản sao lưu tạm thời 7 ngày (TTL: 7 ngày)
+      const temp7DayBackups: any[] = [];
+      const tempDir = path.join(process.cwd(), 'SQL backup', 'tam thoi 7 ngay');
+      try {
+        if (fs.existsSync(tempDir)) {
+          const nowMs = Date.now();
+          const files = fs.readdirSync(tempDir);
+          for (const f of files) {
+            if (f.endsWith('.bakery.json') || f.endsWith('.json')) {
+              const fullPath = path.join(tempDir, f);
+              try {
+                const stat = fs.statSync(fullPath);
+                const fileAgeMs = nowMs - stat.mtimeMs;
+                // Nếu đã vượt quá 7 ngày -> Tự động dọn dẹp (tự hủy)
+                if (fileAgeMs > 7 * 24 * 60 * 60 * 1000) {
+                  try {
+                    fs.unlinkSync(fullPath);
+                    console.log(`[AutoPurge] Đã tự động xóa bản sao lưu tạm thời quá hạn 7 ngày: ${f}`);
+                  } catch {}
+                  continue;
+                }
+
+                // File còn trong hạn 7 ngày
+                const expiresAtMs = stat.mtimeMs + 7 * 24 * 60 * 60 * 1000;
+                const diffMs = expiresAtMs - nowMs;
+                const daysRemaining = Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
+                const hoursRemaining = Math.max(0, Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000)));
+
+                let meta: any = null;
+                try {
+                  const raw = fs.readFileSync(fullPath, 'utf-8');
+                  const parsed = JSON.parse(raw);
+                  meta = {
+                    totalProducts: parsed.metadata?.totalProducts ?? parsed.products?.length ?? parsed.dexie_products?.length ?? 0,
+                    totalOrders: parsed.metadata?.totalOrders ?? parsed.orders?.length ?? parsed.dexie_orders?.length ?? 0,
+                    totalImages: parsed.metadata?.totalImages ?? parsed.images?.length ?? 0,
+                    createdAt: parsed.metadata?.createdAt || parsed.exported_at || stat.mtime.toISOString(),
+                  };
+                } catch {}
+
+                temp7DayBackups.push({
+                  filename: f,
+                  folderPath: tempDir,
+                  createdAt: stat.mtime.toISOString(),
+                  expiresAt: new Date(expiresAtMs).toISOString(),
+                  daysRemaining,
+                  hoursRemaining,
+                  sizeBytes: stat.size,
+                  metadata: meta,
+                });
+              } catch {}
+            }
+          }
+          // Sắp xếp mới nhất lên đầu
+          temp7DayBackups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        }
+      } catch (tempErr) {
+        console.warn('Lỗi quét temp 7day backups:', tempErr);
+      }
+
       return NextResponse.json({
         success: true,
         exists,
@@ -190,6 +250,7 @@ export async function GET(req: NextRequest) {
         sizeBytes,
         metadata,
         latestPreResetBackup,
+        temp7DayBackups,
       });
     }
 
@@ -204,6 +265,11 @@ export async function GET(req: NextRequest) {
         const rootPath = path.join(process.cwd(), 'SQL backup', safeFilename);
         if (fs.existsSync(rootPath)) {
           targetFilePath = rootPath;
+        } else {
+          const tempPath = path.join(process.cwd(), 'SQL backup', 'tam thoi 7 ngay', safeFilename);
+          if (fs.existsSync(tempPath)) {
+            targetFilePath = tempPath;
+          }
         }
       }
 
@@ -221,6 +287,31 @@ export async function GET(req: NextRequest) {
         }
       }
       return NextResponse.json({ success: false, error: 'Không tìm thấy file sao lưu trên ổ cứng' }, { status: 404 });
+    }
+
+    // Tải trực tiếp file sao lưu về máy tính
+    if (searchParams.get('download_file') === 'true') {
+      const requestedFile = searchParams.get('file') || 'latest_backup.bakery.json';
+      const safeFilename = path.basename(requestedFile);
+      const candidateDirs = [
+        path.join(process.cwd(), 'SQL backup', 'tam thoi 7 ngay'),
+        path.join(process.cwd(), 'SQL backup', 'auto backup'),
+        path.join(process.cwd(), 'SQL backup'),
+      ];
+      for (const cDir of candidateDirs) {
+        const candidatePath = path.join(cDir, safeFilename);
+        if (fs.existsSync(candidatePath)) {
+          const fileContent = fs.readFileSync(candidatePath, 'utf-8');
+          return new NextResponse(fileContent, {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Content-Disposition': `attachment; filename="${encodeURIComponent(safeFilename)}"`,
+            },
+          });
+        }
+      }
+      return NextResponse.json({ success: false, error: 'Không tìm thấy file để tải' }, { status: 404 });
     }
 
     // Nếu không truyền dir, trả về trạng thái máy chủ (cho các máy con qua port đồng bộ)
@@ -399,6 +490,7 @@ export async function POST(req: NextRequest) {
             !f.startsWith('SAO_LUU_CUOI_TRUOC_KHI_RESET_') &&
             !f.startsWith('SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_') &&
             !f.startsWith('final_pre_reset_backup_') &&
+            !f.startsWith('SAO_LUU_TAM_THOI_7_NGAY_') &&
             (f.endsWith('.bakery.json') || f.startsWith('bakery_backup_') || f.includes('.temp.'))
           ) {
             try {
@@ -467,6 +559,7 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
             !f.startsWith('SAO_LUU_CUOI_TRUOC_KHI_RESET_') &&
             !f.startsWith('SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_') &&
             !f.startsWith('final_pre_reset_backup_') &&
+            !f.startsWith('SAO_LUU_TAM_THOI_7_NGAY_') &&
             (f.endsWith('.bakery.json') || f.startsWith('bakery_backup_') || f.includes('.temp.'))
           ) {
             try {
@@ -524,6 +617,72 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
         sizeBytes: Buffer.byteLength(jsonString, 'utf-8'),
         savedAt: now.toISOString(),
       });
+    }
+
+    // 3e. Lưu bản sao lưu tạm thời 7 ngày trước khi Reset (Tự hủy sau 7 ngày)
+    if (action === 'save_temp_7day_backup') {
+      const tempDir = path.join(process.cwd(), 'SQL backup', 'tam thoi 7 ngay');
+      if (!fs.existsSync(tempDir)) {
+        fs.mkdirSync(tempDir, { recursive: true });
+      }
+
+      const backupData = body.data;
+      if (!backupData) {
+        return NextResponse.json({ success: false, error: 'Thiếu dữ liệu để lưu' }, { status: 400 });
+      }
+
+      const now = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+      const tempFilename = `SAO_LUU_TAM_THOI_7_NGAY_${timeStr}.bakery.json`;
+      const targetFilePath = path.join(tempDir, tempFilename);
+
+      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const enhancedData = {
+        ...backupData,
+        metadata: {
+          ...(backupData.metadata || {}),
+          isTemporary7Day: true,
+          createdAt: now.toISOString(),
+          expiresAt: expiresAt.toISOString(),
+          retentionDays: 7,
+        },
+      };
+
+      const jsonString = JSON.stringify(enhancedData, null, 2);
+      fs.writeFileSync(targetFilePath, jsonString, 'utf-8');
+
+      console.log(`📦 [Temp7Days] Đã lưu bản sao lưu tạm thời 7 ngày: ${tempFilename} (Hết hạn: ${expiresAt.toLocaleString('vi-VN')})`);
+
+      return NextResponse.json({
+        success: true,
+        filename: tempFilename,
+        path: targetFilePath,
+        createdAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        sizeBytes: Buffer.byteLength(jsonString, 'utf-8'),
+      });
+    }
+
+    // 3f. Xóa thủ công 1 bản sao lưu tạm thời 7 ngày nếu người dùng yêu cầu
+    if (action === 'delete_temp_7day_backup') {
+      const filename = body.filename;
+      if (!filename) {
+        return NextResponse.json({ success: false, error: 'Thiếu tên file cần xóa' }, { status: 400 });
+      }
+      const safeFilename = path.basename(filename);
+      const tempDir = path.join(process.cwd(), 'SQL backup', 'tam thoi 7 ngay');
+      const targetFilePath = path.join(tempDir, safeFilename);
+
+      if (fs.existsSync(targetFilePath)) {
+        try {
+          fs.unlinkSync(targetFilePath);
+          return NextResponse.json({ success: true, message: `Đã xóa bản sao lưu tạm thời ${safeFilename}` });
+        } catch (err: any) {
+          return NextResponse.json({ success: false, error: err.message }, { status: 500 });
+        }
+      }
+      return NextResponse.json({ success: false, error: 'Không tìm thấy file cần xóa' }, { status: 404 });
     }
 
     // 4. Lưu toàn bộ CSDL vào thư mục

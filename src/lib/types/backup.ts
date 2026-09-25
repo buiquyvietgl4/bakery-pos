@@ -206,3 +206,20 @@ export interface AutoBackupConfig {
   keepOnlyLatest?: boolean; // Tự động xóa file cũ, chỉ giữ 1 file duy nhất gần nhất
 }
 
+export interface TempBackupItem {
+  filename: string;
+  folderPath?: string;
+  createdAt: string;
+  expiresAt: string;
+  daysRemaining: number;
+  hoursRemaining: number;
+  isExpired?: boolean;
+  sizeBytes: number;
+  metadata?: {
+    totalProducts: number;
+    totalOrders: number;
+    totalImages: number;
+    createdAt?: string;
+  };
+}
+

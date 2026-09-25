@@ -388,7 +388,13 @@ export async function executeSystemReset(options: {
 
     // 1. 🔥 LỆNH BẢO VỆ TỐI HẬU: NGẮT NGAY AUTO BACKUP VÀ LẬP TỨC TẠO FILE SAO LƯU CUỐI CÙNG TRƯỚC KHI RESET
     // Khi mật khẩu đã xác thực chuẩn xác 100%, tiến hành ngắt watcher và chụp ảnh dữ liệu tối hậu
-    const { gatherFullBakeryData, saveCriticalPreResetBackup, stopAutoBackupWatcher, startAutoBackupWatcher } = await import('@/lib/utils/backupManager');
+    const { 
+      gatherFullBakeryData, 
+      saveCriticalPreResetBackup, 
+      saveTemporary7DayBackup, 
+      stopAutoBackupWatcher, 
+      startAutoBackupWatcher 
+    } = await import('@/lib/utils/backupManager');
     stopAutoBackupWatcher(); // Tạm dừng Auto Backup để không ghi đè rỗng khi reset
 
     try {
@@ -396,10 +402,13 @@ export async function executeSystemReset(options: {
       const hasProducts = fullBackup.products && fullBackup.products.length > 0;
       const hasOrders = fullBackup.orders && fullBackup.orders.length > 0;
       if (hasProducts || hasOrders) {
+        // 1a. Lưu bản an toàn vĩnh viễn (miễn nhiễm, không bao giờ bị xóa)
         await saveCriticalPreResetBackup(fullBackup);
+        // 1b. Lưu bản sao lưu tạm thời 7 ngày (tự động dọn dẹp sau 7 ngày, hỗ trợ khôi phục / tải về)
+        await saveTemporary7DayBackup(fullBackup);
       }
     } catch (saveErr) {
-      console.warn('Lỗi lưu critical pre-reset backup:', saveErr);
+      console.warn('Lỗi lưu critical & temp pre-reset backup:', saveErr);
     }
 
     // 2. Tự động sao lưu tải file về máy qua trình duyệt nếu được chọn

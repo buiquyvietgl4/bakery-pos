@@ -17,6 +17,7 @@ import {
   Database,
   Layers,
   Sparkles,
+  Clock,
 } from 'lucide-react';
 import { executeSystemReset, ResetMode } from '@/lib/utils/systemResetManager';
 
@@ -220,6 +221,22 @@ export const SystemResetModal: React.FC<SystemResetModalProps> = ({
                 <Download className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                 <span>Tự động tải về 1 bản sao lưu an toàn (file .json) vào máy tính trước khi xóa</span>
               </label>
+            </div>
+
+            {/* THÔNG BÁO BẢO VỆ TỰ ĐỘNG LƯU TRỮ 7 NGÀY */}
+            <div className="p-3.5 rounded-2xl bg-sky-950/25 border border-sky-800/50 text-[11px] space-y-1.5">
+              <div className="font-bold flex items-center justify-between text-sky-400">
+                <span className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>Cơ Chế Lưu Trữ Tạm Thời 7 Ngày (Tự Động)</span>
+                </span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30">
+                  7 Ngày Hạn Định
+                </span>
+              </div>
+              <p className="text-zinc-400 leading-relaxed">
+                Ngay khi ấn reset, hệ thống sẽ tự động tạo <b className="text-sky-300">1 bản sao lưu tạm thời</b> lưu trên máy chủ (<code className="text-sky-300 bg-black/40 px-1 py-0.5 rounded">SQL backup/tam thoi 7 ngay</code>). Bạn có thể khôi phục tức thì hoặc tải về trong vòng 7 ngày tại mục <i>Sao Lưu & Khôi Phục</i> trước khi tệp tự hủy.
+              </p>
             </div>
 
             {/* CẢNH BÁO CƠ CHẾ CHỐNG ĐẨY NGƯỢC */}

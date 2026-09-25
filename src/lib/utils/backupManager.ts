@@ -4,7 +4,8 @@ import {
   BakeryBackupData, 
   BackupImageItem, 
   BackupOrder, 
-  AutoBackupConfig 
+  AutoBackupConfig,
+  TempBackupItem
 } from '@/lib/types/backup';
 import { DEFAULT_BAKERY_PRODUCTS, DEFAULT_BAKERY_RECIPES } from '@/lib/constants/bakeryData';
 import { filterActiveProducts, getDeletedProductIds } from '@/lib/utils/productManager';
@@ -208,6 +209,7 @@ export async function cleanupOldBackupsInDirectory(
         !name.startsWith('SAO_LUU_CUOI_TRUOC_KHI_RESET_') &&
         !name.startsWith('SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_') &&
         !name.startsWith('final_pre_reset_backup_') &&
+        !name.startsWith('SAO_LUU_TAM_THOI_7_NGAY_') &&
         (name.endsWith('.bakery.json') || name.startsWith('bakery_backup_') || name.includes('.temp.'))
       ) {
         try {
@@ -450,6 +452,97 @@ export async function saveCriticalPreResetBackup(
 
   console.log(`🛡️ [SafetyNet] Đã bảo lưu vĩnh viễn dữ liệu tiệm bánh trước khi Reset: ${preResetFilename}`);
   return { success: true, filename: preResetFilename };
+}
+
+// ── BẢO HIỂM 7 NGÀY: TẠO BẢN SAO LƯU TẠM THỜI TỰ ĐỘNG XÓA SAU 7 NGÀY ──
+export async function saveTemporary7DayBackup(
+  fullData: BakeryBackupData
+): Promise<{ success: boolean; filename?: string; expiresAt?: string; error?: string }> {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, '0');
+  const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
+  const tempFilename = `SAO_LUU_TAM_THOI_7_NGAY_${timeStr}.bakery.json`;
+  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  const enhancedData = {
+    ...fullData,
+    metadata: {
+      ...(fullData.metadata || {}),
+      isTemporary7Day: true,
+      createdAt: now.toISOString(),
+      expiresAt,
+      retentionDays: 7,
+    },
+  };
+
+  const jsonString = JSON.stringify(enhancedData, null, 2);
+
+  // 1. Lưu vào thư mục máy chủ (SQL backup/tam thoi 7 ngay) qua API
+  try {
+    await fetch('/api/local-sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'save_temp_7day_backup',
+        data: enhancedData,
+      }),
+    });
+  } catch (err) {
+    console.warn('[Temp7Days] Server temp backup error:', err);
+  }
+
+  // 2. Lưu vào thư mục máy tính trình duyệt nếu có quyền dirHandle
+  if (isFileSystemAccessSupported()) {
+    try {
+      const dirHandle = await getStoredDirectoryHandle();
+      if (dirHandle) {
+        const perm = await dirHandle.queryPermission({ mode: 'readwrite' });
+        if (perm === 'granted') {
+          const fileHandle = await dirHandle.getFileHandle(tempFilename, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(jsonString);
+          await writable.close();
+        }
+      }
+    } catch (dhErr) {
+      console.warn('[Temp7Days] DirHandle temp backup error:', dhErr);
+    }
+  }
+
+  // 3. Lưu vào IndexedDB dự phòng với khóa tạm thời 7 ngày
+  try {
+    const db = await openHandleDB();
+    const tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
+    const store = tx.objectStore(SNAPSHOT_STORE);
+    store.put({
+      id: `temp_7day_${now.getTime()}`,
+      savedAt: now.toISOString(),
+      expiresAt,
+      filename: tempFilename,
+      data: enhancedData,
+    });
+  } catch {}
+
+  console.log(`📦 [Temp7Days] Đã lưu bản sao lưu tạm thời 7 ngày: ${tempFilename} (Hết hạn: ${expiresAt})`);
+  return { success: true, filename: tempFilename, expiresAt };
+}
+
+// ── XÓA BẢN SAO LƯU TẠM THỜI 7 NGÀY SỚM HƠN DỰ KIẾN ──
+export async function deleteTemporary7DayBackup(filename: string): Promise<boolean> {
+  try {
+    const res = await fetch('/api/local-sql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'delete_temp_7day_backup',
+        filename,
+      }),
+    });
+    const resJson = await res.json();
+    return !!resJson.success;
+  } catch {
+    return false;
+  }
 }
 
 // ── HÀM BĂM DATA HASH ĐỂ PHÁT HIỆN DỮ LIỆU MỚI ──

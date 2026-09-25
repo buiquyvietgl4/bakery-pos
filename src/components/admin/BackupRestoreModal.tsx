@@ -11,7 +11,8 @@ import {
   AutoBackupConfig, 
   ReconciliationReport, 
   MergeMode, 
-  EntityType 
+  EntityType,
+  TempBackupItem
 } from '@/lib/types/backup';
 import { 
   getAutoBackupConfig, 
@@ -121,6 +122,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
         createdAt?: string;
       } | null;
     } | null;
+    temp7DayBackups?: TempBackupItem[];
   } | null>(null);
 
   const fetchServerBackupInfo = async () => {
@@ -133,6 +135,28 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
         }
       }
     } catch {}
+  };
+
+  const handleDownloadBackupFile = (filename: string) => {
+    const link = document.createElement('a');
+    link.href = `/api/local-sql?download_file=true&file=${encodeURIComponent(filename)}`;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDeleteTempBackup = async (filename: string) => {
+    if (!confirm(`Bạn có chắc chắn muốn xóa bản sao lưu tạm thời "${filename}" này sớm không?`)) return;
+    try {
+      const { deleteTemporary7DayBackup } = await import('@/lib/utils/backupManager');
+      const ok = await deleteTemporary7DayBackup(filename);
+      if (ok) {
+        fetchServerBackupInfo();
+      }
+    } catch (e: any) {
+      alert('Lỗi xóa file: ' + (e?.message || 'Không thể xóa'));
+    }
   };
 
   useEffect(() => {
@@ -760,15 +784,122 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleLoadServerBackup(serverBackupInfo.latestPreResetBackup?.filename)}
-                    disabled={isParsingFile || isReconciling}
-                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-2 shrink-0 transition-all cursor-pointer active:scale-95"
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                    Khôi Phục Bản Này Ngay
-                  </button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadBackupFile(serverBackupInfo.latestPreResetBackup?.filename!)}
+                      className="px-3.5 py-2.5 bg-white hover:bg-emerald-50 text-emerald-800 rounded-xl text-xs sm:text-sm font-bold border border-emerald-300 shadow-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
+                      title="Tải tệp sao lưu tối hậu này về máy tính"
+                    >
+                      <Download className="h-4 w-4 text-emerald-600" />
+                      Tải Về Máy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleLoadServerBackup(serverBackupInfo.latestPreResetBackup?.filename)}
+                      disabled={isParsingFile || isReconciling}
+                      className="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95"
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      Khôi Phục Bản Này Ngay
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* BẢN SAO LƯU TẠM THỜI 7 NGÀY (TỰ ĐỘNG XÓA SAU 7 NGÀY) */}
+              {serverBackupInfo?.temp7DayBackups && serverBackupInfo.temp7DayBackups.length > 0 && (
+                <div className="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50/70 via-orange-50/40 to-yellow-50/60 p-4 sm:p-5 shadow-sm space-y-3.5 animate-fade-in">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/80 pb-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-600 text-white shadow-sm shrink-0">
+                        <Clock className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="text-sm font-extrabold text-amber-950">
+                            Bản Sao Lưu Tạm Thời Lưu Trữ 7 Ngày (Trước Khi Reset)
+                          </h4>
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
+                            Tự hủy sau 7 ngày
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-800/90 mt-0.5">
+                          Tự động lưu trữ tạm thời 7 ngày trên máy tính. Bạn có thể <b>Khôi phục trực tiếp</b> hoặc <b>Tải về máy</b> bất cứ lúc nào trước hạn tự hủy.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {serverBackupInfo.temp7DayBackups.map((item) => {
+                      const sizeKb = Math.round(item.sizeBytes / 1024);
+                      const isUrgent = item.daysRemaining <= 1;
+                      return (
+                        <div
+                          key={item.filename}
+                          className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-white/95 rounded-xl border border-amber-200 hover:border-amber-400 transition-all shadow-2xs"
+                        >
+                          <div className="space-y-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono text-xs font-bold text-gray-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                                {item.filename}
+                              </span>
+                              <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
+                                isUrgent 
+                                  ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse' 
+                                  : 'bg-amber-100 text-amber-900 border-amber-300'
+                              }`}>
+                                <Clock className="w-3 h-3" />
+                                {item.daysRemaining > 0 
+                                  ? `Còn ${item.daysRemaining} ngày ${item.hoursRemaining} giờ` 
+                                  : `Hết hạn trong ${item.hoursRemaining} giờ`}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
+                              <span>🕒 Tạo lúc: <b>{new Date(item.createdAt).toLocaleString('vi-VN')}</b></span>
+                              <span>⏳ Hết hạn: <b>{new Date(item.expiresAt).toLocaleDateString('vi-VN')}</b></span>
+                              {item.metadata && (
+                                <span className="text-emerald-700 font-semibold">
+                                  📊 {item.metadata.totalProducts} bánh • {item.metadata.totalOrders} đơn • {item.metadata.totalImages} ảnh ({sizeKb} KB)
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
+                            <button
+                              type="button"
+                              onClick={() => handleLoadServerBackup(item.filename)}
+                              disabled={isParsingFile || isReconciling}
+                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                              title="Nạp bản sao lưu này vào hệ thống để đối soát và khôi phục"
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Khôi Phục
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownloadBackupFile(item.filename)}
+                              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                              title="Tải tệp .bakery.json này về máy tính của bạn"
+                            >
+                              <Download className="h-3.5 w-3.5" />
+                              Tải Về Máy
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteTempBackup(item.filename)}
+                              className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+                              title="Xóa sớm bản này"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               )}
 
