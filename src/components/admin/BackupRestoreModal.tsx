@@ -96,6 +96,19 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
   const [pushResult, setPushResult] = useState<{ success: boolean; message: string; details?: any } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Tùy chọn các phần dữ liệu khôi phục (Selective Restore Entities)
+  const [selectedEntities, setSelectedEntities] = useState<Record<string, boolean>>({
+    orders: true,
+    products: true,
+    ingredients: true,
+    recipes: true,
+    stock_adjustments: true,
+    spoilage_logs: true,
+    expenses: true,
+    images: true,
+  });
+  const [isSavingCloudBackup, setIsSavingCloudBackup] = useState(false);
+
   // ── SERVER DISK BACKUP STATE ──
   const [serverBackupInfo, setServerBackupInfo] = useState<{
     exists: boolean;
@@ -302,6 +315,29 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     }
   };
 
+  // ── HÀNH ĐỘNG SAO LƯU TRỰC TIẾP LÊN CLOUD STORAGE 1 GB (LƯU TRỮ 7 NGÀY) ──
+  const handleSaveCloud7DayBackupNow = async () => {
+    setIsSavingCloudBackup(true);
+    setBackupSuccessMsg(null);
+    setBackupErrorMsg(null);
+    try {
+      const fullData = await gatherFullBakeryData();
+      const { saveTemporary7DayBackup } = await import('@/lib/utils/backupManager');
+      const res = await saveTemporary7DayBackup(fullData);
+      if (res.success) {
+        await fetchServerBackupInfo();
+        setBackupSuccessMsg(`Đã tạo bản sao lưu an toàn lên Kho Lưu Trữ Đám Mây 1 GB (Lưu trữ 7 ngày): "${res.filename}" (${fullData.metadata.totalProducts} bánh, ${fullData.metadata.totalOrders} đơn).`);
+        setTimeout(() => setBackupSuccessMsg(null), 7000);
+      } else {
+        setBackupErrorMsg(res.error || 'Không thể tạo bản sao lưu lên Cloud Storage 1 GB');
+      }
+    } catch (err: any) {
+      setBackupErrorMsg(err.message || 'Lỗi khi sao lưu lên Cloud');
+    } finally {
+      setIsSavingCloudBackup(false);
+    }
+  };
+
   // ── HÀNH ĐỘNG NẠP NHANH FILE SAO LƯU TỪ Ổ CỨNG HOẶC CLOUD SQL / STORAGE 1GB ──
   const handleLoadServerBackup = async (specificFilename?: string, cloudKey?: string, storagePath?: string) => {
     setIsParsingFile(true);
@@ -391,18 +427,38 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
   const handleConfirmPushToSQL = async () => {
     if (!selectedBackupData || !reconciliationReport) return;
 
+    const hasAnySelected = Object.values(selectedEntities).some(Boolean);
+    if (!hasAnySelected) {
+      alert('Vui lòng chọn ít nhất 1 phần dữ liệu để khôi phục!');
+      return;
+    }
+
     const confirmMsg = mergeMode === 'full_overwrite'
       ? 'CẢNH BÁO: Chế độ "Khôi phục toàn bộ" sẽ ghi đè toàn bộ dữ liệu hiện tại bằng dữ liệu từ tệp sao lưu. Bạn có chắc chắn muốn tiếp tục?'
-      : 'Hệ thống sẽ đối soát thông minh và đẩy dữ liệu chính xác lên CSDL Cloud SQL. Tiếp tục thực hiện?';
+      : 'Hệ thống sẽ đối soát thông minh và đẩy các phần dữ liệu đã chọn lên CSDL Cloud SQL. Tiếp tục thực hiện?';
 
     if (!window.confirm(confirmMsg)) return;
 
     setIsPushingToSQL(true);
     setPushResult(null);
 
+    // Lọc dữ liệu theo các phần người dùng đã tùy chọn tích chọn
+    const filteredBackupData: BakeryBackupData = {
+      ...selectedBackupData,
+      products: selectedEntities.products ? selectedBackupData.products : [],
+      orders: selectedEntities.orders ? selectedBackupData.orders : [],
+      ingredients: selectedEntities.ingredients ? selectedBackupData.ingredients : [],
+      recipes: selectedEntities.recipes ? selectedBackupData.recipes : [],
+      stock_adjustments: selectedEntities.stock_adjustments ? selectedBackupData.stock_adjustments : [],
+      spoilage_logs: selectedEntities.spoilage_logs ? selectedBackupData.spoilage_logs : [],
+      expenses: selectedEntities.expenses ? selectedBackupData.expenses : [],
+      cashflow: selectedEntities.expenses ? selectedBackupData.cashflow : [],
+      images: selectedEntities.images ? selectedBackupData.images : [],
+    };
+
     try {
       const res = await executePushToSQL(
-        selectedBackupData,
+        filteredBackupData,
         reconciliationReport,
         mergeMode,
         (percent, msg) => {
@@ -738,10 +794,29 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                   <button
                     onClick={() => handleManualBackupNow(true)}
                     disabled={isSavingBackup}
-                    className="px-4 py-3 bg-white hover:bg-gray-50 text-gray-700 rounded-xl text-sm font-semibold border border-gray-300 shadow-sm flex items-center justify-center gap-2 transition-all"
+                    className="px-4 py-3 bg-white hover:bg-gray-50 text-gray-700 rounded-xl text-sm font-semibold border border-gray-300 shadow-sm flex items-center justify-center gap-2 transition-all cursor-pointer"
                   >
                     <Download className="h-4 w-4 text-gray-500" />
                     Tải Về File (.bakery.json)
+                  </button>
+
+                  <button
+                    onClick={handleSaveCloud7DayBackupNow}
+                    disabled={isSavingBackup || isSavingCloudBackup}
+                    className="px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg flex items-center justify-center gap-2 transition-all disabled:opacity-60 cursor-pointer active:scale-95"
+                    title="Lưu độc lập vào Kho Storage 1.000 MB (Lưu trữ an toàn 7 ngày, hoàn toàn không tốn 500MB DB)"
+                  >
+                    {isSavingCloudBackup ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 animate-spin" />
+                        Đang tải lên Cloud 1 GB...
+                      </>
+                    ) : (
+                      <>
+                        <Cloud className="h-4 w-4" />
+                        Sao Lưu Lên Cloud 1 GB (Lưu 7 Ngày)
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -805,77 +880,77 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                 </div>
               )}
 
-              {/* BẢN SAO LƯU TẠM THỜI 7 NGÀY (TỰ ĐỘNG XÓA SAU 7 NGÀY) */}
-              {serverBackupInfo?.temp7DayBackups && serverBackupInfo.temp7DayBackups.length > 0 && (
-                <div className="rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50/70 via-orange-50/40 to-yellow-50/60 p-4 sm:p-5 shadow-sm space-y-3.5 animate-fade-in">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200/80 pb-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-600 text-white shadow-sm shrink-0">
-                        <Clock className="h-5 w-5" />
+              {/* ════════ KHU VỰC BẢN SAO LƯU ĐÁM MÂY 7 NGÀY (SUPABASE STORAGE 1 GB) ════════ */}
+              <div className="rounded-2xl border-2 border-emerald-300 bg-gradient-to-br from-emerald-50/80 via-teal-50/40 to-sky-50/60 p-4 sm:p-5 shadow-sm space-y-4 animate-fade-in">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-emerald-200/80 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-600 to-teal-600 text-white shadow-sm shrink-0">
+                      <Cloud className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-extrabold text-emerald-950 flex items-center gap-1.5">
+                          <span>Kho Sao Lưu Đám Mây 7 Ngày (Supabase Storage 1 GB)</span>
+                        </h4>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900 border border-emerald-300">
+                          Bộ nhớ 1 GB Độc Lập
+                        </span>
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-white text-emerald-800 border border-emerald-200 shadow-2xs">
+                          Tiết kiệm 100% CSDL 500 MB
+                        </span>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h4 className="text-sm font-extrabold text-amber-950">
-                            Bản Sao Lưu Tạm Thời Lưu Trữ 7 Ngày (Trước Khi Reset)
-                          </h4>
-                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-amber-200 text-amber-900 border border-amber-300">
-                            Tự hủy sau 7 ngày
-                          </span>
-                        </div>
-                        <p className="text-xs text-amber-800/90 mt-0.5">
-                          Tự động lưu trữ tạm thời 7 ngày trên máy tính. Bạn có thể <b>Khôi phục trực tiếp</b> hoặc <b>Tải về máy</b> bất cứ lúc nào trước hạn tự hủy.
-                        </p>
-                      </div>
+                      <p className="text-xs text-emerald-900/85 mt-0.5 leading-relaxed">
+                        Lưu trữ tạm thời 7 ngày độc lập trên Cloud Storage (không mất khi thiết bị hỏng hay format). Tự động lưu trước khi Reset hoặc tạo ngay thủ công.
+                      </p>
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                    <button
+                      type="button"
+                      onClick={handleSaveCloud7DayBackupNow}
+                      disabled={isSavingBackup || isSavingCloudBackup}
+                      className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                      title="Chủ động chụp ngay 1 bản sao lưu toàn bộ tiệm bánh đẩy lên Kho Đám Mây 1 GB"
+                    >
+                      {isSavingCloudBackup ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Cloud className="h-3.5 w-3.5" />}
+                      <span>Sao Lưu Lên Cloud 1 GB Ngay</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fetchServerBackupInfo()}
+                      className="p-2 text-emerald-800 hover:text-emerald-950 bg-white hover:bg-emerald-100 rounded-xl border border-emerald-300 transition cursor-pointer shadow-2xs"
+                      title="Quét và làm mới danh sách bản sao lưu trên Cloud"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* DANH SÁCH BẢN SAO LƯU ĐÁM MÂY */}
+                {serverBackupInfo?.temp7DayBackups && serverBackupInfo.temp7DayBackups.length > 0 ? (
                   <div className="space-y-2.5">
                     {serverBackupInfo.temp7DayBackups.map((item) => {
                       const sizeKb = Math.round(item.sizeBytes / 1024);
                       const isUrgent = item.daysRemaining <= 1;
-                      const isStorage = item.source === 'cloud_storage';
-                      const isCloudSql = item.source === 'cloud_sql';
-                      const isCloud = isStorage || isCloudSql;
                       return (
                         <div
                           key={item.storagePath || item.cloudKey || item.filename}
-                          className={`flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 rounded-xl border transition-all shadow-2xs ${
-                            isStorage
-                              ? 'bg-emerald-50/70 border-emerald-300 hover:border-emerald-500'
-                              : isCloudSql
-                                ? 'bg-sky-50/70 border-sky-300 hover:border-sky-500'
-                                : 'bg-white/95 border-amber-200 hover:border-amber-400'
-                          }`}
+                          className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 rounded-xl border transition-all shadow-2xs bg-white/95 border-emerald-300 hover:border-emerald-500"
                         >
                           <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              {isStorage ? (
-                                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-1 shadow-xs">
-                                  <Cloud className="w-3 h-3" />
-                                  Kho Lưu Trữ 1 GB (Tiết kiệm 500MB DB)
-                                </span>
-                              ) : isCloudSql ? (
-                                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-sky-600 text-white flex items-center gap-1 shadow-xs">
-                                  <Cloud className="w-3 h-3" />
-                                  Cloud SQL (Chống Mất Local)
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-zinc-700 text-zinc-100 flex items-center gap-1">
-                                  <HardDrive className="w-3 h-3" />
-                                  Máy Chủ Cục Bộ
-                                </span>
-                              )}
-                              <span className="font-mono text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-200">
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-emerald-600 text-white flex items-center gap-1 shadow-xs">
+                                <Cloud className="w-3 h-3" />
+                                Kho Lưu Trữ 1 GB
+                              </span>
+                              <span className="font-mono text-xs font-bold text-gray-900 bg-emerald-50/50 px-2 py-0.5 rounded border border-emerald-200">
                                 {item.filename}
                               </span>
                               <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
                                 isUrgent 
                                   ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse' 
-                                  : isStorage
-                                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                                    : isCloudSql
-                                      ? 'bg-sky-100 text-sky-900 border-sky-300'
-                                      : 'bg-amber-100 text-amber-900 border-amber-300'
+                                  : 'bg-emerald-100 text-emerald-900 border-emerald-300'
                               }`}>
                                 <Clock className="w-3 h-3" />
                                 {item.daysRemaining > 0 
@@ -888,7 +963,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                               <span>⏳ Hết hạn: <b>{new Date(item.expiresAt).toLocaleDateString('vi-VN')}</b></span>
                               {item.metadata && (
                                 <span className="text-emerald-700 font-semibold">
-                                  📊 {item.metadata.totalProducts} bánh • {item.metadata.totalOrders} đơn • {item.metadata.totalImages} ảnh ({sizeKb} KB)
+                                  📊 {item.metadata.totalProducts} bánh • {item.metadata.totalOrders} đơn ({sizeKb} KB)
                                 </span>
                               )}
                             </div>
@@ -926,8 +1001,31 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                       );
                     })}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <div className="p-4 sm:p-5 rounded-xl bg-white/80 border border-emerald-200/80 text-center space-y-2">
+                    <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
+                      <Cloud className="w-5 h-5" />
+                    </div>
+                    <div className="text-xs font-bold text-emerald-950">
+                      Chưa có bản sao lưu tạm thời nào trên Kho Lưu Trữ Đám Mây 1 GB
+                    </div>
+                    <p className="text-[11px] text-zinc-500 max-w-md mx-auto">
+                      Khi Quản trị viên thực hiện <b>Reset hệ thống</b>, 1 bản sao lưu sẽ tự động được gửi và khóa bảo vệ 7 ngày tại đây. Hoặc bạn có thể bấm nút bên dưới để tạo ngay 1 bản lưu dự phòng đám mây độc lập.
+                    </p>
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={handleSaveCloud7DayBackupNow}
+                        disabled={isSavingBackup || isSavingCloudBackup}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95 cursor-pointer inline-flex items-center gap-1.5"
+                      >
+                        <Cloud className="w-3.5 h-3.5" />
+                        <span>Tạo Bản Sao Lưu Đám Mây 1 GB Đầu Tiên</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* BƯỚC 1: CHỌN FILE SAO LƯU */}
               <div
@@ -1056,7 +1154,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                     >
                       Tất cả ({reconciliationReport.summary.totalBackupItems})
                     </button>
-                    {(['orders', 'products', 'ingredients', 'recipes', 'stock_adjustments', 'images'] as EntityType[]).map((type) => {
+                    {(['orders', 'products', 'ingredients', 'recipes', 'stock_adjustments', 'spoilage_logs', 'expenses', 'images'] as EntityType[]).map((type) => {
                       const entityData = reconciliationReport.byEntity[type];
                       if (!entityData || entityData.total === 0) return null;
                       const labels: Record<string, string> = {
@@ -1065,6 +1163,8 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                         ingredients: 'Kho & Vật tư',
                         recipes: 'Công thức BOM',
                         stock_adjustments: 'Lịch sử kho',
+                        spoilage_logs: 'Hao hụt',
+                        expenses: 'Sổ quỹ & Chi phí',
                         images: 'Hình ảnh',
                       };
                       return (
@@ -1124,6 +1224,77 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                         </div>
                       ));
                     })()}
+                  </div>
+
+                  {/* TÙY CHỌN CÁC PHẦN DỮ LIỆU MUỐN KHÔI PHỤC (SELECTIVE RESTORE) */}
+                  <div className="rounded-2xl border border-emerald-300 bg-emerald-50/50 p-4 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-200/80 pb-2.5">
+                      <span className="text-xs font-bold text-emerald-950 uppercase flex items-center gap-2">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        Tùy chọn các phần dữ liệu muốn khôi phục:
+                      </span>
+                      <div className="flex items-center gap-2 text-xs">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEntities({
+                            orders: true, products: true, ingredients: true,
+                            recipes: true, stock_adjustments: true,
+                            spoilage_logs: true, expenses: true, images: true,
+                          })}
+                          className="font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
+                        >
+                          Chọn tất cả
+                        </button>
+                        <span className="text-gray-300">|</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedEntities({
+                            orders: false, products: false, ingredients: false,
+                            recipes: false, stock_adjustments: false,
+                            spoilage_logs: false, expenses: false, images: false,
+                          })}
+                          className="font-bold text-gray-500 hover:text-gray-700 underline cursor-pointer"
+                        >
+                          Bỏ chọn hết
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                      {[
+                        { key: 'orders', label: 'Đơn hàng & Đặt trước', count: selectedBackupData?.orders?.length || 0, icon: '📋' },
+                        { key: 'products', label: 'Bánh & Sản phẩm', count: selectedBackupData?.products?.length || 0, icon: '🎂' },
+                        { key: 'ingredients', label: 'Kho & Nguyên vật liệu', count: selectedBackupData?.ingredients?.length || 0, icon: '📦' },
+                        { key: 'recipes', label: 'Công thức định mức BOM', count: selectedBackupData?.recipes?.length || 0, icon: '🥣' },
+                        { key: 'stock_adjustments', label: 'Lịch sử kho & Biến động', count: selectedBackupData?.stock_adjustments?.length || 0, icon: '📊' },
+                        { key: 'spoilage_logs', label: 'Báo cáo hao hụt bánh', count: selectedBackupData?.spoilage_logs?.length || 0, icon: '🗑️' },
+                        { key: 'expenses', label: 'Sổ quỹ thu chi & Chi phí', count: (selectedBackupData?.expenses?.length || 0) + (selectedBackupData?.cashflow?.length || 0), icon: '💰' },
+                        { key: 'images', label: 'Hình ảnh bánh & QR (Cloud)', count: selectedBackupData?.images?.length || 0, icon: '🖼️' },
+                      ].map((item) => (
+                        <label
+                          key={item.key}
+                          className={`flex items-center gap-2.5 p-3 rounded-xl border text-xs font-semibold cursor-pointer transition select-none ${
+                            selectedEntities[item.key]
+                              ? 'bg-white border-emerald-500 text-emerald-950 shadow-2xs ring-1 ring-emerald-400/40'
+                              : 'bg-white/40 border-gray-200 text-gray-400'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selectedEntities[item.key]}
+                            onChange={(e) => setSelectedEntities((prev) => ({ ...prev, [item.key]: e.target.checked }))}
+                            className="rounded accent-emerald-600 w-4 h-4 cursor-pointer shrink-0"
+                          />
+                          <span className="text-sm shrink-0">{item.icon}</span>
+                          <span className="truncate flex-1">{item.label}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold shrink-0 ${
+                            selectedEntities[item.key] ? 'bg-emerald-100 text-emerald-800' : 'bg-gray-100 text-gray-400'
+                          }`}>
+                            {item.count}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
                   </div>
 
                   {/* CHỌN CHẾ ĐỘ GỘP DỮ LIỆU (MERGE MODE) */}
