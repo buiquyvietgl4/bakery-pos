@@ -314,6 +314,70 @@ export async function GET(req: NextRequest) {
         console.warn('Lỗi quét cloud temp backups:', cloudScanErr);
       }
 
+      // Quét tìm và tự động dọn dẹp các bản sao lưu tạm thời 7 ngày trên KHO LƯU TRỮ 1 GB (Supabase Storage)
+      try {
+        const supabase = getServerSupabaseClient();
+        const { data: storageFiles } = await supabase.storage
+          .from('bakery-images')
+          .list('cloud_backups_7days');
+
+        if (storageFiles && storageFiles.length > 0) {
+          const nowMs = Date.now();
+          const expiredFiles: string[] = [];
+
+          for (const sFile of storageFiles) {
+            if (sFile.name.endsWith('.bakery.json') || sFile.name.endsWith('.json')) {
+              const fileTime = new Date(sFile.created_at || sFile.updated_at || nowMs).getTime();
+              const diffMs = (fileTime + 7 * 24 * 60 * 60 * 1000) - nowMs;
+
+              if (diffMs <= 0) {
+                expiredFiles.push(`cloud_backups_7days/${sFile.name}`);
+                continue;
+              }
+
+              // Kiểm tra xem đã có trong temp7DayBackups chưa (tránh hiển thị trùng lặp nếu app_settings cũng có)
+              const existingIdx = temp7DayBackups.findIndex(
+                (it) => it.filename === sFile.name || it.filename.includes(sFile.name)
+              );
+
+              const daysRemaining = Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
+              const hoursRemaining = Math.max(0, Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000)));
+              const createdAtStr = new Date(fileTime).toISOString();
+              const expiresAtStr = new Date(fileTime + 7 * 24 * 60 * 60 * 1000).toISOString();
+              const sizeBytes = sFile.metadata?.size || 0;
+
+              if (existingIdx >= 0) {
+                // Nâng cấp bản ghi sang nguồn Storage 1GB
+                temp7DayBackups[existingIdx].source = 'cloud_storage';
+                temp7DayBackups[existingIdx].storagePath = `cloud_backups_7days/${sFile.name}`;
+                if (sizeBytes > 0) temp7DayBackups[existingIdx].sizeBytes = sizeBytes;
+              } else {
+                temp7DayBackups.push({
+                  filename: sFile.name,
+                  storagePath: `cloud_backups_7days/${sFile.name}`,
+                  source: 'cloud_storage',
+                  createdAt: createdAtStr,
+                  expiresAt: expiresAtStr,
+                  daysRemaining,
+                  hoursRemaining,
+                  sizeBytes,
+                });
+              }
+            }
+          }
+
+          // Tự động xóa các file đã hết hạn 7 ngày trên Storage 1GB
+          if (expiredFiles.length > 0) {
+            try {
+              await supabase.storage.from('bakery-images').remove(expiredFiles);
+              console.log(`[StorageAutoPurge] Đã tự động xóa ${expiredFiles.length} file hết hạn 7 ngày trên Storage 1GB`);
+            } catch {}
+          }
+        }
+      } catch (storageScanErr) {
+        console.warn('Lỗi quét Storage 1GB:', storageScanErr);
+      }
+
       // Sắp xếp mới nhất lên đầu
       temp7DayBackups.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
@@ -331,12 +395,37 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Đọc trực tiếp nội dung tệp sao lưu (hỗ trợ cả ổ cứng máy chủ và Cloud SQL)
+    // Đọc trực tiếp nội dung tệp sao lưu (hỗ trợ cả ổ cứng máy chủ, Cloud SQL và Storage 1GB)
     if (searchParams.get('load_backup') === 'true') {
       const requestedFile = searchParams.get('file') || 'latest_backup.bakery.json';
       const cloudKey = searchParams.get('cloud_key');
+      const storagePath = searchParams.get('storage_path');
 
-      // 1. Kiểm tra nạp từ Cloud SQL nếu có cloudKey hoặc file bắt đầu bằng cloud_temp_backup_
+      // 1. Kiểm tra nạp từ KHO LƯU TRỮ 1 GB (Supabase Storage)
+      const targetStoragePath = storagePath || (requestedFile.includes('cloud_backups_7days') ? requestedFile : null);
+      if (targetStoragePath) {
+        try {
+          const supabase = getServerSupabaseClient();
+          const { data: blob, error } = await supabase.storage
+            .from('bakery-images')
+            .download(targetStoragePath);
+
+          if (!error && blob) {
+            const text = await blob.text();
+            const parsed = JSON.parse(text);
+            return NextResponse.json({
+              success: true,
+              filename: path.basename(targetStoragePath),
+              data: parsed,
+              source: 'cloud_storage',
+            });
+          }
+        } catch (sErr: any) {
+          console.warn('Lỗi nạp từ Storage 1GB:', sErr);
+        }
+      }
+
+      // 2. Kiểm tra nạp từ Cloud SQL nếu có cloudKey hoặc file bắt đầu bằng cloud_temp_backup_
       if (cloudKey || requestedFile.startsWith('cloud_temp_backup_')) {
         const targetKey = cloudKey || requestedFile.replace(/\.bakery\.json$/, '');
         try {
@@ -392,12 +481,38 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, error: 'Không tìm thấy file sao lưu trên ổ cứng hoặc Cloud SQL' }, { status: 404 });
     }
 
-    // Tải trực tiếp file sao lưu về máy tính (hỗ trợ cả ổ cứng máy chủ và Cloud SQL)
+    // Tải trực tiếp file sao lưu về máy tính (hỗ trợ cả ổ cứng máy chủ, Cloud SQL và Storage 1GB)
     if (searchParams.get('download_file') === 'true') {
       const requestedFile = searchParams.get('file') || 'latest_backup.bakery.json';
       const cloudKey = searchParams.get('cloud_key');
+      const storagePath = searchParams.get('storage_path');
 
-      // 1. Kiểm tra tải từ Cloud SQL nếu có cloudKey hoặc file bắt đầu bằng cloud_temp_backup_
+      // 1. Kiểm tra tải từ KHO LƯU TRỮ 1 GB (Supabase Storage)
+      const targetStoragePath = storagePath || (requestedFile.includes('cloud_backups_7days') ? requestedFile : null);
+      if (targetStoragePath) {
+        try {
+          const supabase = getServerSupabaseClient();
+          const { data: blob, error } = await supabase.storage
+            .from('bakery-images')
+            .download(targetStoragePath);
+
+          if (!error && blob) {
+            const text = await blob.text();
+            const downloadName = path.basename(targetStoragePath);
+            return new NextResponse(text, {
+              status: 200,
+              headers: {
+                'Content-Type': 'application/json; charset=utf-8',
+                'Content-Disposition': `attachment; filename="${encodeURIComponent(downloadName)}"`,
+              },
+            });
+          }
+        } catch (sErr: any) {
+          console.warn('Lỗi tải từ Storage 1GB:', sErr);
+        }
+      }
+
+      // 2. Kiểm tra tải từ Cloud SQL nếu có cloudKey hoặc file bắt đầu bằng cloud_temp_backup_
       if (cloudKey || requestedFile.startsWith('cloud_temp_backup_')) {
         const targetKey = cloudKey || requestedFile.replace(/\.bakery\.json$/, '');
         try {
@@ -784,13 +899,33 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
       const jsonString = JSON.stringify(enhancedData, null, 2);
       fs.writeFileSync(targetFilePath, jsonString, 'utf-8');
 
-      // 🔥 BẢO HIỂM CHỐNG XÂM NHẬP: LƯU TRỰC TIẾP LÊN CLOUD SQL (SUPABASE)
+      // 🔥 BẢO HIỂM KHO LƯU TRỮ 1 GB (SUPABASE STORAGE): LƯU VÀO BUCKET ĐỘC LẬP (KHÔNG TỐN 500MB DB)
+      let storageSaved = false;
+      const storagePath = `cloud_backups_7days/${tempFilename}`;
+      try {
+        const supabase = getServerSupabaseClient();
+        const { error: sErr } = await supabase.storage
+          .from('bakery-images')
+          .upload(storagePath, Buffer.from(jsonString, 'utf-8'), {
+            contentType: 'application/json',
+            upsert: true,
+          });
+        if (!sErr) {
+          storageSaved = true;
+          console.log(`☁️ [API Temp7Days] Đã lưu bản sao lưu 7 ngày vào Storage 1GB: ${storagePath}`);
+        }
+      } catch (stErr) {
+        console.warn('Lỗi upload Storage 1GB:', stErr);
+      }
+
+      // 🔥 BẢO HIỂM DỰ PHÒNG KÉP: LẬP CHỈ MỤC TRÊN CLOUD SQL (APP_SETTINGS)
       let cloudSaved = false;
       const cloudKey = `cloud_temp_backup_${now.getTime()}`;
       try {
         const supabase = getServerSupabaseClient();
         const cloudMeta = {
           filename: tempFilename,
+          storagePath,
           createdAt: now.toISOString(),
           expiresAt: expiresAt.toISOString(),
           sizeBytes: Buffer.byteLength(jsonString, 'utf-8'),
@@ -798,7 +933,7 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
           ordersCount: enhancedData.orders?.length || 0,
           imagesCount: enhancedData.images?.length || 0,
           isTemporary7Day: true,
-          storageType: 'cloud_sql',
+          storageType: 'cloud_storage_1gb',
         };
 
         const { error: cloudErr } = await supabase.from('app_settings').upsert({
@@ -812,7 +947,7 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
         });
         if (!cloudErr) {
           cloudSaved = true;
-          console.log(`☁️ [API Temp7Days] Đã lưu bản sao lưu 7 ngày lên Cloud SQL: ${cloudKey}`);
+          console.log(`☁️ [API Temp7Days] Đã lập chỉ mục 7 ngày lên Cloud SQL: ${cloudKey}`);
         }
       } catch (cErr) {
         console.warn('Lỗi ghi Cloud SQL:', cErr);
@@ -824,6 +959,8 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
         success: true,
         filename: tempFilename,
         path: targetFilePath,
+        storagePath: storageSaved ? storagePath : undefined,
+        storageSaved,
         cloudKey: cloudSaved ? cloudKey : undefined,
         cloudSaved,
         createdAt: now.toISOString(),
@@ -838,7 +975,18 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
       const cloudKey = body.cloudKey;
       let deletedCount = 0;
 
-      // Xóa trên Cloud SQL nếu có cloudKey
+      // 1. Xóa trên Kho Lưu Trữ 1 GB (Supabase Storage) nếu có
+      try {
+        const supabase = getServerSupabaseClient();
+        const safeName = filename ? path.basename(filename) : '';
+        if (safeName) {
+          await supabase.storage.from('bakery-images').remove([`cloud_backups_7days/${safeName}`]);
+          await supabase.storage.from('product-images').remove([`cloud_backups_7days/${safeName}`]);
+          deletedCount++;
+        }
+      } catch {}
+
+      // 2. Xóa trên Cloud SQL nếu có cloudKey
       if (cloudKey) {
         try {
           const supabase = getServerSupabaseClient();
@@ -847,7 +995,7 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
         } catch {}
       }
 
-      // Xóa trên local disk nếu có filename
+      // 3. Xóa trên local disk nếu có filename
       if (filename) {
         const safeFilename = path.basename(filename);
         const tempDir = path.join(process.cwd(), 'SQL backup', 'tam thoi 7 ngay');

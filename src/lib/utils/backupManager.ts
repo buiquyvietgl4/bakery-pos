@@ -523,11 +523,39 @@ export async function saveTemporary7DayBackup(
     });
   } catch {}
 
-  // 4. 🔥 BẢO HIỂM CLOUD SQL (SUPABASE): LƯU TRỰC TIẾP LÊN CLOUD ĐỂ CHỐNG XÂM NHẬP & PHÒNG MẤT LOCAL
+  // 4. 🔥 BẢO HIỂM KHO LƯU TRỮ 1 GB (SUPABASE STORAGE): LƯU VÀO BUCKET ĐỘC LẬP
+  // Tận dụng kho 1.000 MB (1 GB), KHÔNG tốn 1 byte nào của bộ nhớ 500 MB Database!
+  try {
+    const storagePath = `cloud_backups_7days/${tempFilename}`;
+    const fileBlob = new Blob([jsonString], { type: 'application/json' });
+    const { error: storageErr } = await supabase.storage
+      .from('bakery-images')
+      .upload(storagePath, fileBlob, {
+        contentType: 'application/json',
+        upsert: true,
+      });
+
+    if (storageErr) {
+      console.warn('[Temp7Days] Lỗi upload vào Storage 1GB (bakery-images):', storageErr);
+      await supabase.storage
+        .from('product-images')
+        .upload(storagePath, fileBlob, {
+          contentType: 'application/json',
+          upsert: true,
+        });
+    } else {
+      console.log(`☁️ [Temp7Days] ĐÃ LƯU THÀNH CÔNG VÀO KHO LƯU TRỮ 1 GB (SUPABASE STORAGE): ${storagePath}`);
+    }
+  } catch (sErr) {
+    console.warn('[Temp7Days] Storage 1GB upload error:', sErr);
+  }
+
+  // 5. 🔥 BẢO HIỂM DỰ PHÒNG KÉP: LƯU VÀO CLOUD SQL (APP_SETTINGS) ĐỂ LẬP CHỈ MỤC TRA CỨU
   try {
     const cloudKey = `cloud_temp_backup_${now.getTime()}`;
     const cloudMeta = {
       filename: tempFilename,
+      storagePath: `cloud_backups_7days/${tempFilename}`,
       createdAt: now.toISOString(),
       expiresAt,
       sizeBytes: new Blob([jsonString]).size,
@@ -535,7 +563,7 @@ export async function saveTemporary7DayBackup(
       ordersCount: enhancedData.orders?.length || 0,
       imagesCount: enhancedData.images?.length || 0,
       isTemporary7Day: true,
-      storageType: 'cloud_sql',
+      storageType: 'cloud_storage_1gb',
     };
 
     const { error: cloudErr } = await supabase.from('app_settings').upsert({
@@ -551,7 +579,7 @@ export async function saveTemporary7DayBackup(
     if (cloudErr) {
       console.warn('[Temp7Days] Lỗi lưu lên Cloud SQL:', cloudErr);
     } else {
-      console.log(`☁️ [Temp7Days] ĐÃ LƯU THÀNH CÔNG LÊN CLOUD SQL (SUPABASE): ${cloudKey}`);
+      console.log(`☁️ [Temp7Days] ĐÃ LẬP CHỈ MỤC CLOUD SQL THÀNH CÔNG: ${cloudKey}`);
     }
   } catch (cloudErr) {
     console.warn('[Temp7Days] Cloud SQL temp backup error:', cloudErr);
@@ -564,7 +592,7 @@ export async function saveTemporary7DayBackup(
 // ── XÓA BẢN SAO LƯU TẠM THỜI 7 NGÀY SỚM HƠN DỰ KIẾN ──
 export async function deleteTemporary7DayBackup(filename: string, cloudKey?: string): Promise<boolean> {
   let ok = false;
-  // Xóa trên local server
+  // 1. Xóa trên local server
   try {
     const res = await fetch('/api/local-sql', {
       method: 'POST',
@@ -579,7 +607,15 @@ export async function deleteTemporary7DayBackup(filename: string, cloudKey?: str
     if (resJson.success) ok = true;
   } catch {}
 
-  // Xóa trực tiếp trên Cloud SQL nếu có cloudKey
+  // 2. Xóa trên Kho Lưu Trữ 1 GB (Supabase Storage)
+  try {
+    const cleanFilename = filename.split('/').pop() || filename;
+    await supabase.storage.from('bakery-images').remove([`cloud_backups_7days/${cleanFilename}`]);
+    await supabase.storage.from('product-images').remove([`cloud_backups_7days/${cleanFilename}`]);
+    ok = true;
+  } catch {}
+
+  // 3. Xóa trên Cloud SQL nếu có cloudKey
   if (cloudKey) {
     try {
       const { error } = await supabase.from('app_settings').delete().eq('key', cloudKey);

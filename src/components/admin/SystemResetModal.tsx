@@ -224,19 +224,19 @@ export const SystemResetModal: React.FC<SystemResetModalProps> = ({
               </label>
             </div>
 
-            {/* THÔNG BẢO BẢO VỆ TỰ ĐỘNG LƯU TRỮ 7 NGÀY TRỰC TIẾP LÊN CLOUD SQL */}
-            <div className="p-3.5 rounded-2xl bg-sky-950/30 border border-sky-700/60 text-[11px] space-y-1.5 shadow-xs">
-              <div className="font-bold flex items-center justify-between text-sky-400">
+            {/* THÔNG BẢO BẢO VỆ TỰ ĐỘNG LƯU TRỮ 7 NGÀY VÀO KHO ĐÁM MÂY 1 GB */}
+            <div className="p-3.5 rounded-2xl bg-emerald-950/30 border border-emerald-700/60 text-[11px] space-y-1.5 shadow-xs">
+              <div className="font-bold flex items-center justify-between text-emerald-400">
                 <span className="flex items-center gap-1.5">
-                  <Cloud className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>Bảo Hiểm Lưu Trữ 7 Ngày Trực Tiếp Lên Cloud SQL</span>
+                  <Cloud className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                  <span>Bảo Hiểm Lưu Trữ 7 Ngày Vào Kho Đám Mây 1 GB (Supabase Storage)</span>
                 </span>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-300 font-black border border-sky-500/40">
-                  ☁️ Cloud SQL Protected
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/25 text-emerald-300 font-black border border-emerald-500/40">
+                  ☁️ Storage 1 GB (Tiết kiệm 500MB DB)
                 </span>
               </div>
               <p className="text-zinc-300 leading-relaxed">
-                Hệ thống tự động đồng bộ <b className="text-sky-300">1 bản sao lưu tạm thời lên CSDL Cloud SQL (Supabase)</b> và ổ cứng máy chủ. <span className="text-emerald-400 font-semibold">Phòng ngừa rủi ro tối cao:</span> Kể cả khi toàn bộ máy tính bị format hay các bản local bị xóa sạch, bạn vẫn có thể khôi phục hoặc tải về trọn vẹn dữ liệu từ Cloud trong vòng 7 ngày!
+                Hệ thống tự động lưu <b className="text-emerald-300">1 bản sao lưu tạm thời vào Kho lưu trữ đám mây 1 GB</b>. Bản lưu này hoàn toàn độc lập và <span className="text-amber-300 font-semibold">KHÔNG tốn 1 byte nào của bộ nhớ 500 MB Database</span>. Kể cả khi toàn bộ máy tính bị format hay xóa sạch bản local, bạn vẫn dễ dàng khôi phục 100% dữ liệu từ đám mây trong vòng 7 ngày!
               </p>
             </div>
 
