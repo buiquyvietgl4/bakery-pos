@@ -152,19 +152,6 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     document.body.removeChild(link);
   };
 
-  const handleDeleteTempBackup = async (filename: string, cloudKey?: string) => {
-    if (!confirm(`Bạn có chắc chắn muốn xóa bản sao lưu tạm thời "${filename}" này sớm không?`)) return;
-    try {
-      const { deleteTemporary7DayBackup } = await import('@/lib/utils/backupManager');
-      const ok = await deleteTemporary7DayBackup(filename, cloudKey);
-      if (ok) {
-        fetchServerBackupInfo();
-      }
-    } catch (e: any) {
-      alert('Lỗi xóa file: ' + (e?.message || 'Không thể xóa'));
-    }
-  };
-
   useEffect(() => {
     if (typeof window !== 'undefined' && isOpen) {
       setIsApiSupported(isFileSystemAccessSupported());
@@ -927,14 +914,13 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                               <Download className="h-3.5 w-3.5" />
                               Tải Về Máy
                             </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteTempBackup(item.filename, item.cloudKey)}
-                              className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
-                              title="Xóa sớm bản này"
+                            <div
+                              className="px-2.5 py-1.5 rounded-xl bg-amber-100/70 border border-amber-200/80 text-amber-900 text-[11px] font-bold flex items-center gap-1.5 shadow-2xs select-none"
+                              title="Bản sao lưu tạm thời được khóa bảo vệ an toàn 7 ngày (WORM). Không thể xóa sớm trước thời hạn để ngăn chặn kẻ xấu phá hoại dữ liệu."
                             >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                              <ShieldCheck className="w-3.5 h-3.5 text-amber-700" />
+                              <span>Khóa 7 ngày</span>
+                            </div>
                           </div>
                         </div>
                       );

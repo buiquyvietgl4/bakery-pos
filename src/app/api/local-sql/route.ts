@@ -256,65 +256,8 @@ export async function GET(req: NextRequest) {
         console.warn('Lỗi quét temp 7day backups (local):', tempErr);
       }
 
-      // Quét tìm và tự động dọn dẹp các bản sao lưu tạm thời 7 ngày trên CLOUD SQL (Supabase)
-      try {
-        const supabase = getServerSupabaseClient();
-        const { data: cloudRows } = await supabase
-          .from('app_settings')
-          .select('key, label, description, updated_at, value')
-          .eq('category', 'cloud_backup_7day');
-
-        if (cloudRows && cloudRows.length > 0) {
-          const nowMs = Date.now();
-          for (const row of cloudRows) {
-            let meta: any = {};
-            try {
-              meta = typeof row.description === 'string' ? JSON.parse(row.description) : (row.description || {});
-            } catch {}
-
-            const createdAtStr = meta.createdAt || row.updated_at || new Date().toISOString();
-            const expiresAtStr = meta.expiresAt || new Date(new Date(createdAtStr).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
-            const expiresAtMs = new Date(expiresAtStr).getTime();
-            const diffMs = expiresAtMs - nowMs;
-
-            // Nếu đã vượt quá 7 ngày -> Tự động dọn dẹp trên Cloud SQL
-            if (diffMs <= 0) {
-              try {
-                await supabase.from('app_settings').delete().eq('key', row.key);
-                console.log(`[CloudAutoPurge] Đã tự động xóa bản sao lưu Cloud SQL quá hạn 7 ngày: ${row.key}`);
-              } catch {}
-              continue;
-            }
-
-            const daysRemaining = Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
-            const hoursRemaining = Math.max(0, Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000)));
-
-            const val = row.value || {};
-            const sizeBytes = meta.sizeBytes || Buffer.byteLength(JSON.stringify(val), 'utf-8');
-
-            temp7DayBackups.push({
-              filename: row.label || `${row.key}.bakery.json`,
-              cloudKey: row.key,
-              source: 'cloud_sql',
-              createdAt: createdAtStr,
-              expiresAt: expiresAtStr,
-              daysRemaining,
-              hoursRemaining,
-              sizeBytes,
-              metadata: {
-                totalProducts: meta.productsCount ?? val.products?.length ?? val.dexie_products?.length ?? 0,
-                totalOrders: meta.ordersCount ?? val.orders?.length ?? val.dexie_orders?.length ?? 0,
-                totalImages: meta.imagesCount ?? val.images?.length ?? 0,
-                createdAt: createdAtStr,
-              },
-            });
-          }
-        }
-      } catch (cloudScanErr) {
-        console.warn('Lỗi quét cloud temp backups:', cloudScanErr);
-      }
-
       // Quét tìm và tự động dọn dẹp các bản sao lưu tạm thời 7 ngày trên KHO LƯU TRỮ 1 GB (Supabase Storage)
+      // TẬN DỤNG KHO 1.000 MB, HOÀN TOÀN KHÔNG DÙNG 1 BYTE NÀO CỦA CSDL 500 MB
       try {
         const supabase = getServerSupabaseClient();
         const { data: storageFiles } = await supabase.storage
@@ -335,34 +278,33 @@ export async function GET(req: NextRequest) {
                 continue;
               }
 
-              // Kiểm tra xem đã có trong temp7DayBackups chưa (tránh hiển thị trùng lặp nếu app_settings cũng có)
-              const existingIdx = temp7DayBackups.findIndex(
-                (it) => it.filename === sFile.name || it.filename.includes(sFile.name)
-              );
-
               const daysRemaining = Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
               const hoursRemaining = Math.max(0, Math.floor((diffMs % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000)));
               const createdAtStr = new Date(fileTime).toISOString();
               const expiresAtStr = new Date(fileTime + 7 * 24 * 60 * 60 * 1000).toISOString();
               const sizeBytes = sFile.metadata?.size || 0;
 
-              if (existingIdx >= 0) {
-                // Nâng cấp bản ghi sang nguồn Storage 1GB
-                temp7DayBackups[existingIdx].source = 'cloud_storage';
-                temp7DayBackups[existingIdx].storagePath = `cloud_backups_7days/${sFile.name}`;
-                if (sizeBytes > 0) temp7DayBackups[existingIdx].sizeBytes = sizeBytes;
-              } else {
-                temp7DayBackups.push({
-                  filename: sFile.name,
-                  storagePath: `cloud_backups_7days/${sFile.name}`,
-                  source: 'cloud_storage',
+              // Trích xuất số lượng bánh và đơn hàng từ tên tệp (được mã hóa dạng __P{bánh}_O{đơn})
+              const match = sFile.name.match(/__P(\d+)_O(\d+)/);
+              const totalProducts = match ? parseInt(match[1], 10) : 0;
+              const totalOrders = match ? parseInt(match[2], 10) : 0;
+
+              temp7DayBackups.push({
+                filename: sFile.name,
+                storagePath: `cloud_backups_7days/${sFile.name}`,
+                source: 'cloud_storage',
+                createdAt: createdAtStr,
+                expiresAt: expiresAtStr,
+                daysRemaining,
+                hoursRemaining,
+                sizeBytes,
+                metadata: {
+                  totalProducts,
+                  totalOrders,
+                  totalImages: 0,
                   createdAt: createdAtStr,
-                  expiresAt: expiresAtStr,
-                  daysRemaining,
-                  hoursRemaining,
-                  sizeBytes,
-                });
-              }
+                },
+              });
             }
           }
 
@@ -881,7 +823,9 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, '0');
       const timeStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
-      const tempFilename = `SAO_LUU_TAM_THOI_7_NGAY_${timeStr}.bakery.json`;
+      const pCount = backupData.products?.length || 0;
+      const oCount = backupData.orders?.length || 0;
+      const tempFilename = body.filename || `SAO_LUU_TAM_THOI_7_NGAY_${timeStr}__P${pCount}_O${oCount}.bakery.json`;
       const targetFilePath = path.join(tempDir, tempFilename);
 
       const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -890,16 +834,20 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
         metadata: {
           ...(backupData.metadata || {}),
           isTemporary7Day: true,
+          tempFilename,
           createdAt: now.toISOString(),
           expiresAt: expiresAt.toISOString(),
           retentionDays: 7,
+          totalProducts: pCount,
+          totalOrders: oCount,
         },
       };
 
       const jsonString = JSON.stringify(enhancedData, null, 2);
       fs.writeFileSync(targetFilePath, jsonString, 'utf-8');
 
-      // 🔥 BẢO HIỂM KHO LƯU TRỮ 1 GB (SUPABASE STORAGE): LƯU VÀO BUCKET ĐỘC LẬP (KHÔNG TỐN 500MB DB)
+      // 🔥 BẢO HIỂM DUY NHẤT: KHO LƯU TRỮ 1 GB (SUPABASE STORAGE)
+      // TẬN DỤNG KHO 1.000 MB, TUYỆT ĐỐI KHÔNG TỐN 1 BYTE NÀO CỦA CSDL 500 MB (KHÔNG LƯU APP_SETTINGS)
       let storageSaved = false;
       const storagePath = `cloud_backups_7days/${tempFilename}`;
       try {
@@ -913,44 +861,21 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
         if (!sErr) {
           storageSaved = true;
           console.log(`☁️ [API Temp7Days] Đã lưu bản sao lưu 7 ngày vào Storage 1GB: ${storagePath}`);
+        } else {
+          // Thử bucket dự phòng product-images nếu bakery-images báo lỗi
+          const { error: sErr2 } = await supabase.storage
+            .from('product-images')
+            .upload(storagePath, Buffer.from(jsonString, 'utf-8'), {
+              contentType: 'application/json',
+              upsert: true,
+            });
+          if (!sErr2) {
+            storageSaved = true;
+            console.log(`☁️ [API Temp7Days] Đã lưu bản sao lưu 7 ngày vào Storage 1GB (product-images): ${storagePath}`);
+          }
         }
       } catch (stErr) {
         console.warn('Lỗi upload Storage 1GB:', stErr);
-      }
-
-      // 🔥 BẢO HIỂM DỰ PHÒNG KÉP: LẬP CHỈ MỤC TRÊN CLOUD SQL (APP_SETTINGS)
-      let cloudSaved = false;
-      const cloudKey = `cloud_temp_backup_${now.getTime()}`;
-      try {
-        const supabase = getServerSupabaseClient();
-        const cloudMeta = {
-          filename: tempFilename,
-          storagePath,
-          createdAt: now.toISOString(),
-          expiresAt: expiresAt.toISOString(),
-          sizeBytes: Buffer.byteLength(jsonString, 'utf-8'),
-          productsCount: enhancedData.products?.length || 0,
-          ordersCount: enhancedData.orders?.length || 0,
-          imagesCount: enhancedData.images?.length || 0,
-          isTemporary7Day: true,
-          storageType: 'cloud_storage_1gb',
-        };
-
-        const { error: cloudErr } = await supabase.from('app_settings').upsert({
-          key: cloudKey,
-          value: enhancedData,
-          category: 'cloud_backup_7day',
-          label: tempFilename,
-          description: JSON.stringify(cloudMeta),
-          input_type: 'json',
-          updated_at: now.toISOString(),
-        });
-        if (!cloudErr) {
-          cloudSaved = true;
-          console.log(`☁️ [API Temp7Days] Đã lập chỉ mục 7 ngày lên Cloud SQL: ${cloudKey}`);
-        }
-      } catch (cErr) {
-        console.warn('Lỗi ghi Cloud SQL:', cErr);
       }
 
       console.log(`📦 [Temp7Days] Đã lưu bản sao lưu tạm thời 7 ngày: ${tempFilename} (Hết hạn: ${expiresAt.toLocaleString('vi-VN')})`);
@@ -961,59 +886,21 @@ Chọn "Khôi Phục & Đẩy Lên SQL" và chọn file "${targetFilename}" tron
         path: targetFilePath,
         storagePath: storageSaved ? storagePath : undefined,
         storageSaved,
-        cloudKey: cloudSaved ? cloudKey : undefined,
-        cloudSaved,
         createdAt: now.toISOString(),
         expiresAt: expiresAt.toISOString(),
         sizeBytes: Buffer.byteLength(jsonString, 'utf-8'),
       });
     }
 
-    // 3f. Xóa thủ công 1 bản sao lưu tạm thời 7 ngày nếu người dùng yêu cầu
+    // 3f. Khóa bảo vệ bản sao lưu tạm thời 7 ngày (WORM - Không cho phép xóa sớm thủ công để chống phá hoại)
     if (action === 'delete_temp_7day_backup') {
-      const filename = body.filename;
-      const cloudKey = body.cloudKey;
-      let deletedCount = 0;
-
-      // 1. Xóa trên Kho Lưu Trữ 1 GB (Supabase Storage) nếu có
-      try {
-        const supabase = getServerSupabaseClient();
-        const safeName = filename ? path.basename(filename) : '';
-        if (safeName) {
-          await supabase.storage.from('bakery-images').remove([`cloud_backups_7days/${safeName}`]);
-          await supabase.storage.from('product-images').remove([`cloud_backups_7days/${safeName}`]);
-          deletedCount++;
-        }
-      } catch {}
-
-      // 2. Xóa trên Cloud SQL nếu có cloudKey
-      if (cloudKey) {
-        try {
-          const supabase = getServerSupabaseClient();
-          await supabase.from('app_settings').delete().eq('key', cloudKey);
-          deletedCount++;
-        } catch {}
-      }
-
-      // 3. Xóa trên local disk nếu có filename
-      if (filename) {
-        const safeFilename = path.basename(filename);
-        const tempDir = path.join(process.cwd(), 'SQL backup', 'tam thoi 7 ngay');
-        const targetFilePath = path.join(tempDir, safeFilename);
-
-        if (fs.existsSync(targetFilePath)) {
-          try {
-            fs.unlinkSync(targetFilePath);
-            deletedCount++;
-          } catch {}
-        }
-      }
-
-      return NextResponse.json({
-        success: true,
-        message: 'Đã xóa bản sao lưu tạm thời thành công',
-        deletedCount,
-      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Bản sao lưu 7 ngày bị KHÓA BẢO VỆ BẤT KHẢ XÂM PHẠM (WORM). Không cho phép xóa sớm trước hạn để phòng chống kẻ xấu phá hoại dữ liệu. Hệ thống sẽ tự động dọn dẹp sau khi hết hạn 7 ngày.',
+        },
+        { status: 403 }
+      );
     }
 
     // 4. Lưu toàn bộ CSDL vào thư mục
