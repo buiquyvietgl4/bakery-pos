@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Database, HardDrive, Download, Upload, RefreshCw, CheckCircle2, 
   AlertTriangle, X, Folder, Clock, ShieldCheck, FileText, Image as ImageIcon,
-  Check, ArrowRight, Layers, HelpCircle, AlertCircle, Trash2, RotateCcw, Shield
+  Check, ArrowRight, Layers, HelpCircle, AlertCircle, Trash2, RotateCcw, Shield, Cloud
 } from 'lucide-react';
 import { 
   BakeryBackupData, 
@@ -137,20 +137,21 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     } catch {}
   };
 
-  const handleDownloadBackupFile = (filename: string) => {
+  const handleDownloadBackupFile = (filename: string, cloudKey?: string) => {
     const link = document.createElement('a');
-    link.href = `/api/local-sql?download_file=true&file=${encodeURIComponent(filename)}`;
+    const param = cloudKey ? `cloud_key=${encodeURIComponent(cloudKey)}` : `file=${encodeURIComponent(filename)}`;
+    link.href = `/api/local-sql?download_file=true&${param}`;
     link.download = filename;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  const handleDeleteTempBackup = async (filename: string) => {
+  const handleDeleteTempBackup = async (filename: string, cloudKey?: string) => {
     if (!confirm(`Bạn có chắc chắn muốn xóa bản sao lưu tạm thời "${filename}" này sớm không?`)) return;
     try {
       const { deleteTemporary7DayBackup } = await import('@/lib/utils/backupManager');
-      const ok = await deleteTemporary7DayBackup(filename);
+      const ok = await deleteTemporary7DayBackup(filename, cloudKey);
       if (ok) {
         fetchServerBackupInfo();
       }
@@ -309,17 +310,20 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     }
   };
 
-  // ── HÀNH ĐỘNG NẠP NHANH FILE SAO LƯU TỪ Ổ CỨNG MÁY CHỦ ──
-  const handleLoadServerBackup = async (specificFilename?: string) => {
+  // ── HÀNH ĐỘNG NẠP NHANH FILE SAO LƯU TỪ Ổ CỨNG HOẶC CLOUD SQL ──
+  const handleLoadServerBackup = async (specificFilename?: string, cloudKey?: string) => {
     setIsParsingFile(true);
     setReconciliationReport(null);
     setPushResult(null);
     try {
-      const url = specificFilename
-        ? `/api/local-sql?load_backup=true&file=${encodeURIComponent(specificFilename)}`
-        : '/api/local-sql?load_backup=true';
+      let url = '/api/local-sql?load_backup=true';
+      if (cloudKey) {
+        url = `/api/local-sql?load_backup=true&cloud_key=${encodeURIComponent(cloudKey)}`;
+      } else if (specificFilename) {
+        url = `/api/local-sql?load_backup=true&file=${encodeURIComponent(specificFilename)}`;
+      }
       const res = await fetch(url);
-      if (!res.ok) throw new Error('Không thể tải file sao lưu từ máy chủ.');
+      if (!res.ok) throw new Error('Không thể tải file sao lưu từ máy chủ hoặc Cloud SQL.');
       const resJson = await res.json();
       if (!resJson.success || !resJson.data) throw new Error(resJson.error || 'Dữ liệu file sao lưu không hợp lệ');
 
@@ -330,7 +334,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
       const report = await reconcileBackupWithCurrentState(json);
       setReconciliationReport(report);
     } catch (err: any) {
-      alert('Lỗi nạp bản sao lưu từ ổ cứng: ' + (err.message || 'Không thể đọc tệp'));
+      alert('Lỗi nạp bản sao lưu: ' + (err.message || 'Không thể đọc tệp'));
     } finally {
       setIsParsingFile(false);
       setIsReconciling(false);
@@ -835,20 +839,38 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                     {serverBackupInfo.temp7DayBackups.map((item) => {
                       const sizeKb = Math.round(item.sizeBytes / 1024);
                       const isUrgent = item.daysRemaining <= 1;
+                      const isCloud = item.source === 'cloud_sql';
                       return (
                         <div
-                          key={item.filename}
-                          className="flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 bg-white/95 rounded-xl border border-amber-200 hover:border-amber-400 transition-all shadow-2xs"
+                          key={item.cloudKey || item.filename}
+                          className={`flex flex-col md:flex-row md:items-center justify-between gap-3 p-3.5 rounded-xl border transition-all shadow-2xs ${
+                            isCloud
+                              ? 'bg-sky-50/70 border-sky-300 hover:border-sky-500'
+                              : 'bg-white/95 border-amber-200 hover:border-amber-400'
+                          }`}
                         >
                           <div className="space-y-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-xs font-bold text-gray-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                              {isCloud ? (
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-sky-600 text-white flex items-center gap-1 shadow-xs">
+                                  <Cloud className="w-3 h-3" />
+                                  Cloud SQL (Chống Mất Local)
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-zinc-700 text-zinc-100 flex items-center gap-1">
+                                  <HardDrive className="w-3 h-3" />
+                                  Máy Chủ Cục Bộ
+                                </span>
+                              )}
+                              <span className="font-mono text-xs font-bold text-gray-900 bg-white px-2 py-0.5 rounded border border-gray-200">
                                 {item.filename}
                               </span>
                               <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border flex items-center gap-1 ${
                                 isUrgent 
                                   ? 'bg-rose-100 text-rose-800 border-rose-300 animate-pulse' 
-                                  : 'bg-amber-100 text-amber-900 border-amber-300'
+                                  : isCloud
+                                    ? 'bg-sky-100 text-sky-900 border-sky-300'
+                                    : 'bg-amber-100 text-amber-900 border-amber-300'
                               }`}>
                                 <Clock className="w-3 h-3" />
                                 {item.daysRemaining > 0 
@@ -870,7 +892,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                           <div className="flex items-center gap-2 shrink-0 self-end md:self-auto">
                             <button
                               type="button"
-                              onClick={() => handleLoadServerBackup(item.filename)}
+                              onClick={() => handleLoadServerBackup(item.filename, item.cloudKey)}
                               disabled={isParsingFile || isReconciling}
                               className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-50"
                               title="Nạp bản sao lưu này vào hệ thống để đối soát và khôi phục"
@@ -880,7 +902,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDownloadBackupFile(item.filename)}
+                              onClick={() => handleDownloadBackupFile(item.filename, item.cloudKey)}
                               className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
                               title="Tải tệp .bakery.json này về máy tính của bạn"
                             >
@@ -889,7 +911,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteTempBackup(item.filename)}
+                              onClick={() => handleDeleteTempBackup(item.filename, item.cloudKey)}
                               className="p-2 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
                               title="Xóa sớm bản này"
                             >

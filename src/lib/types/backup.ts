@@ -209,6 +209,8 @@ export interface AutoBackupConfig {
 export interface TempBackupItem {
   filename: string;
   folderPath?: string;
+  source?: 'local_disk' | 'cloud_sql';
+  cloudKey?: string;
   createdAt: string;
   expiresAt: string;
   daysRemaining: number;

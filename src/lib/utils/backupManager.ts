@@ -523,12 +523,48 @@ export async function saveTemporary7DayBackup(
     });
   } catch {}
 
+  // 4. 🔥 BẢO HIỂM CLOUD SQL (SUPABASE): LƯU TRỰC TIẾP LÊN CLOUD ĐỂ CHỐNG XÂM NHẬP & PHÒNG MẤT LOCAL
+  try {
+    const cloudKey = `cloud_temp_backup_${now.getTime()}`;
+    const cloudMeta = {
+      filename: tempFilename,
+      createdAt: now.toISOString(),
+      expiresAt,
+      sizeBytes: new Blob([jsonString]).size,
+      productsCount: enhancedData.products?.length || 0,
+      ordersCount: enhancedData.orders?.length || 0,
+      imagesCount: enhancedData.images?.length || 0,
+      isTemporary7Day: true,
+      storageType: 'cloud_sql',
+    };
+
+    const { error: cloudErr } = await supabase.from('app_settings').upsert({
+      key: cloudKey,
+      value: enhancedData,
+      category: 'cloud_backup_7day',
+      label: tempFilename,
+      description: JSON.stringify(cloudMeta),
+      input_type: 'json',
+      updated_at: now.toISOString(),
+    });
+
+    if (cloudErr) {
+      console.warn('[Temp7Days] Lỗi lưu lên Cloud SQL:', cloudErr);
+    } else {
+      console.log(`☁️ [Temp7Days] ĐÃ LƯU THÀNH CÔNG LÊN CLOUD SQL (SUPABASE): ${cloudKey}`);
+    }
+  } catch (cloudErr) {
+    console.warn('[Temp7Days] Cloud SQL temp backup error:', cloudErr);
+  }
+
   console.log(`📦 [Temp7Days] Đã lưu bản sao lưu tạm thời 7 ngày: ${tempFilename} (Hết hạn: ${expiresAt})`);
   return { success: true, filename: tempFilename, expiresAt };
 }
 
 // ── XÓA BẢN SAO LƯU TẠM THỜI 7 NGÀY SỚM HƠN DỰ KIẾN ──
-export async function deleteTemporary7DayBackup(filename: string): Promise<boolean> {
+export async function deleteTemporary7DayBackup(filename: string, cloudKey?: string): Promise<boolean> {
+  let ok = false;
+  // Xóa trên local server
   try {
     const res = await fetch('/api/local-sql', {
       method: 'POST',
@@ -536,13 +572,22 @@ export async function deleteTemporary7DayBackup(filename: string): Promise<boole
       body: JSON.stringify({
         action: 'delete_temp_7day_backup',
         filename,
+        cloudKey,
       }),
     });
     const resJson = await res.json();
-    return !!resJson.success;
-  } catch {
-    return false;
+    if (resJson.success) ok = true;
+  } catch {}
+
+  // Xóa trực tiếp trên Cloud SQL nếu có cloudKey
+  if (cloudKey) {
+    try {
+      const { error } = await supabase.from('app_settings').delete().eq('key', cloudKey);
+      if (!error) ok = true;
+    } catch {}
   }
+
+  return ok;
 }
 
 // ── HÀM BĂM DATA HASH ĐỂ PHÁT HIỆN DỮ LIỆU MỚI ──

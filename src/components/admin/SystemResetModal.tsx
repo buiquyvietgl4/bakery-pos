@@ -18,6 +18,7 @@ import {
   Layers,
   Sparkles,
   Clock,
+  Cloud,
 } from 'lucide-react';
 import { executeSystemReset, ResetMode } from '@/lib/utils/systemResetManager';
 
@@ -223,19 +224,19 @@ export const SystemResetModal: React.FC<SystemResetModalProps> = ({
               </label>
             </div>
 
-            {/* THÔNG BÁO BẢO VỆ TỰ ĐỘNG LƯU TRỮ 7 NGÀY */}
-            <div className="p-3.5 rounded-2xl bg-sky-950/25 border border-sky-800/50 text-[11px] space-y-1.5">
+            {/* THÔNG BẢO BẢO VỆ TỰ ĐỘNG LƯU TRỮ 7 NGÀY TRỰC TIẾP LÊN CLOUD SQL */}
+            <div className="p-3.5 rounded-2xl bg-sky-950/30 border border-sky-700/60 text-[11px] space-y-1.5 shadow-xs">
               <div className="font-bold flex items-center justify-between text-sky-400">
                 <span className="flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-                  <span>Cơ Chế Lưu Trữ Tạm Thời 7 Ngày (Tự Động)</span>
+                  <Cloud className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                  <span>Bảo Hiểm Lưu Trữ 7 Ngày Trực Tiếp Lên Cloud SQL</span>
                 </span>
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30">
-                  7 Ngày Hạn Định
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-300 font-black border border-sky-500/40">
+                  ☁️ Cloud SQL Protected
                 </span>
               </div>
-              <p className="text-zinc-400 leading-relaxed">
-                Ngay khi ấn reset, hệ thống sẽ tự động tạo <b className="text-sky-300">1 bản sao lưu tạm thời</b> lưu trên máy chủ (<code className="text-sky-300 bg-black/40 px-1 py-0.5 rounded">SQL backup/tam thoi 7 ngay</code>). Bạn có thể khôi phục tức thì hoặc tải về trong vòng 7 ngày tại mục <i>Sao Lưu & Khôi Phục</i> trước khi tệp tự hủy.
+              <p className="text-zinc-300 leading-relaxed">
+                Hệ thống tự động đồng bộ <b className="text-sky-300">1 bản sao lưu tạm thời lên CSDL Cloud SQL (Supabase)</b> và ổ cứng máy chủ. <span className="text-emerald-400 font-semibold">Phòng ngừa rủi ro tối cao:</span> Kể cả khi toàn bộ máy tính bị format hay các bản local bị xóa sạch, bạn vẫn có thể khôi phục hoặc tải về trọn vẹn dữ liệu từ Cloud trong vòng 7 ngày!
               </p>
             </div>
 
