@@ -913,7 +913,7 @@ export function BirthdayCakeOrderModal({
                           </div>
                           {canViewCost && (
                             <div className={`text-[10px] mt-0.5 font-bold ${isSel ? 'text-pink-200' : 'text-rose-600'}`}>
-                              ~{s.baseCost.toLocaleString('vi-VN')}₫
+                              ~{(Number(s?.baseCost) || 0).toLocaleString('vi-VN')}₫
                             </div>
                           )}
                         </button>
@@ -990,7 +990,7 @@ export function BirthdayCakeOrderModal({
                       </span>
                       {canViewCost && (
                         <span className="text-xs font-black text-rose-600 bg-rose-50 px-2 py-0.5 rounded-lg border border-rose-200">
-                          Vốn: {tierInfo.tierCost.toLocaleString('vi-VN')}₫
+                          Vốn: {(Number(tierInfo?.tierCost) || 0).toLocaleString('vi-VN')}₫
                         </span>
                       )}
                     </div>
@@ -1023,7 +1023,7 @@ export function BirthdayCakeOrderModal({
                             >
                               <div className="text-xs font-black">{s.diameterCm}cm</div>
                               {canViewCost && (
-                                <div className="text-[10px] opacity-80 mt-0.5">~{s.baseCost.toLocaleString('vi-VN')}₫</div>
+                                <div className="text-[10px] opacity-80 mt-0.5">~{(Number(s?.baseCost) || 0).toLocaleString('vi-VN')}₫</div>
                               )}
                             </button>
                           );
@@ -1086,7 +1086,7 @@ export function BirthdayCakeOrderModal({
                         >
                           {config.fillings.map((f) => (
                             <option key={f.id} value={f.id}>
-                              {f.name} {canViewCost && f.costPrice > 0 ? `(+${f.costPrice.toLocaleString('vi-VN')}₫)` : ''}
+                              {f.name} {canViewCost && (Number(f?.costPrice) || 0) > 0 ? `(+${(Number(f?.costPrice) || 0).toLocaleString('vi-VN')}₫)` : ''}
                             </option>
                           ))}
                         </select>
@@ -1131,9 +1131,9 @@ export function BirthdayCakeOrderModal({
                     </div>
                     <div className="text-[11px] text-pink-950 font-bold truncate mt-0.5 flex items-center gap-1.5">
                       <span>{selectedPackagingBox?.name || 'Hộp tiêu chuẩn'}</span>
-                      {canViewCost && selectedPackagingBox && selectedPackagingBox.costPrice > 0 ? (
+                      {canViewCost && selectedPackagingBox && (Number(selectedPackagingBox.costPrice) || 0) > 0 ? (
                         <span className="text-zinc-500 font-normal">
-                          (Vốn: {selectedPackagingBox.costPrice.toLocaleString('vi-VN')}₫)
+                          (Vốn: {(Number(selectedPackagingBox.costPrice) || 0).toLocaleString('vi-VN')}₫)
                         </span>
                       ) : null}
                     </div>
@@ -1586,7 +1586,7 @@ export function BirthdayCakeOrderModal({
               <div>
                 <span className="text-[10px] text-zinc-500 block">Tổng Vốn BOM ({mode === 'custom' ? `${tierCount} tầng` : '1 tầng'}):</span>
                 <span className="font-black text-rose-600 text-sm">
-                  {totalCalculation.totalCost.toLocaleString('vi-VN')}₫
+                  {(Number(totalCalculation?.totalCost) || 0).toLocaleString('vi-VN')}₫
                 </span>
               </div>
 
@@ -1595,7 +1595,7 @@ export function BirthdayCakeOrderModal({
                   Giá Gợi Ý (~{customMarkupPct}%):
                 </span>
                 <span className="font-black text-pink-700 text-sm">
-                  {totalCalculation.suggestedPrice.toLocaleString('vi-VN')}₫
+                  {(Number(totalCalculation?.suggestedPrice) || 0).toLocaleString('vi-VN')}₫
                 </span>
               </div>
             </div>
@@ -1616,7 +1616,7 @@ export function BirthdayCakeOrderModal({
 
               <div className="text-right">
                 <span className="font-black text-pink-700 text-base sm:text-lg">
-                  {totalCalculation.suggestedPrice.toLocaleString('vi-VN')}₫
+                  {(Number(totalCalculation?.suggestedPrice) || 0).toLocaleString('vi-VN')}₫
                 </span>
               </div>
             </div>

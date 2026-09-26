@@ -436,14 +436,14 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
                           <td className="border border-black p-1.5 text-center">{r.stt}</td>
                           <td className="border border-black p-1.5 font-medium">{r.item_name}</td>
                           <td className="border border-black p-1.5 text-center">{r.unit}</td>
-                          <td className="border border-black p-1.5 text-right">{r.opening_qty.toLocaleString('vi-VN')}</td>
-                          <td className="border border-black p-1.5 text-right">{r.opening_amount.toLocaleString('vi-VN')}</td>
-                          <td className="border border-black p-1.5 text-right">{r.in_qty.toLocaleString('vi-VN')}</td>
-                          <td className="border border-black p-1.5 text-right">{r.in_amount.toLocaleString('vi-VN')}</td>
-                          <td className="border border-black p-1.5 text-right">{r.out_qty.toLocaleString('vi-VN')}</td>
-                          <td className="border border-black p-1.5 text-right">{r.out_amount.toLocaleString('vi-VN')}</td>
-                          <td className="border border-black p-1.5 text-right">{r.closing_qty.toLocaleString('vi-VN')}</td>
-                          <td className="border border-black p-1.5 text-right font-semibold">{r.closing_amount.toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{(Number(r.opening_qty) || 0).toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{(Number(r.opening_amount) || 0).toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{(Number(r.in_qty) || 0).toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{(Number(r.in_amount) || 0).toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{(Number(r.out_qty) || 0).toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{(Number(r.out_amount) || 0).toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right">{(Number(r.closing_qty) || 0).toLocaleString('vi-VN')}</td>
+                          <td className="border border-black p-1.5 text-right font-semibold">{(Number(r.closing_amount) || 0).toLocaleString('vi-VN')}</td>
                         </tr>
                       ))
                     )}
@@ -564,13 +564,13 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
                         <td className="border border-black p-1.5">{r.description}</td>
                         <td className="border border-black p-1.5 text-center">{r.fund_type}</td>
                         <td className="border border-black p-1.5 text-right font-medium text-emerald-900">
-                          {r.income > 0 ? r.income.toLocaleString('vi-VN') : '-'}
+                          {(Number(r.income) || 0) > 0 ? (Number(r.income) || 0).toLocaleString('vi-VN') : '-'}
                         </td>
                         <td className="border border-black p-1.5 text-right font-medium text-rose-900">
-                          {r.expense > 0 ? r.expense.toLocaleString('vi-VN') : '-'}
+                          {(Number(r.expense) || 0) > 0 ? (Number(r.expense) || 0).toLocaleString('vi-VN') : '-'}
                         </td>
                         <td className="border border-black p-1.5 text-right font-bold text-zinc-900">
-                          {r.balance.toLocaleString('vi-VN')}
+                          {(Number(r.balance) || 0).toLocaleString('vi-VN')}
                         </td>
                       </tr>
                     ))
@@ -639,13 +639,13 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
                           {r.group_id}. {r.group_name.slice(0, 28)}...
                         </td>
                         <td className="border border-black p-1.5 text-right font-medium">
-                          {r.revenue.toLocaleString('vi-VN')}
+                          {(Number(r.revenue) || 0).toLocaleString('vi-VN')}
                         </td>
                         <td className="border border-black p-1.5 text-right text-emerald-800">
-                          {r.vat_amount.toLocaleString('vi-VN')}
+                          {(Number(r.vat_amount) || 0).toLocaleString('vi-VN')}
                         </td>
                         <td className="border border-black p-1.5 text-right text-blue-800">
-                          {r.pit_amount.toLocaleString('vi-VN')}
+                          {(Number(r.pit_amount) || 0).toLocaleString('vi-VN')}
                         </td>
                       </tr>
                     ))
@@ -677,13 +677,13 @@ export const TaxBookPrintView: React.FC<TaxBookPrintViewProps> = ({
                         {s.count} giao dịch
                       </td>
                       <td className="border border-black p-1.5 text-right font-semibold">
-                        {s.total_revenue.toLocaleString('vi-VN')}
+                        {(Number(s.total_revenue) || 0).toLocaleString('vi-VN')}
                       </td>
                       <td className="border border-black p-1.5 text-right">
-                        {s.total_vat.toLocaleString('vi-VN')}
+                        {(Number(s.total_vat) || 0).toLocaleString('vi-VN')}
                       </td>
                       <td className="border border-black p-1.5 text-right">
-                        {s.total_pit.toLocaleString('vi-VN')}
+                        {(Number(s.total_pit) || 0).toLocaleString('vi-VN')}
                       </td>
                     </tr>
                   ))}

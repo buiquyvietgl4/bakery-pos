@@ -27,8 +27,9 @@ export interface AccountingOverviewProps {
   onOpenClosing?: () => void;
 }
 
-const formatVND = (val: number) => {
-  const rounded = Math.round(val || 0);
+const formatVND = (val: any) => {
+  const num = Number(val);
+  const rounded = isNaN(num) ? 0 : Math.round(num);
   const prefix = rounded < 0 ? '-' : '';
   return `${prefix}${Math.abs(rounded).toLocaleString('vi-VN')}₫`;
 };

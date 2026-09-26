@@ -4546,11 +4546,11 @@ export default function KitchenPage() {
                 const shipAddr = order.shipping_address || fromN.shipping_address;
 
                 // Tính toán số tiền cần thu chính xác
-                const totalAmt = Number(order.total_amount ?? fromN.total_amount ?? 0);
-                const depAmt = Number(order.deposit_amount ?? fromN.deposit_amount ?? 0);
+                const totalAmt = Number(order.total_amount ?? fromN.total_amount ?? 0) || 0;
+                const depAmt = Number(order.deposit_amount ?? fromN.deposit_amount ?? 0) || 0;
                 const parsedRem = order.remaining_amount !== undefined 
-                  ? Number(order.remaining_amount) 
-                  : (fromN.remaining_amount !== undefined ? Number(fromN.remaining_amount) : Math.max(0, totalAmt - depAmt));
+                  ? (Number(order.remaining_amount) || 0)
+                  : (fromN.remaining_amount !== undefined ? (Number(fromN.remaining_amount) || 0) : Math.max(0, totalAmt - depAmt));
                 const isPaid100 = order.payment_status === 'paid' || parsedRem <= 0;
                 const remAmt = isPaid100 ? 0 : parsedRem;
 

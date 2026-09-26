@@ -296,17 +296,17 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           </div>
 
           <div className="text-2xl font-black text-zinc-900">
-            {totalCashBalance.toLocaleString('vi-VN')}₫
+            {(Number(totalCashBalance) || 0).toLocaleString('vi-VN')}₫
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-zinc-100">
             <div className="text-emerald-600">
               <span className="text-[10px] text-zinc-400 block">Thu tiền mặt:</span>
-              <b>+{totalCashIncome.toLocaleString('vi-VN')}₫</b>
+              <b>+{(Number(totalCashIncome) || 0).toLocaleString('vi-VN')}₫</b>
             </div>
             <div className="text-rose-600 text-right">
               <span className="text-[10px] text-zinc-400 block">Chi tiền mặt:</span>
-              <b>-{totalCashExpenses.toLocaleString('vi-VN')}₫</b>
+              <b>-{(Number(totalCashExpenses) || 0).toLocaleString('vi-VN')}₫</b>
             </div>
           </div>
         </div>
@@ -329,17 +329,17 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           </div>
 
           <div className="text-2xl font-black text-blue-600">
-            {totalBankBalance.toLocaleString('vi-VN')}₫
+            {(Number(totalBankBalance) || 0).toLocaleString('vi-VN')}₫
           </div>
 
           <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-zinc-100">
             <div className="text-emerald-600">
               <span className="text-[10px] text-zinc-400 block">Khách chuyển khoản:</span>
-              <b>+{totalBankIncome.toLocaleString('vi-VN')}₫</b>
+              <b>+{(Number(totalBankIncome) || 0).toLocaleString('vi-VN')}₫</b>
             </div>
             <div className="text-rose-600 text-right">
               <span className="text-[10px] text-zinc-400 block">Chi chuyển khoản:</span>
-              <b>-{totalBankExpenses.toLocaleString('vi-VN')}₫</b>
+              <b>-{(Number(totalBankExpenses) || 0).toLocaleString('vi-VN')}₫</b>
             </div>
           </div>
         </div>
@@ -357,7 +357,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           </div>
 
           <div className="text-2xl sm:text-3xl font-black text-white">
-            {totalLiquidityFull.toLocaleString('vi-VN')}₫
+            {(Number(totalLiquidityFull) || 0).toLocaleString('vi-VN')}₫
           </div>
 
           <p className="text-xs text-emerald-100/90 pt-1 border-t border-emerald-500/50">

@@ -115,11 +115,11 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
   const mainItem = order.items?.[0];
   const cakeFullName = mainItem?.product_name_snapshot || order.cake_name || fromN.cake_name || 'Bánh Kem Theo Yêu Cầu';
 
-  const totalAmt = order.total_amount || fromN.total_amount || 0;
-  const depAmt = order.deposit_amount || fromN.deposit_amount || 0;
-  const remAmt = order.remaining_amount !== undefined 
+  const totalAmt = Number(order.total_amount || fromN.total_amount || 0) || 0;
+  const depAmt = Number(order.deposit_amount || fromN.deposit_amount || 0) || 0;
+  const remAmt = Number(order.remaining_amount !== undefined 
     ? order.remaining_amount 
-    : (fromN.remaining_amount !== undefined ? fromN.remaining_amount : Math.max(0, totalAmt - depAmt));
+    : (fromN.remaining_amount !== undefined ? fromN.remaining_amount : Math.max(0, totalAmt - depAmt))) || 0;
 
   // Cấu hình VietQR
   const vConfig = vietqrConfig || {

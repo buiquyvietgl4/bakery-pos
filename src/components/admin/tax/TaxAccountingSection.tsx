@@ -613,7 +613,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
             <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
           <p className="text-xl sm:text-2xl font-black text-zinc-900 mt-2">
-            {s2aData.totalRevenue.toLocaleString('vi-VN')} đ
+            {(Number(s2aData.totalRevenue) || 0).toLocaleString('vi-VN')} đ
           </p>
           <p className="text-[11px] text-zinc-500 mt-1">
             Tổng cộng từ {periodOrders.length} đơn bán hàng POS
@@ -629,7 +629,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
             </span>
           </div>
           <p className="text-xl sm:text-2xl font-black text-emerald-700 mt-2">
-            {s2aData.totalVat.toLocaleString('vi-VN')} đ
+            {(Number(s2aData.totalVat) || 0).toLocaleString('vi-VN')} đ
           </p>
           <p className="text-[11px] text-zinc-500 mt-1">
             Chế biến bánh 3%, Phụ kiện tiệc 1%
@@ -645,7 +645,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
             </span>
           </div>
           <p className="text-xl sm:text-2xl font-black text-blue-700 mt-2">
-            {s2aData.totalPit.toLocaleString('vi-VN')} đ
+            {(Number(s2aData.totalPit) || 0).toLocaleString('vi-VN')} đ
           </p>
           <p className="text-[11px] text-zinc-500 mt-1">
             Chế biến bánh 1.5%, Phụ kiện 0.5%
@@ -659,10 +659,10 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
             <ShieldCheck className="w-4 h-4 text-amber-700" />
           </div>
           <p className="text-xl sm:text-2xl font-black text-amber-900 mt-2">
-            {s2aData.totalTax.toLocaleString('vi-VN')} đ
+            {(Number(s2aData.totalTax) || 0).toLocaleString('vi-VN')} đ
           </p>
           <p className="text-[11px] text-amber-800 mt-1 font-medium">
-            Tương đương {s2aData.totalRevenue > 0 ? ((s2aData.totalTax / s2aData.totalRevenue) * 100).toFixed(2) : 0}% tổng doanh thu
+            Tương đương {Number(s2aData.totalRevenue) > 0 ? (((Number(s2aData.totalTax) || 0) / Number(s2aData.totalRevenue)) * 100).toFixed(2) : 0}% tổng doanh thu
           </p>
         </div>
 
@@ -797,16 +797,16 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       <td className="p-2.5 text-center font-semibold text-blue-700">{g.pit_percent}%</td>
                       <td className="p-2.5 text-center font-bold text-amber-700">{g.vat_percent + g.pit_percent}%</td>
                       <td className="p-2.5 text-right font-bold text-zinc-900">
-                        {g.total_revenue.toLocaleString('vi-VN')}
+                        {(Number(g.total_revenue) || 0).toLocaleString('vi-VN')}
                       </td>
                       <td className="p-2.5 text-right text-emerald-800">
-                        {g.total_vat.toLocaleString('vi-VN')}
+                        {(Number(g.total_vat) || 0).toLocaleString('vi-VN')}
                       </td>
                       <td className="p-2.5 text-right text-blue-800">
-                        {g.total_pit.toLocaleString('vi-VN')}
+                        {(Number(g.total_pit) || 0).toLocaleString('vi-VN')}
                       </td>
                       <td className="p-2.5 text-right font-black text-amber-900">
-                        {g.total_tax.toLocaleString('vi-VN')}
+                        {(Number(g.total_tax) || 0).toLocaleString('vi-VN')}
                       </td>
                     </tr>
                   ))}
@@ -817,16 +817,16 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       TỔNG CỘNG TOÀN TIỆM ({periodOrders.length} đơn hàng)
                     </td>
                     <td className="p-3 text-right font-black text-sm text-zinc-950">
-                      {s2aData.totalRevenue.toLocaleString('vi-VN')} đ
+                      {(Number(s2aData.totalRevenue) || 0).toLocaleString('vi-VN')} đ
                     </td>
                     <td className="p-3 text-right font-black text-emerald-900">
-                      {s2aData.totalVat.toLocaleString('vi-VN')} đ
+                      {(Number(s2aData.totalVat) || 0).toLocaleString('vi-VN')} đ
                     </td>
                     <td className="p-3 text-right font-black text-blue-900">
-                      {s2aData.totalPit.toLocaleString('vi-VN')} đ
+                      {(Number(s2aData.totalPit) || 0).toLocaleString('vi-VN')} đ
                     </td>
                     <td className="p-3 text-right font-black text-base text-amber-950">
-                      {s2aData.totalTax.toLocaleString('vi-VN')} đ
+                      {(Number(s2aData.totalTax) || 0).toLocaleString('vi-VN')} đ
                     </td>
                   </tr>
                 </tbody>
@@ -915,16 +915,16 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                           </span>
                         </td>
                         <td className="p-2.5 text-right font-bold text-zinc-900">
-                          {row.revenue.toLocaleString('vi-VN')}
+                          {(Number(row.revenue) || 0).toLocaleString('vi-VN')}
                         </td>
                         <td className="p-2.5 text-right text-emerald-700 font-semibold">
-                          {row.vat_amount.toLocaleString('vi-VN')}
+                          {(Number(row.vat_amount) || 0).toLocaleString('vi-VN')}
                         </td>
                         <td className="p-2.5 text-right text-blue-700 font-semibold">
-                          {row.pit_amount.toLocaleString('vi-VN')}
+                          {(Number(row.pit_amount) || 0).toLocaleString('vi-VN')}
                         </td>
                         <td className="p-2.5 text-right font-bold text-amber-900">
-                          {(row.vat_amount + row.pit_amount).toLocaleString('vi-VN')}
+                          {((Number(row.vat_amount) || 0) + (Number(row.pit_amount) || 0)).toLocaleString('vi-VN')}
                         </td>
                       </tr>
                     ))
@@ -970,19 +970,19 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
             <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200">
               <span className="text-xs font-bold text-emerald-800 uppercase">Tổng Doanh Thu Vào</span>
               <p className="text-xl font-black text-emerald-900 mt-1">
-                {s2aData.totalRevenue.toLocaleString('vi-VN')} đ
+                {(Number(s2aData.totalRevenue) || 0).toLocaleString('vi-VN')} đ
               </p>
             </div>
             <div className="p-4 rounded-xl bg-rose-50 border border-rose-200">
               <span className="text-xs font-bold text-rose-800 uppercase">Tổng Chi Phí Hợp Lý Ra</span>
               <p className="text-xl font-black text-rose-900 mt-1">
-                {expenses.reduce((s, e) => s + e.amount, 0).toLocaleString('vi-VN')} đ
+                {(Number(expenses.reduce((s, e) => s + (Number(e?.amount) || 0), 0)) || 0).toLocaleString('vi-VN')} đ
               </p>
             </div>
             <div className="p-4 rounded-xl bg-blue-50 border border-blue-200">
               <span className="text-xs font-bold text-blue-800 uppercase">Thu Nhập Tính Thuế (TN Ròng)</span>
               <p className="text-xl font-black text-blue-900 mt-1">
-                {Math.max(0, s2aData.totalRevenue - expenses.reduce((s, e) => s + e.amount, 0)).toLocaleString('vi-VN')} đ
+                {(Math.max(0, (Number(s2aData.totalRevenue) || 0) - expenses.reduce((s, e) => s + (Number(e?.amount) || 0), 0)) || 0).toLocaleString('vi-VN')} đ
               </p>
             </div>
           </div>
@@ -1008,7 +1008,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                     </td>
                     <td className="p-2.5 text-right text-zinc-300">-</td>
                     <td className="p-2.5 text-right font-bold text-rose-700">
-                      {e.amount.toLocaleString('vi-VN')}
+                      {(Number(e.amount) || 0).toLocaleString('vi-VN')}
                     </td>
                   </tr>
                 ))}
@@ -1066,7 +1066,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                       </td>
                       <td className="p-2.5 text-right">{(ing.avg_cost || 0).toLocaleString('vi-VN')} đ</td>
                       <td className="p-2.5 text-right font-bold text-zinc-900">
-                        {totalVal.toLocaleString('vi-VN')} đ
+                        {(Number(totalVal) || 0).toLocaleString('vi-VN')} đ
                       </td>
                       <td className="p-2.5 text-center">
                         <span
@@ -1101,10 +1101,10 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                 </span>
               </div>
               <p className="text-2xl font-black text-emerald-950 mt-2">
-                {s2eData.totalIncome.toLocaleString('vi-VN')} <span className="text-sm font-bold text-emerald-700">đ</span>
+                {(Number(s2eData.totalIncome) || 0).toLocaleString('vi-VN')} <span className="text-sm font-bold text-emerald-700">đ</span>
               </p>
               <p className="text-[11px] text-emerald-700 mt-1 font-medium">
-                Tiền mặt: {s2eData.cashIncome.toLocaleString('vi-VN')} đ | NH: {s2eData.bankIncome.toLocaleString('vi-VN')} đ
+                Tiền mặt: {(Number(s2eData.cashIncome) || 0).toLocaleString('vi-VN')} đ | NH: {(Number(s2eData.bankIncome) || 0).toLocaleString('vi-VN')} đ
               </p>
             </div>
 
@@ -1116,10 +1116,10 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                 </span>
               </div>
               <p className="text-2xl font-black text-rose-950 mt-2">
-                {s2eData.totalExpense.toLocaleString('vi-VN')} <span className="text-sm font-bold text-rose-700">đ</span>
+                {(Number(s2eData.totalExpense) || 0).toLocaleString('vi-VN')} <span className="text-sm font-bold text-rose-700">đ</span>
               </p>
               <p className="text-[11px] text-rose-700 mt-1 font-medium">
-                Tiền mặt: {s2eData.cashExpense.toLocaleString('vi-VN')} đ | NH: {s2eData.bankExpense.toLocaleString('vi-VN')} đ
+                Tiền mặt: {(Number(s2eData.cashExpense) || 0).toLocaleString('vi-VN')} đ | NH: {(Number(s2eData.bankExpense) || 0).toLocaleString('vi-VN')} đ
               </p>
             </div>
 
@@ -1130,11 +1130,11 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                   <ArrowUpRight className="w-4 h-4" />
                 </span>
               </div>
-              <p className={`text-2xl font-black mt-2 ${s2eData.netCashflow >= 0 ? 'text-blue-950' : 'text-rose-950'}`}>
-                {s2eData.netCashflow >= 0 ? '+' : ''}{s2eData.netCashflow.toLocaleString('vi-VN')} <span className="text-sm font-bold text-blue-700">đ</span>
+              <p className={`text-2xl font-black mt-2 ${(Number(s2eData.netCashflow) || 0) >= 0 ? 'text-blue-950' : 'text-rose-950'}`}>
+                {(Number(s2eData.netCashflow) || 0) >= 0 ? '+' : ''}{(Number(s2eData.netCashflow) || 0).toLocaleString('vi-VN')} <span className="text-sm font-bold text-blue-700">đ</span>
               </p>
               <p className="text-[11px] text-blue-700 mt-1 font-medium">
-                {s2eData.netCashflow >= 0 ? 'Dòng tiền thặng dư dương (+)' : 'Dòng tiền thâm hụt âm (-)'}
+                {(Number(s2eData.netCashflow) || 0) >= 0 ? 'Dòng tiền thặng dư dương (+)' : 'Dòng tiền thâm hụt âm (-)'}
               </p>
             </div>
 
@@ -1146,10 +1146,10 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                 </span>
               </div>
               <p className="text-2xl font-black text-zinc-900 mt-2">
-                {s2eData.closingBalance.toLocaleString('vi-VN')} <span className="text-sm font-bold text-zinc-600">đ</span>
+                {(Number(s2eData.closingBalance) || 0).toLocaleString('vi-VN')} <span className="text-sm font-bold text-zinc-600">đ</span>
               </p>
               <p className="text-[11px] text-zinc-700 mt-1 font-medium">
-                Quỹ mặt: {s2eData.cashBalance.toLocaleString('vi-VN')} đ | VietQR: {s2eData.bankBalance.toLocaleString('vi-VN')} đ
+                Quỹ mặt: {(Number(s2eData.cashBalance) || 0).toLocaleString('vi-VN')} đ | VietQR: {(Number(s2eData.bankBalance) || 0).toLocaleString('vi-VN')} đ
               </p>
             </div>
           </div>
@@ -1332,13 +1332,13 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                           </span>
                         </td>
                         <td className="p-2.5 text-right font-bold text-emerald-700">
-                          {r.income > 0 ? `+${r.income.toLocaleString('vi-VN')} đ` : <span className="text-zinc-300 font-normal">-</span>}
+                          {Number(r.income) > 0 ? `+${(Number(r.income) || 0).toLocaleString('vi-VN')} đ` : <span className="text-zinc-300 font-normal">-</span>}
                         </td>
                         <td className="p-2.5 text-right font-bold text-rose-700">
-                          {r.expense > 0 ? `-${r.expense.toLocaleString('vi-VN')} đ` : <span className="text-zinc-300 font-normal">-</span>}
+                          {Number(r.expense) > 0 ? `-${(Number(r.expense) || 0).toLocaleString('vi-VN')} đ` : <span className="text-zinc-300 font-normal">-</span>}
                         </td>
                         <td className="p-2.5 text-right font-black text-zinc-900">
-                          {r.balance.toLocaleString('vi-VN')} đ
+                          {(Number(r.balance) || 0).toLocaleString('vi-VN')} đ
                         </td>
                       </tr>
                     ))
@@ -1351,13 +1351,13 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                         Tổng cộng phát sinh và tồn quỹ cuối kỳ:
                       </td>
                       <td className="p-3 text-right text-emerald-800 font-black">
-                        +{s2eData.totalIncome.toLocaleString('vi-VN')} đ
+                        +{(Number(s2eData.totalIncome) || 0).toLocaleString('vi-VN')} đ
                       </td>
                       <td className="p-3 text-right text-rose-800 font-black">
-                        -{s2eData.totalExpense.toLocaleString('vi-VN')} đ
+                        -{(Number(s2eData.totalExpense) || 0).toLocaleString('vi-VN')} đ
                       </td>
                       <td className="p-3 text-right text-zinc-950 font-black text-sm">
-                        {s2eData.closingBalance.toLocaleString('vi-VN')} đ
+                        {(Number(s2eData.closingBalance) || 0).toLocaleString('vi-VN')} đ
                       </td>
                     </tr>
                   </tfoot>
@@ -1453,14 +1453,14 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
               <div className="bg-white/80 rounded-xl p-3 border border-zinc-200/60">
                 <span className="text-[11px] font-semibold text-zinc-500">Doanh Thu Năm {selectedYear}</span>
                 <p className="text-base sm:text-lg font-black text-zinc-900 mt-0.5">
-                  {thresholdAnalysis.current_year_revenue.toLocaleString('vi-VN')} đ
+                  {(Number(thresholdAnalysis.current_year_revenue) || 0).toLocaleString('vi-VN')} đ
                 </p>
               </div>
 
               <div className="bg-white/80 rounded-xl p-3 border border-zinc-200/60">
                 <span className="text-[11px] font-semibold text-zinc-500">Ngưỡng Miễn Thuế 2026</span>
                 <p className="text-base sm:text-lg font-black text-emerald-800 mt-0.5">
-                  {thresholdAnalysis.annual_threshold.toLocaleString('vi-VN')} đ
+                  {(Number(thresholdAnalysis.annual_threshold) || 0).toLocaleString('vi-VN')} đ
                 </p>
               </div>
 
@@ -1480,7 +1480,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                   {thresholdAnalysis.is_under_threshold ? 'Dư Địa Đến Ngưỡng 1 Tỷ' : 'Vượt Quá Ngưỡng'}
                 </span>
                 <p className="text-base sm:text-lg font-black text-zinc-900 mt-0.5">
-                  {thresholdAnalysis.remaining_until_threshold.toLocaleString('vi-VN')} đ
+                  {(Number(thresholdAnalysis.remaining_until_threshold) || 0).toLocaleString('vi-VN')} đ
                 </p>
               </div>
             </div>
@@ -1658,7 +1658,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                         </td>
                         <td className="p-3 text-center text-zinc-400">-</td>
                         <td className="p-3 text-right font-black text-sm text-zinc-950">
-                          {thresholdAnalysis.current_year_revenue.toLocaleString('vi-VN')} đ
+                          {(Number(thresholdAnalysis.current_year_revenue) || 0).toLocaleString('vi-VN')} đ
                         </td>
                         <td className="p-3 text-right font-black text-sm text-emerald-800">
                           0 đ (Miễn thuế)
@@ -1929,10 +1929,10 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                           <td className="p-3 text-zinc-900 uppercase">TỔNG DOANH THU TÍNH THUẾ TRONG KỲ</td>
                           <td className="p-3 text-center">-</td>
                           <td className="p-3 text-right font-black text-sm text-zinc-900">
-                            {s2aData.totalRevenue.toLocaleString('vi-VN')}
+                            {(Number(s2aData.totalRevenue) || 0).toLocaleString('vi-VN')}
                           </td>
                           <td className="p-3 text-right font-black text-sm text-amber-900">
-                            {s2aData.totalTax.toLocaleString('vi-VN')}
+                            {(Number(s2aData.totalTax) || 0).toLocaleString('vi-VN')}
                           </td>
                         </tr>
 
@@ -2005,7 +2005,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                           <td className="p-3 text-center">-</td>
                           <td className="p-3 text-right">-</td>
                           <td className="p-3 text-right font-black text-emerald-900 text-sm">
-                            {s2aData.totalVat.toLocaleString('vi-VN')} đ
+                            {(Number(s2aData.totalVat) || 0).toLocaleString('vi-VN')} đ
                           </td>
                         </tr>
 
@@ -2016,7 +2016,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                           <td className="p-3 text-center">-</td>
                           <td className="p-3 text-right">-</td>
                           <td className="p-3 text-right font-black text-blue-900 text-sm">
-                            {s2aData.totalPit.toLocaleString('vi-VN')} đ
+                            {(Number(s2aData.totalPit) || 0).toLocaleString('vi-VN')} đ
                           </td>
                         </tr>
 
@@ -2029,7 +2029,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                           <td className="p-3 text-center">-</td>
                           <td className="p-3 text-right">-</td>
                           <td className="p-3 text-right font-black text-amber-950 text-base">
-                            {s2aData.totalTax.toLocaleString('vi-VN')} đ
+                            {(Number(s2aData.totalTax) || 0).toLocaleString('vi-VN')} đ
                           </td>
                         </tr>
                       </tbody>
@@ -2106,33 +2106,33 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                                   <td className="p-2 text-center text-zinc-500">{r.stt}</td>
                                   <td className="p-2 font-semibold text-zinc-900">{r.item_name}</td>
                                   <td className="p-2 text-center text-zinc-600">{r.unit}</td>
-                                  <td className="p-2 text-right border-l border-zinc-200">{r.opening_qty.toLocaleString('vi-VN')}</td>
-                                  <td className="p-2 text-right">{r.opening_amount.toLocaleString('vi-VN')}</td>
-                                  <td className="p-2 text-right border-l border-zinc-200">{r.in_qty.toLocaleString('vi-VN')}</td>
-                                  <td className="p-2 text-right">{r.in_amount.toLocaleString('vi-VN')}</td>
-                                  <td className="p-2 text-right border-l border-zinc-200">{r.out_qty.toLocaleString('vi-VN')}</td>
-                                  <td className="p-2 text-right">{r.out_amount.toLocaleString('vi-VN')}</td>
-                                  <td className="p-2 text-right border-l border-zinc-200">{r.closing_qty.toLocaleString('vi-VN')}</td>
-                                  <td className="p-2 text-right font-bold text-zinc-900">{r.closing_amount.toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right border-l border-zinc-200">{(Number(r.opening_qty) || 0).toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right">{(Number(r.opening_amount) || 0).toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right border-l border-zinc-200">{(Number(r.in_qty) || 0).toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right">{(Number(r.in_amount) || 0).toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right border-l border-zinc-200">{(Number(r.out_qty) || 0).toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right">{(Number(r.out_amount) || 0).toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right border-l border-zinc-200">{(Number(r.closing_qty) || 0).toLocaleString('vi-VN')}</td>
+                                  <td className="p-2 text-right font-bold text-zinc-900">{(Number(r.closing_amount) || 0).toLocaleString('vi-VN')}</td>
                                 </tr>
                               ))
                             )}
                             <tr className="font-black bg-zinc-100 border-t-2 border-zinc-300 text-zinc-900">
                               <td colSpan={4} className="p-2.5 uppercase">TỔNG CỘNG GIÁ TRỊ TỒN KHO VẬT TƯ</td>
                               <td className="p-2.5 text-right">
-                                {bkhdkdData.inventoryRows.reduce((s, r) => s + r.opening_amount, 0).toLocaleString('vi-VN')} đ
+                                {(Number(bkhdkdData.inventoryRows.reduce((s, r) => s + (Number(r.opening_amount) || 0), 0)) || 0).toLocaleString('vi-VN')} đ
                               </td>
                               <td className="p-2.5 text-center">-</td>
                               <td className="p-2.5 text-right">
-                                {bkhdkdData.inventoryRows.reduce((s, r) => s + r.in_amount, 0).toLocaleString('vi-VN')} đ
+                                {(Number(bkhdkdData.inventoryRows.reduce((s, r) => s + (Number(r.in_amount) || 0), 0)) || 0).toLocaleString('vi-VN')} đ
                               </td>
                               <td className="p-2.5 text-center">-</td>
                               <td className="p-2.5 text-right">
-                                {bkhdkdData.inventoryRows.reduce((s, r) => s + r.out_amount, 0).toLocaleString('vi-VN')} đ
+                                {(Number(bkhdkdData.inventoryRows.reduce((s, r) => s + (Number(r.out_amount) || 0), 0)) || 0).toLocaleString('vi-VN')} đ
                               </td>
                               <td className="p-2.5 text-center">-</td>
                               <td className="p-2.5 text-right text-emerald-800 text-sm">
-                                {bkhdkdData.inventoryRows.reduce((s, r) => s + r.closing_amount, 0).toLocaleString('vi-VN')} đ
+                                {(Number(bkhdkdData.inventoryRows.reduce((s, r) => s + (Number(r.closing_amount) || 0), 0)) || 0).toLocaleString('vi-VN')} đ
                               </td>
                             </tr>
                           </tbody>
@@ -2178,7 +2178,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                                 </td>
                                 <td className="p-3 font-semibold text-zinc-900">{exp.name}</td>
                                 <td className="p-3 text-right font-bold text-zinc-900">
-                                  {exp.amount.toLocaleString('vi-VN')} đ
+                                  {(Number(exp.amount) || 0).toLocaleString('vi-VN')} đ
                                 </td>
                                 <td className="p-3 text-zinc-500 text-xs italic">{exp.note}</td>
                               </tr>
@@ -2188,7 +2188,7 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                                 TỔNG CHI PHÍ QUẢN LÝ KINH DOANH TRONG KỲ ([24] đến [30])
                               </td>
                               <td className="p-3 text-right text-base text-amber-950">
-                                {bkhdkdData.expenseSummary.total_cost.toLocaleString('vi-VN')} đ
+                                {(Number(bkhdkdData.expenseSummary.total_cost) || 0).toLocaleString('vi-VN')} đ
                               </td>
                               <td className="p-3 text-xs italic text-amber-800">Toàn bộ chi phí hợp lệ</td>
                             </tr>

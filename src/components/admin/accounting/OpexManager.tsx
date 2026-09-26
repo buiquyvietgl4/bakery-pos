@@ -224,18 +224,18 @@ export const OpexManager: React.FC<OpexManagerProps> = ({
                 <span>Phân Bổ Chi Phí Vận Hành ({periodLabel})</span>
               </h3>
               <span className="font-black text-rose-600 text-sm">
-                Tổng cộng: -{totalPeriodOpex.toLocaleString('vi-VN')}₫
+                Tổng cộng: -{(Number(totalPeriodOpex) || 0).toLocaleString('vi-VN')}₫
               </span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
               {categoryStats.map(([cat, stat], idx) => {
-                const pct = totalPeriodOpex > 0 ? ((stat.total / totalPeriodOpex) * 100).toFixed(1) : 0;
+                const pct = Number(totalPeriodOpex) > 0 ? (((Number(stat.total) || 0) / Number(totalPeriodOpex)) * 100).toFixed(1) : 0;
                 return (
                   <div key={idx} className="bg-zinc-50 p-2.5 rounded-2xl border border-zinc-200/80 space-y-1">
                     <div className="text-zinc-600 truncate font-bold text-[11px]">{cat}</div>
                     <div className="font-black text-zinc-900 text-xs sm:text-sm">
-                      -{stat.total.toLocaleString('vi-VN')}₫
+                      -{(Number(stat.total) || 0).toLocaleString('vi-VN')}₫
                     </div>
                     <div className="text-[10px] text-zinc-400 flex justify-between">
                       <span>{stat.count} khoản</span>

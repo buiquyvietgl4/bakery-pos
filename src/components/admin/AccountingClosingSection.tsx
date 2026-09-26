@@ -295,12 +295,12 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
         <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200">
           <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Doanh Thu Thuần</div>
           <div className="text-xl font-black text-zinc-900 mt-1">
-            {currentMetrics.totalRevenue.toLocaleString('vi-VN')}₫
+            {(Number(currentMetrics.totalRevenue) || 0).toLocaleString('vi-VN')}₫
           </div>
           <div className="text-[11px] text-zinc-500 mt-1 flex flex-col gap-0.5">
-            <span>• Tiền mặt: <b className="text-zinc-800">{currentMetrics.cashRevenue.toLocaleString('vi-VN')}₫</b></span>
-            <span>• C.Khoản/Ví: <b className="text-zinc-800">{currentMetrics.bankRevenue.toLocaleString('vi-VN')}₫</b></span>
-            <span>• Tổng đơn: <b>{currentMetrics.totalOrders} đơn</b></span>
+            <span>• Tiền mặt: <b className="text-zinc-800">{(Number(currentMetrics.cashRevenue) || 0).toLocaleString('vi-VN')}₫</b></span>
+            <span>• C.Khoản/Ví: <b className="text-zinc-800">{(Number(currentMetrics.bankRevenue) || 0).toLocaleString('vi-VN')}₫</b></span>
+            <span>• Tổng đơn: <b>{currentMetrics.totalOrders || 0} đơn</b></span>
           </div>
         </div>
 
@@ -308,10 +308,10 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
         <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200">
           <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Giá Vốn COGS (~31.8%)</div>
           <div className="text-xl font-black text-amber-700 mt-1">
-            -{currentMetrics.totalCOGS.toLocaleString('vi-VN')}₫
+            -{(Number(currentMetrics.totalCOGS) || 0).toLocaleString('vi-VN')}₫
           </div>
           <div className="text-[11px] text-zinc-500 mt-1">
-            Lợi nhuận gộp: <b className="text-zinc-800">{currentMetrics.grossProfit.toLocaleString('vi-VN')}₫</b>
+            Lợi nhuận gộp: <b className="text-zinc-800">{(Number(currentMetrics.grossProfit) || 0).toLocaleString('vi-VN')}₫</b>
           </div>
         </div>
 
@@ -319,11 +319,11 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
         <div className="p-4 rounded-2xl bg-zinc-50 border border-zinc-200">
           <div className="text-[11px] font-bold text-zinc-500 uppercase tracking-wider">Chi Phí & Hao Hụt</div>
           <div className="text-xl font-black text-rose-700 mt-1">
-            -{(currentMetrics.totalOpex + currentMetrics.spoilageCost).toLocaleString('vi-VN')}₫
+            -{((Number(currentMetrics.totalOpex) || 0) + (Number(currentMetrics.spoilageCost) || 0)).toLocaleString('vi-VN')}₫
           </div>
           <div className="text-[11px] text-zinc-500 mt-1 flex flex-col gap-0.5">
-            <span>• OPEX: -{currentMetrics.totalOpex.toLocaleString('vi-VN')}₫</span>
-            <span>• Hỏng ({currentMetrics.spoilageQty} cái): -{currentMetrics.spoilageCost.toLocaleString('vi-VN')}₫</span>
+            <span>• OPEX: -{(Number(currentMetrics.totalOpex) || 0).toLocaleString('vi-VN')}₫</span>
+            <span>• Hỏng ({currentMetrics.spoilageQty || 0} cái): -{(Number(currentMetrics.spoilageCost) || 0).toLocaleString('vi-VN')}₫</span>
           </div>
         </div>
 
@@ -333,11 +333,11 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
             <TrendingUp className="w-3.5 h-3.5 text-emerald-600" />
             Lợi Nhuận Ròng (P&L)
           </div>
-          <div className={`text-xl font-black mt-1 ${currentMetrics.netProfit >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-            {currentMetrics.netProfit >= 0 ? '+' : ''}{currentMetrics.netProfit.toLocaleString('vi-VN')}₫
+          <div className={`text-xl font-black mt-1 ${(Number(currentMetrics.netProfit) || 0) >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+            {(Number(currentMetrics.netProfit) || 0) >= 0 ? '+' : ''}{(Number(currentMetrics.netProfit) || 0).toLocaleString('vi-VN')}₫
           </div>
           <div className="text-[11px] text-emerald-800/80 mt-1">
-            Tỷ suất: <b>{currentMetrics.totalRevenue > 0 ? ((currentMetrics.netProfit / currentMetrics.totalRevenue) * 100).toFixed(1) : 0}%</b>
+            Tỷ suất: <b>{currentMetrics.totalRevenue > 0 ? (((Number(currentMetrics.netProfit) || 0) / currentMetrics.totalRevenue) * 100).toFixed(1) : 0}%</b>
           </div>
         </div>
 
@@ -351,7 +351,7 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
             Kiểm Đếm Tiền Mặt Thực Tế Trong Két (Cash Reconciliation)
           </div>
           <div className="text-xs text-amber-900">
-            Hệ thống tính tiền mặt thu được: <b className="font-mono text-zinc-900">{currentMetrics.systemCash.toLocaleString('vi-VN')}₫</b>
+            Hệ thống tính tiền mặt thu được: <b className="font-mono text-zinc-900">{(Number(currentMetrics.systemCash) || 0).toLocaleString('vi-VN')}₫</b>
           </div>
         </div>
 
@@ -528,20 +528,20 @@ export const AccountingClosingSection: React.FC<AccountingClosingSectionProps> =
                       {new Date(r.closedAt).toLocaleString('vi-VN')}
                     </td>
                     <td className="p-3 text-right font-bold text-zinc-900">
-                      {r.totalRevenue.toLocaleString('vi-VN')}₫
+                      {(Number(r.totalRevenue) || 0).toLocaleString('vi-VN')}₫
                     </td>
                     <td className="p-3 text-right font-bold text-emerald-700">
-                      {r.netProfit >= 0 ? '+' : ''}{r.netProfit.toLocaleString('vi-VN')}₫
+                      {(Number(r.netProfit) || 0) >= 0 ? '+' : ''}{(Number(r.netProfit) || 0).toLocaleString('vi-VN')}₫
                     </td>
                     <td className="p-3 text-right">
                       <span className={`inline-block font-bold text-[11px] px-2 py-0.5 rounded-full ${
-                        r.cashDifference === 0 
+                        (Number(r.cashDifference) || 0) === 0 
                           ? 'bg-emerald-50 text-emerald-700' 
-                          : r.cashDifference > 0 
+                          : (Number(r.cashDifference) || 0) > 0 
                           ? 'bg-emerald-50 text-emerald-700' 
                           : 'bg-rose-50 text-rose-700'
                       }`}>
-                        {r.cashDifference === 0 ? 'Khớp két' : r.cashDifference > 0 ? `+${r.cashDifference.toLocaleString('vi-VN')}₫` : `${r.cashDifference.toLocaleString('vi-VN')}₫`}
+                        {(Number(r.cashDifference) || 0) === 0 ? 'Khớp két' : (Number(r.cashDifference) || 0) > 0 ? `+${(Number(r.cashDifference) || 0).toLocaleString('vi-VN')}₫` : `${(Number(r.cashDifference) || 0).toLocaleString('vi-VN')}₫`}
                       </span>
                     </td>
                     <td className="p-3 text-center">

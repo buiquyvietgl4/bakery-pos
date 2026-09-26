@@ -4329,7 +4329,7 @@ export default function AdminDashboard() {
                   <h3 className="font-black text-sm text-zinc-900 mt-0.5 line-clamp-1">{p.name}</h3>
                   <div className="flex justify-between items-center text-xs mt-1">
                     <span className="text-zinc-500">Giá bán:</span>
-                    <span className="font-bold text-amber-600">{p.selling_price.toLocaleString('vi-VN')}₫</span>
+                    <span className="font-bold text-amber-600">{(Number(p.selling_price) || 0).toLocaleString('vi-VN')}₫</span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-zinc-500">{p.product_type === 'imported' ? 'Giá vốn nhập (NCC):' : 'Giá vốn COGS:'}</span>
@@ -4805,7 +4805,7 @@ export default function AdminDashboard() {
               {/* Hiển thị giá gốc BOM nếu có (cho chế độ BOM) */}
               {addProductMode === 'bom' && newProdBaseCost !== null && newProdBaseCost > 0 && (
                 <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-200 flex items-center justify-between text-[11px]">
-                  <span className="text-blue-800">📊 Giá gốc nguyên liệu (BOM): <b>{newProdBaseCost.toLocaleString('vi-VN')}₫</b></span>
+                  <span className="text-blue-800">📊 Giá gốc nguyên liệu (BOM): <b>{(Number(newProdBaseCost) || 0).toLocaleString('vi-VN')}₫</b></span>
                   <span className={`font-bold px-2 py-0.5 rounded-full ${
                     newProdPrice > 0 && (newProdBaseCost / newProdPrice * 100) <= 35
                       ? 'bg-emerald-100 text-emerald-700'
@@ -5033,7 +5033,7 @@ export default function AdminDashboard() {
                       >
                         {visibleIngredients.map((ing: Ingredient) => (
                           <option key={ing.id} value={ing.id}>
-                            {ing.name} (Tồn: {ing.stock_qty.toLocaleString()} {ing.unit || 'g'})
+                            {ing.name} (Tồn: {(Number(ing.stock_qty) || 0).toLocaleString()} {ing.unit || 'g'})
                           </option>
                         ))}
                       </select>
@@ -5160,19 +5160,19 @@ export default function AdminDashboard() {
                           <div className="flex justify-between items-center text-amber-950 font-bold">
                             <span>💡 Số lượng vào kho:</span>
                             <span className="text-sm font-black text-emerald-800">
-                              +{totalInStock.toLocaleString('vi-VN')} {poBaseUnitName || 'đơn vị'}
+                              +{(Number(totalInStock) || 0).toLocaleString('vi-VN')} {poBaseUnitName || 'đơn vị'}
                             </span>
                           </div>
                           <div className="flex justify-between items-center text-[11px] text-amber-900">
                             <span>Đơn giá vốn kho:</span>
                             <span className="font-bold text-amber-950">
-                              {costPerBase.toLocaleString('vi-VN')}₫ / {poBaseUnitName || 'đơn vị'}
+                              {(Number(costPerBase) || 0).toLocaleString('vi-VN')}₫ / {poBaseUnitName || 'đơn vị'}
                             </span>
                           </div>
                           <div className="flex justify-between items-center text-xs font-black text-amber-950 pt-1.5 border-t border-amber-200">
                             <span>Thành tiền thanh toán:</span>
                             <span className="text-base font-black text-rose-700">
-                              {totalMoney.toLocaleString('vi-VN')}₫
+                              {(Number(totalMoney) || 0).toLocaleString('vi-VN')}₫
                             </span>
                           </div>
                         </div>
@@ -5297,7 +5297,7 @@ export default function AdminDashboard() {
                   >
                     {visibleIngredients.map((ing: Ingredient) => (
                       <option key={ing.id} value={ing.id}>
-                        {ing.name} ({ing.unit}) — Tồn: {ing.stock_qty.toLocaleString()}
+                        {ing.name} ({ing.unit}) — Tồn: {(Number(ing.stock_qty) || 0).toLocaleString()}
                       </option>
                     ))}
                   </select>
@@ -5470,22 +5470,22 @@ export default function AdminDashboard() {
                             {convRate > 1 ? (
                               <span className="px-2 py-0.5 rounded-lg bg-amber-50 border border-amber-200 text-amber-900 font-bold text-[11px] inline-flex items-center gap-1">
                                 <span>📦 {pkgUnit}</span>
-                                <span className="text-amber-600 font-normal">(= {convRate.toLocaleString()} {ing.unit})</span>
+                                <span className="text-amber-600 font-normal">(= {(Number(convRate) || 0).toLocaleString()} {ing.unit})</span>
                               </span>
                             ) : (
                               <span className="text-zinc-400 text-[11px]">Cùng đơn vị kho</span>
                             )}
                           </td>
                           <td className={`py-2.5 text-right font-bold ${isLow ? 'text-rose-600' : 'text-zinc-800'}`}>
-                            <div>{ing.stock_qty.toLocaleString()} {ing.unit}</div>
+                            <div>{(Number(ing.stock_qty) || 0).toLocaleString()} {ing.unit}</div>
                             {pkgStock !== null && (
-                              <div className="text-[10px] text-zinc-400 font-normal">~ {pkgStock.toLocaleString()} {pkgUnit}</div>
+                              <div className="text-[10px] text-zinc-400 font-normal">~ {(Number(pkgStock) || 0).toLocaleString()} {pkgUnit}</div>
                             )}
                           </td>
                           <td className="py-2.5 text-right font-black text-amber-700">
-                            <div>{ing.avg_cost.toLocaleString('vi-VN')}₫/{ing.unit}</div>
+                            <div>{(Number(ing.avg_cost) || 0).toLocaleString('vi-VN')}₫/{ing.unit}</div>
                             {pkgCost !== null && (
-                              <div className="text-[10px] text-zinc-500 font-normal">~ {pkgCost.toLocaleString('vi-VN')}₫/{pkgUnit}</div>
+                              <div className="text-[10px] text-zinc-500 font-normal">~ {(Number(pkgCost) || 0).toLocaleString('vi-VN')}₫/{pkgUnit}</div>
                             )}
                           </td>
                           <td className="py-2.5 text-right">
@@ -5681,7 +5681,7 @@ export default function AdminDashboard() {
                                   <div className="font-black text-zinc-900">{tx.materialName}</div>
                                   {tx.packageQty ? (
                                     <div className="text-[10px] font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded inline-block mt-0.5">
-                                      📦 {tx.packageQty} {tx.packageUnit || 'gói'} (x{tx.conversionRate?.toLocaleString()} {tx.unit})
+                                      📦 {tx.packageQty} {tx.packageUnit || 'gói'} (x{(Number(tx.conversionRate) || 0).toLocaleString()} {tx.unit})
                                     </div>
                                   ) : (
                                     <div className="text-[10px] text-zinc-400">{tx.unit}</div>
@@ -5690,7 +5690,7 @@ export default function AdminDashboard() {
                                 <td className={`py-2.5 px-3 text-right font-black whitespace-nowrap ${
                                   isImp ? 'text-emerald-700' : 'text-rose-600'
                                 }`}>
-                                  {isImp ? '+' : '-'}{tx.quantity.toLocaleString()} {tx.unit}
+                                  {isImp ? '+' : '-'}{(Number(tx.quantity) || 0).toLocaleString()} {tx.unit}
                                 </td>
                                 <td className="py-2.5 px-3 text-right font-bold text-zinc-600 whitespace-nowrap">
                                   {(tx.unitPrice || 0).toLocaleString('vi-VN')}₫/{tx.unit}
@@ -5733,7 +5733,7 @@ export default function AdminDashboard() {
                           Tổng lượng chênh lệch
                         </span>
                         <span className={`text-base font-black mt-0.5 block ${totalDeltaQty >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
-                          {totalDeltaQty > 0 ? `+${totalDeltaQty.toLocaleString()}` : totalDeltaQty.toLocaleString()}
+                          {Number(totalDeltaQty) > 0 ? `+${(Number(totalDeltaQty) || 0).toLocaleString()}` : (Number(totalDeltaQty) || 0).toLocaleString()}
                         </span>
                       </div>
                       <div className={`p-2.5 rounded-2xl border ${totalValChange >= 0 ? 'bg-blue-50 border-blue-200' : 'bg-amber-50 border-amber-200'}`}>
@@ -5741,7 +5741,7 @@ export default function AdminDashboard() {
                           Biến động giá trị vốn
                         </span>
                         <span className={`text-base font-black mt-0.5 block ${totalValChange >= 0 ? 'text-blue-700' : 'text-amber-800'}`}>
-                          {totalValChange > 0 ? `+${totalValChange.toLocaleString('vi-VN')}₫` : `${totalValChange.toLocaleString('vi-VN')}₫`}
+                          {Number(totalValChange) > 0 ? `+${(Number(totalValChange) || 0).toLocaleString('vi-VN')}₫` : `${(Number(totalValChange) || 0).toLocaleString('vi-VN')}₫`}
                         </span>
                       </div>
                     </div>
@@ -5830,29 +5830,29 @@ export default function AdminDashboard() {
                                   <span className="text-[10px] text-zinc-400">Đơn vị: {adj.unit}</span>
                                 </td>
                                 <td className="py-2.5 px-3 text-right text-zinc-600 font-medium">
-                                  {adj.oldQuantity.toLocaleString()} {adj.unit}
+                                  {(Number(adj.oldQuantity) || 0).toLocaleString()} {adj.unit}
                                 </td>
                                 <td className="py-2.5 px-3 text-right font-black text-zinc-900">
-                                  {adj.newQuantity.toLocaleString()} {adj.unit}
+                                  {(Number(adj.newQuantity) || 0).toLocaleString()} {adj.unit}
                                 </td>
                                 <td className="py-2.5 px-3 text-right whitespace-nowrap font-bold">
                                   {isNeutral ? (
                                     <span className="text-zinc-400">0</span>
                                   ) : isIncrease ? (
                                     <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px]">
-                                      +{adj.deltaQuantity.toLocaleString()} {adj.unit}
+                                      +{(Number(adj.deltaQuantity) || 0).toLocaleString()} {adj.unit}
                                     </span>
                                   ) : (
                                     <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-[10px]">
-                                      {adj.deltaQuantity.toLocaleString()} {adj.unit}
+                                      {(Number(adj.deltaQuantity) || 0).toLocaleString()} {adj.unit}
                                     </span>
                                   )}
                                 </td>
                                 <td className="py-2.5 px-3 text-right text-zinc-500 whitespace-nowrap">
-                                  {adj.avgCost.toLocaleString('vi-VN')}₫
+                                  {(Number(adj.avgCost) || 0).toLocaleString('vi-VN')}₫
                                 </td>
                                 <td className={`py-2.5 px-3 text-right font-black whitespace-nowrap ${adj.totalValueChange >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-                                  {adj.totalValueChange > 0 ? `+${adj.totalValueChange.toLocaleString('vi-VN')}₫` : `${adj.totalValueChange.toLocaleString('vi-VN')}₫`}
+                                  {Number(adj.totalValueChange) > 0 ? `+${(Number(adj.totalValueChange) || 0).toLocaleString('vi-VN')}₫` : `${(Number(adj.totalValueChange) || 0).toLocaleString('vi-VN')}₫`}
                                 </td>
                                 <td className="py-2.5 px-3 text-[11px]">
                                   <div className="font-semibold text-zinc-800">{adj.reason}</div>
@@ -6073,7 +6073,7 @@ export default function AdminDashboard() {
                   />
                   {newIngConversionRate > 1 && newIngAvgCost > 0 && (
                     <div className="text-[10px] text-zinc-400 mt-0.5">
-                      ~ {Math.round(newIngAvgCost * newIngConversionRate).toLocaleString('vi-VN')}₫ / {newIngPackagingUnit}
+                      ~ {(Math.round((Number(newIngAvgCost) || 0) * (Number(newIngConversionRate) || 1)) || 0).toLocaleString('vi-VN')}₫ / {newIngPackagingUnit}
                     </div>
                   )}
                 </div>
@@ -6307,7 +6307,7 @@ export default function AdminDashboard() {
                   />
                   {editIngConversionRate > 1 && (
                     <div className="text-[10px] text-zinc-400 mt-0.5">
-                      ~ {(Math.round((editIngStockQty / editIngConversionRate) * 10) / 10).toLocaleString()} {editIngPackagingUnit}
+                      ~ {(Math.round(((Number(editIngStockQty) || 0) / (Number(editIngConversionRate) || 1)) * 10) / 10 || 0).toLocaleString()} {editIngPackagingUnit}
                     </div>
                   )}
                 </div>
@@ -6326,7 +6326,7 @@ export default function AdminDashboard() {
                   />
                   {editIngConversionRate > 1 && editIngAvgCost > 0 && (
                     <div className="text-[10px] text-zinc-400 mt-0.5">
-                      ~ {Math.round(editIngAvgCost * editIngConversionRate).toLocaleString('vi-VN')}₫ / {editIngPackagingUnit}
+                      ~ {(Math.round((Number(editIngAvgCost) || 0) * (Number(editIngConversionRate) || 1)) || 0).toLocaleString('vi-VN')}₫ / {editIngPackagingUnit}
                     </div>
                   )}
                 </div>
@@ -6407,11 +6407,11 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-amber-200/60">
                 <div>
                   <span className="text-zinc-500 block text-[10px]">Tồn kho sổ sách hiện tại:</span>
-                  <span className="font-black text-zinc-900 text-sm">{adjustingIngredient.stock_qty.toLocaleString()} {adjustingIngredient.unit}</span>
+                  <span className="font-black text-zinc-900 text-sm">{(Number(adjustingIngredient.stock_qty) || 0).toLocaleString()} {adjustingIngredient.unit}</span>
                 </div>
                 <div>
                   <span className="text-zinc-500 block text-[10px]">Giá vốn bình quân (WAC):</span>
-                  <span className="font-black text-amber-800 text-sm">{adjustingIngredient.avg_cost.toLocaleString('vi-VN')}₫/{adjustingIngredient.unit}</span>
+                  <span className="font-black text-amber-800 text-sm">{(Number(adjustingIngredient.avg_cost) || 0).toLocaleString('vi-VN')}₫/{adjustingIngredient.unit}</span>
                 </div>
               </div>
             </div>
@@ -6428,7 +6428,7 @@ export default function AdminDashboard() {
                     onClick={() => setAdjustNewStockQty(String(adjustingIngredient.stock_qty || 0))}
                     className="text-[11px] font-bold text-amber-700 hover:text-amber-800 hover:underline cursor-pointer"
                   >
-                    Khôi phục số gốc ({adjustingIngredient.stock_qty.toLocaleString()} {adjustingIngredient.unit})
+                    Khôi phục số gốc ({(Number(adjustingIngredient.stock_qty) || 0).toLocaleString()} {adjustingIngredient.unit})
                   </button>
                 </div>
                 <div className="relative">
@@ -6502,13 +6502,13 @@ export default function AdminDashboard() {
                     <div className="flex items-center justify-between font-bold">
                       <span>Chênh lệch lượng tồn:</span>
                       <span className="text-sm">
-                        {isNeutral ? '0 (Không đổi)' : isIncrease ? `+${delta.toLocaleString()} ${adjustingIngredient.unit} (Thừa kho)` : `${delta.toLocaleString()} ${adjustingIngredient.unit} (Hao hụt/Thiếu kho)`}
+                        {isNeutral ? '0 (Không đổi)' : isIncrease ? `+${(Number(delta) || 0).toLocaleString()} ${adjustingIngredient.unit} (Thừa kho)` : `${(Number(delta) || 0).toLocaleString()} ${adjustingIngredient.unit} (Hao hụt/Thiếu kho)`}
                       </span>
                     </div>
                     <div className="flex items-center justify-between mt-1 text-[11px] opacity-90">
                       <span>Biến động giá trị tồn kho:</span>
                       <span className="font-black">
-                        {valChange > 0 ? `+${valChange.toLocaleString('vi-VN')}₫` : `${valChange.toLocaleString('vi-VN')}₫`}
+                        {Number(valChange) > 0 ? `+${(Number(valChange) || 0).toLocaleString('vi-VN')}₫` : `${(Number(valChange) || 0).toLocaleString('vi-VN')}₫`}
                       </span>
                     </div>
                   </div>
@@ -6722,7 +6722,7 @@ export default function AdminDashboard() {
                     <option value="">-- Chọn từ Thực đơn bánh --</option>
                     {products.map((p) => (
                       <option key={p.id} value={p.name}>
-                        {p.name} ({p.selling_price?.toLocaleString('vi-VN')}₫)
+                        {p.name} ({(Number(p.selling_price) || 0).toLocaleString('vi-VN')}₫)
                       </option>
                     ))}
                   </select>
@@ -6893,7 +6893,7 @@ export default function AdminDashboard() {
                             <div className="text-right">
                               <span className="text-[10px] text-zinc-400 block leading-tight">Thành tiền</span>
                               <span className="font-black text-amber-700 text-xs">
-                                {lineCost.toLocaleString('vi-VN')}₫
+                                {(Number(lineCost) || 0).toLocaleString('vi-VN')}₫
                               </span>
                             </div>
 
@@ -6938,15 +6938,15 @@ export default function AdminDashboard() {
                   <div className="p-3.5 bg-amber-50/80 rounded-2xl border border-amber-200 space-y-1.5">
                     <div className="flex justify-between items-center text-xs">
                       <span className="text-zinc-600">Tổng chi phí nguyên liệu mẻ ({newRecipeYield} {newRecipeYieldUnit}):</span>
-                      <span className="font-black text-zinc-900">{totalBatchCost.toLocaleString('vi-VN')}₫</span>
+                      <span className="font-black text-zinc-900">{(Number(totalBatchCost) || 0).toLocaleString('vi-VN')}₫</span>
                     </div>
                     <div className="flex justify-between items-center text-xs font-bold pt-1 border-t border-amber-200/60">
                       <span className="text-orange-700">Giá vốn 1 {newRecipeYieldUnit} (COGS):</span>
-                      <span className="font-black text-orange-600 text-sm">{costPerUnit.toLocaleString('vi-VN')}₫</span>
+                      <span className="font-black text-orange-600 text-sm">{(Number(costPerUnit) || 0).toLocaleString('vi-VN')}₫</span>
                     </div>
                     <div className="flex justify-between items-center text-xs font-bold pt-1 border-t border-amber-200/60">
                       <span className="text-emerald-800">Giá bán lẻ đề xuất ({newRecipeFoodCostPct}% Food Cost):</span>
-                      <span className="font-black text-emerald-700 text-base">{suggestedPrice.toLocaleString('vi-VN')}₫</span>
+                      <span className="font-black text-emerald-700 text-base">{(Number(suggestedPrice) || 0).toLocaleString('vi-VN')}₫</span>
                     </div>
                   </div>
                 );
@@ -7135,16 +7135,16 @@ export default function AdminDashboard() {
 
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 border-t border-zinc-200 text-xs">
                   <div className="text-zinc-600">
-                    📦 Đơn hàng &amp; Chi tiết: <b className="text-zinc-900">{formatBytes(dbStorageStats.orderBytes)}</b> ({dbStorageStats.orderCount.toLocaleString('vi-VN')} đơn)
+                    📦 Đơn hàng &amp; Chi tiết: <b className="text-zinc-900">{formatBytes(dbStorageStats.orderBytes)}</b> ({(Number(dbStorageStats.orderCount) || 0).toLocaleString('vi-VN')} đơn)
                   </div>
                   <div className="text-zinc-600">
-                    📊 Sổ quỹ &amp; Thu chi: <b className="text-zinc-900">{formatBytes(dbStorageStats.cashflowBytes)}</b> ({dbStorageStats.cashflowCount.toLocaleString('vi-VN')} giao dịch)
+                    📊 Sổ quỹ &amp; Thu chi: <b className="text-zinc-900">{formatBytes(dbStorageStats.cashflowBytes)}</b> ({(Number(dbStorageStats.cashflowCount) || 0).toLocaleString('vi-VN')} giao dịch)
                   </div>
                   <div className="text-zinc-600">
-                    🎂 Menu bánh &amp; BOM: <b className="text-zinc-900">{formatBytes(dbStorageStats.productBytes)}</b> ({dbStorageStats.productCount.toLocaleString('vi-VN')} mục)
+                    🎂 Menu bánh &amp; BOM: <b className="text-zinc-900">{formatBytes(dbStorageStats.productBytes)}</b> ({(Number(dbStorageStats.productCount) || 0).toLocaleString('vi-VN')} mục)
                   </div>
                   <div className="text-zinc-600">
-                    📜 Kho &amp; Hao hụt: <b className="text-zinc-900">{formatBytes(dbStorageStats.stockLogBytes)}</b> ({dbStorageStats.stockLogCount.toLocaleString('vi-VN')} bản ghi)
+                    📜 Kho &amp; Hao hụt: <b className="text-zinc-900">{formatBytes(dbStorageStats.stockLogBytes)}</b> ({(Number(dbStorageStats.stockLogCount) || 0).toLocaleString('vi-VN')} bản ghi)
                   </div>
                 </div>
 
@@ -9305,7 +9305,7 @@ export default function AdminDashboard() {
                     <div className="flex justify-between">
                       <span className="text-zinc-500">Số tiền:</span>
                       <span className="font-black text-pink-600">
-                        {testWalletAmount.toLocaleString('vi-VN')}₫
+                        {(Number(testWalletAmount) || 0).toLocaleString('vi-VN')}₫
                       </span>
                     </div>
                   </div>

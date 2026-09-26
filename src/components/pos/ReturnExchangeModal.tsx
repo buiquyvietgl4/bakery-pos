@@ -670,7 +670,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                         <span>
                           {it.quantity}x {it.product_name}
                         </span>
-                        <span className="font-bold">-{it.refund_subtotal.toLocaleString('vi-VN')}₫</span>
+                        <span className="font-bold">-{(Number(it.refund_subtotal) || 0).toLocaleString('vi-VN')}₫</span>
                       </div>
                     ))}
                   </div>
@@ -681,9 +681,9 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                       {completedReturnRecord.exchange_replacement_items.map((it, idx) => (
                         <div key={idx} className="flex justify-between">
                           <span>
-                            {it.quantity}x {it.product_name} ({it.unit_price.toLocaleString('vi-VN')}₫)
+                            {it.quantity}x {it.product_name} ({(Number(it.unit_price) || 0).toLocaleString('vi-VN')}₫)
                           </span>
-                          <span className="font-bold">+{it.line_total.toLocaleString('vi-VN')}₫</span>
+                          <span className="font-bold">+{(Number(it.line_total) || 0).toLocaleString('vi-VN')}₫</span>
                         </div>
                       ))}
                     </div>
@@ -693,7 +693,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                     {completedReturnRecord.return_type === 'refund' ? (
                       <div className="flex justify-between text-sm font-black text-rose-700">
                         <span>TỔNG TIỀN HOÀN LẠI:</span>
-                        <span>{completedReturnRecord.refund_amount.toLocaleString('vi-VN')}₫</span>
+                        <span>{(Number(completedReturnRecord.refund_amount) || 0).toLocaleString('vi-VN')}₫</span>
                       </div>
                     ) : (
                       <>
@@ -701,17 +701,17 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                           <span>Chênh lệch:</span>
                           <span
                             className={
-                              completedReturnRecord.exchange_difference! > 0
+                              (Number(completedReturnRecord.exchange_difference) || 0) > 0
                                 ? 'text-emerald-700 font-black'
-                                : completedReturnRecord.exchange_difference! < 0
+                                : (Number(completedReturnRecord.exchange_difference) || 0) < 0
                                 ? 'text-rose-700 font-black'
                                 : ''
                             }
                           >
-                            {completedReturnRecord.exchange_difference! > 0
-                              ? `Khách bù thêm: +${completedReturnRecord.exchange_difference!.toLocaleString('vi-VN')}₫`
-                              : completedReturnRecord.exchange_difference! < 0
-                              ? `Hoàn lại khách: ${Math.abs(completedReturnRecord.exchange_difference!).toLocaleString('vi-VN')}₫`
+                            {(Number(completedReturnRecord.exchange_difference) || 0) > 0
+                              ? `Khách bù thêm: +${(Number(completedReturnRecord.exchange_difference) || 0).toLocaleString('vi-VN')}₫`
+                              : (Number(completedReturnRecord.exchange_difference) || 0) < 0
+                              ? `Hoàn lại khách: ${Math.abs(Number(completedReturnRecord.exchange_difference) || 0).toLocaleString('vi-VN')}₫`
                               : 'Đổi ngang (0₫)'}
                           </span>
                         </div>
