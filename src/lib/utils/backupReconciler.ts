@@ -643,11 +643,13 @@ export async function executePushToSQL(
     notify(10, 'Đang khôi phục và tải hình ảnh lên Cloud Storage...');
     const uploadedImageUrlMap = new Map<string, string>();
 
-    const imagesToProcess = report.byEntity.images.items.filter((it) => {
-      if (mergeMode === 'append_only') return it.status === 'new';
-      if (mergeMode === 'smart_merge') return it.status === 'new';
-      return true; // full_overwrite
-    });
+    const imagesToProcess = (backupData.images && backupData.images.length > 0)
+      ? report.byEntity.images.items.filter((it) => {
+          if (mergeMode === 'append_only') return it.status === 'new';
+          if (mergeMode === 'smart_merge') return it.status === 'new';
+          return true; // full_overwrite
+        })
+      : [];
 
     for (let i = 0; i < imagesToProcess.length; i++) {
       const it = imagesToProcess[i];
@@ -679,11 +681,13 @@ export async function executePushToSQL(
 
     // ── BƯỚC 2: ĐẨY SẢN PHẨM LÊN SUPABASE & LOCALSTORAGE ──
     notify(25, 'Đang đối soát và đẩy Sản phẩm vào CSDL...');
-    const productsToPush = report.byEntity.products.items.filter((it) => {
-      if (mergeMode === 'append_only') return it.status === 'new';
-      if (mergeMode === 'smart_merge') return it.status === 'new' || it.status === 'updated';
-      return true; // full_overwrite
-    });
+    const productsToPush = (backupData.products && backupData.products.length > 0)
+      ? report.byEntity.products.items.filter((it) => {
+          if (mergeMode === 'append_only') return it.status === 'new';
+          if (mergeMode === 'smart_merge') return it.status === 'new' || it.status === 'updated';
+          return true; // full_overwrite
+        })
+      : [];
 
     if (productsToPush.length > 0) {
       let currentProds: any[] = [];
@@ -752,11 +756,13 @@ export async function executePushToSQL(
 
     // ── BƯỚC 3: ĐẨY NGUYÊN VẬT LIỆU KHO ──
     notify(45, 'Đang đồng bộ Nguyên vật liệu & Tồn kho vào CSDL...');
-    const ingredientsToPush = report.byEntity.ingredients.items.filter((it) => {
-      if (mergeMode === 'append_only') return it.status === 'new';
-      if (mergeMode === 'smart_merge') return it.status === 'new' || it.status === 'updated';
-      return true;
-    });
+    const ingredientsToPush = (backupData.ingredients && backupData.ingredients.length > 0)
+      ? report.byEntity.ingredients.items.filter((it) => {
+          if (mergeMode === 'append_only') return it.status === 'new';
+          if (mergeMode === 'smart_merge') return it.status === 'new' || it.status === 'updated';
+          return true;
+        })
+      : [];
 
     if (ingredientsToPush.length > 0) {
       let currentIngs: any[] = [];
@@ -806,11 +812,13 @@ export async function executePushToSQL(
 
     // ── BƯỚC 4: ĐẨY CÔNG THỨC (RECIPES & RECIPE_ITEMS) ──
     notify(60, 'Đang đồng bộ Công thức & Định mức BOM...');
-    const recipesToPush = report.byEntity.recipes.items.filter((it) => {
-      if (mergeMode === 'append_only') return it.status === 'new';
-      if (mergeMode === 'smart_merge') return it.status === 'new' || it.status === 'updated';
-      return true;
-    });
+    const recipesToPush = (backupData.recipes && backupData.recipes.length > 0)
+      ? report.byEntity.recipes.items.filter((it) => {
+          if (mergeMode === 'append_only') return it.status === 'new';
+          if (mergeMode === 'smart_merge') return it.status === 'new' || it.status === 'updated';
+          return true;
+        })
+      : [];
 
     if (recipesToPush.length > 0) {
       let currentRecs: any[] = [];
@@ -920,11 +928,13 @@ export async function executePushToSQL(
 
     // ── BƯỚC 5: ĐẨY ĐƠN HÀNG VÀ CHI TIẾT ĐƠN (ORDERS & ORDER_ITEMS) ──
     notify(75, 'Đang đối soát và khôi phục Đơn hàng vào CSDL Supabase...');
-    const ordersToPush = report.byEntity.orders.items.filter((it) => {
-      if (mergeMode === 'append_only') return it.status === 'new';
-      if (mergeMode === 'smart_merge') return it.status === 'new' || it.status === 'updated';
-      return true;
-    });
+    const ordersToPush = (backupData.orders && backupData.orders.length > 0)
+      ? report.byEntity.orders.items.filter((it) => {
+          if (mergeMode === 'append_only') return it.status === 'new';
+          if (mergeMode === 'smart_merge') return it.status === 'new' || it.status === 'updated';
+          return true;
+        })
+      : [];
 
     if (ordersToPush.length > 0) {
       let currentOrders: any[] = [];
@@ -1060,9 +1070,11 @@ export async function executePushToSQL(
 
     // ── BƯỚC 6: LỊCH SỬ KHO, HAO HỤT, THU CHI & NGHIỆP VỤ ──
     notify(90, 'Đang cập nhật Nhật ký biến động kho & Sổ thu chi lên Đám mây...');
-    const newStockLogs = report.byEntity.stock_adjustments.items
-      .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
-      .map((it) => it.backupItem);
+    const newStockLogs = (backupData.stock_adjustments && backupData.stock_adjustments.length > 0)
+      ? report.byEntity.stock_adjustments.items
+          .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
+          .map((it) => it.backupItem)
+      : [];
     if (newStockLogs.length > 0) {
       const currentLogs = getStockAdjustmentLogs();
       const mergedLogs = [...newStockLogs, ...currentLogs].slice(0, 500);
@@ -1073,9 +1085,11 @@ export async function executePushToSQL(
       } catch {}
     }
 
-    const newSpoilageLogs = report.byEntity.spoilage_logs.items
-      .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
-      .map((it) => it.backupItem);
+    const newSpoilageLogs = (backupData.spoilage_logs && backupData.spoilage_logs.length > 0)
+      ? report.byEntity.spoilage_logs.items
+          .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
+          .map((it) => it.backupItem)
+      : [];
     if (newSpoilageLogs.length > 0) {
       const currentSpoilage = getSpoilageLogs();
       const mergedSpoilage = [...newSpoilageLogs, ...currentSpoilage];
@@ -1084,9 +1098,11 @@ export async function executePushToSQL(
       await saveSpoilageLogsToDb(mergedSpoilage).catch(console.error);
     }
 
-    const newExpenses = report.byEntity.expenses.items
-      .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
-      .map((it) => it.backupItem);
+    const newExpenses = (backupData.expenses && backupData.expenses.length > 0)
+      ? report.byEntity.expenses.items
+          .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
+          .map((it) => it.backupItem)
+      : [];
     if (newExpenses.length > 0) {
       try {
         const rawE = localStorage.getItem('bakery_expenses');
@@ -1274,7 +1290,7 @@ export async function executePushToSQL(
         if (backupData.settings.tax_household) {
           localStorage.setItem('bakery_tax_household_config', JSON.stringify(backupData.settings.tax_household));
           const { error: taxErr } = await supabase.from('recipes').upsert({
-            id: '00000000-0000-0000-0000-000000000017',
+            id: '00000000-0000-0000-0000-00000000000c',
             name: 'SYS_CONFIG_TAX_HOUSEHOLD',
             yield_qty: 1,
             yield_unit: 'config',
@@ -1288,7 +1304,7 @@ export async function executePushToSQL(
         if (backupData.settings.tax_policy) {
           localStorage.setItem('bakery_tax_policy_config', JSON.stringify(backupData.settings.tax_policy));
           const { error: polErr } = await supabase.from('recipes').upsert({
-            id: '00000000-0000-0000-0000-000000000019',
+            id: '00000000-0000-0000-0000-00000000000e',
             name: 'SYS_CONFIG_TAX_POLICY',
             yield_qty: 1,
             yield_unit: 'config',

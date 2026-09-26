@@ -14,7 +14,7 @@ export type { DeliveryAlertConfig };
 export { DEFAULT_DELIVERY_ALERT_CONFIG };
 
 export const STORAGE_KEY_DELIVERY_ALERT = 'bakery_delivery_alert_config';
-export const SYS_CONFIG_DELIVERY_ALERT = '00000000-0000-0000-0000-000000000014';
+export const SYS_CONFIG_DELIVERY_ALERT = '00000000-0000-0000-0000-000000000016';
 export const SYS_CONFIG_DELIVERY_ALERT_NAME = 'SYS_CONFIG_DELIVERY_ALERT';
 export const EVENT_DELIVERY_ALERT_CONFIG_UPDATED = 'bakery_delivery_alert_config_updated';
 

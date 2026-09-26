@@ -71,7 +71,7 @@ export function saveCakeCostingConfig(config: CustomCakeCostingConfig): void {
         .from('recipes')
         .upsert(
           {
-            id: '00000000-0000-0000-0000-000000000015',
+            id: '00000000-0000-0000-0000-000000000020',
             name: 'SYS_CONFIG_CAKE_COSTING',
             yield_qty: 1,
             yield_unit: 'config',
@@ -99,7 +99,7 @@ export async function saveCakeCostingConfigToDb(config: CustomCakeCostingConfig)
       .from('recipes')
       .upsert(
         {
-          id: '00000000-0000-0000-0000-000000000015',
+          id: '00000000-0000-0000-0000-000000000020',
           name: 'SYS_CONFIG_CAKE_COSTING',
           yield_qty: 1,
           yield_unit: 'config',
