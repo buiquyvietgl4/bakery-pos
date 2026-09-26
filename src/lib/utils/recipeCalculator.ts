@@ -180,7 +180,7 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
     });
 
     const fullRecipes: BakeryRecipe[] = cleanRecipes.map((r: any) => {
-      const itemsList = itemsByRecipe.get(r.id) || [];
+      let itemsList = itemsByRecipe.get(r.id) || [];
       let bakeTime = Number(r.bake_time_minutes) || 25;
       let bakeTemp = Number(r.bake_temp_celsius) || 190;
       let noteText = r.notes || '';
@@ -191,7 +191,32 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
           if (parsed.bake_time_minutes) bakeTime = Number(parsed.bake_time_minutes);
           if (parsed.bake_temp_celsius) bakeTemp = Number(parsed.bake_temp_celsius);
           if (parsed.notes !== undefined) noteText = parsed.notes;
+          if (itemsList.length === 0 && Array.isArray(parsed.items) && parsed.items.length > 0) {
+            itemsList = parsed.items.map((it: any) => ({
+              ...it,
+              quantity: Number(it.quantity || it.qty || 0),
+              qty: Number(it.quantity || it.qty || 0),
+              unit: it.unit || 'g',
+              cost: Number(it.line_cost || it.cost || 0),
+            }));
+          }
         } catch {}
+      }
+
+      // Nếu vẫn rỗng, kiểm tra mảng fallback mặc định
+      if (itemsList.length === 0 && Array.isArray(fallback)) {
+        const matchedFb = fallback.find(
+          (fb: any) => fb.name?.toLowerCase().trim() === r.name?.toLowerCase().trim() || fb.id === r.id
+        );
+        if (matchedFb && Array.isArray(matchedFb.items) && matchedFb.items.length > 0) {
+          itemsList = matchedFb.items.map((it: any) => ({
+            ...it,
+            quantity: Number(it.quantity || it.qty || 0),
+            qty: Number(it.quantity || it.qty || 0),
+            unit: it.unit || 'g',
+            cost: Number(it.line_cost || it.cost || 0),
+          }));
+        }
       }
 
       return normalizeRecipe({

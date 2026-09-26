@@ -802,11 +802,43 @@ export async function executePushToSQL(
         if (raw) currentRecs = JSON.parse(raw);
       } catch {}
 
+      // Tải trước danh sách nguyên liệu hiện có từ Supabase để ánh xạ an toàn
+      const { data: currentIngredients } = await supabase.from('ingredients').select('id, name');
+      const ingNameMap = new Map<string, string>();
+      (currentIngredients || []).forEach((ci: any) => {
+        if (ci.name && ci.id) ingNameMap.set(ci.name.toLowerCase().trim(), ci.id);
+      });
+
       for (const item of recipesToPush) {
         const br = item.backupItem;
         const isValidUUID = (id?: string) =>
           Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
         const recipeId = isValidUUID(br.id) ? br.id : crypto.randomUUID();
+
+        // Xác định danh sách items chuẩn xác (ưu tiên br.items, fallback qua notes, rồi qua template)
+        let effectiveItems: any[] = Array.isArray(br.items) ? br.items : [];
+        if (effectiveItems.length === 0 && br.notes && typeof br.notes === 'string' && br.notes.trim().startsWith('{')) {
+          try {
+            const p = JSON.parse(br.notes);
+            if (Array.isArray(p.items) && p.items.length > 0) effectiveItems = p.items;
+          } catch {}
+        }
+        if (effectiveItems.length === 0) {
+          const { DEFAULT_BAKERY_RECIPES } = await import('@/lib/constants/bakeryData');
+          const matched = DEFAULT_BAKERY_RECIPES.find(
+            (dr) => dr.name?.toLowerCase().trim() === br.name?.toLowerCase().trim() || dr.id === br.id
+          );
+          if (matched && Array.isArray(matched.items)) effectiveItems = matched.items;
+        }
+
+        const bakeTime = Number(br.bake_time_minutes) > 0 ? Number(br.bake_time_minutes) : 25;
+        const bakeTemp = Number(br.bake_temp_celsius) > 0 ? Number(br.bake_temp_celsius) : 190;
+        const notesObj = {
+          bake_time_minutes: bakeTime,
+          bake_temp_celsius: bakeTemp,
+          notes: typeof br.notes === 'string' && !br.notes.startsWith('{') ? br.notes : '',
+          items: effectiveItems,
+        };
 
         try {
           await supabase.from('recipes').delete().eq('name', br.name);
@@ -815,30 +847,50 @@ export async function executePushToSQL(
             id: recipeId,
             name: br.name,
             yield_qty: Number(br.yield_qty || 1),
-            yield_unit: br.yield_unit || 'Cái',
+            yield_unit: br.yield_unit || 'chiếc',
             total_material_cost: Number(br.total_material_cost || 0),
             cost_per_unit: Number(br.cost_per_unit || 0),
+            notes: JSON.stringify(notesObj),
+            is_active: true,
           });
 
-          if (Array.isArray(br.items) && br.items.length > 0) {
-            const itemsToInsert = br.items.map((it: any) => ({
-              recipe_id: recipeId,
-              ingredient_id: it.ingredient_id,
-              quantity: Number(it.quantity || 0),
-              unit: it.unit || 'g',
-              line_cost: Number(it.line_cost || it.cost || 0),
-            }));
-            await supabase.from('recipe_items').insert(itemsToInsert);
+          if (effectiveItems.length > 0) {
+            const itemsToInsert = effectiveItems.map((it: any) => {
+              let ingId = it.ingredient_id;
+              if (!isValidUUID(ingId)) {
+                const foundId = ingNameMap.get((it.name || '').toLowerCase().trim());
+                if (foundId) ingId = foundId;
+              }
+              return {
+                recipe_id: recipeId,
+                ingredient_id: ingId,
+                quantity: Number(it.quantity || it.qty || 0),
+                unit: it.unit || 'g',
+                line_cost: Number(it.line_cost || it.cost || 0),
+              };
+            }).filter((it: any) => isValidUUID(it.ingredient_id));
+
+            if (itemsToInsert.length > 0) {
+              await supabase.from('recipe_items').insert(itemsToInsert);
+            }
           }
         } catch (recErr) {
           console.warn('Lỗi push recipe Supabase:', recErr);
         }
 
+        const enrichedRecipe = {
+          ...br,
+          id: recipeId,
+          bake_time_minutes: bakeTime,
+          bake_temp_celsius: bakeTemp,
+          items: effectiveItems,
+        };
+
         const idx = currentRecs.findIndex((r) => r.name?.toLowerCase().trim() === br.name?.toLowerCase().trim());
         if (idx >= 0) {
-          currentRecs[idx] = { ...currentRecs[idx], ...br };
+          currentRecs[idx] = { ...currentRecs[idx], ...enrichedRecipe };
         } else {
-          currentRecs.unshift(br);
+          currentRecs.unshift(enrichedRecipe);
         }
 
         details.recipesPushed++;

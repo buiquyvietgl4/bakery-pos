@@ -1413,7 +1413,17 @@ export async function restoreLocalFromBackupData(rawData: any): Promise<{ succes
     }
 
     if (Array.isArray(data.recipes)) {
-      localSnapshot['bakery_recipes'] = JSON.stringify(data.recipes);
+      const enrichedRecipes = data.recipes.map((r: any) => {
+        let rItems = Array.isArray(r.items) ? r.items : [];
+        if (rItems.length === 0 && r.notes && typeof r.notes === 'string' && r.notes.trim().startsWith('{')) {
+          try {
+            const p = JSON.parse(r.notes);
+            if (Array.isArray(p.items) && p.items.length > 0) rItems = p.items;
+          } catch {}
+        }
+        return { ...r, items: rItems };
+      });
+      localSnapshot['bakery_recipes'] = JSON.stringify(enrichedRecipes);
     }
 
     if (Array.isArray(data.expenses)) {

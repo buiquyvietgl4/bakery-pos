@@ -648,7 +648,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     } catch {}
   }
 
-  // 2. Công thức BOM
+  // 2. Công thức BOM & 3. Nguyên vật liệu kho
   let recipes: any[] = [];
   if (typeof window !== 'undefined') {
     try {
@@ -657,13 +657,98 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     } catch {}
   }
 
-  // 3. Nguyên vật liệu kho
   let ingredients: any[] = [];
   if (typeof window !== 'undefined') {
     try {
       const rawI = localStorage.getItem('bakery_ingredients');
       if (rawI) ingredients = JSON.parse(rawI);
     } catch {}
+  }
+
+  // Tự động kéo trực tiếp từ CSDL Supabase để đảm bảo đầy đủ định mức nguyên liệu (items)
+  if (typeof navigator !== 'undefined' && navigator.onLine) {
+    try {
+      const [recsRes, itemsRes, ingsRes] = await Promise.all([
+        supabase.from('recipes').select('*').eq('is_active', true),
+        supabase.from('recipe_items').select('*'),
+        supabase.from('ingredients').select('*'),
+      ]);
+
+      if (ingsRes.data && ingsRes.data.length > 0) {
+        ingredients = ingsRes.data;
+      }
+
+      if (recsRes.data && recsRes.data.length > 0) {
+        const cleanRecs = recsRes.data.filter((r: any) => !r.name?.startsWith('SYS_'));
+        const ingMap = new Map((ingredients || []).map((i: any) => [i.id, i]));
+        const items = itemsRes.data || [];
+        const itemsByRecipe = new Map<string, any[]>();
+        items.forEach((it: any) => {
+          if (!itemsByRecipe.has(it.recipe_id)) itemsByRecipe.set(it.recipe_id, []);
+          const ing = ingMap.get(it.ingredient_id);
+          itemsByRecipe.get(it.recipe_id)!.push({
+            id: it.id,
+            ingredient_id: it.ingredient_id,
+            name: ing?.name || it.ingredient_name || 'Nguyên liệu',
+            quantity: Number(it.quantity) || 0,
+            qty: Number(it.quantity) || 0,
+            unit: it.unit || ing?.unit || 'g',
+            cost: Number(it.line_cost) || 0,
+            line_cost: Number(it.line_cost) || 0,
+          });
+        });
+
+        recipes = cleanRecs.map((r: any) => {
+          let rItems = itemsByRecipe.get(r.id) || [];
+          if (rItems.length === 0 && r.notes && typeof r.notes === 'string' && r.notes.trim().startsWith('{')) {
+            try {
+              const parsed = JSON.parse(r.notes);
+              if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+                rItems = parsed.items;
+              }
+            } catch {}
+          }
+          if (rItems.length === 0 && Array.isArray(DEFAULT_BAKERY_RECIPES)) {
+            const defRec = DEFAULT_BAKERY_RECIPES.find(
+              (dr) => dr.name?.toLowerCase().trim() === r.name?.toLowerCase().trim() || dr.id === r.id
+            );
+            if (defRec && Array.isArray(defRec.items)) {
+              rItems = defRec.items;
+            }
+          }
+          return {
+            ...r,
+            items: rItems,
+          };
+        });
+      }
+    } catch (dbErr) {
+      console.warn('Lỗi lấy recipes/recipe_items từ Supabase cho backup:', dbErr);
+    }
+  }
+
+  // Đảm bảo mọi recipe đều có items hợp lệ không bị rỗng
+  if (Array.isArray(recipes) && recipes.length > 0) {
+    recipes = recipes.map((r: any) => {
+      let rItems = Array.isArray(r.items) ? r.items : [];
+      if (rItems.length === 0 && r.notes && typeof r.notes === 'string' && r.notes.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(r.notes);
+          if (Array.isArray(parsed.items) && parsed.items.length > 0) {
+            rItems = parsed.items;
+          }
+        } catch {}
+      }
+      if (rItems.length === 0 && Array.isArray(DEFAULT_BAKERY_RECIPES)) {
+        const defRec = DEFAULT_BAKERY_RECIPES.find(
+          (dr) => dr.name?.toLowerCase().trim() === r.name?.toLowerCase().trim() || dr.id === r.id
+        );
+        if (defRec && Array.isArray(defRec.items)) {
+          rItems = defRec.items;
+        }
+      }
+      return { ...r, items: rItems };
+    });
   }
 
   // 4. Lịch sử biến động kho & Hao hụt & Vật tư

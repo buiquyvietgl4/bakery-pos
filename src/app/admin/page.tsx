@@ -2124,6 +2124,7 @@ export default function AdminDashboard() {
           bake_time_minutes: bakeTime,
           bake_temp_celsius: bakeTemp,
           notes: newRecipeNotes,
+          items: formattedItems,
         });
 
         if (editingRecipeId) {
