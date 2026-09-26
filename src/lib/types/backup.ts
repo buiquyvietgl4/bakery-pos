@@ -140,9 +140,11 @@ export interface BakeryBackupData {
     vietqr?: any;
     ewallet?: any;
     printer?: any;
+    print_templates?: any;
     telegram?: any;
     branding?: any;
     security?: any;
+    admin_pin?: string | null;
     cake_costing?: any;
     tax_household?: any;
     tax_policy?: any;

@@ -71,9 +71,8 @@ export function saveCakeCostingConfig(config: CustomCakeCostingConfig): void {
         .from('recipes')
         .upsert(
           {
-            id: 'sys-cake-costing-config',
+            id: '00000000-0000-0000-0000-000000000015',
             name: 'SYS_CONFIG_CAKE_COSTING',
-            category: 'Hệ thống',
             yield_qty: 1,
             yield_unit: 'config',
             cost_per_unit: 0,
@@ -87,6 +86,32 @@ export function saveCakeCostingConfig(config: CustomCakeCostingConfig): void {
           if (error) console.warn('[CakeCosting] Lỗi đồng bộ Supabase:', error);
         });
     } catch {}
+  }
+}
+
+/**
+ * Lưu cấu hình định mức chi phí bánh đặt lên CSDL Supabase
+ */
+export async function saveCakeCostingConfigToDb(config: CustomCakeCostingConfig): Promise<void> {
+  saveCakeCostingConfig(config);
+  try {
+    await supabase
+      .from('recipes')
+      .upsert(
+        {
+          id: '00000000-0000-0000-0000-000000000015',
+          name: 'SYS_CONFIG_CAKE_COSTING',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          notes: JSON.stringify(config),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+  } catch (err) {
+    console.warn('[CakeCosting] Lỗi saveCakeCostingConfigToDb:', err);
   }
 }
 

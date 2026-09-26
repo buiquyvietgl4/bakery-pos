@@ -702,3 +702,39 @@ export function clearAllPrintTemplates(): void {
   }
 }
 
+/**
+ * Thu thập toàn bộ các mẫu in nhiệt tùy chỉnh để sao lưu
+ */
+export function getAllPrintTemplatesForBackup(): Record<string, any> {
+  if (typeof window === 'undefined') return {};
+  const res: Record<string, any> = {};
+  const keys = [
+    'bakery_print_sticker_template_50x30',
+    'bakery_print_sticker_template_50x40',
+    'bakery_print_receipt_template_80mm',
+    'bakery_print_receipt_template_58mm',
+  ];
+  for (const k of keys) {
+    try {
+      const val = localStorage.getItem(k);
+      if (val) res[k] = JSON.parse(val);
+    } catch {}
+  }
+  return res;
+}
+
+/**
+ * Khôi phục các mẫu in nhiệt tùy chỉnh từ bản sao lưu
+ */
+export function restorePrintTemplatesFromBackup(templates: Record<string, any>): void {
+  if (typeof window === 'undefined' || !templates) return;
+  for (const [k, val] of Object.entries(templates)) {
+    if (k.startsWith('bakery_print_') && val) {
+      try {
+        localStorage.setItem(k, JSON.stringify(val));
+      } catch {}
+    }
+  }
+  window.dispatchEvent(new CustomEvent(PRINT_TEMPLATE_UPDATED_EVENT, { detail: { type: 'restored' } }));
+}
+

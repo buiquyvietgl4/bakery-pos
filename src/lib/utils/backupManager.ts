@@ -17,6 +17,7 @@ import { supabase } from '@/lib/supabase/client';
 import { getTelegramConfig } from './telegramNotify';
 import { getPrinterConfig } from './printerManager';
 import { getStoreBranding } from './storeBranding';
+import { getAllPrintTemplatesForBackup } from './printTemplateManager';
 
 const CONFIG_KEY = 'bakery_auto_backup_config';
 const DB_NAME = 'bakery_backup_handles_db';
@@ -1082,9 +1083,11 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       vietqr: vietqrConfig,
       ewallet: ewalletConfig,
       printer: printerConfig,
+      print_templates: getAllPrintTemplatesForBackup(),
       telegram: telegramConfig,
       branding: getStoreBranding(),
       security: securityConfig,
+      admin_pin: typeof window !== 'undefined' ? localStorage.getItem('bakery_admin_pin') || null : null,
       cake_costing: cakeCostingConfig,
       tax_household: taxHouseholdConfig,
       tax_policy: taxPolicyConfig,
@@ -1384,9 +1387,20 @@ export function normalizeBackupData(rawJson: any): BakeryBackupData {
   const settings: any = {
     vietqr: ls.bakery_vietqr_config || null,
     ewallet: ls.bakery_ewallet_config || null,
+    printer: ls.bakery_printer_config || null,
+    print_templates: {
+      bakery_print_sticker_template_50x30: ls.bakery_print_sticker_template_50x30 || null,
+      bakery_print_sticker_template_50x40: ls.bakery_print_sticker_template_50x40 || null,
+      bakery_print_receipt_template_80mm: ls.bakery_print_receipt_template_80mm || null,
+      bakery_print_receipt_template_58mm: ls.bakery_print_receipt_template_58mm || null,
+    },
     branding: ls.bakery_store_branding || null,
     telegram: ls.bakery_telegram_config || null,
     security: ls.bakery_security_config || null,
+    admin_pin: ls.bakery_admin_pin || null,
+    cake_costing: ls.bakery_cake_costing_config || null,
+    tax_household: ls.bakery_tax_household_config || null,
+    tax_policy: ls.bakery_tax_policy_config || null,
     full_cake_bom_config: ls.bakery_full_bom_config || null,
     autobank: ls.bakery_autobank_config || null,
     transfer_verify: ls.bakery_transfer_verification_config || null,

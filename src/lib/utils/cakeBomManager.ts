@@ -83,7 +83,6 @@ export async function syncCakeBomConfigToDb(config: FullCakeBomConfig): Promise<
       {
         id: '00000000-0000-0000-0000-000000000014',
         name: 'SYS_CONFIG_FULL_BOM',
-        category: 'Hệ thống',
         yield_qty: 1,
         yield_unit: 'config',
         cost_per_unit: defPkg?.costPrice || 0,

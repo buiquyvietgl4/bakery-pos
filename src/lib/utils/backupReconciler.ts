@@ -16,6 +16,11 @@ import { saveVietqrConfigToDb, saveEwalletConfigToDb } from './paymentSync';
 import { saveStoreBranding, saveStoreBrandingToDb } from './storeBranding';
 import { syncCakeBomConfigToDb } from './cakeBomManager';
 import { filterActiveProducts } from './productManager';
+import { saveSecurityConfigToDb } from '@/lib/auth/AuthContext';
+import { saveShiftHistoryToDb, saveCurrentShiftToDb } from './shiftSync';
+import { saveClosingRecordsToDb } from './closingManager';
+import { saveCakeCostingConfigToDb } from './customCakeCosting';
+import { restorePrintTemplatesFromBackup } from './printTemplateManager';
 
 const BASE_BUCKET = 'bakery-images';
 
@@ -220,14 +225,20 @@ export async function reconcileBackupWithCurrentState(backupData: BakeryBackupDa
       // Kiểm tra xem có gì thay đổi giữa backup và hiện tại không
       const statusDiff = bo.status !== existing.status;
       const amountDiff = Math.abs((Number(bo.total_amount) || 0) - (Number(existing.total_amount) || 0)) > 1;
-      const itemsDiff = (bo.items?.length || 0) !== (existing.items?.length || existing.order_items?.length || 0);
+      const dbHasItems = Array.isArray(existing.order_items) && existing.order_items.length > 0;
+      const localHasItems = Array.isArray(existing.items) && existing.items.length > 0;
+      const existingCount = dbHasItems ? existing.order_items.length : (localHasItems ? existing.items.length : 0);
+      const itemsCountDiff = (bo.items?.length || 0) !== existingCount;
+      const dbMissingItems = (bo.items?.length || 0) > 0 && !dbHasItems;
+      const itemsDiff = itemsCountDiff || dbMissingItems;
 
       if (statusDiff || amountDiff || itemsDiff) {
         byEntity.orders.updatedCount++;
         const changes: string[] = [];
         if (statusDiff) changes.push(`Trạng thái: ${existing.status} ➔ ${bo.status}`);
         if (amountDiff) changes.push(`Tổng tiền: ${existing.total_amount} ➔ ${bo.total_amount}`);
-        if (itemsDiff) changes.push(`Số món bánh: ${existing.items?.length || 0} ➔ ${bo.items?.length || 0}`);
+        if (dbMissingItems) changes.push(`Bổ sung chi tiết món lên CSDL Cloud (${bo.items?.length || 0} món)`);
+        else if (itemsCountDiff) changes.push(`Số món bánh: ${existingCount} ➔ ${bo.items?.length || 0}`);
 
         byEntity.orders.items.push({
           entityType: 'orders',
@@ -978,9 +989,11 @@ export async function executePushToSQL(
           bo.items.forEach((it: any) => {
             orderItemsToInsert.push({
               order_id: orderId,
+              product_id: isValidUUID(it.product_id) ? it.product_id : null,
               product_name_snapshot: it.product_name_snapshot || it.name || 'Bánh',
               quantity: Number(it.quantity || 1),
               unit_price: Number(it.unit_price || 0),
+              unit_cost: Number(it.unit_cost || 0),
               notes: it.notes || '',
             });
           });
@@ -1085,16 +1098,38 @@ export async function executePushToSQL(
       } catch {}
     }
 
-    if (backupData.shifts && Array.isArray(backupData.shifts)) {
+    // ── CA BÁN HÀNG & LỊCH SỬ KÉT TIỀN (SHIFTS & CURRENT SHIFT) ──
+    if (backupData.shifts && Array.isArray(backupData.shifts) && backupData.shifts.length > 0) {
       try {
         localStorage.setItem('bakery_shift_history', JSON.stringify(backupData.shifts));
+        await saveShiftHistoryToDb(backupData.shifts).catch(console.error);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bakery_shift_history_updated', { detail: backupData.shifts }));
+        }
       } catch {}
     }
     if (backupData.current_shift) {
       try {
         localStorage.setItem('bakery_current_shift', JSON.stringify(backupData.current_shift));
+        await saveCurrentShiftToDb(backupData.current_shift).catch(console.error);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bakery_current_shift_updated', { detail: backupData.current_shift }));
+        }
       } catch {}
     }
+
+    // ── CHỐT SỔ KẾ TOÁN (ACCOUNTING CLOSINGS) ──
+    if (backupData.accounting_closings && Array.isArray(backupData.accounting_closings) && backupData.accounting_closings.length > 0) {
+      try {
+        localStorage.setItem('bakery_closing_records', JSON.stringify(backupData.accounting_closings));
+        await saveClosingRecordsToDb(backupData.accounting_closings).catch(console.error);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bakery_closing_records_updated', { detail: backupData.accounting_closings[0] }));
+        }
+      } catch {}
+    }
+
+    // ── LỊCH SỬ ĐỔI TRẢ HÀNG & THÔNG BÁO ──
     if (backupData.order_returns && Array.isArray(backupData.order_returns)) {
       try {
         localStorage.setItem('bakery_order_returns', JSON.stringify(backupData.order_returns));
@@ -1104,6 +1139,75 @@ export async function executePushToSQL(
       try {
         localStorage.setItem('bakery_notification_history', JSON.stringify(backupData.notification_history));
         localStorage.setItem('bakery_notifs_initialized', 'true');
+      } catch {}
+    }
+
+    // ── ĐƠN TẠM GIỮ, MẺ NƯỚNG LÒ, CHUYỂN KHOẢN & METADATA ──
+    if (backupData.held_orders && Array.isArray(backupData.held_orders)) {
+      try {
+        localStorage.setItem('bakery_held_orders', JSON.stringify(backupData.held_orders));
+      } catch {}
+    }
+    if (backupData.oven_batches && Array.isArray(backupData.oven_batches)) {
+      try {
+        localStorage.setItem('bakery_oven_batches', JSON.stringify(backupData.oven_batches));
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bakery_oven_batches_updated', { detail: backupData.oven_batches }));
+        }
+      } catch {}
+    }
+    if (backupData.pending_transfers && Array.isArray(backupData.pending_transfers)) {
+      try {
+        localStorage.setItem('bakery_pending_transfers', JSON.stringify(backupData.pending_transfers));
+      } catch {}
+    }
+    if (backupData.resolved_transfers && Array.isArray(backupData.resolved_transfers)) {
+      try {
+        localStorage.setItem('bakery_resolved_transfers', JSON.stringify(backupData.resolved_transfers));
+      } catch {}
+    }
+    if (backupData.delivery_alert_config || (backupData.settings as any)?.delivery_alert_config) {
+      try {
+        const da = backupData.delivery_alert_config || (backupData.settings as any)?.delivery_alert_config;
+        localStorage.setItem('bakery_delivery_alert_config', JSON.stringify(da));
+      } catch {}
+    }
+    if (backupData.autobank_config || backupData.settings?.autobank) {
+      try {
+        const ab = backupData.autobank_config || backupData.settings?.autobank;
+        localStorage.setItem('bakery_autobank_config', JSON.stringify(ab));
+      } catch {}
+    }
+    if (backupData.transfer_verify_config || backupData.settings?.transfer_verify) {
+      try {
+        const tv = backupData.transfer_verify_config || backupData.settings?.transfer_verify;
+        localStorage.setItem('bakery_transfer_verification_config', JSON.stringify(tv));
+      } catch {}
+    }
+    if (backupData.product_metadata && typeof backupData.product_metadata === 'object') {
+      try {
+        localStorage.setItem('bakery_product_metadata', JSON.stringify(backupData.product_metadata));
+        localStorage.setItem('bakery_product_metadata_map', JSON.stringify(backupData.product_metadata));
+      } catch {}
+    }
+
+    // ── CÀI ĐẶT BẢO MẬT & MÃ PIN (SECURITY CONFIG & PIN) ──
+    const secConfig = backupData.security_config || backupData.settings?.security;
+    if (secConfig) {
+      try {
+        localStorage.setItem('bakery_security_config', JSON.stringify(secConfig));
+        if (secConfig.adminPin) {
+          localStorage.setItem('bakery_admin_pin', secConfig.adminPin);
+        }
+        await saveSecurityConfigToDb(secConfig).catch(console.error);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bakery_security_config_updated', { detail: secConfig }));
+        }
+      } catch {}
+    }
+    if (backupData.settings?.admin_pin) {
+      try {
+        localStorage.setItem('bakery_admin_pin', backupData.settings.admin_pin);
       } catch {}
     }
 
@@ -1149,15 +1253,51 @@ export async function executePushToSQL(
           const { error: printerErr } = await supabase.from('recipes').upsert({
             id: '00000000-0000-0000-0000-000000000018',
             name: 'SYS_CONFIG_PRINTER',
-            category: 'Hệ thống',
+            yield_qty: 1,
+            yield_unit: 'config',
+            cost_per_unit: 0,
             notes: JSON.stringify(backupData.settings.printer),
             is_active: false,
-          });
+          }, { onConflict: 'id' });
           if (printerErr) console.error('Lỗi lưu SYS_CONFIG_PRINTER:', printerErr);
+        }
+        if (backupData.settings.print_templates) {
+          restorePrintTemplatesFromBackup(backupData.settings.print_templates);
         }
         if (backupData.settings.full_cake_bom_config) {
           localStorage.setItem('bakery_full_bom_config', JSON.stringify(backupData.settings.full_cake_bom_config));
           await syncCakeBomConfigToDb(backupData.settings.full_cake_bom_config).catch(console.error);
+        }
+        if (backupData.settings.cake_costing) {
+          await saveCakeCostingConfigToDb(backupData.settings.cake_costing).catch(console.error);
+        }
+        if (backupData.settings.tax_household) {
+          localStorage.setItem('bakery_tax_household_config', JSON.stringify(backupData.settings.tax_household));
+          const { error: taxErr } = await supabase.from('recipes').upsert({
+            id: '00000000-0000-0000-0000-000000000017',
+            name: 'SYS_CONFIG_TAX_HOUSEHOLD',
+            yield_qty: 1,
+            yield_unit: 'config',
+            cost_per_unit: 0,
+            notes: JSON.stringify(backupData.settings.tax_household),
+            is_active: false,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+          if (taxErr) console.warn('Lỗi lưu SYS_CONFIG_TAX_HOUSEHOLD:', taxErr);
+        }
+        if (backupData.settings.tax_policy) {
+          localStorage.setItem('bakery_tax_policy_config', JSON.stringify(backupData.settings.tax_policy));
+          const { error: polErr } = await supabase.from('recipes').upsert({
+            id: '00000000-0000-0000-0000-000000000019',
+            name: 'SYS_CONFIG_TAX_POLICY',
+            yield_qty: 1,
+            yield_unit: 'config',
+            cost_per_unit: 0,
+            notes: JSON.stringify(backupData.settings.tax_policy),
+            is_active: false,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'id' });
+          if (polErr) console.warn('Lỗi lưu SYS_CONFIG_TAX_POLICY:', polErr);
         }
       } catch {}
     }

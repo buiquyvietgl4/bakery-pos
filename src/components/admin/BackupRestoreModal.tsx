@@ -465,6 +465,10 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
       expenses: selectedEntities.expenses ? selectedBackupData.expenses : [],
       cashflow: selectedEntities.expenses ? selectedBackupData.cashflow : [],
       images: selectedEntities.images ? selectedBackupData.images : [],
+      shifts: selectedEntities.branding ? selectedBackupData.shifts : [],
+      current_shift: selectedEntities.branding ? selectedBackupData.current_shift : null,
+      accounting_closings: selectedEntities.branding ? selectedBackupData.accounting_closings : [],
+      security_config: selectedEntities.branding ? selectedBackupData.security_config : undefined,
       settings: selectedEntities.branding
         ? {
             ...(selectedBackupData.settings || {}),
