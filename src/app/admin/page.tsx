@@ -1596,7 +1596,7 @@ export default function AdminDashboard() {
 
     // Tự động kéo dữ liệu Cloud: Công thức BOM, Chi phí OPEX, Sổ quỹ, Bánh hỏng, Kiểm kê, Chốt sổ
     fetchRecipesFromDb().then((recs) => {
-      if (recs && recs.length > 0) setRecipes(recs);
+      if (recs && recs.length > 0) setRecipes(recs.map(normalizeRecipe));
     }).catch(console.error);
 
     fetchExpensesFromDb().then((exps) => {
@@ -1771,7 +1771,7 @@ export default function AdminDashboard() {
     window.addEventListener('bakery_products_updated', handleStockUpdate);
 
     const handleRecipesUpdate = (e: any) => {
-      if (e.detail && Array.isArray(e.detail)) setRecipes(e.detail);
+      if (e.detail && Array.isArray(e.detail)) setRecipes(e.detail.map(normalizeRecipe));
       else setRecipes(getStoredRecipes());
     };
     const handleExpensesUpdate = (e: any) => {
@@ -4675,7 +4675,7 @@ export default function AdminDashboard() {
                             {rec.suggested_price && (
                               <>
                                 <span className="text-zinc-400">•</span>
-                                <span className="text-amber-700 font-bold">Giá bán gợi ý: {rec.suggested_price.toLocaleString('vi-VN')}₫</span>
+                                <span className="text-amber-700 font-bold">Giá bán gợi ý: {(Number(rec.suggested_price) || 0).toLocaleString('vi-VN')}₫</span>
                               </>
                             )}
                           </div>
@@ -6623,7 +6623,7 @@ export default function AdminDashboard() {
                     <div>
                       <h3 className="font-black text-base text-zinc-900">{rec.name}</h3>
                       <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-zinc-500">
-                        <span>Định lượng mẻ: <b>{rec.yield_qty} {rec.yield_unit || 'chiếc'}</b></span>
+                        <span>Định lượng mẻ: <b>{rec.yield_qty || 1} {rec.yield_unit || 'chiếc'}</b></span>
                         <span className="text-zinc-300">•</span>
                         <span className="inline-flex items-center gap-1 font-bold text-orange-700 bg-orange-50 px-2.5 py-0.5 rounded-lg border border-orange-200/80 text-[11px]">
                           ⏱️ {rec.bake_time_minutes || 25} phút • 🌡️ {rec.bake_temp_celsius || 190}°C
@@ -6633,10 +6633,10 @@ export default function AdminDashboard() {
                     <div className="flex items-start gap-2">
                       <div className="text-right">
                         <span className="block font-black text-base text-orange-600">
-                          {rec.cost_per_unit.toLocaleString('vi-VN')}₫ / {rec.yield_unit || 'chiếc'}
+                          {(Number(rec.cost_per_unit) || 0).toLocaleString('vi-VN')}₫ / {rec.yield_unit || 'chiếc'}
                         </span>
                         <span className="text-[11px] font-bold text-zinc-400">
-                          Food Cost: {rec.target_food_cost_pct}%
+                          Food Cost: {rec.target_food_cost_pct || 35}%
                         </span>
                       </div>
                       <button
@@ -6666,7 +6666,7 @@ export default function AdminDashboard() {
                           <span className="text-zinc-700">
                             {it.name} <span className="text-zinc-400 font-mono">({p.baseDisplay}{p.unit})</span>
                           </span>
-                          <span className="font-bold text-zinc-900">{it.cost.toLocaleString('vi-VN')}₫</span>
+                          <span className="font-bold text-zinc-900">{(Number(it.cost ?? it.line_cost) || 0).toLocaleString('vi-VN')}₫</span>
                         </div>
                       );
                     })}
@@ -6675,7 +6675,7 @@ export default function AdminDashboard() {
                   <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/60 flex justify-between items-center text-xs font-bold">
                     <span className="text-amber-800">Giá bán đề xuất:</span>
                     <span className="text-sm font-black text-amber-700">
-                      {rec.suggested_price.toLocaleString('vi-VN')}₫
+                      {(Number(rec.suggested_price) || (rec.cost_per_unit ? Math.round(Number(rec.cost_per_unit) / 0.35) : 0)).toLocaleString('vi-VN')}₫
                     </span>
                   </div>
                 </div>

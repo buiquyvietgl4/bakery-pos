@@ -42,6 +42,9 @@ export interface BakeryRecipe {
   yield_unit: string;
   bake_time_minutes: number;
   bake_temp_celsius: number;
+  cost_per_unit?: number;
+  target_food_cost_pct?: number;
+  suggested_price?: number;
   description?: string;
   notes?: string;
   items: RecipeIngredientItem[];
@@ -56,6 +59,9 @@ export const DEFAULT_BAKERY_RECIPES: BakeryRecipe[] = [
     category: 'Bánh mì & Bánh tươi',
     yield_qty: 10,
     yield_unit: 'chiếc',
+    cost_per_unit: 4060,
+    target_food_cost_pct: 35,
+    suggested_price: 12000,
     bake_time_minutes: 25,
     bake_temp_celsius: 190,
     description: 'Cán 3 lần gấp',
@@ -73,6 +79,9 @@ export const DEFAULT_BAKERY_RECIPES: BakeryRecipe[] = [
     category: 'Bánh kem & Bánh đặt',
     yield_qty: 1,
     yield_unit: 'chiếc',
+    cost_per_unit: 121245,
+    target_food_cost_pct: 35,
+    suggested_price: 350000,
     bake_time_minutes: 25,
     bake_temp_celsius: 190,
     description: 'Cốt bánh mềm mịn, sốt phô mai',
@@ -93,6 +102,9 @@ export const DEFAULT_BAKERY_RECIPES: BakeryRecipe[] = [
     category: 'Bánh mì & Bánh tươi',
     yield_qty: 5,
     yield_unit: 'chiếc',
+    cost_per_unit: 6788,
+    target_food_cost_pct: 35,
+    suggested_price: 20000,
     bake_time_minutes: 25,
     bake_temp_celsius: 190,
     description: 'Nướng vàng 180 độ',

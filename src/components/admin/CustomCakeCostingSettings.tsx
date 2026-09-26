@@ -1393,7 +1393,7 @@ export function CustomCakeCostingSettings() {
                       >
                         {config.fillings.map((f) => (
                           <option key={f.id} value={f.id}>
-                            {f.name} (+{f.costPrice.toLocaleString('vi-VN')}₫)
+                            {f.name} (+{(Number(f.costPrice) || 0).toLocaleString('vi-VN')}₫)
                           </option>
                         ))}
                       </select>
@@ -1408,16 +1408,16 @@ export function CustomCakeCostingSettings() {
                         Ước tính mẫu size {sampleSize?.diameterCm || 18}cm:
                       </span>
                       <div>
-                        Cốt: <b className="text-zinc-900">{calc.baseCost.toLocaleString('vi-VN')}₫</b>
+                        Cốt: <b className="text-zinc-900">{(Number(calc?.baseCost) || 0).toLocaleString('vi-VN')}₫</b>
                       </div>
                       <div>
-                        Kem: <b className="text-zinc-900">{calc.creamCost.toLocaleString('vi-VN')}₫</b>
+                        Kem: <b className="text-zinc-900">{(Number(calc?.creamCost) || 0).toLocaleString('vi-VN')}₫</b>
                       </div>
                       <div>
-                        Nhân: <b className="text-zinc-900">{calc.fillingCost.toLocaleString('vi-VN')}₫</b>
+                        Nhân: <b className="text-zinc-900">{(Number(calc?.fillingCost) || 0).toLocaleString('vi-VN')}₫</b>
                       </div>
                       <div>
-                        Quà tặng: <b className="text-zinc-900">{calc.freeAccessoriesCost.toLocaleString('vi-VN')}₫</b>
+                        Quà tặng: <b className="text-zinc-900">{(Number(calc?.freeAccessoriesCost) || 0).toLocaleString('vi-VN')}₫</b>
                       </div>
                     </div>
 
@@ -1425,7 +1425,7 @@ export function CustomCakeCostingSettings() {
                       <div>
                         <span className="text-[10px] text-zinc-500 block">Cost BOM tham khảo:</span>
                         <span className="font-black text-rose-600 text-sm">
-                          {calc.totalCost.toLocaleString('vi-VN')}₫
+                          {(Number(calc?.totalCost) || 0).toLocaleString('vi-VN')}₫
                         </span>
                       </div>
                       <div className="pl-4 border-l border-zinc-200">
@@ -1433,7 +1433,7 @@ export function CustomCakeCostingSettings() {
                           Giá Bán Gợi Ý (~{preset.targetFoodCostPct || config.targetFoodCostPct}%):
                         </span>
                         <span className="font-black text-pink-700 text-base">
-                          {calc.suggestedPrice.toLocaleString('vi-VN')}₫
+                          {(Number(calc?.suggestedPrice) || 0).toLocaleString('vi-VN')}₫
                         </span>
                       </div>
                     </div>
@@ -1664,7 +1664,7 @@ export function CustomCakeCostingSettings() {
                           <div className="text-right">
                             <span className="text-[10px] text-zinc-400 block leading-tight">Thành tiền</span>
                             <span className="font-black text-rose-600 text-xs">
-                              {lineCost.toLocaleString('vi-VN')}₫
+                              {(Number(lineCost) || 0).toLocaleString('vi-VN')}₫
                             </span>
                           </div>
 
@@ -1735,9 +1735,14 @@ export function CustomCakeCostingSettings() {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-pink-900">Tổng Vốn Cốt Bánh (BOM):</span>
                 <span className="font-black text-rose-600 text-lg">
-                  {editingBaseBom.size.bomIngredients
-                    .reduce((sum, it) => sum + it.quantity * it.unitCost, 0)
-                    .toLocaleString('vi-VN')}
+                  {(
+                    Number(
+                      editingBaseBom.size.bomIngredients.reduce(
+                        (sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unitCost) || 0),
+                        0
+                      )
+                    ) || 0
+                  ).toLocaleString('vi-VN')}
                   ₫
                 </span>
               </div>
@@ -1927,7 +1932,7 @@ export function CustomCakeCostingSettings() {
                           <div className="text-right">
                             <span className="text-[10px] text-zinc-400 block leading-tight">Thành tiền</span>
                             <span className="font-black text-rose-600 text-xs">
-                              {lineCost.toLocaleString('vi-VN')}₫
+                              {(Number(lineCost) || 0).toLocaleString('vi-VN')}₫
                             </span>
                           </div>
 
@@ -1998,9 +2003,14 @@ export function CustomCakeCostingSettings() {
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-pink-900">Tổng Vốn Kem Phủ (BOM):</span>
                 <span className="font-black text-rose-600 text-lg">
-                  {editingCreamBom.size.bomIngredients
-                    .reduce((sum, it) => sum + it.quantity * it.unitCost, 0)
-                    .toLocaleString('vi-VN')}
+                  {(
+                    Number(
+                      editingCreamBom.size.bomIngredients.reduce(
+                        (sum, it) => sum + (Number(it.quantity) || 0) * (Number(it.unitCost) || 0),
+                        0
+                      )
+                    ) || 0
+                  ).toLocaleString('vi-VN')}
                   ₫
                 </span>
               </div>

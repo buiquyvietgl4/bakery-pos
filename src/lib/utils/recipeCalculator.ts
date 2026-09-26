@@ -84,15 +84,34 @@ export function normalizeRecipe<T = any>(recipe: T): T {
   const rec = recipe as any;
   const items = (rec.items || []).map((item: any) => {
     const parsed = parseRecipeItem(item);
+    const itemCost = Number(item.cost !== undefined ? item.cost : (item.line_cost !== undefined ? item.line_cost : 0)) || 0;
     return {
       ...item,
       quantity: parsed.numericQty,
       qty: parsed.numericQty,
       unit: parsed.unit,
+      cost: itemCost,
+      line_cost: itemCost,
     };
   });
+
+  const totalCost = items.reduce((sum: number, it: any) => sum + (Number(it.cost) || 0), 0);
+  const yieldQty = Number(rec.yield_qty) > 0 ? Number(rec.yield_qty) : 1;
+  const costPerUnit = Number(rec.cost_per_unit) > 0 ? Number(rec.cost_per_unit) : Math.round(totalCost / yieldQty);
+  const targetFoodCost = Number(rec.target_food_cost_pct) > 0 ? Number(rec.target_food_cost_pct) : 35;
+  const suggestedPrice = Number(rec.suggested_price) > 0
+    ? Number(rec.suggested_price)
+    : Math.round((costPerUnit / (targetFoodCost / 100)) / 1000) * 1000;
+
   return {
     ...rec,
+    yield_qty: yieldQty,
+    yield_unit: rec.yield_unit || 'chiếc',
+    cost_per_unit: costPerUnit,
+    target_food_cost_pct: targetFoodCost,
+    suggested_price: suggestedPrice,
+    bake_time_minutes: Number(rec.bake_time_minutes) || 25,
+    bake_temp_celsius: Number(rec.bake_temp_celsius) || 190,
     items,
   };
 }
