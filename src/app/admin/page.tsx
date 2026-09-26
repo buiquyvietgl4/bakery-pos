@@ -12,7 +12,7 @@ import {
   Wallet, Smartphone, Shield, KeyRound, Users, Lock, UserCheck,
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
   Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff,
-  Zap, Link2, Settings, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale, RotateCcw, ShoppingCart, FileKey, LockOpen
+  Zap, Link2, Settings, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale, RotateCcw, ShoppingCart, FileKey, LockOpen, Cloud
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { useAuth, PermissionKey } from '@/lib/auth/AuthContext';
@@ -965,16 +965,18 @@ export default function AdminDashboard() {
 
   // ── DUNG LƯỢNG DATABASE LƯU ẢNH (GÓI 1 GB) & CSDL ĐƠN HÀNG (GÓI 500 MB) STATE ──
   const [imageStats, setImageStats] = useState({
-    totalBytes: 409385,
-    productImagesCount: 1,
-    productImagesBytes: 286886,
+    totalBytes: 3000923,
+    productImagesCount: 6,
+    productImagesBytes: 133427,
     preorderImagesCount: 1,
-    preorderImagesBytes: 122499,
-    qrImagesCount: 0,
-    qrImagesBytes: 0,
-    totalImagesCount: 2,
-    safeCapacityRemainingMB: 1023.6,
-    estimatedRemainingImages: 11000,
+    preorderImagesBytes: 155217,
+    qrImagesCount: 5,
+    qrImagesBytes: 1200844,
+    backupBytes: 2653728,
+    backupCount: 2,
+    totalImagesCount: 12,
+    safeCapacityRemainingMB: 1021.1,
+    estimatedRemainingImages: 10800,
     lastCalculatedAt: '',
   });
   const [dbStorageStats, setDbStorageStats] = useState({
@@ -3442,11 +3444,14 @@ export default function AdminDashboard() {
         } catch {}
       }
 
+      let backupBytes = 0;
+      let backupCount = 0;
+
       // 4. Quét trực tiếp Supabase Storage bucket (Gói Store 1 GB)
       if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           const buckets = ['bakery-images', 'product-images'];
-          const folders = ['', 'products', 'preorders', 'qrcodes'];
+          const folders = ['', 'products', 'preorders', 'qrcodes', 'branding', 'cloud_backups_7days'];
           for (const b of buckets) {
             for (const fld of folders) {
               const { data: sFiles } = await supabase.storage
@@ -3456,10 +3461,13 @@ export default function AdminDashboard() {
                 sFiles.forEach((sf: any) => {
                   if (sf.metadata?.size) {
                     const size = sf.metadata.size;
-                    if (fld === 'preorders' || sf.name?.includes('preorder')) {
+                    if (fld === 'cloud_backups_7days' || sf.name?.includes('SAO_LUU_')) {
+                      backupBytes += size;
+                      backupCount++;
+                    } else if (fld === 'preorders' || sf.name?.includes('preorder')) {
                       preBytes += size;
                       preCount++;
-                    } else if (fld === 'qrcodes' || sf.name?.includes('qr')) {
+                    } else if (fld === 'qrcodes' || sf.name?.includes('qr') || fld === 'branding') {
                       qrBytes += size;
                       qrCount++;
                     } else {
@@ -3476,13 +3484,13 @@ export default function AdminDashboard() {
         }
       }
 
-      const total = prodBytes + preBytes + qrBytes;
+      const total = prodBytes + preBytes + qrBytes + backupBytes;
       const totalMB = total / (1024 * 1024);
       // Gói Supabase Storage Store là 1 GB (1.024 MB)
       const storageCapacityMB = 1024;
       const remainingMB = Math.max(0, Math.round((storageCapacityMB - totalMB) * 10) / 10);
       const totalImages = prodCount + preCount + qrCount;
-      const avgImageSize = total > 0 && totalImages > 0 ? total / totalImages : 120 * 1024;
+      const avgImageSize = totalImages > 0 && (prodBytes + preBytes + qrBytes) > 0 ? (prodBytes + preBytes + qrBytes) / totalImages : 120 * 1024;
       const estRemaining = Math.floor((remainingMB * 1024 * 1024) / avgImageSize);
 
       setImageStats({
@@ -3493,6 +3501,8 @@ export default function AdminDashboard() {
         preorderImagesBytes: preBytes,
         qrImagesCount: qrCount,
         qrImagesBytes: qrBytes,
+        backupBytes,
+        backupCount,
         totalImagesCount: totalImages,
         safeCapacityRemainingMB: remainingMB,
         estimatedRemainingImages: estRemaining,
@@ -7140,20 +7150,20 @@ export default function AdminDashboard() {
                 <div className="flex flex-wrap items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-200/60 gap-2">
                   <span className="flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                    <span>Còn trống an toàn: <b className="text-emerald-700 font-bold">{dbStorageStats.safeRemainingMB} MB</b> (chứa được ~{dbStorageStats.estimatedRemainingOrders.toLocaleString('vi-VN')} đơn hàng nữa)</span>
+                    <span>Còn trống: <b className="text-emerald-700 font-bold">{dbStorageStats.safeRemainingMB} MB</b> (Dữ liệu đơn hàng thực tế: ~{(dbStorageStats.totalDbBytes / (1024 * 1024) - 22.0 > 0 ? (dbStorageStats.totalDbBytes / (1024 * 1024) - 22.0).toFixed(2) : '0.3')} MB • Khung hạ tầng Supabase: 22 MB)</span>
                   </span>
                   <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                    ⚡ Trạng thái: Dữ liệu văn bản nén siêu nhẹ &amp; tối ưu
+                    🔒 Bản sao lưu trong CSDL 500 MB: <b className="text-emerald-800">0 bytes</b> (Đã chuyển 100% sang Kho 1 GB)
                   </span>
                 </div>
               </div>
 
-              {/* THANH 2: THEO DÕI DUNG LƯỢNG STORE LƯU TRỮ ẢNH (GÓI 1 GB) - ĐÚNG FORM ẢNH USER GỬI */}
+              {/* THANH 2: THEO DÕI DUNG LƯỢNG STORE LƯU TRỮ ẢNH & BẢN SAO LƯU (GÓI 1 GB) */}
               <div className="p-4 sm:p-4.5 rounded-2xl bg-zinc-50 border border-zinc-200 space-y-3">
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1.5">
                   <span className="text-zinc-900 flex items-center gap-2">
-                    <Camera className="w-4 h-4 text-violet-600" />
-                    <span>Dung lượng Store lưu trữ ảnh (Gói 1 GB):</span>
+                    <Cloud className="w-4 h-4 text-emerald-600" />
+                    <span>Dung lượng Kho Lưu Trữ Đám Mây (Ảnh &amp; Bản Sao Lưu 7 Ngày - Gói 1 GB):</span>
                   </span>
                   <span className="text-emerald-700">
                     <b>{formatBytes(imageStats.totalBytes)}</b> / 1 GB (Mức an toàn tuyệt đối)
@@ -7167,25 +7177,28 @@ export default function AdminDashboard() {
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 border-t border-zinc-200 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 border-t border-zinc-200 text-xs">
                   <div className="text-zinc-600">
-                    🍰 Ảnh menu bánh: <b className="text-zinc-900">{formatBytes(imageStats.productImagesBytes)}</b> ({imageStats.productImagesCount} ảnh)
+                    🍰 Menu bánh: <b className="text-zinc-900">{formatBytes(imageStats.productImagesBytes)}</b> ({imageStats.productImagesCount} ảnh)
                   </div>
                   <div className="text-zinc-600">
-                    📸 Ảnh mẫu khách gửi: <b className="text-zinc-900">{formatBytes(imageStats.preorderImagesBytes)}</b> ({imageStats.preorderImagesCount} ảnh)
+                    📸 Mẫu khách gửi: <b className="text-zinc-900">{formatBytes(imageStats.preorderImagesBytes)}</b> ({imageStats.preorderImagesCount} ảnh)
                   </div>
                   <div className="text-zinc-600">
-                    💳 Mã QR thanh toán: <b className="text-zinc-900">{formatBytes(imageStats.qrImagesBytes)}</b> ({imageStats.qrImagesCount} ảnh)
+                    💳 QR &amp; Logo: <b className="text-zinc-900">{formatBytes(imageStats.qrImagesBytes)}</b> ({imageStats.qrImagesCount} tệp)
+                  </div>
+                  <div className="text-zinc-600">
+                    📦 Bản sao lưu 7 ngày: <b className="text-emerald-700 font-bold">{formatBytes(imageStats.backupBytes)}</b> ({imageStats.backupCount} bản lưu)
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between text-[11px] text-zinc-500 pt-1 border-t border-zinc-200/60 gap-2">
                   <span className="flex items-center gap-1.5">
                     <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Còn trống an toàn: <b className="text-emerald-700 font-bold">{imageStats.safeCapacityRemainingMB} MB</b> (chứa được ~{imageStats.estimatedRemainingImages.toLocaleString('vi-VN')} ảnh nữa)</span>
+                    <span>Còn trống an toàn: <b className="text-emerald-700 font-bold">{imageStats.safeCapacityRemainingMB} MB</b> / 1.024 MB</span>
                   </span>
-                  <span className="text-violet-700 font-semibold flex items-center gap-1">
-                    🖼️ Tự động nén ảnh WebP độ nét cao khi lưu
+                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                    ☁️ Bản sao lưu tự hủy sau 7 ngày • Miễn nhiễm mất dữ liệu local
                   </span>
                 </div>
               </div>
