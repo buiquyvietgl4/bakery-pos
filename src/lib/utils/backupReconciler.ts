@@ -9,8 +9,12 @@ import {
 } from '@/lib/types/backup';
 import { supabase } from '@/lib/supabase/client';
 import { db } from '@/lib/db/dexie';
-import { getStockAdjustmentLogs } from './stockAdjustmentManager';
-import { getSpoilageLogs, saveSpoilageLogs } from './spoilageManager';
+import { getStockAdjustmentLogs, saveStockAdjustmentLogsToDb } from './stockAdjustmentManager';
+import { getSpoilageLogs, saveSpoilageLogs, saveSpoilageLogsToDb } from './spoilageManager';
+import { saveExpensesToDb } from './accountingSync';
+import { saveVietqrConfigToDb, saveEwalletConfigToDb } from './paymentSync';
+import { saveStoreBranding, saveStoreBrandingToDb } from './storeBranding';
+import { syncCakeBomConfigToDb } from './cakeBomManager';
 import { filterActiveProducts } from './productManager';
 
 const BASE_BUCKET = 'bakery-images';
@@ -598,6 +602,7 @@ export async function executePushToSQL(
     stockLogsPushed: number;
     spoilageLogsPushed: number;
     expensesPushed: number;
+    brandingPushed: boolean;
   };
 }> {
   const details = {
@@ -609,6 +614,7 @@ export async function executePushToSQL(
     stockLogsPushed: 0,
     spoilageLogsPushed: 0,
     expensesPushed: 0,
+    brandingPushed: false,
   };
 
   const notify = (percent: number, msg: string) => {
@@ -1040,7 +1046,7 @@ export async function executePushToSQL(
     }
 
     // ── BƯỚC 6: LỊCH SỬ KHO, HAO HỤT, THU CHI & NGHIỆP VỤ ──
-    notify(90, 'Đang cập nhật Nhật ký biến động kho & Sổ thu chi...');
+    notify(90, 'Đang cập nhật Nhật ký biến động kho & Sổ thu chi lên Đám mây...');
     const newStockLogs = report.byEntity.stock_adjustments.items
       .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
       .map((it) => it.backupItem);
@@ -1050,6 +1056,7 @@ export async function executePushToSQL(
       try {
         localStorage.setItem('bakery_stock_adjustment_logs', JSON.stringify(mergedLogs));
         details.stockLogsPushed = newStockLogs.length;
+        await saveStockAdjustmentLogsToDb(mergedLogs).catch(console.error);
       } catch {}
     }
 
@@ -1061,6 +1068,7 @@ export async function executePushToSQL(
       const mergedSpoilage = [...newSpoilageLogs, ...currentSpoilage];
       saveSpoilageLogs(mergedSpoilage);
       details.spoilageLogsPushed = newSpoilageLogs.length;
+      await saveSpoilageLogsToDb(mergedSpoilage).catch(console.error);
     }
 
     const newExpenses = report.byEntity.expenses.items
@@ -1073,6 +1081,7 @@ export async function executePushToSQL(
         const mergedE = [...newExpenses, ...currentE];
         localStorage.setItem('bakery_expenses', JSON.stringify(mergedE));
         details.expensesPushed = newExpenses.length;
+        await saveExpensesToDb(mergedE).catch(console.error);
       } catch {}
     }
 
@@ -1098,23 +1107,57 @@ export async function executePushToSQL(
       } catch {}
     }
 
+    // ── CÀI ĐẶT THƯƠNG HIỆU & HỆ THỐNG (BRANDING, VIETQR, PRINTER, EWALLET, CAKE BOM) ──
+    notify(95, 'Đang khôi phục thương hiệu và cài đặt hệ thống...');
+    const brandingToRestore = backupData.settings?.branding || (backupData.storeName ? {
+      storeName: backupData.storeName,
+      slogan: 'Artisan Bakery & Coffee • Bánh Tươi Mỗi Ngày',
+      logoUrl: '',
+      phone: '0901 234 567',
+      address: '123 Đường Bánh Ngọt, TP.HCM',
+      footerMessage: 'Cảm ơn Quý khách & Hẹn gặp lại!',
+      orderNumberPrefix: 'BK',
+      orderCounter: 1,
+      autoResetDaily: true,
+    } : null);
+
+    if (brandingToRestore) {
+      try {
+        saveStoreBranding(brandingToRestore);
+        await saveStoreBrandingToDb(brandingToRestore).catch(console.error);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bakery_branding_updated', { detail: brandingToRestore }));
+        }
+        details.brandingPushed = true;
+      } catch (err) {
+        console.warn('Lỗi khi khôi phục thương hiệu:', err);
+      }
+    }
+
     if (backupData.settings) {
       try {
         if (backupData.settings.vietqr) {
           localStorage.setItem('bakery_vietqr_config', JSON.stringify(backupData.settings.vietqr));
+          await saveVietqrConfigToDb(backupData.settings.vietqr).catch(console.error);
         }
         if (backupData.settings.ewallet) {
           localStorage.setItem('bakery_ewallet_config', JSON.stringify(backupData.settings.ewallet));
+          await saveEwalletConfigToDb(backupData.settings.ewallet).catch(console.error);
         }
         if (backupData.settings.printer) {
           localStorage.setItem('bakery_printer_config', JSON.stringify(backupData.settings.printer));
-        }
-        if (backupData.settings.branding) {
-          localStorage.setItem('bakery_store_branding', JSON.stringify(backupData.settings.branding));
-          window.dispatchEvent(new CustomEvent('bakery_branding_updated', { detail: backupData.settings.branding }));
+          const { error: printerErr } = await supabase.from('recipes').upsert({
+            id: '00000000-0000-0000-0000-000000000018',
+            name: 'SYS_CONFIG_PRINTER',
+            category: 'Hệ thống',
+            notes: JSON.stringify(backupData.settings.printer),
+            is_active: false,
+          });
+          if (printerErr) console.error('Lỗi lưu SYS_CONFIG_PRINTER:', printerErr);
         }
         if (backupData.settings.full_cake_bom_config) {
           localStorage.setItem('bakery_full_bom_config', JSON.stringify(backupData.settings.full_cake_bom_config));
+          await syncCakeBomConfigToDb(backupData.settings.full_cake_bom_config).catch(console.error);
         }
       } catch {}
     }
@@ -1162,13 +1205,14 @@ export async function executePushToSQL(
       window.dispatchEvent(new Event('bakery_vietqr_updated'));
       window.dispatchEvent(new Event('bakery_ewallet_updated'));
       window.dispatchEvent(new Event('bakery_printer_updated'));
+      window.dispatchEvent(new Event('bakery_branding_updated'));
     }
 
     notify(100, 'Hoàn thành khôi phục và đẩy dữ liệu lên SQL thành công!');
 
     return {
       success: true,
-      message: `Khôi phục thành công! Đã đẩy ${details.productsPushed} sản phẩm, ${details.ordersPushed} đơn hàng, ${details.ingredientsPushed} nguyên liệu, ${details.imagesUploaded} hình ảnh lên CSDL Cloud SQL.`,
+      message: `Khôi phục thành công! Đã đẩy ${details.productsPushed} sản phẩm, ${details.ordersPushed} đơn hàng, ${details.ingredientsPushed} nguyên liệu, ${details.imagesUploaded} hình ảnh${details.brandingPushed ? ', thương hiệu tiệm' : ''} lên CSDL Cloud SQL.`,
       details,
     };
   } catch (error: any) {

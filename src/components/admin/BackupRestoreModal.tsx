@@ -106,6 +106,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     spoilage_logs: true,
     expenses: true,
     images: true,
+    branding: true,
   });
   const [isSavingCloudBackup, setIsSavingCloudBackup] = useState(false);
 
@@ -443,6 +444,16 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
     setPushResult(null);
 
     // Lọc dữ liệu theo các phần người dùng đã tùy chọn tích chọn
+    const brandingToRestore = selectedEntities.branding
+      ? selectedBackupData.settings?.branding || (selectedBackupData.storeName ? {
+          storeName: selectedBackupData.storeName,
+          slogan: 'Artisan Bakery & Coffee • Bánh Tươi Mỗi Ngày',
+          phone: '0901 234 567',
+          address: '123 Đường Bánh Ngọt, TP.HCM',
+          footerMessage: 'Cảm ơn Quý khách & Hẹn gặp lại!',
+        } : undefined)
+      : undefined;
+
     const filteredBackupData: BakeryBackupData = {
       ...selectedBackupData,
       products: selectedEntities.products ? selectedBackupData.products : [],
@@ -454,6 +465,12 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
       expenses: selectedEntities.expenses ? selectedBackupData.expenses : [],
       cashflow: selectedEntities.expenses ? selectedBackupData.cashflow : [],
       images: selectedEntities.images ? selectedBackupData.images : [],
+      settings: selectedEntities.branding
+        ? {
+            ...(selectedBackupData.settings || {}),
+            branding: brandingToRestore,
+          }
+        : {},
     };
 
     try {
@@ -1240,6 +1257,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                             orders: true, products: true, ingredients: true,
                             recipes: true, stock_adjustments: true,
                             spoilage_logs: true, expenses: true, images: true,
+                            branding: true,
                           })}
                           className="font-bold text-emerald-700 hover:text-emerald-900 underline cursor-pointer"
                         >
@@ -1252,6 +1270,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                             orders: false, products: false, ingredients: false,
                             recipes: false, stock_adjustments: false,
                             spoilage_logs: false, expenses: false, images: false,
+                            branding: false,
                           })}
                           className="font-bold text-gray-500 hover:text-gray-700 underline cursor-pointer"
                         >
@@ -1260,7 +1279,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                       {[
                         { key: 'orders', label: 'Đơn hàng & Đặt trước', count: selectedBackupData?.orders?.length || 0, icon: '📋' },
                         { key: 'products', label: 'Bánh & Sản phẩm', count: selectedBackupData?.products?.length || 0, icon: '🎂' },
@@ -1270,6 +1289,14 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                         { key: 'spoilage_logs', label: 'Báo cáo hao hụt bánh', count: selectedBackupData?.spoilage_logs?.length || 0, icon: '🗑️' },
                         { key: 'expenses', label: 'Sổ quỹ thu chi & Chi phí', count: (selectedBackupData?.expenses?.length || 0) + (selectedBackupData?.cashflow?.length || 0), icon: '💰' },
                         { key: 'images', label: 'Hình ảnh bánh & QR (Cloud)', count: selectedBackupData?.images?.length || 0, icon: '🖼️' },
+                        { 
+                          key: 'branding', 
+                          label: 'Thương hiệu & Thiết lập tiệm', 
+                          count: (selectedBackupData?.settings?.branding ? 1 : (selectedBackupData?.storeName ? 1 : 0)) + 
+                                 (selectedBackupData?.settings?.vietqr ? 1 : 0) + 
+                                 (selectedBackupData?.settings?.printer ? 1 : 0), 
+                          icon: '🏪' 
+                        },
                       ].map((item) => (
                         <label
                           key={item.key}
@@ -1405,7 +1432,7 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
                         <div className="font-bold">{pushResult.message}</div>
                         {pushResult.details && (
                           <div className="text-xs mt-1.5 opacity-90">
-                            • Sản phẩm: {pushResult.details.productsPushed} | Đơn hàng: {pushResult.details.ordersPushed} | Nguyên liệu: {pushResult.details.ingredientsPushed} | Hình ảnh: {pushResult.details.imagesUploaded} | Lịch sử kho: {pushResult.details.stockLogsPushed}
+                            • Sản phẩm: {pushResult.details.productsPushed} | Đơn hàng: {pushResult.details.ordersPushed} | Nguyên liệu: {pushResult.details.ingredientsPushed} | Hình ảnh: {pushResult.details.imagesUploaded} | Lịch sử kho: {pushResult.details.stockLogsPushed}{pushResult.details.brandingPushed ? ' | Thương hiệu: Đã phục hồi' : ''}
                           </div>
                         )}
                       </div>

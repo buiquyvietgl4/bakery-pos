@@ -77,11 +77,11 @@ export async function syncCakeBomConfigToDb(config: FullCakeBomConfig): Promise<
     console.warn('Lỗi upsert bakery_bom_settings:', err);
   }
 
-  // 2. Supabase Cloud SQL: Dự phòng kép vào bảng recipes với id sys-full-bom-config
+  // 2. Supabase Cloud SQL: Dự phòng kép vào bảng recipes với id 00000000-0000-0000-0000-000000000014
   try {
     await supabase.from('recipes').upsert(
       {
-        id: 'sys-full-bom-config',
+        id: '00000000-0000-0000-0000-000000000014',
         name: 'SYS_CONFIG_FULL_BOM',
         category: 'Hệ thống',
         yield_qty: 1,
