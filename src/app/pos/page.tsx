@@ -1286,14 +1286,49 @@ export default function POSPage() {
         console.warn('Dexie DB warning:', dbErr);
       }
 
-      currentProducts = currentProducts.map((p: any) => ({
-        ...p,
-        selling_price: Number(p.selling_price ?? p.price ?? 0),
-        stock_qty: p.stock_qty !== undefined ? p.stock_qty : 0,
-        min_stock_alert: p.min_stock_alert !== undefined ? p.min_stock_alert : 3,
-        unit: p.unit || 'cái',
-        is_semi_finished: p.is_semi_finished !== undefined ? p.is_semi_finished : false,
-      }));
+      let localStocks: Record<string, number> = {};
+      if (typeof window !== 'undefined') {
+        try {
+          const rawS = localStorage.getItem('bakery_stocks');
+          if (rawS) localStocks = JSON.parse(rawS);
+        } catch {}
+      }
+
+      currentProducts = currentProducts.map((p: any) => {
+        const nameKey = p.name ? String(p.name).toLowerCase().trim() : '';
+        const stockFromMap = localStocks[p.id] ?? (nameKey ? localStocks[nameKey] : undefined);
+        const resolvedStock = stockFromMap !== undefined
+          ? Number(stockFromMap)
+          : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : 10);
+
+        return {
+          ...p,
+          selling_price: Number(p.selling_price ?? p.price ?? 0),
+          stock_qty: resolvedStock,
+          min_stock_alert: p.min_stock_alert !== undefined ? p.min_stock_alert : 3,
+          unit: p.unit || 'cái',
+          is_semi_finished: p.is_semi_finished !== undefined ? p.is_semi_finished : false,
+        };
+      });
+
+      // Tự động phục hồi tồn kho nếu phát hiện toàn bộ bánh bị rơi vào trạng thái 0 bất thường (sau reset/khôi phục lỗi)
+      const allZeroStock = currentProducts.length > 0 && currentProducts.every((p: any) => !p.stock_qty || Number(p.stock_qty) === 0);
+      if (allZeroStock) {
+        console.warn('⚠️ [POS] Phát hiện toàn bộ sản phẩm có tồn kho bằng 0, đang tự động phục hồi về tồn kho ban đầu (10)...');
+        currentProducts = currentProducts.map((p: any) => ({
+          ...p,
+          stock_qty: 10,
+        }));
+        const healedStocks: Record<string, number> = { ...localStocks };
+        currentProducts.forEach((p: any) => {
+          healedStocks[p.id] = 10;
+          if (p.name) healedStocks[String(p.name).toLowerCase().trim()] = 10;
+        });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bakery_stocks', JSON.stringify(healedStocks));
+        }
+      }
+
       currentProducts = filterActiveProducts(currentProducts);
 
       setProducts(currentProducts);

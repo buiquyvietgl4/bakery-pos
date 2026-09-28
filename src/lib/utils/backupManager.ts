@@ -614,14 +614,16 @@ async function urlOrBlobToBase64(url: string): Promise<string | null> {
 export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   // 1. Sản phẩm
   let products: any[] = [];
+  let stockMap: Record<string, number> = {};
   if (typeof window !== 'undefined') {
     try {
       const rawP = localStorage.getItem('bakery_products');
       if (rawP) products = JSON.parse(rawP);
+      const rawS = localStorage.getItem('bakery_stocks');
+      if (rawS) stockMap = JSON.parse(rawS);
     } catch {}
   }
 
-  // Lấy thêm từ Supabase nếu online
   // Lấy thêm từ Supabase nếu online
   if (typeof navigator !== 'undefined' && navigator.onLine) {
     try {
@@ -647,6 +649,40 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
         });
       }
     } catch {}
+  }
+
+  // Luôn làm giàu stock_qty cho mọi sản phẩm từ bản đồ bakery_stocks
+  products = products.map((p) => {
+    const nameKey = p.name ? String(p.name).toLowerCase().trim() : '';
+    const sVal = stockMap[p.id] ?? (nameKey ? stockMap[nameKey] : undefined);
+    const resolvedStock = sVal !== undefined
+      ? Number(sVal)
+      : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : 10);
+    return {
+      ...p,
+      stock_qty: resolvedStock,
+    };
+  });
+
+  // Tự phục hồi nếu toàn bộ bánh bị 0 trong bộ nhớ
+  const allZeroInExport = products.length > 0 && products.every((p) => !p.stock_qty || Number(p.stock_qty) <= 0);
+  if (allZeroInExport) {
+    const logs = getStockAdjustmentLogs();
+    const adjMap = new Map<string, number>();
+    logs.forEach((l) => {
+      if (l.newQuantity !== undefined) {
+        if (l.productId) adjMap.set(String(l.productId).toLowerCase().trim(), Number(l.newQuantity));
+        if (l.productName) adjMap.set(String(l.productName).toLowerCase().trim(), Number(l.newQuantity));
+      }
+    });
+    products = products.map((p) => {
+      const nameKey = p.name ? String(p.name).toLowerCase().trim() : '';
+      const adj = adjMap.get(String(p.id).toLowerCase().trim()) ?? (nameKey ? adjMap.get(nameKey) : undefined);
+      return {
+        ...p,
+        stock_qty: adj !== undefined ? adj : 10,
+      };
+    });
   }
 
   // 2. Công thức BOM & 3. Nguyên vật liệu kho
@@ -1300,6 +1336,53 @@ export function stopAutoBackupWatcher() {
   isWatcherInitialized = false;
 }
 
+function ensureValidStockQuantities(backup: BakeryBackupData, rawLsBakeryStocks?: any): void {
+  if (!Array.isArray(backup.products) || backup.products.length === 0) return;
+
+  const stockMap: Record<string, number> = {};
+  if (rawLsBakeryStocks && typeof rawLsBakeryStocks === 'object') {
+    Object.assign(stockMap, rawLsBakeryStocks);
+  }
+
+  // Trích xuất nhật ký biến động kho để lấy số lượng thực tế
+  const adjMap = new Map<string, number>();
+  if (Array.isArray(backup.stock_adjustments)) {
+    const sorted = [...backup.stock_adjustments].sort((a: any, b: any) => {
+      const tA = new Date(a.adjustedAt || a.created_at || 0).getTime();
+      const tB = new Date(b.adjustedAt || b.created_at || 0).getTime();
+      return tA - tB;
+    });
+    for (const log of sorted) {
+      const qty = Number(log.newQuantity);
+      if (!isNaN(qty)) {
+        if (log.productId) adjMap.set(String(log.productId).toLowerCase().trim(), qty);
+        if (log.productName) adjMap.set(String(log.productName).toLowerCase().trim(), qty);
+      }
+    }
+  }
+
+  const allZero = backup.products.every((p: any) => !p.stock_qty || Number(p.stock_qty) <= 0);
+
+  backup.products = backup.products.map((p: any) => {
+    const idKey = String(p.id || '').toLowerCase().trim();
+    const nameKey = String(p.name || '').toLowerCase().trim();
+
+    const fromStockMap = stockMap[p.id] ?? (nameKey ? stockMap[nameKey] : undefined);
+    const fromAdj = adjMap.get(idKey) ?? (nameKey ? adjMap.get(nameKey) : undefined);
+    let stock = fromStockMap !== undefined ? fromStockMap : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : undefined);
+
+    // Nếu toàn bộ bánh bị 0 do lỗi trước đó hoặc bánh này chưa có tồn
+    if (allZero || stock === undefined || stock === null) {
+      stock = fromAdj !== undefined ? fromAdj : (stock !== undefined && stock > 0 ? stock : 10);
+    }
+
+    return {
+      ...p,
+      stock_qty: stock,
+    };
+  });
+}
+
 /**
  * Chuẩn hóa tệp sao lưu: hỗ trợ cả chuẩn BakeryBackupData (v2) và tệp pre-reset dump (SAO_LUU_TIEM_BANH_TRUOC_KHI_RESET_...)
  */
@@ -1310,7 +1393,9 @@ export function normalizeBackupData(rawJson: any): BakeryBackupData {
 
   // Nếu đã đúng chuẩn schemaVersion v2 và có mảng sản phẩm
   if (rawJson.schemaVersion === 'bakery-backup-v2' && Array.isArray(rawJson.products)) {
-    return rawJson as BakeryBackupData;
+    const backup = { ...rawJson } as BakeryBackupData;
+    ensureValidStockQuantities(backup, rawJson.localStorage?.bakery_stocks || rawJson.settings?.bakery_stocks);
+    return backup;
   }
 
   // Nếu là tệp sao lưu an toàn trước khi reset (dump từ localStorage + dexie)
@@ -1449,7 +1534,7 @@ export function normalizeBackupData(rawJson: any): BakeryBackupData {
 
   const estSize = JSON.stringify(rawJson).length;
 
-  return {
+  const result: BakeryBackupData = {
     schemaVersion: 'bakery-backup-v2',
     exportedAt: rawJson.exported_at || new Date().toISOString(),
     storeName: ls.bakery_store_branding?.storeName || 'Tiệm Bánh Hạnh Phúc (Bakery ERP)',
@@ -1486,4 +1571,7 @@ export function normalizeBackupData(rawJson: any): BakeryBackupData {
     notification_history,
     settings,
   };
+
+  ensureValidStockQuantities(result, ls.bakery_stocks);
+  return result;
 }

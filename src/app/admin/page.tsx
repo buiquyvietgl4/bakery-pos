@@ -622,10 +622,15 @@ export default function AdminDashboard() {
           if (Array.isArray(parsed)) {
             const decoded = parsed.map(decodeProductWithMeta);
             const active = filterActiveProducts(decoded);
-            return active.map((p: any) => ({
+            const prods = active.map((p: any) => ({
               ...p,
               stock_qty: stockMap[p.id] ?? (p.name ? stockMap[p.name.toLowerCase().trim()] : undefined) ?? p.stock_qty ?? 10,
             }));
+            const allZero = prods.length > 0 && prods.every((p: any) => !p.stock_qty || Number(p.stock_qty) === 0);
+            if (allZero) {
+              return prods.map((p: any) => ({ ...p, stock_qty: 10 }));
+            }
+            return prods;
           }
         }
       } catch {}
@@ -1470,6 +1475,24 @@ export default function AdminDashboard() {
       }
 
       currentProds = filterActiveProducts(currentProds);
+      // Tự động phục hồi tồn kho nếu phát hiện toàn bộ bánh bị 0 do lỗi khôi phục trước đó
+      const allZeroInAdmin = currentProds.length > 0 && currentProds.every((p: any) => !p.stock_qty || Number(p.stock_qty) === 0);
+      if (allZeroInAdmin) {
+        console.warn('⚠️ [ADMIN] Phát hiện toàn bộ sản phẩm có tồn kho bằng 0, đang tự động phục hồi về 10...');
+        let adminStocks: Record<string, number> = {};
+        try {
+          const rawS = localStorage.getItem('bakery_stocks');
+          if (rawS) adminStocks = JSON.parse(rawS);
+        } catch {}
+        currentProds = currentProds.map((p: any) => ({ ...p, stock_qty: 10 }));
+        currentProds.forEach((p: any) => {
+          adminStocks[p.id] = 10;
+          if (p.name) adminStocks[String(p.name).toLowerCase().trim()] = 10;
+        });
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bakery_stocks', JSON.stringify(adminStocks));
+        }
+      }
       setProducts(currentProds);
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_products', JSON.stringify(currentProds));
