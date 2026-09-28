@@ -103,6 +103,7 @@ import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSectio
 import CustomSqlConfigSection from '@/components/admin/CustomSqlConfigSection';
 import LocalSqlConfigSection from '@/components/admin/LocalSqlConfigSection';
 import { ShiftManagementSection } from '@/components/admin/ShiftManagementSection';
+import AccountManagementSection from '@/components/admin/AccountManagementSection';
 import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
@@ -187,6 +188,9 @@ export type { EwalletConfig } from '@/lib/utils/paymentSync';
 export default function AdminDashboard() {
   const {
     isAdmin,
+    canAccessAdmin,
+    user,
+    hasPermission,
     loginAdmin,
     updateAdminCredentials,
     updateKitchenCredentials,
@@ -3691,15 +3695,15 @@ export default function AdminDashboard() {
     }
   };
 
-  if (!isAdmin) {
+  if (!canAccessAdmin) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-md mx-auto space-y-4 min-h-[70vh]">
         <div className="w-16 h-16 rounded-3xl bg-rose-100 text-rose-600 flex items-center justify-center shadow-lg shadow-rose-200">
           <ShieldAlert className="w-9 h-9" />
         </div>
-        <h2 className="text-xl font-black text-zinc-900">Khu Vực Dành Riêng Cho Chủ Tiệm</h2>
+        <h2 className="text-xl font-black text-zinc-900">Khu Vực Quản Trị & Kế Toán</h2>
         <p className="text-xs text-zinc-600 leading-relaxed">
-          Tài khoản hiện tại là <b>Nhân viên (Staff)</b>. Hệ thống tự động bảo vệ và chặn xem giá vốn nguyên liệu, công thức bánh và báo cáo kế toán.
+          Tài khoản <b>{user?.name || 'hiện tại'}</b> chưa được cấp quyền truy cập Quản Trị. Vui lòng đăng nhập tài khoản có quyền Quản trị hoặc nhập mật khẩu Admin để tiếp tục.
         </p>
 
         {/* Form mở khóa nhanh trực tiếp */}
@@ -9375,6 +9379,10 @@ export default function AdminDashboard() {
         <div className="space-y-4">
           {renderSystemSubTabs()}
           <div className="space-y-6 animate-in fade-in duration-200">
+            {/* 1. PHÂN HỆ QUẢN LÝ DANH SÁCH TÀI KHOẢN NGƯỜI DÙNG & PHÂN QUYỀN RIÊNG */}
+            <AccountManagementSection />
+
+            {/* 2. CẤU HÌNH BẢO MẬT GỐC & MÃ PIN CA LÀM VIỆC */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-white rounded-2xl border border-zinc-200 shadow-xs">
             <div>
               <h2 className="text-lg font-black text-zinc-900 flex items-center gap-2">

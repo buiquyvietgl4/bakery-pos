@@ -576,13 +576,15 @@ export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord)
   if (typeof navigator === 'undefined' || !navigator.onLine) return;
   try {
     const { order_number, refund_amount, refund_method, return_type, items } = returnRecord;
-    const newStatus = return_type === 'refund' ? 'refunded' : 'partially_refunded';
+    const clientStatus = return_type === 'refund' ? 'refunded' : 'partially_refunded';
+    // PostgreSQL orders table check constraint chỉ chấp nhận ('pending', 'preparing', 'ready', 'completed', 'cancelled')
+    const dbStatus = return_type === 'refund' ? 'cancelled' : 'completed';
 
-    // 1. Cập nhật trạng thái đơn hàng trên Supabase
+    // 1. Cập nhật trạng thái đơn hàng trên Supabase tuân thủ check constraint
     await supabase
       .from('orders')
       .update({
-        status: newStatus,
+        status: dbStatus,
         updated_at: new Date().toISOString(),
       })
       .eq('order_number', order_number);
@@ -620,40 +622,58 @@ export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord)
       }
     }
 
-    // 3. Cập nhật tồn kho sản phẩm nếu có nhập lại kho
-    for (const item of items) {
-      if (item.restocked && item.product_id) {
-        const { data: pData } = await supabase
-          .from('products')
-          .select('stock_qty')
-          .eq('id', item.product_id)
-          .maybeSingle();
-        if (pData) {
-          const updatedStock = (pData.stock_qty || 0) + item.quantity;
-          await supabase.from('products').update({ stock_qty: updatedStock }).eq('id', item.product_id);
+    // 3. Cập nhật tồn kho sản phẩm vào bakery_stocks & SYS_CONFIG_STOCKS
+    try {
+      let currentStocks: Record<string, number> = {};
+      if (typeof window !== 'undefined') {
+        const raw = localStorage.getItem('bakery_stocks');
+        if (raw) currentStocks = JSON.parse(raw);
+      }
+      let stockChanged = false;
+
+      // Cộng lại kho cho các món được hoàn trả
+      for (const item of items) {
+        if (item.restocked && item.product_id) {
+          const oldStock = Number(currentStocks[item.product_id] ?? 10);
+          currentStocks[item.product_id] = oldStock + item.quantity;
+          stockChanged = true;
         }
       }
-    }
 
-    // Trừ kho cho các món đổi mới
-    if (return_type === 'exchange' && returnRecord.exchange_replacement_items) {
-      for (const repItem of returnRecord.exchange_replacement_items) {
-        if (repItem.product_id) {
-          const { data: pData } = await supabase
-            .from('products')
-            .select('stock_qty')
-            .eq('id', repItem.product_id)
-            .maybeSingle();
-          if (pData) {
-            const updatedStock = Math.max(0, (pData.stock_qty || 0) - repItem.quantity);
-            await supabase.from('products').update({ stock_qty: updatedStock }).eq('id', repItem.product_id);
+      // Trừ kho cho các món đổi mới
+      if (return_type === 'exchange' && returnRecord.exchange_replacement_items) {
+        for (const repItem of returnRecord.exchange_replacement_items) {
+          if (repItem.product_id) {
+            const oldStock = Number(currentStocks[repItem.product_id] ?? 10);
+            currentStocks[repItem.product_id] = Math.max(0, oldStock - repItem.quantity);
+            stockChanged = true;
           }
         }
       }
+
+      if (stockChanged) {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bakery_stocks', JSON.stringify(currentStocks));
+          window.dispatchEvent(new Event('bakery_stocks_updated'));
+        }
+        // Đồng bộ lên SYS_CONFIG_STOCKS trên SQL
+        await supabase.from('recipes').upsert({
+          id: '00000000-0000-0000-0000-00000000002b',
+          name: 'SYS_CONFIG_STOCKS',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          notes: JSON.stringify(currentStocks),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+      }
+    } catch (stockSyncErr) {
+      console.warn('Lỗi cập nhật tồn kho khi đổi trả:', stockSyncErr);
     }
 
     // 4. Phát sóng realtime status update để KDS bếp và các quầy khác cập nhật ngay
-    await broadcastOrderStatusUpdate(order_number, newStatus);
+    await broadcastOrderStatusUpdate(order_number, clientStatus);
   } catch (err) {
     console.warn('Lỗi syncOrderRefundToSupabase:', err);
   }
