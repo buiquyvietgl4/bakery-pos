@@ -11,16 +11,23 @@ import { supabase } from '@/lib/supabase/client';
 import { db } from '@/lib/db/dexie';
 import { getStockAdjustmentLogs, saveStockAdjustmentLogsToDb } from './stockAdjustmentManager';
 import { getSpoilageLogs, saveSpoilageLogs, saveSpoilageLogsToDb } from './spoilageManager';
-import { saveExpensesToDb } from './accountingSync';
-import { saveVietqrConfigToDb, saveEwalletConfigToDb } from './paymentSync';
+import { saveExpensesToDb, saveCashflowToDb } from './accountingSync';
+import { saveVietqrConfigToDb, saveEwalletConfigToDb, saveAutoBankConfigToDb, saveTransferVerificationConfigToDb } from './paymentSync';
 import { saveStoreBranding, saveStoreBrandingToDb } from './storeBranding';
 import { syncCakeBomConfigToDb } from './cakeBomManager';
-import { filterActiveProducts } from './productManager';
+import { filterActiveProducts, syncDeletedProductIdsToDb } from './productManager';
 import { saveSecurityConfigToDb } from '@/lib/auth/AuthContext';
 import { saveShiftHistoryToDb, saveCurrentShiftToDb } from './shiftSync';
 import { saveClosingRecordsToDb } from './closingManager';
 import { saveCakeCostingConfigToDb } from './customCakeCosting';
 import { restorePrintTemplatesFromBackup } from './printTemplateManager';
+import { saveMaterialTransactionsToDb } from './materialTransactionManager';
+import { saveMaterialStockAdjustmentLogsToDb } from './materialStockAdjustmentManager';
+import { saveOrderReturnsToDb } from './orderReturnManager';
+import { saveHeldOrdersToDb } from './heldOrderManager';
+import { saveOvenBatchesToDb } from '@/lib/supabase/realtimeSync';
+import { saveTelegramConfigToDb } from './telegramNotify';
+import { saveDeliveryAlertConfigToDb } from './deliveryAlerts';
 
 const BASE_BUCKET = 'bakery-images';
 
@@ -747,7 +754,8 @@ export async function executePushToSQL(
         const nameKey = String(bp.name || '').toLowerCase().trim();
         const targetStock = currentStocks[bp.id] ?? (nameKey ? currentStocks[nameKey] : undefined) ?? (bp.stock_qty !== undefined && bp.stock_qty !== null ? Number(bp.stock_qty) : 10);
 
-        // Chỉ gửi các cột hợp lệ tồn tại trong CSDL Supabase table products
+        // Chỉ gửi các cột hợp lệ tồn tại trong CSDL Supabase table products:
+        // ['id', 'name', 'category', 'image_url', 'base_cost_price', 'selling_price', 'food_cost_pct', 'is_active', 'is_preorder_only', 'recipe_id', 'created_at', 'updated_at']
         const dbProdRecord: any = {
           id: bp.id,
           name: bp.name,
@@ -757,7 +765,6 @@ export async function executePushToSQL(
           image_url: newImgUrl || null,
           is_preorder_only: bp.is_preorder_only ?? false,
           is_active: bp.is_active ?? true,
-          stock_qty: targetStock,
           updated_at: new Date().toISOString(),
         };
         if (bp.created_at) {
@@ -814,6 +821,20 @@ export async function executePushToSQL(
       localStorage.setItem('bakery_products', JSON.stringify(currentProds));
       localStorage.setItem('bakery_stocks', JSON.stringify(currentStocks));
     }
+
+    // Đồng bộ bản đồ tồn kho bánh lên CSDL Cloud SQL (SYS_CONFIG_STOCKS) để luôn có trên SQL
+    try {
+      await supabase.from('recipes').upsert({
+        id: '00000000-0000-0000-0000-00000000002b',
+        name: 'SYS_CONFIG_STOCKS',
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: 0,
+        notes: JSON.stringify(currentStocks),
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+    } catch {}
 
     try {
       if (currentProds.length > 0) {
@@ -1181,6 +1202,28 @@ export async function executePushToSQL(
       } catch {}
     }
 
+    // ── VẬT TƯ & XUẤT NHẬP KHO (MATERIAL TRANSACTIONS & STOCK ADJUSTMENTS) ──
+    if (backupData.material_transactions && Array.isArray(backupData.material_transactions) && backupData.material_transactions.length > 0) {
+      try {
+        localStorage.setItem('bakery_material_transactions', JSON.stringify(backupData.material_transactions));
+        await saveMaterialTransactionsToDb(backupData.material_transactions).catch(console.error);
+      } catch {}
+    }
+    if (backupData.material_stock_adjustments && Array.isArray(backupData.material_stock_adjustments) && backupData.material_stock_adjustments.length > 0) {
+      try {
+        localStorage.setItem('bakery_material_stock_adjustments', JSON.stringify(backupData.material_stock_adjustments));
+        await saveMaterialStockAdjustmentLogsToDb(backupData.material_stock_adjustments).catch(console.error);
+      } catch {}
+    }
+
+    // ── SỔ QUỸ DÒNG TIỀN (CASHFLOW) ──
+    if (backupData.cashflow && Array.isArray(backupData.cashflow) && backupData.cashflow.length > 0) {
+      try {
+        localStorage.setItem('bakery_cashflow', JSON.stringify(backupData.cashflow));
+        await saveCashflowToDb(backupData.cashflow as any).catch(console.error);
+      } catch {}
+    }
+
     // ── CA BÁN HÀNG & LỊCH SỬ KÉT TIỀN (SHIFTS & CURRENT SHIFT) ──
     if (backupData.shifts && Array.isArray(backupData.shifts) && backupData.shifts.length > 0) {
       try {
@@ -1216,12 +1259,23 @@ export async function executePushToSQL(
     if (backupData.order_returns && Array.isArray(backupData.order_returns)) {
       try {
         localStorage.setItem('bakery_order_returns', JSON.stringify(backupData.order_returns));
+        await saveOrderReturnsToDb(backupData.order_returns).catch(console.error);
       } catch {}
     }
     if (backupData.notification_history && Array.isArray(backupData.notification_history)) {
       try {
         localStorage.setItem('bakery_notification_history', JSON.stringify(backupData.notification_history));
         localStorage.setItem('bakery_notifs_initialized', 'true');
+        await supabase.from('recipes').upsert({
+          id: '00000000-0000-0000-0000-000000000013',
+          name: 'SYS_CONFIG_NOTIFICATION_HISTORY',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          notes: JSON.stringify(backupData.notification_history.slice(0, 200)),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
       } catch {}
     }
 
@@ -1229,11 +1283,13 @@ export async function executePushToSQL(
     if (backupData.held_orders && Array.isArray(backupData.held_orders)) {
       try {
         localStorage.setItem('bakery_held_orders', JSON.stringify(backupData.held_orders));
+        await saveHeldOrdersToDb(backupData.held_orders).catch(console.error);
       } catch {}
     }
     if (backupData.oven_batches && Array.isArray(backupData.oven_batches)) {
       try {
         localStorage.setItem('bakery_oven_batches', JSON.stringify(backupData.oven_batches));
+        await saveOvenBatchesToDb(backupData.oven_batches).catch(console.error);
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('bakery_oven_batches_updated', { detail: backupData.oven_batches }));
         }
@@ -1242,29 +1298,57 @@ export async function executePushToSQL(
     if (backupData.pending_transfers && Array.isArray(backupData.pending_transfers)) {
       try {
         localStorage.setItem('bakery_pending_transfers', JSON.stringify(backupData.pending_transfers));
+        await supabase.from('recipes').upsert({
+          id: '00000000-0000-0000-0000-000000000017',
+          name: 'SYS_CONFIG_PENDING_TRANSFERS',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          notes: JSON.stringify(backupData.pending_transfers),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
       } catch {}
     }
     if (backupData.resolved_transfers && Array.isArray(backupData.resolved_transfers)) {
       try {
         localStorage.setItem('bakery_resolved_transfers', JSON.stringify(backupData.resolved_transfers));
+        await supabase.from('recipes').upsert({
+          id: '00000000-0000-0000-0000-000000000023',
+          name: 'SYS_CONFIG_RESOLVED_TRANSFERS',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          notes: JSON.stringify(backupData.resolved_transfers),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
       } catch {}
     }
-    if (backupData.delivery_alert_config || (backupData.settings as any)?.delivery_alert_config) {
+    const da = backupData.delivery_alert_config || (backupData.settings as any)?.delivery_alert_config;
+    if (da) {
       try {
-        const da = backupData.delivery_alert_config || (backupData.settings as any)?.delivery_alert_config;
         localStorage.setItem('bakery_delivery_alert_config', JSON.stringify(da));
+        await saveDeliveryAlertConfigToDb(da).catch(console.error);
       } catch {}
     }
-    if (backupData.autobank_config || backupData.settings?.autobank) {
+    const ab = backupData.autobank_config || backupData.settings?.autobank;
+    if (ab) {
       try {
-        const ab = backupData.autobank_config || backupData.settings?.autobank;
         localStorage.setItem('bakery_autobank_config', JSON.stringify(ab));
+        await saveAutoBankConfigToDb(ab).catch(console.error);
       } catch {}
     }
-    if (backupData.transfer_verify_config || backupData.settings?.transfer_verify) {
+    const tv = backupData.transfer_verify_config || backupData.settings?.transfer_verify;
+    if (tv) {
       try {
-        const tv = backupData.transfer_verify_config || backupData.settings?.transfer_verify;
         localStorage.setItem('bakery_transfer_verification_config', JSON.stringify(tv));
+        await saveTransferVerificationConfigToDb(tv).catch(console.error);
+      } catch {}
+    }
+    if (backupData.deleted_product_ids && Array.isArray(backupData.deleted_product_ids) && backupData.deleted_product_ids.length > 0) {
+      try {
+        syncDeletedProductIdsToDb(backupData.deleted_product_ids);
       } catch {}
     }
     if (backupData.product_metadata && typeof backupData.product_metadata === 'object') {
@@ -1381,6 +1465,10 @@ export async function executePushToSQL(
             updated_at: new Date().toISOString(),
           }, { onConflict: 'id' });
           if (polErr) console.warn('Lỗi lưu SYS_CONFIG_TAX_POLICY:', polErr);
+        }
+        if (backupData.settings.telegram) {
+          localStorage.setItem('bakery_telegram_config', JSON.stringify(backupData.settings.telegram));
+          await saveTelegramConfigToDb(backupData.settings.telegram).catch(console.error);
         }
       } catch {}
     }

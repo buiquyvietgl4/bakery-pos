@@ -1658,6 +1658,12 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let autobank_config: any = null;
     let transfer_verify_config: any = null;
     let notification_history: any[] = [];
+    let order_returns: any[] = [];
+    let held_orders: any[] = [];
+    let oven_batches: any[] = [];
+    let resolved_transfers: any[] = [];
+    let deleted_product_ids: any[] = [];
+    let cloud_stock_map: Record<string, number> = {};
 
     // Tải cấu hình định mức BOM bánh sinh nhật trực tiếp từ bảng bakery_bom_settings
     try {
@@ -1709,6 +1715,12 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_AUTOBANK') autobank_config = parsed;
           if (row.name === 'SYS_CONFIG_TRANSFER_VERIFY') transfer_verify_config = parsed;
           if (row.name === 'SYS_CONFIG_NOTIFICATION_HISTORY' && Array.isArray(parsed)) notification_history = parsed;
+          if (row.name === 'SYS_CONFIG_ORDER_RETURNS' && Array.isArray(parsed)) order_returns = parsed;
+          if (row.name === 'SYS_CONFIG_HELD_ORDERS' && Array.isArray(parsed)) held_orders = parsed;
+          if (row.name === 'SYS_CONFIG_OVEN_BATCHES' && Array.isArray(parsed)) oven_batches = parsed;
+          if (row.name === 'SYS_CONFIG_RESOLVED_TRANSFERS' && Array.isArray(parsed)) resolved_transfers = parsed;
+          if (row.name === 'SYS_CONFIG_DELETED_PRODUCTS' && Array.isArray(parsed)) deleted_product_ids = parsed;
+          if (row.name === 'SYS_CONFIG_STOCKS' && typeof parsed === 'object') cloud_stock_map = parsed;
         } catch {}
       }
     }
@@ -1781,6 +1793,12 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       tax_policy_config,
       bakery_bom_settings: full_cake_bom_config,
       pending_transfers: pendingTransfers,
+      resolved_transfers,
+      order_returns,
+      held_orders,
+      oven_batches,
+      deleted_product_ids,
+      stocks: cloud_stock_map,
       current_shift,
       shifts: shift_history,
       delivery_alert_config,

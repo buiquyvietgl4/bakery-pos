@@ -137,6 +137,8 @@ import { HeldOrder } from '@/lib/types/heldOrder';
 import { HeldOrdersModal } from '@/components/pos/HeldOrdersModal';
 import { ReturnExchangeModal } from '@/components/pos/ReturnExchangeModal';
 import { OrderReturnRecord } from '@/lib/types/orderReturn';
+import { saveOrderReturnsToDb, fetchOrderReturnsFromDb } from '@/lib/utils/orderReturnManager';
+import { saveHeldOrdersToDb, fetchHeldOrdersFromDb } from '@/lib/utils/heldOrderManager';
 import { matchesOrderSearch } from '@/lib/utils/orderSearch';
 import { getCashflow, saveCashflowLocally, saveCashflowToDb, CashflowTransaction } from '@/lib/utils/accountingSync';
 
@@ -776,6 +778,7 @@ export default function POSPage() {
           });
           localStorage.setItem('bakery_order_returns', JSON.stringify(filteredRet));
           setAllOrderReturns(filteredRet);
+          saveOrderReturnsToDb(filteredRet).catch(console.warn);
         }
       } catch (e) {
         console.warn('Lỗi xóa returns:', e);
@@ -1187,6 +1190,14 @@ export default function POSPage() {
   useEffect(() => {
     fetchSpoilageLogsFromDb().then((logs) => {
       if (logs && logs.length > 0) setSpoilageLogs(logs);
+    }).catch(console.error);
+
+    fetchOrderReturnsFromDb().then((ret) => {
+      if (ret && ret.length > 0) setAllOrderReturns(ret);
+    }).catch(console.error);
+
+    fetchHeldOrdersFromDb().then((held) => {
+      if (held && held.length > 0) setHeldOrders(held);
     }).catch(console.error);
 
     const handleSpoilageUpdate = () => reloadSpoilage();
@@ -2794,6 +2805,7 @@ export default function POSPage() {
     setHeldOrders(updated);
     try {
       localStorage.setItem('bakery_held_orders', JSON.stringify(updated));
+      saveHeldOrdersToDb(updated).catch(console.warn);
     } catch {}
 
     clearCart();
@@ -2844,12 +2856,14 @@ export default function POSPage() {
       setHeldOrders(afterHold);
       try {
         localStorage.setItem('bakery_held_orders', JSON.stringify(afterHold));
+        saveHeldOrdersToDb(afterHold).catch(console.warn);
       } catch {}
     } else {
       const remaining = heldOrders.filter((h) => h.id !== orderToRestore.id);
       setHeldOrders(remaining);
       try {
         localStorage.setItem('bakery_held_orders', JSON.stringify(remaining));
+        saveHeldOrdersToDb(remaining).catch(console.warn);
       } catch {}
     }
 
@@ -2880,6 +2894,7 @@ export default function POSPage() {
     setHeldOrders(remaining);
     try {
       localStorage.setItem('bakery_held_orders', JSON.stringify(remaining));
+      saveHeldOrdersToDb(remaining).catch(console.warn);
     } catch {}
   };
 
@@ -2887,6 +2902,7 @@ export default function POSPage() {
     setHeldOrders([]);
     try {
       localStorage.setItem('bakery_held_orders', JSON.stringify([]));
+      saveHeldOrdersToDb([]).catch(console.warn);
     } catch {}
   };
 
@@ -2897,6 +2913,7 @@ export default function POSPage() {
       const updatedReturns = [returnRecord, ...existingReturns];
       localStorage.setItem('bakery_order_returns', JSON.stringify(updatedReturns));
       setAllOrderReturns(updatedReturns);
+      saveOrderReturnsToDb(updatedReturns).catch(console.warn);
 
       const orderNum = returnRecord.order_number;
       const normOrderNum = String(orderNum || '').replace(/^#/, '').trim().toLowerCase();
