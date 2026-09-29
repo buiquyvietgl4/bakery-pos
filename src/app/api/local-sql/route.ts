@@ -1063,6 +1063,9 @@ LƯU Ý DÀNH CHO MẠNG LAN (CÁC MÁY CON KẾT NỐI QUA PORT):
       if (localDb.settings) {
         localDb.settings.security = data;
       }
+      if (Array.isArray(data?.accounts)) {
+        localDb.user_accounts = data.accounts;
+      }
 
       if (!fs.existsSync(targetDir)) {
         fs.mkdirSync(targetDir, { recursive: true });

@@ -477,6 +477,18 @@ CREATE TABLE IF NOT EXISTS security_config (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS user_accounts (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    password TEXT NOT NULL,
+    phone TEXT,
+    is_active BOOLEAN DEFAULT TRUE,
+    custom_permissions_json TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS vietqr_config (
     id TEXT PRIMARY KEY,
     bank_id TEXT,
@@ -1003,6 +1015,23 @@ ${generateSchemaSql()}
   }
 
   // ----------------------------------------------------------------------------
+  // 10.1 BẢNG TÀI KHOẢN NGƯỜI DÙNG & PHÂN QUYỀN (USER_ACCOUNTS)
+  // ----------------------------------------------------------------------------
+  const accountsList = sec?.accounts || data?.user_accounts || data?.accounts || [];
+  if (Array.isArray(accountsList) && accountsList.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 10.1 BẢNG TÀI KHOẢN NGƯỜI DÙNG & PHÂN QUYỀN (USER_ACCOUNTS)
+-- ----------------------------------------------------------------------------
+`;
+    for (const acc of accountsList) {
+      const customPermsJson = acc.customPermissions ? JSON.stringify(acc.customPermissions) : null;
+      sql += `INSERT INTO user_accounts (id, username, name, role, password, phone, is_active, custom_permissions_json, created_at) VALUES (${sqlEscape(acc.id)}, ${sqlEscape(acc.username)}, ${sqlEscape(acc.name)}, ${sqlEscape(acc.role)}, ${sqlEscape(acc.password)}, ${sqlEscape(acc.phone)}, ${acc.isActive !== false ? 'TRUE' : 'FALSE'}, ${sqlEscape(customPermsJson)}, ${sqlEscape(acc.createdAt || new Date().toISOString())});
+`;
+    }
+  }
+
+  // ----------------------------------------------------------------------------
   // 11. BẢNG CẤU HÌNH VIETQR (VIETQR_CONFIG)
   // ----------------------------------------------------------------------------
   const vq = data?.vietqr_config || data?.vietqr || data?.settings?.vietqr;
@@ -1460,6 +1489,9 @@ export async function restoreLocalFromBackupData(rawData: any): Promise<{ succes
 
     const sec = data.security_config || data.security || data.settings?.security;
     if (sec) {
+      if (Array.isArray(data.user_accounts) && (!sec.accounts || sec.accounts.length === 0)) {
+        sec.accounts = data.user_accounts;
+      }
       localSnapshot['bakery_security_config'] = JSON.stringify(sec);
     }
 
