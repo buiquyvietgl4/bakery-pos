@@ -1455,5 +1455,65 @@ EXCEPTION WHEN OTHERS THEN
 END $$;
 -- >>> KẾT THÚC MIGRATION: 00018_material_stock_adjustments.sql <<<
 
+-- >>> BẮT ĐẦU MIGRATION: 00019_create_system_cloud_backups.sql <<<
+CREATE TABLE IF NOT EXISTS public.system_cloud_backups (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    backup_type TEXT NOT NULL DEFAULT 'temp_7day',
+    metadata JSONB,
+    backup_data JSONB NOT NULL,
+    size_bytes BIGINT NOT NULL DEFAULT 0,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
 
+CREATE INDEX IF NOT EXISTS idx_system_cloud_backups_expires_at ON public.system_cloud_backups(expires_at);
+CREATE INDEX IF NOT EXISTS idx_system_cloud_backups_created_at ON public.system_cloud_backups(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_system_cloud_backups_type ON public.system_cloud_backups(backup_type);
 
+ALTER TABLE public.system_cloud_backups ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all for system_cloud_backups" ON public.system_cloud_backups;
+CREATE POLICY "Allow all for system_cloud_backups"
+    ON public.system_cloud_backups
+    FOR ALL
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
+-- >>> KẾT THÚC MIGRATION: 00019_create_system_cloud_backups.sql <<<
+
+-- >>> BẮT ĐẦU MIGRATION: 00020_post_oct30_data_api_grants.sql <<<
+-- Cấp quyền truy cập Data API theo chính sách bảo mật Supabase (áp dụng từ 30/10)
+GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
+
+DO $$
+DECLARE
+    tbl text;
+    tables text[] := ARRAY[
+        'profiles', 'stores', 'app_settings', 'ingredients', 'recipes', 'recipe_items',
+        'products', 'product_variants', 'shifts', 'orders', 'order_items', 'payments',
+        'purchase_orders', 'purchase_order_items', 'expense_categories', 'operating_expenses',
+        'cashflow_transactions', 'monthly_accounting_summary', 'audit_logs',
+        'cake_costing_config', 'material_transactions', 'stock_adjustments', 'spoilage_logs',
+        'bakery_bom_settings', 'material_stock_adjustments', 'system_cloud_backups'
+    ];
+BEGIN
+    FOREACH tbl IN ARRAY tables LOOP
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = tbl) THEN
+            EXECUTE format('GRANT ALL ON TABLE public.%I TO anon, authenticated, service_role;', tbl);
+        END IF;
+    END LOOP;
+END $$;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated, service_role;
+ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated, service_role;
+-- >>> KẾT THÚC MIGRATION: 00020_post_oct30_data_api_grants.sql <<<
