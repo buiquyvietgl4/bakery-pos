@@ -73,3 +73,29 @@ describe('2-Way Reconciliation Timestamp Comparison (LWW Logic)', () => {
     expect(merged.updated_at).toBe('2026-09-29T10:00:00Z');
   });
 });
+
+describe('Force Logout & Session Invalidation Logic', () => {
+  it('phat hien phien dang nhap het hieu luc khi forceLogoutAt moi hon thoi diem dang nhap', () => {
+    const userLoginTime = new Date('2026-09-29T09:00:00Z').getTime();
+    const forceLogoutTime = new Date('2026-09-29T09:30:00Z').getTime();
+
+    const isSessionInvalid = forceLogoutTime > userLoginTime;
+    expect(isSessionInvalid).toBe(true);
+  });
+
+  it('phat hien phien dang nhap het hieu luc khi sessionVersion cua securityConfig tang len', () => {
+    const userSessionVersion = 1;
+    const currentConfigVersion = 2;
+
+    const isSessionInvalid = currentConfigVersion > userSessionVersion;
+    expect(isSessionInvalid).toBe(true);
+  });
+
+  it('phien dang nhap hop le neu dang nhap SAU thoi diem forceLogoutAt', () => {
+    const forceLogoutTime = new Date('2026-09-29T09:30:00Z').getTime();
+    const userLoginTime = new Date('2026-09-29T09:35:00Z').getTime();
+
+    const isSessionInvalid = forceLogoutTime > userLoginTime;
+    expect(isSessionInvalid).toBe(false);
+  });
+});

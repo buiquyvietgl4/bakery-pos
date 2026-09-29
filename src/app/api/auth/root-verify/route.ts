@@ -71,6 +71,8 @@ function syncPasswordToLocalSqlFiles(newPassword: string) {
             const sec = dbJson.bakery_security_config || dbJson.security_config;
             sec.adminPasswordHash = newPassword;
             sec.updated_at = new Date().toISOString();
+            sec.forceLogoutAt = new Date().toISOString();
+            sec.sessionVersion = (Number(sec.sessionVersion) || 1) + 1;
             if (Array.isArray(sec.accounts)) {
               sec.accounts = sec.accounts.map((acc: any) =>
                 acc.role === 'admin' ? { ...acc, password: newPassword } : acc
@@ -138,6 +140,8 @@ export async function POST(req: Request) {
         }
         cfg.adminPasswordHash = targetPassword;
         cfg.updated_at = new Date().toISOString();
+        cfg.forceLogoutAt = new Date().toISOString();
+        cfg.sessionVersion = (Number(cfg.sessionVersion) || 1) + 1;
         if (Array.isArray(cfg.accounts)) {
           cfg.accounts = cfg.accounts.map((acc: any) =>
             acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
@@ -175,8 +179,9 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      message: `Xác thực Master thành công! Mật khẩu Admin đã được đặt lại về: "${targetPassword}"`,
+      message: `Xác thực Master thành công! Mật khẩu Admin đã được đặt lại về: "${targetPassword}" và đã ĐĂNG XUẤT TẤT CẢ các thiết bị.`,
       newPassword: targetPassword,
+      forceLogoutAll: true,
     });
   } catch (err: any) {
     return NextResponse.json(

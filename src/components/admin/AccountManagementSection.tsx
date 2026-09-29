@@ -35,6 +35,7 @@ import {
   AlertCircle,
   CheckCircle2,
   RotateCcw,
+  LogOut,
 } from 'lucide-react';
 
 const ROLE_INFO: Record<
@@ -130,6 +131,7 @@ export default function AccountManagementSection() {
     updateAccount,
     deleteAccount,
     toggleAccountActive,
+    forceLogoutAllDevices,
     user,
     permissions: rolePermissions,
   } = useAuth();
@@ -476,6 +478,23 @@ export default function AccountManagementSection() {
             <span className="text-zinc-300">|</span>
             <span className="text-rose-700">Đã khóa: <b>{stats.locked}</b></span>
           </div>
+
+          <button
+            type="button"
+            onClick={async () => {
+              if (window.confirm('Bạn có chắc chắn muốn đăng xuất toàn bộ phiên đăng nhập trên tất cả các thiết bị? Mọi máy tính, điện thoại và trình duyệt đang mở sẽ phải đăng nhập lại.')) {
+                const res = await forceLogoutAllDevices();
+                if (res.success) {
+                  showNotify('success', res.message || 'Đã đăng xuất toàn bộ thiết bị thành công!');
+                }
+              }
+            }}
+            className="px-3.5 py-2.5 rounded-2xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 text-xs font-bold transition flex items-center gap-1.5 shadow-2xs cursor-pointer active:scale-95"
+            title="Đăng xuất tài khoản khỏi tất cả máy tính, điện thoại và tab trình duyệt đang mở"
+          >
+            <LogOut className="w-4 h-4 text-rose-600" />
+            <span>Đăng Xuất Tất Cả Thiết Bị</span>
+          </button>
 
           <button
             type="button"

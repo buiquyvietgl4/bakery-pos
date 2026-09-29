@@ -131,12 +131,15 @@ export default function LoginModal() {
     try {
       const res = await resetAdminPasswordWithRecoveryKey(trimmedKey, newAdminPassInput.trim());
       if (res.success) {
-        setRescueSuccessMsg(res.message || 'Khôi phục thành công! Đang chuyển vào hệ thống...');
+        setRescueSuccessMsg(res.message || 'Đặt lại mật khẩu thành công & đã đăng xuất tất cả thiết bị! Vui lòng đăng nhập bằng mật khẩu mới.');
         setRescueKeyInput('');
         setNewAdminPassInput('');
         setTimeout(() => {
-          closeLoginModal();
-        }, 1200);
+          setIsRecoveringAdmin(false);
+          setUsername('admin');
+          setPassword('');
+          setTimeout(() => passwordInputRef.current?.focus(), 100);
+        }, 1500);
       } else {
         setRescueErrorMsg(res.error || 'Mật khẩu Chủ Tiệm không chính xác!');
       }

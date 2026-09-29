@@ -53,6 +53,8 @@ export interface CurrentUser {
   email?: string;
   phone?: string;
   customPermissions?: Partial<RolePermissions>;
+  loginAt?: string;
+  sessionVersion?: number;
 }
 
 export const DEFAULT_PERMISSIONS: RolePermissionsConfig = {
@@ -123,6 +125,8 @@ export interface SecurityConfig {
   returnSkipForAdmin?: boolean; // Tùy chọn bỏ qua xác nhận đổi trả nếu tài khoản đang thao tác là Admin
   permissions?: RolePermissionsConfig;
   accounts?: UserAccount[]; // Danh sách tài khoản người dùng cá nhân trong hệ thống
+  forceLogoutAt?: string; // Mốc thời gian bắt buộc đăng xuất tất cả các thiết bị
+  sessionVersion?: number; // Phiên bản phiên đăng nhập (tăng khi đổi mật khẩu để vô hiệu hóa phiên cũ)
   updated_at?: string;
 }
 
@@ -383,6 +387,7 @@ interface AuthContextType {
   resetAdminPasswordWithRecoveryKey: (recoveryKeyOrPhone: string, newPassword?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   updateAdminRecoveryKey: (newKey: string, newRecoveryPhone?: string) => { success: boolean; error?: string };
   forceResetAdminToDefault: () => { success: boolean };
+  forceLogoutAllDevices: () => Promise<{ success: boolean; message?: string }>;
   securityConfig: SecurityConfig;
   resetSecurityDefaults: () => void;
   permissions: RolePermissionsConfig;
@@ -429,6 +434,7 @@ const AuthContext = createContext<AuthContextType>({
   resetAdminPasswordWithRecoveryKey: async () => ({ success: false }),
   updateAdminRecoveryKey: () => ({ success: false }),
   forceResetAdminToDefault: () => ({ success: false }),
+  forceLogoutAllDevices: async () => ({ success: false }),
   securityConfig: DEFAULT_SECURITY_CONFIG,
   resetSecurityDefaults: () => {},
   permissions: DEFAULT_PERMISSIONS,
@@ -581,6 +587,82 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const [user, setUserState] = useState<CurrentUser | null>(null);
 
+  // Helper phát sóng lệnh ĐĂNG XUẤT TẤT CẢ các thiết bị và tab khác
+  const triggerLocalAndBroadcastForceLogout = useCallback(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('bakery_force_logout_signal', Date.now().toString());
+        window.dispatchEvent(new CustomEvent('bakery_force_logout'));
+      } catch {}
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          const bc = new BroadcastChannel('bakery_auth_channel');
+          bc.postMessage({ type: 'FORCE_LOGOUT', timestamp: Date.now() });
+          bc.close();
+        } catch {}
+      }
+    }
+  }, []);
+
+  // Lắng nghe tín hiệu Đăng Xuất Tất Cả Thiết Bị (BroadcastChannel & storage events)
+  useEffect(() => {
+    const handleLogoutSignal = () => {
+      console.log('🔒 [AuthContext] Nhận tín hiệu ĐĂNG XUẤT TẤT CẢ từ thiết bị/tab khác');
+      setUserState(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('bakery_current_user');
+      }
+      setIsLoginModalOpen(true);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('bakery_force_logout', handleLogoutSignal);
+      const onStorage = (e: StorageEvent) => {
+        if (e.key === 'bakery_force_logout_signal') {
+          handleLogoutSignal();
+        }
+      };
+      window.addEventListener('storage', onStorage);
+
+      let bc: BroadcastChannel | null = null;
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          bc = new BroadcastChannel('bakery_auth_channel');
+          bc.onmessage = (ev) => {
+            if (ev.data?.type === 'FORCE_LOGOUT') {
+              handleLogoutSignal();
+            }
+          };
+        } catch {}
+      }
+
+      return () => {
+        window.removeEventListener('bakery_force_logout', handleLogoutSignal);
+        window.removeEventListener('storage', onStorage);
+        bc?.close();
+      };
+    }
+  }, []);
+
+  // Kiểm tra thời hạn hiệu lực của phiên đăng nhập so với mốc forceLogoutAt và sessionVersion
+  useEffect(() => {
+    if (!user) return;
+    const forceTime = securityConfig.forceLogoutAt ? new Date(securityConfig.forceLogoutAt).getTime() : 0;
+    const userLoginTime = user.loginAt ? new Date(user.loginAt).getTime() : 0;
+    const cfgVer = securityConfig.sessionVersion || 1;
+    const userVer = user.sessionVersion || 1;
+
+    // Nếu thời điểm đổi mật khẩu mới hơn thời điểm đăng nhập của phiên hiện tại, hoặc phiên bản session tăng lên
+    if ((forceTime > 0 && userLoginTime > 0 && userLoginTime < forceTime) || (cfgVer > userVer)) {
+      console.log('🔒 [AuthContext] Phiên đăng nhập đã bị vô hiệu hóa do đổi mật khẩu hoặc đăng xuất từ xa.');
+      setUserState(null);
+      if (typeof window !== 'undefined') {
+        localStorage.removeItem('bakery_current_user');
+      }
+      setIsLoginModalOpen(true);
+    }
+  }, [securityConfig.forceLogoutAt, securityConfig.sessionVersion, user]);
+
   // Nạp user từ localStorage sau khi component đã mount trên client
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -647,6 +729,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: securityConfig.adminName || 'Chủ Tiệm (Admin)',
         role: 'admin',
         email: 'admin@tiembanh.local',
+        loginAt: new Date().toISOString(),
+        sessionVersion: securityConfig.sessionVersion || 1,
       };
       saveCurrentUser(adminUser);
       setIsLoginModalOpen(false);
@@ -675,6 +759,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: securityConfig.kitchenName || 'Nhân Viên Bếp',
         role: 'kitchen',
         email: 'bep@tiembanh.local',
+        loginAt: new Date().toISOString(),
+        sessionVersion: securityConfig.sessionVersion || 1,
       };
       saveCurrentUser(kitchenUser);
       setIsLoginModalOpen(false);
@@ -705,6 +791,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: securityConfig.staffName || 'Thu Ngân / Bán Hàng',
         role: 'cashier',
         email: 'nhanvien@tiembanh.local',
+        loginAt: new Date().toISOString(),
+        sessionVersion: securityConfig.sessionVersion || 1,
       };
       saveCurrentUser(cashierUser);
       setIsLoginModalOpen(false);
@@ -749,16 +837,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return acc;
     });
 
+    const newSessionVer = (securityConfig.sessionVersion || 1) + 1;
+    const forceTime = new Date().toISOString();
+
     const updated: SecurityConfig = {
       ...securityConfig,
       adminPasswordHash: newPass,
       adminName: newName || securityConfig.adminName,
       accounts: updatedAccounts,
+      forceLogoutAt: forceTime,
+      sessionVersion: newSessionVer,
     };
     saveSecurityConfig(updated);
-    if (user && user.role === 'admin') {
-      saveCurrentUser({ ...user, name: updated.adminName });
-    }
+    triggerLocalAndBroadcastForceLogout();
+    saveCurrentUser(null);
+    openLoginModal('admin');
     return { success: true };
   };
 
@@ -859,26 +952,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return acc;
         });
 
+        const newSessionVer = (securityConfig.sessionVersion || 1) + 1;
+        const forceTime = new Date().toISOString();
+
         const updated: SecurityConfig = {
           ...securityConfig,
           adminPasswordHash: targetNewPass,
           accounts: updatedAccounts,
+          forceLogoutAt: forceTime,
+          sessionVersion: newSessionVer,
         };
         saveSecurityConfig(updated);
-
-        const adminUser: CurrentUser = {
-          id: '00000000-0000-0000-0000-000000000001',
-          username: securityConfig.adminUsername || 'admin',
-          name: securityConfig.adminName || 'Chủ Tiệm (Admin)',
-          role: 'admin',
-          email: 'admin@tiembanh.local',
-        };
-        saveCurrentUser(adminUser);
-        setIsLoginModalOpen(false);
+        triggerLocalAndBroadcastForceLogout();
+        saveCurrentUser(null); // Đăng xuất tất cả thiết bị bao gồm phiên hiện tại!
 
         return {
           success: true,
-          message: data.message || `Xác thực thành công! Mật khẩu Admin đã được đặt lại về: "${targetNewPass}"`,
+          message: data.message || `Xác thực Master thành công! Đã đặt lại mật khẩu về "${targetNewPass}" và ĐĂNG XUẤT TẤT CẢ các thiết bị. Vui lòng đăng nhập lại.`,
         };
       } else {
         return {
@@ -902,26 +992,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return acc;
         });
 
+        const newSessionVer = (securityConfig.sessionVersion || 1) + 1;
+        const forceTime = new Date().toISOString();
+
         const updated: SecurityConfig = {
           ...securityConfig,
           adminPasswordHash: targetNewPass,
           accounts: updatedAccounts,
+          forceLogoutAt: forceTime,
+          sessionVersion: newSessionVer,
         };
         saveSecurityConfig(updated);
-
-        const adminUser: CurrentUser = {
-          id: '00000000-0000-0000-0000-000000000001',
-          username: securityConfig.adminUsername || 'admin',
-          name: securityConfig.adminName || 'Chủ Tiệm (Admin)',
-          role: 'admin',
-          email: 'admin@tiembanh.local',
-        };
-        saveCurrentUser(adminUser);
-        setIsLoginModalOpen(false);
+        triggerLocalAndBroadcastForceLogout();
+        saveCurrentUser(null); // Đăng xuất tất cả thiết bị bao gồm phiên hiện tại!
 
         return {
           success: true,
-          message: `Xác thực Master thành công! Đã khôi phục toàn quyền Chủ Tiệm và đổi mật khẩu về: "${targetNewPass}"`,
+          message: `Xác thực Master thành công! Đã đặt lại mật khẩu về "${targetNewPass}" và ĐĂNG XUẤT TẤT CẢ các thiết bị. Vui lòng đăng nhập lại.`,
         };
       }
 
@@ -930,6 +1017,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         error: 'Mật khẩu Chủ Tiệm không chính xác hoặc lỗi kết nối máy chủ!',
       };
     }
+  };
+
+  // 5. LỆNH BẮT BUỘC ĐĂNG XUẤT TẤT CẢ CÁC THIẾT BỊ & TRÌNH DUYỆT ĐANG MỞ
+  const forceLogoutAllDevices = async (): Promise<{ success: boolean; message?: string }> => {
+    const newSessionVer = (securityConfig.sessionVersion || 1) + 1;
+    const forceTime = new Date().toISOString();
+    const updated: SecurityConfig = {
+      ...securityConfig,
+      forceLogoutAt: forceTime,
+      sessionVersion: newSessionVer,
+    };
+    saveSecurityConfig(updated);
+    triggerLocalAndBroadcastForceLogout();
+    saveCurrentUser(null);
+    setIsLoginModalOpen(true);
+    return {
+      success: true,
+      message: 'Đã phát lệnh đăng xuất toàn bộ thiết bị và tab đang kết nối thành công!',
+    };
   };
 
   const updateAdminRecoveryKey = (newKey: string, newRecoveryPhone?: string) => {
@@ -1062,6 +1168,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (updatedAcc.username) syncCfg.staffUsername = updatedAcc.username;
     }
 
+    // Nếu đổi mật khẩu: lập tức đăng xuất tất cả các thiết bị và vô hiệu hóa các phiên cũ
+    if (updates.password && updates.password.trim()) {
+      syncCfg.forceLogoutAt = new Date().toISOString();
+      syncCfg.sessionVersion = (Number(syncCfg.sessionVersion) || 1) + 1;
+      triggerLocalAndBroadcastForceLogout();
+      if (user && user.id === id) {
+        saveCurrentUser(null);
+        setIsLoginModalOpen(true);
+      }
+    }
+
     saveSecurityConfig(syncCfg);
     return { success: true };
   };
@@ -1112,6 +1229,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         role: matchedAccount.role,
         phone: matchedAccount.phone,
         customPermissions: matchedAccount.customPermissions,
+        loginAt: new Date().toISOString(),
+        sessionVersion: securityConfig.sessionVersion || 1,
       };
       saveCurrentUser(loggedUser);
       setIsLoginModalOpen(false);
@@ -1156,6 +1275,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           role: acc.role,
           phone: acc.phone,
           customPermissions: acc.customPermissions,
+          loginAt: new Date().toISOString(),
+          sessionVersion: securityConfig.sessionVersion || 1,
         };
         saveCurrentUser(loggedUser);
         setIsLoginModalOpen(false);
@@ -1296,6 +1417,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         resetAdminPasswordWithRecoveryKey,
         updateAdminRecoveryKey,
         forceResetAdminToDefault,
+        forceLogoutAllDevices,
         securityConfig,
         resetSecurityDefaults,
         permissions,
