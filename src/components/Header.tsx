@@ -209,21 +209,21 @@ export default function Header() {
                   </div>
                 ) : (
                   // Đã đăng nhập tài khoản
-                  <div className="flex items-center gap-0.5 sm:gap-1 bg-stone-100/90 p-0.5 sm:p-1 sm:pl-2 rounded-xl border border-stone-200 text-xs shadow-2xs shrink-0">
-                    <span className="flex items-center gap-1 font-bold text-zinc-800 text-[11px] sm:text-xs shrink-0 pl-0.5">
+                  <div className="flex items-center gap-0.5 sm:gap-2 bg-stone-100/90 p-0.5 sm:py-1.5 sm:px-3 rounded-xl border border-stone-200 text-xs shadow-2xs shrink-0">
+                    <span className="flex items-center gap-1 sm:gap-1.5 font-bold text-zinc-800 text-[11px] sm:text-sm shrink-0 pl-0.5">
                       {isAdmin ? (
-                        <Shield className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
                       ) : user.role === 'manager' ? (
-                        <Users className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                        <Users className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
                       ) : isKitchen ? (
-                        <ChefHat className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                        <ChefHat className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-600 shrink-0" />
                       ) : (
-                        <ShoppingBag className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600 shrink-0" />
                       )}
                       
-                      {/* Dải chữ tên tài khoản chạy ngang kiểu banner thông báo */}
+                      {/* 1. CHỈ TRÊN ĐIỆN THOẠI (sm:hidden): Dải chữ tên tài khoản chạy ngang kiểu banner thông báo */}
                       <div 
-                        className="w-[48px] xs:w-[65px] sm:w-[110px] md:w-[135px] overflow-hidden relative shrink-0 select-none cursor-help"
+                        className="sm:hidden w-[48px] xs:w-[65px] overflow-hidden relative shrink-0 select-none cursor-help"
                         title={`Tài khoản: ${user?.name || 'Người dùng'} (@${user?.username || ''})`}
                       >
                         {/* Mờ viền 2 bên kiểu ticker banner */}
@@ -232,32 +232,40 @@ export default function Header() {
 
                         {/* Banner chạy ngang */}
                         <div className="animate-marquee-banner inline-flex items-center gap-2">
-                          <span className="text-[11px] sm:text-xs font-bold text-zinc-800 whitespace-nowrap">
+                          <span className="text-[11px] font-bold text-zinc-800 whitespace-nowrap">
                             {user?.name || 'Người dùng'}
                           </span>
                           <span className="text-[8px] text-amber-500 font-bold opacity-70 shrink-0">•</span>
-                          <span className="text-[11px] sm:text-xs font-bold text-zinc-800 whitespace-nowrap" aria-hidden="true">
+                          <span className="text-[11px] font-bold text-zinc-800 whitespace-nowrap" aria-hidden="true">
                             {user?.name || 'Người dùng'}
                           </span>
                           <span className="text-[8px] text-amber-500 font-bold opacity-70 shrink-0" aria-hidden="true">•</span>
                         </div>
                       </div>
 
+                      {/* 2. TRÊN MÁY TÍNH & TABLET (sm:inline-flex): Hiển thị tên đầy đủ, cỡ chữ chuẩn to rõ */}
+                      <span 
+                        className="hidden sm:inline-block max-w-[140px] md:max-w-[220px] lg:max-w-[300px] truncate text-xs sm:text-sm font-bold text-zinc-800"
+                        title={`Tài khoản: ${user?.name || 'Người dùng'} (@${user?.username || ''})`}
+                      >
+                        {user?.name || 'Người dùng'}
+                      </span>
+
                       {user.role === 'manager' && (
-                        <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1 py-0.2 rounded font-bold hidden sm:inline shrink-0">Quản Lý</span>
+                        <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded font-bold hidden sm:inline shrink-0">Quản Lý</span>
                       )}
                       {isAdmin && (
-                        <span className="text-[9px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-bold hidden sm:inline shrink-0">Chủ Tiệm</span>
+                        <span className="text-[10px] bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded font-bold hidden sm:inline shrink-0">Chủ Tiệm</span>
                       )}
                     </span>
                     {!isAdmin && (
                       <button
                         type="button"
                         onClick={() => openLoginModal('admin')}
-                        className="w-6 h-6 sm:w-auto sm:h-auto p-1 sm:px-2 sm:py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold flex items-center justify-center gap-1 shadow-2xs transition cursor-pointer shrink-0"
+                        className="w-6 h-6 sm:w-auto sm:h-auto p-1 sm:px-2.5 sm:py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1 shadow-2xs transition cursor-pointer shrink-0"
                         title="Nhập mật khẩu để mở quyền Chủ Tiệm"
                       >
-                        <KeyRound className="w-3 h-3 shrink-0" />
+                        <KeyRound className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                         <span className="hidden sm:inline">Mở Admin</span>
                       </button>
                     )}
@@ -265,9 +273,9 @@ export default function Header() {
                       type="button"
                       onClick={logout}
                       title="Đăng xuất khỏi ca làm"
-                      className="w-6 h-6 sm:w-auto sm:h-auto p-1 sm:px-1.5 sm:py-0.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold flex items-center justify-center gap-1 transition cursor-pointer shrink-0"
+                      className="w-6 h-6 sm:w-auto sm:h-auto p-1 sm:px-2 sm:py-1 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600 text-[10px] sm:text-xs font-bold flex items-center justify-center gap-1 transition cursor-pointer shrink-0"
                     >
-                      <LogOut className="w-3 h-3 text-zinc-500 shrink-0" />
+                      <LogOut className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-zinc-500 shrink-0" />
                       <span className="hidden sm:inline">Thoát</span>
                     </button>
                   </div>
