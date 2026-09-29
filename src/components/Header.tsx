@@ -102,7 +102,7 @@ export default function Header() {
                 <Cake className="w-4 h-4 sm:w-5 sm:h-5 drop-shadow-xs" />
               )}
             </div>
-            <div className="shrink-0 flex flex-col justify-center max-w-[170px] sm:max-w-xs">
+            <div className="shrink-0 flex flex-col justify-center max-w-[95px] xs:max-w-[130px] sm:max-w-xs">
               <span className="block text-xs sm:text-base font-black tracking-tight text-amber-950 whitespace-nowrap leading-tight truncate uppercase">
                 {branding.storeName || 'TIỆM BÁNH ABC'}
               </span>
@@ -209,8 +209,8 @@ export default function Header() {
                   </div>
                 ) : (
                   // Đã đăng nhập tài khoản
-                  <div className="flex items-center gap-1 bg-stone-100/90 p-1 sm:pl-2 rounded-xl border border-stone-200 text-xs shadow-2xs">
-                    <span className="flex items-center gap-1 font-bold text-zinc-800 text-[11px] sm:text-xs">
+                  <div className="flex items-center gap-1 bg-stone-100/90 p-1 sm:pl-2 rounded-xl border border-stone-200 text-xs shadow-2xs shrink-0">
+                    <span className="flex items-center gap-1 font-bold text-zinc-800 text-[11px] sm:text-xs shrink-0">
                       {isAdmin ? (
                         <Shield className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                       ) : user.role === 'manager' ? (
@@ -220,22 +220,44 @@ export default function Header() {
                       ) : (
                         <ShoppingBag className="w-3.5 h-3.5 text-amber-600 shrink-0" />
                       )}
-                      <span className="max-w-[110px] sm:max-w-[140px] truncate">{user?.name || 'Người dùng'}</span>
+                      
+                      {/* Dải chữ tên tài khoản chạy ngang kiểu banner thông báo */}
+                      <div 
+                        className="w-[62px] xs:w-[80px] sm:w-[110px] md:w-[135px] overflow-hidden relative shrink-0 select-none cursor-help"
+                        title={`Tài khoản: ${user?.name || 'Người dùng'} (@${user?.username || ''})`}
+                      >
+                        {/* Mờ viền 2 bên kiểu ticker banner */}
+                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-r from-stone-100/90 to-transparent z-10 pointer-events-none" />
+                        <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-gradient-to-l from-stone-100/90 to-transparent z-10 pointer-events-none" />
+
+                        {/* Banner chạy ngang */}
+                        <div className="animate-marquee-banner inline-flex items-center gap-2.5">
+                          <span className="text-[11px] sm:text-xs font-bold text-zinc-800 whitespace-nowrap">
+                            {user?.name || 'Người dùng'}
+                          </span>
+                          <span className="text-[8px] text-amber-500 font-bold opacity-70 shrink-0">•</span>
+                          <span className="text-[11px] sm:text-xs font-bold text-zinc-800 whitespace-nowrap" aria-hidden="true">
+                            {user?.name || 'Người dùng'}
+                          </span>
+                          <span className="text-[8px] text-amber-500 font-bold opacity-70 shrink-0" aria-hidden="true">•</span>
+                        </div>
+                      </div>
+
                       {user.role === 'manager' && (
-                        <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1 py-0.2 rounded font-bold hidden sm:inline">Quản Lý</span>
+                        <span className="text-[9px] bg-indigo-100 text-indigo-700 px-1 py-0.2 rounded font-bold hidden sm:inline shrink-0">Quản Lý</span>
                       )}
                       {isAdmin && (
-                        <span className="text-[9px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-bold hidden sm:inline">Chủ Tiệm</span>
+                        <span className="text-[9px] bg-rose-100 text-rose-700 px-1 py-0.2 rounded font-bold hidden sm:inline shrink-0">Chủ Tiệm</span>
                       )}
                     </span>
                     {!isAdmin && (
                       <button
                         type="button"
                         onClick={() => openLoginModal('admin')}
-                        className="p-1.5 sm:px-2 sm:py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer"
+                        className="p-1 sm:px-2 sm:py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer shrink-0"
                         title="Nhập mật khẩu để mở quyền Chủ Tiệm"
                       >
-                        <KeyRound className="w-3 h-3" />
+                        <KeyRound className="w-3 h-3 shrink-0" />
                         <span className="hidden sm:inline">Mở Admin</span>
                       </button>
                     )}
@@ -243,9 +265,9 @@ export default function Header() {
                       type="button"
                       onClick={logout}
                       title="Đăng xuất khỏi ca làm"
-                      className="p-1 sm:px-1.5 sm:py-0.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                      className="p-1 sm:px-1.5 sm:py-0.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
                     >
-                      <LogOut className="w-3 h-3 text-zinc-500" />
+                      <LogOut className="w-3 h-3 text-zinc-500 shrink-0" />
                       <span className="hidden sm:inline">Thoát</span>
                     </button>
                   </div>

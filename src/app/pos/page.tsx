@@ -4577,155 +4577,141 @@ export default function POSPage() {
                 <span className="hidden xl:inline">{isLocalMode() ? 'Local SQL' : 'Cloud SQL'}</span>
               </Link>
 
-              {/* Nút Đổi Trả Trên Mobile */}
+              {/* Nút Đổi Trả Trên Mobile (Ghi rõ tên nhãn Đổi Trả) */}
               <button
                 onClick={() => {
                   setOrderToReturn(null);
                   setIsReturnExchangeModalOpen(true);
                 }}
-                className="w-9 h-9 rounded-2xl border border-rose-200 bg-rose-50/60 hover:bg-rose-100 flex items-center justify-center shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
-                title="Đổi trả hàng hoặc hoàn tiền"
+                className="h-9 px-2.5 rounded-2xl border border-rose-200/90 bg-rose-50/80 hover:bg-rose-100 flex items-center gap-1.5 shadow-2xs transition active:scale-95 cursor-pointer shrink-0 text-xs font-bold text-rose-700"
+                title="Đổi trả hàng hoặc hoàn tiền hóa đơn"
               >
-                <RotateCcw className="w-4 h-4 text-rose-600" />
+                <RotateCcw className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                <span>Đổi Trả</span>
               </button>
-
-              {/* Nút Menu Cài Đặt Hợp Nhất Trên Mobile */}
-              <div className="relative shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsMobileUtilityMenuOpen(!isMobileUtilityMenuOpen)}
-                  className={`w-9 h-9 rounded-2xl border flex items-center justify-center shadow-2xs transition active:scale-95 cursor-pointer ${
-                    isMobileUtilityMenuOpen
-                      ? 'bg-amber-600 border-amber-600 text-white'
-                      : 'bg-white hover:bg-amber-50/60 border-stone-200/90 text-zinc-700'
-                  }`}
-                  title="Cài đặt hệ thống (Máy in, Thông báo, Đồng bộ SQL)"
-                >
-                  <div className="relative">
-                    <Settings className={`w-4 h-4 ${isMobileUtilityMenuOpen ? 'rotate-90' : ''} transition-transform duration-200`} />
-                    {soundEnabled && (
-                      <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white" />
-                    )}
-                  </div>
-                </button>
-
-                {/* Dropdown Menu Cài Đặt Mobile */}
-                {isMobileUtilityMenuOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-40 bg-black/20 backdrop-blur-2xs"
-                      onClick={() => setIsMobileUtilityMenuOpen(false)}
-                    />
-                    <div className="absolute right-0 top-11 z-50 w-72 bg-white rounded-2xl border border-stone-200 shadow-2xl p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
-                      <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-400 border-b border-stone-100 flex items-center justify-between">
-                        <span>Cài Đặt & Thiết Bị</span>
-                        <span className="text-[9px] text-amber-600 font-bold">POS Quầy</span>
-                      </div>
-
-                      {/* 1. Máy In Hóa Đơn & Tem */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsPrinterSettingsOpen(true);
-                          setIsMobileUtilityMenuOpen(false);
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-left transition cursor-pointer group"
-                      >
-                        <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-105 transition shrink-0">
-                          <Printer className="w-4 h-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold text-zinc-900 group-hover:text-blue-700">Máy In Hóa Đơn & Tem</div>
-                          <div className="text-[10px] text-zinc-500 truncate">Cài đặt Bluetooth, USB, khổ giấy</div>
-                        </div>
-                      </button>
-
-                      {/* 2. Cài Đặt Báo & Âm Thanh */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setNotifModalTab('sound');
-                          setIsNotifSettingsOpen(true);
-                          setIsMobileUtilityMenuOpen(false);
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-amber-50 text-left transition cursor-pointer group"
-                      >
-                        <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 group-hover:scale-105 transition shrink-0 relative">
-                          <Bell className="w-4 h-4" />
-                          <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${soundEnabled ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold text-zinc-900 group-hover:text-amber-700 flex items-center gap-1">
-                            <span>Cài Đặt Báo & Âm Thanh</span>
-                            {soundEnabled ? (
-                              <Volume2 className="w-3 h-3 text-emerald-600" />
-                            ) : (
-                              <VolumeX className="w-3 h-3 text-zinc-400" />
-                            )}
-                          </div>
-                          <div className="text-[10px] text-zinc-500 truncate">Chuông báo lò, đơn giao, Telegram</div>
-                        </div>
-                      </button>
-
-                      {/* 3. Đồng Bộ SQL (Xóa Cache) */}
-                      <button
-                        type="button"
-                        disabled={isPosSyncing}
-                        onClick={async () => {
-                          setIsMobileUtilityMenuOpen(false);
-                          try {
-                            setIsPosSyncing(true);
-                            clearProfileLocalData();
-                            await syncOrdersFromSupabase();
-                            await loadProducts();
-                            await fetchCurrentShiftFromDb();
-                            reloadOrdersData();
-                            alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL Cloud SQL thành công!');
-                          } catch (err: any) {
-                            alert('Lỗi đồng bộ: ' + (err?.message || err));
-                          } finally {
-                            setIsPosSyncing(false);
-                          }
-                        }}
-                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-emerald-50 text-left transition cursor-pointer group disabled:opacity-50"
-                      >
-                        <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition shrink-0">
-                          <RefreshCw className={`w-4 h-4 ${isPosSyncing ? 'animate-spin' : ''}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-xs font-bold text-zinc-900 group-hover:text-emerald-700">
-                            {isPosSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ SQL (Xóa Cache)'}
-                          </div>
-                          <div className="text-[10px] text-zinc-500 truncate">Kéo lại món, ca và đơn mới nhất</div>
-                        </div>
-                      </button>
-
-                      <div className="my-1 border-t border-stone-100" />
-
-                      {/* 4. Kho Bánh Sẵn */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsInventoryModalOpen(true);
-                          setIsMobileUtilityMenuOpen(false);
-                        }}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 hover:bg-amber-50 transition cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Package className="w-4 h-4 text-emerald-600" />
-                          <span>Kho Bánh Sẵn ({products.length})</span>
-                        </div>
-                        {lowStockItems.length > 0 && (
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
-                            {lowStockItems.length} sắp hết
-                          </span>
-                        )}
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
             </div>
+
+            {/* Menu Cài Đặt Tiện Ích Mobile (Mở khi bấm tab "Cài Đặt" trên thanh tab đỉnh) */}
+            {isMobileUtilityMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-50 bg-black/30 backdrop-blur-2xs animate-in fade-in duration-150"
+                  onClick={() => setIsMobileUtilityMenuOpen(false)}
+                />
+                <div className="fixed right-3 top-14 z-50 w-72 bg-white rounded-2xl border border-stone-200 shadow-2xl p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-400 border-b border-stone-100 flex items-center justify-between">
+                    <span>Cài Đặt & Thiết Bị</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsMobileUtilityMenuOpen(false)}
+                      className="p-1 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-stone-100 transition cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* 1. Máy In Hóa Đơn & Tem */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsPrinterSettingsOpen(true);
+                      setIsMobileUtilityMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-blue-50 text-left transition cursor-pointer group"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600 group-hover:scale-105 transition shrink-0">
+                      <Printer className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-zinc-900 group-hover:text-blue-700">Máy In Hóa Đơn & Tem</div>
+                      <div className="text-[10px] text-zinc-500 truncate">Cài đặt Bluetooth, USB, khổ giấy</div>
+                    </div>
+                  </button>
+
+                  {/* 2. Cài Đặt Báo & Âm Thanh */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotifModalTab('sound');
+                      setIsNotifSettingsOpen(true);
+                      setIsMobileUtilityMenuOpen(false);
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-amber-50 text-left transition cursor-pointer group"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 group-hover:scale-105 transition shrink-0 relative">
+                      <Bell className="w-4 h-4" />
+                      <span className={`absolute top-1.5 right-1.5 w-2 h-2 rounded-full ${soundEnabled ? 'bg-emerald-500' : 'bg-zinc-400'}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-zinc-900 group-hover:text-amber-700 flex items-center gap-1">
+                        <span>Cài Đặt Báo & Âm Thanh</span>
+                        {soundEnabled ? (
+                          <Volume2 className="w-3 h-3 text-emerald-600" />
+                        ) : (
+                          <VolumeX className="w-3 h-3 text-zinc-400" />
+                        )}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 truncate">Chuông báo lò, đơn giao, Telegram</div>
+                    </div>
+                  </button>
+
+                  {/* 3. Đồng Bộ SQL (Xóa Cache) */}
+                  <button
+                    type="button"
+                    disabled={isPosSyncing}
+                    onClick={async () => {
+                      setIsMobileUtilityMenuOpen(false);
+                      try {
+                        setIsPosSyncing(true);
+                        clearProfileLocalData();
+                        await syncOrdersFromSupabase();
+                        await loadProducts();
+                        await fetchCurrentShiftFromDb();
+                        reloadOrdersData();
+                        alert('Đã xóa cache cục bộ và đồng bộ dữ liệu mới nhất từ CSDL Cloud SQL thành công!');
+                      } catch (err: any) {
+                        alert('Lỗi đồng bộ: ' + (err?.message || err));
+                      } finally {
+                        setIsPosSyncing(false);
+                      }
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl hover:bg-emerald-50 text-left transition cursor-pointer group disabled:opacity-50"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 group-hover:scale-105 transition shrink-0">
+                      <RefreshCw className={`w-4 h-4 ${isPosSyncing ? 'animate-spin' : ''}`} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-zinc-900 group-hover:text-emerald-700">
+                        {isPosSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ SQL (Xóa Cache)'}
+                      </div>
+                      <div className="text-[10px] text-zinc-500 truncate">Kéo lại món, ca và đơn mới nhất</div>
+                    </div>
+                  </button>
+
+                  <div className="my-1 border-t border-stone-100" />
+
+                  {/* 4. Kho Bánh Sẵn */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsInventoryModalOpen(true);
+                      setIsMobileUtilityMenuOpen(false);
+                    }}
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-zinc-700 hover:bg-amber-50 transition cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Package className="w-4 h-4 text-emerald-600" />
+                      <span>Kho Bánh Sẵn ({products.length})</span>
+                    </div>
+                    {lowStockItems.length > 0 && (
+                      <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
+                        {lowStockItems.length} sắp hết
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </>
+            )}
 
             {/* Tầng 2: Cặp Thẻ Nghiệp Vụ Cân Đối 50/50 (1 Dòng Duy Nhất) */}
             <div className="grid grid-cols-2 gap-2">

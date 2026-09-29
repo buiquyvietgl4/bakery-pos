@@ -244,4 +244,26 @@ input[type="time"]::-webkit-date-and-time-value {
   z-index: 999999;
 }
 
+/* 9. Hiệu ứng chữ chạy ngang kiểu banner thông báo (Marquee Banner Ticker) */
+@keyframes marqueeBanner {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-banner {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marqueeBanner 9s linear infinite;
+  will-change: transform;
+}
+
+.animate-marquee-banner:hover {
+  animation-play-state: paused;
+}
+
+
 
