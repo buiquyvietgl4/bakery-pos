@@ -209,20 +209,20 @@ export default function LoginModal() {
                 Dành cho Chủ Tiệm quên mật khẩu Admin:
               </p>
               <p className="text-[11px] text-rose-800 leading-relaxed">
-                Nhập mã OTP khẩn cấp gửi qua Telegram hoặc mã khóa cứng Root bí mật để đặt lại mật khẩu mới.
+                Mở ứng dụng <strong>Tao_Ma_Admin_1_Lan</strong> trên máy tính để lấy mã đăng nhập 1 lần (hoặc dùng Khóa Root) đặt lại mật khẩu mới.
               </p>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-zinc-700">Mã Cứu Hộ / OTP Telegram / Khóa Root:</label>
+              <label className="text-xs font-bold text-zinc-700">Mã Đăng Nhập 1 Lần / Khóa Root:</label>
               <input
-                type="password"
+                type="text"
                 required
                 autoFocus
                 value={rescueKeyInput}
                 onChange={(e) => setRescueKeyInput(e.target.value)}
-                placeholder="Nhập mã OTP 6 số hoặc Khóa cứng..."
-                className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500"
+                placeholder="Nhập mã (vd: ADM-123456 hoặc 123456)..."
+                className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500 uppercase"
               />
             </div>
 

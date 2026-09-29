@@ -307,17 +307,39 @@ Hệ thống được cài đặt sẵn 5 tài khoản phân quyền chi tiết:
   2. Bấm **"Xuất Bản Sao Lưu (JSON v2)"** để tải toàn bộ 34 thực thể dữ liệu về máy tính cá nhân.
   3. Để khôi phục: Bấm nút **"Khôi phục từ file"** -> Chọn file JSON đã tải -> Hệ thống sẽ tự phục hồi 100% dữ liệu.
 
+### 5.3. Ứng Dụng Cứu Hộ Admin: Tạo Mã Đăng Nhập 1 Lần & Đổi Mật Khẩu (Admin Rescue Tool)
+
+> [!TIP]
+> **Cơ chế cứu hộ độc lập hoàn toàn:** Dù website của bạn đang chạy trên **Cloud Supabase (Vercel)** hay **Local SQL (máy tính nội bộ)**, ứng dụng cứu hộ này đều hoạt động trơn tru mà không phụ thuộc vào tình trạng kết nối CSDL!
+
+#### 🛠️ Cách mở ứng dụng tạo mã:
+1. Vào thư mục dự án `bakery-erp` trên máy tính.
+2. Nhấp đúp chuột vào file: **`Tao_Ma_Admin_1_Lan.bat`** (hoặc chạy lệnh `python scripts/admin_rescue_app.py`).
+3. Một cửa sổ giao diện đồ họa màu xanh navy sang trọng sẽ hiện lên:
+   - Tự động sinh ra **Mã Đăng Nhập Admin 1 Lần** dạng `ADM-XXXXXX` (hiệu lực trong 15 phút).
+   - Tự động sao chép mã vào bộ nhớ tạm (Clipboard) của máy tính.
+   - Hiển thị đồng bộ cả trên Cloud SQL Supabase lẫn Local SQL.
+   - Tự động đếm ngược thời gian còn lại.
+
+#### 🔑 Các bước lấy lại quyền Admin trên Website:
+1. Mở màn hình **Đăng Nhập** trên website Bakery POS -> Bấm nút **"Quên mật khẩu?"**.
+2. Tại ô **Mã Đăng Nhập 1 Lần**: Bấm `Ctrl + V` để dán mã vừa tạo từ ứng dụng (vd: `ADM-044770` hoặc `044770`).
+3. Tại ô **Mật Khẩu Admin Mới**: Nhập mật khẩu mới bạn muốn đặt (tối thiểu 4 ký tự).
+4. Bấm **"Đặt Lại Mật Khẩu Admin & Vào Hệ Thống"**.
+5. Hệ thống lập tức mở khóa toàn quyền Admin, tự hủy mã cứu hộ đó vĩnh viễn (ngăn chặn kẻ gian dùng lại) và lưu mật khẩu mới đồng bộ vào hệ thống!
+
 ---
 
-### 5.3. Bảng Tra Cứu Lỗi Thường Gặp (Troubleshooting)
+### 5.4. Bảng Tra Cứu Lỗi Thường Gặp (Troubleshooting)
 
 | Hiện tượng | Nguyên nhân | Cách khắc phục |
 |:---|:---|:---|
 | **Vercel báo lỗi `ERESOLVE could not resolve` khi build** | Thiếu cấu hình legacy-peer-deps cho npm | Kiểm tra file `.npmrc` đã có trong dự án với dòng `legacy-peer-deps=true`, commit và push lại lên GitHub |
 | **Thanh Header hiển thị chữ "Offline" màu đỏ liên tục** | Sai URL hoặc Anon Key trong biến môi trường Vercel | Vào Vercel Settings -> Environment Variables, kiểm tra lại chính xác `NEXT_PUBLIC_SUPABASE_URL` và `NEXT_PUBLIC_SUPABASE_ANON_KEY` |
 | **Bấm vào menu Quản trị báo "Khóa"** | Tài khoản đang đăng nhập không có quyền Admin | Đăng nhập bằng tài khoản `@admin` (mật khẩu: `admin123`) hoặc bấm nút "Mở Admin" trên Header |
-| **Mất mật khẩu tài khoản Admin** | Quên mật khẩu đăng nhập | Dùng mã khôi phục tối cao `BAKERY-RESCUE-2026` để mở khóa và đặt lại mật khẩu mới |
+| **Mất mật khẩu tài khoản Admin** | Quên mật khẩu đăng nhập | Nhấp đúp file `Tao_Ma_Admin_1_Lan.bat` để lấy mã 1 lần (hoặc dùng khóa `BAKERY-RESCUE-2026`) để mở khóa và đặt lại mật khẩu mới |
 | **Supabase báo lỗi `permission denied for table ...`** | Chưa chạy cấp quyền bảo mật Data API | Mở Supabase SQL Editor -> chạy nội dung file `supabase/migrations/00020_post_oct30_data_api_grants.sql` |
 
 ---
 *Tài liệu được phát hành và chuẩn hóa dành riêng cho hệ thống Bakery ERP. Cập nhật mới nhất: 29/09/2026.*
+

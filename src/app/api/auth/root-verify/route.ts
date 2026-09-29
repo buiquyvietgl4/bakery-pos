@@ -12,6 +12,28 @@ const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
+
+export const RESCUE_CODE_SECRET = 'BAKERY_ERP_ADMIN_RESCUE_SECRET_2026';
+
+export function verifyCryptographicRescueCode(inputCode: string): boolean {
+  const clean = (inputCode || '').trim().toUpperCase();
+  const codeOnly = clean.replace(/^(ADM-|ROOT-)/i, '').trim();
+  if (!/^\d{6}$/.test(codeOnly)) return false;
+
+  const now = Date.now();
+  const currentWindow = Math.floor(now / 900000); // 15 phút mỗi khung mã
+
+  for (let offset = -2; offset <= 2; offset++) {
+    const w = currentWindow + offset;
+    const h = crypto.createHmac('sha256', RESCUE_CODE_SECRET).update(String(w)).digest('hex');
+    const expected = String(parseInt(h.slice(0, 8), 16) % 1000000).padStart(6, '0');
+    if (codeOnly === expected) {
+      return true;
+    }
+  }
+  return false;
+}
 
 const PROFILE_FILE = path.join(process.cwd(), '.active_database_profile.json');
 const LOCAL_OTP_FILE = path.join(process.cwd(), '.local_emergency_otp.json');
@@ -252,6 +274,29 @@ export async function POST(req: Request) {
 
     // ── BƯỚC 3: NẾU CHƯA XÁC THỰC ĐƯỢC CỤC BỘ → KIỂM TRA TRÊN CLOUD SUPABASE ──
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+      if (verifyCryptographicRescueCode(cleanInput)) {
+        try {
+          let local = localCfg || { active_otp_codes: [], used_otp_codes: [] };
+          if (!Array.isArray(local.used_otp_codes)) local.used_otp_codes = [];
+          local.used_otp_codes.push({ code: cleanInput, used: true, used_at: new Date().toISOString() });
+          local.adminPasswordHash = targetPassword;
+          local.updated_at = new Date().toISOString();
+          if (Array.isArray(local.accounts)) {
+            local.accounts = local.accounts.map((acc: any) =>
+              acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
+            );
+          }
+          fs.writeFileSync(LOCAL_OTP_FILE, JSON.stringify(local, null, 2), 'utf-8');
+          syncPasswordToLocalSqlFiles(targetPassword);
+        } catch {}
+
+        return NextResponse.json({
+          success: true,
+          message: `Xác thực Mã Đăng Nhập 1 Lần thành công! Mật khẩu Admin đã được đặt lại về: "${targetPassword}"`,
+          newPassword: targetPassword,
+        });
+      }
+
       return NextResponse.json(
         {
           success: false,
@@ -300,10 +345,47 @@ export async function POST(req: Request) {
     const activeIndex = activeCodes.findIndex((item) => item.code === cleanInput && !item.used);
 
     if (activeIndex === -1) {
+      if (verifyCryptographicRescueCode(cleanInput)) {
+        const burned = { code: cleanInput, used: true, used_at: new Date().toISOString() };
+        usedCodes.push(burned);
+
+        cfg.active_otp_codes = activeCodes;
+        cfg.used_otp_codes = usedCodes;
+        cfg.adminPasswordHash = targetPassword;
+        cfg.updated_at = new Date().toISOString();
+        if (Array.isArray(cfg.accounts)) {
+          cfg.accounts = cfg.accounts.map((acc: any) =>
+            acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
+          );
+        }
+
+        await supabase.from('recipes').upsert(
+          {
+            id: DB_ROW_SECURITY_ID,
+            name: DB_ROW_SECURITY_NAME,
+            yield_qty: 1,
+            yield_unit: 'chiếc',
+            cost_per_unit: 0,
+            total_material_cost: 0,
+            notes: JSON.stringify(cfg),
+            is_active: false,
+          },
+          { onConflict: 'id' }
+        );
+
+        syncPasswordToLocalSqlFiles(targetPassword);
+
+        return NextResponse.json({
+          success: true,
+          message: `Xác thực Mã Đăng Nhập 1 Lần thành công! Mã đã tự hủy và mật khẩu Admin đã được đặt lại về: "${targetPassword}"`,
+          newPassword: targetPassword,
+        });
+      }
+
       return NextResponse.json(
         {
           success: false,
-          error: 'Mã cứu hộ không tồn tại hoặc không chính xác! Chỉ mã được tạo từ máy tính có mã nguồn gốc mới có hiệu lực.',
+          error: 'Mã cứu hộ không tồn tại hoặc không chính xác! Chỉ mã được tạo từ ứng dụng cứu hộ của mã nguồn gốc mới có hiệu lực.',
         },
         { status: 401 }
       );

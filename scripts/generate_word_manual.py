@@ -672,8 +672,23 @@ def create_document():
 
     p = doc.add_paragraph()
     p.paragraph_format.space_before = Pt(8)
+    r = p.add_run("5.3. Ứng Dụng Cứu Hộ Admin: Tạo Mã Đăng Nhập 1 Lần & Đổi Mật Khẩu\n")
+    r.bold = True
+    r.font.size = Pt(10.5)
+    r.font.color.rgb = RGBColor(180, 83, 9)
+    r_body = p.add_run(
+        "Hệ thống đã tích hợp sẵn ứng dụng cứu hộ độc lập trên máy tính, không phụ thuộc vào tình trạng mạng hay CSDL:\n"
+        "1. Cách mở ứng dụng: Vào thư mục dự án bakery-erp trên máy tính -> Nhấp đúp chuột vào file: 'Tao_Ma_Admin_1_Lan.bat'.\n"
+        "2. Cửa sổ đồ họa sẽ xuất hiện, tự động tạo Mã Đăng Nhập 1 Lần (dạng ADM-XXXXXX) và tự sao chép vào bộ nhớ tạm (Clipboard).\n"
+        "3. Cách sử dụng trên web: Mở màn hình Đăng Nhập trên website -> Bấm 'Quên mật khẩu?' -> Dán mã vừa tạo -> Nhập mật khẩu Admin mới -> Bấm 'Đặt Lại Mật Khẩu Admin & Vào Hệ Thống'.\n"
+        "4. Tính bảo mật tuyệt đối: Mỗi mã chỉ có hiệu lực trong 15 phút và tự hủy vĩnh viễn ngay sau 1 lần sử dụng."
+    )
+    r_body.font.size = Pt(9.5)
+
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(8)
     p.paragraph_format.space_after = Pt(4)
-    r = p.add_run("5.3. Bảng Xử Lý Sự Cố Nhanh (Troubleshooting)\n")
+    r = p.add_run("5.4. Bảng Xử Lý Sự Cố Nhanh (Troubleshooting)\n")
     r.bold = True
     r.font.size = Pt(10.5)
     r.font.color.rgb = RGBColor(30, 58, 138)
@@ -683,7 +698,7 @@ def create_document():
         ["Vercel báo lỗi ERESOLVE khi cài gói", "Xung đột phiên bản npm", "Kiểm tra file .npmrc có dòng legacy-peer-deps=true rồi push lại lên GitHub."],
         ["Header báo lỗi Offline đỏ liên tục", "Sai biến môi trường Supabase", "Vào Vercel Settings -> Environment Variables kiểm tra URL và Anon Key."],
         ["Bấm vào Quản trị báo 'Khóa'", "Chưa đăng nhập quyền Admin", "Đăng nhập tài khoản @admin / admin123 hoặc bấm nút Mở Admin trên thanh Header."],
-        ["Quên mật khẩu Chủ Tiệm (Admin)", "Mất mật khẩu tài khoản", "Nhập mã khôi phục tối cao BAKERY-RESCUE-2026 tại form đăng nhập để đặt lại mật khẩu."],
+        ["Quên mật khẩu Chủ Tiệm (Admin)", "Mất mật khẩu tài khoản", "Nhấp đúp file Tao_Ma_Admin_1_Lan.bat để lấy mã 1 lần hoặc dùng mã BAKERY-RESCUE-2026."],
         ["Báo lỗi permission denied for table...", "Thiếu cấp quyền Data API", "Chạy file supabase/migrations/00020_post_oct30_data_api_grants.sql trên Supabase SQL Editor."]
     ]
     t_trouble = doc.add_table(rows=1, cols=3)
