@@ -227,13 +227,17 @@ def create_document():
         "   - Bước 1.1: Tạo Project mới tại Singapore",
         "   - Bước 1.2: Chạy File SQL Tổng thể (schema_full_init.sql)",
         "   - Bước 1.3: Lấy Project URL và Anon API Key",
-        "3. PHẦN 2: Hướng Dẫn Cấu Hình Môi Trường & Triển Khai Lên Vercel",
-        "   - Bước 2.1: Đồng bộ mã nguồn lên GitHub",
-        "   - Bước 2.2: Import dự án vào Vercel",
-        "   - Bước 2.3: Thiết lập các Biến Môi Trường (Environment Variables)",
-        "   - Bước 2.4: Biên dịch và Xuất bản website",
-        "4. PHẦN 3: Danh Sách Tài Khoản Đăng Nhập & Quy Trình Nghiệm Thu",
-        "5. PHẦN 4: Hướng Dẫn Vận Hành, Sao Lưu Dự Phòng & Xử Lý Sự Cố"
+        "3. PHẦN 2: Hướng Dẫn Đẩy Mã Nguồn Lên GitHub & Xác Thực Token",
+        "   - Bước 2.1: Cách đẩy cập nhật code hàng ngày (Dự án hiện tại)",
+        "   - Bước 2.2: Cách đẩy một dự án mới tinh từ con số 0",
+        "   - Bước 2.3: Cách lấy Personal Access Token khi GitHub đòi mật khẩu",
+        "   - Bước 2.4: Dùng công cụ trực quan GitHub Desktop",
+        "4. PHẦN 3: Hướng Dẫn Cấu Hình Môi Trường & Triển Khai Lên Vercel",
+        "   - Bước 3.1: Import dự án từ GitHub vào Vercel",
+        "   - Bước 3.2: Thiết lập các Biến Môi Trường (Environment Variables)",
+        "   - Bước 3.3: Biên dịch và Xuất bản website",
+        "5. PHẦN 4: Danh Sách Tài Khoản Đăng Nhập & Quy Trình Nghiệm Thu",
+        "6. PHẦN 5: Hướng Dẫn Vận Hành, Sao Lưu Dự Phòng & Xử Lý Sự Cố"
     ]
     for itm in toc_items:
         p_item = doc.add_paragraph()
@@ -362,33 +366,105 @@ def create_document():
 
     doc.add_paragraph()
 
-    # --- MỤC 3: PHẦN 2 - VERCEL ---
+    # --- MỤC 3: PHẦN 2 - GITHUB ---
     h1 = doc.add_paragraph()
     h1.paragraph_format.space_before = Pt(14)
     h1.paragraph_format.space_after = Pt(4)
-    r = h1.add_run("3. PHẦN 2: HƯỚNG DẪN TRIỂN KHAI ỨNG DỤNG LÊN VERCEL")
+    r = h1.add_run("3. PHẦN 2: HƯỚNG DẪN ĐẨY MÃ NGUỒN LÊN GITHUB & CẤU HÌNH TOKEN")
     r.bold = True
     r.font.name = "Segoe UI"
     r.font.size = Pt(13)
     r.font.color.rgb = RGBColor(180, 83, 9)
 
     p = doc.add_paragraph()
-    r = p.add_run("Bước 2.1 & 2.2: Đồng Bộ Lên GitHub & Import Vào Vercel\n")
+    r = p.add_run("Bước 2.1: Cách Đẩy Cập Nhật Hàng Ngày (Cho Dự Án Hiện Tại)\n")
     r.bold = True
     r.font.size = Pt(11)
     r.font.color.rgb = RGBColor(30, 58, 138)
     r_body = p.add_run(
-        "1. Đảm bảo toàn bộ mã nguồn đã được commit và push lên branch main của GitHub:\n"
-        "   Repository: https://github.com/buiquyvietgl4/bakery-pos.git\n"
-        "2. Truy cập https://vercel.com và đăng nhập bằng tài khoản GitHub.\n"
-        "3. Bấm 'Add New...' -> chọn 'Project' -> tìm repository 'bakery-pos' và bấm 'Import'."
+        "Dự án Bakery ERP hiện tại đã liên kết với repository: https://github.com/buiquyvietgl4/bakery-pos.git (nhánh main).\n"
+        "Mỗi khi bạn sửa đổi code và muốn đẩy lên để Vercel tự động cập nhật, chạy 3 lệnh sau:\n\n"
+        "   git add .\n"
+        "   git commit -m \"cập nhật tính năng mới\"\n"
+        "   git push origin main\n"
+    )
+    r_body.font.size = Pt(10)
+
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(6)
+    r = p.add_run("Bước 2.2: Cách Đẩy Một Dự Án Mới Tinh Từ Con Số 0\n")
+    r.bold = True
+    r.font.size = Pt(11)
+    r.font.color.rgb = RGBColor(30, 58, 138)
+    r_body = p.add_run(
+        "1. Tạo repository trống trên GitHub: Vào https://github.com -> Bấm dấu '+' -> New repository -> Đặt tên repo.\n"
+        "   ⚠️ Lưu ý: KHÔNG tích chọn Add README, .gitignore hoặc License (để repo hoàn toàn trống).\n"
+        "2. Copy đường link HTTPS (dạng https://github.com/buiquyvietgl4/my-new-project.git).\n"
+        "3. Chạy chuỗi lệnh sau tại thư mục máy tính:\n\n"
+        "   git init\n"
+        "   git add .\n"
+        "   git commit -m \"Initial commit\"\n"
+        "   git branch -M main\n"
+        "   git remote add origin <link_https_vừa_copy>\n"
+        "   git push -u origin main\n"
+    )
+    r_body.font.size = Pt(10)
+
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(6)
+    r = p.add_run("Bước 2.3: Cách Tạo Personal Access Token (Khi GitHub Đòi Mật Khẩu)\n")
+    r.bold = True
+    r.font.size = Pt(11)
+    r.font.color.rgb = RGBColor(30, 58, 138)
+    r_body = p.add_run(
+        "GitHub không cho dùng mật khẩu đăng nhập thông thường khi push mã nguồn qua HTTPS. Bạn cần dùng Token:\n"
+        "1. Vào GitHub -> Bấm ảnh đại diện góc trên phải -> Settings -> Developer settings (dưới cùng bên trái).\n"
+        "2. Chọn Personal access tokens -> Tokens (classic) -> Generate new token (classic).\n"
+        "3. Note: Điền tên máy tính (ví dụ: Laptop-Dell). Expiration: Chọn No expiration.\n"
+        "4. Tích chọn ô vuông 'repo' (toàn quyền mã nguồn) -> Bấm Generate token.\n"
+        "5. Copy chuỗi token (dạng ghp_...) và lưu lại. Khi Terminal hỏi Password, dán Token này vào là xong!"
+    )
+    r_body.font.size = Pt(10)
+
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(6)
+    r = p.add_run("Bước 2.4: Dùng Công Cụ Trực Quan GitHub Desktop (Không Cần Gõ Lệnh)\n")
+    r.bold = True
+    r.font.size = Pt(11)
+    r.font.color.rgb = RGBColor(30, 58, 138)
+    r_body = p.add_run(
+        "Tải ứng dụng miễn phí tại https://desktop.github.com/ -> Đăng nhập tài khoản GitHub -> Kéo thả thư mục dự án vào -> "
+        "Bấm 'Commit to main' -> Bấm 'Push origin'. Tất cả thao tác chỉ bằng chuột!"
+    )
+    r_body.font.size = Pt(10)
+
+    doc.add_paragraph()
+
+    # --- MỤC 4: PHẦN 3 - VERCEL ---
+    h1 = doc.add_paragraph()
+    h1.paragraph_format.space_before = Pt(14)
+    h1.paragraph_format.space_after = Pt(4)
+    r = h1.add_run("4. PHẦN 3: HƯỚNG DẪN TRIỂN KHAI ỨNG DỤNG LÊN VERCEL")
+    r.bold = True
+    r.font.name = "Segoe UI"
+    r.font.size = Pt(13)
+    r.font.color.rgb = RGBColor(180, 83, 9)
+
+    p = doc.add_paragraph()
+    r = p.add_run("Bước 3.1: Import Dự Án Từ GitHub Vào Vercel\n")
+    r.bold = True
+    r.font.size = Pt(11)
+    r.font.color.rgb = RGBColor(30, 58, 138)
+    r_body = p.add_run(
+        "1. Truy cập https://vercel.com và đăng nhập bằng tài khoản GitHub.\n"
+        "2. Bấm 'Add New...' (góc phải trên) -> chọn 'Project' -> tìm repository 'bakery-pos' và bấm 'Import'."
     )
     r_body.font.size = Pt(10)
 
     p = doc.add_paragraph()
     p.paragraph_format.space_before = Pt(8)
     p.paragraph_format.space_after = Pt(4)
-    r = p.add_run("Bước 2.3: Thiết Lập Biến Môi Trường (Environment Variables)\n")
+    r = p.add_run("Bước 3.2: Thiết Lập Biến Môi Trường (Environment Variables)\n")
     r.bold = True
     r.font.size = Pt(11)
     r.font.color.rgb = RGBColor(30, 58, 138)
@@ -418,7 +494,7 @@ def create_document():
     )
 
     p = doc.add_paragraph()
-    r = p.add_run("Bước 2.4: Tiến Hành Triển Khai (Deploy)\n")
+    r = p.add_run("Bước 3.3: Tiến Hành Triển Khai (Deploy)\n")
     r.bold = True
     r.font.size = Pt(11)
     r.font.color.rgb = RGBColor(30, 58, 138)
@@ -432,11 +508,11 @@ def create_document():
 
     doc.add_paragraph()
 
-    # --- MỤC 4: PHẦN 3 - TÀI KHOẢN & NGHIỆM THU ---
+    # --- MỤC 5: PHẦN 4 - TÀI KHOẢN & NGHIỆM THU ---
     h1 = doc.add_paragraph()
     h1.paragraph_format.space_before = Pt(14)
     h1.paragraph_format.space_after = Pt(4)
-    r = h1.add_run("4. PHẦN 3: DANH SÁCH TÀI KHOẢN MẶC ĐỊNH & NGHIỆM THU")
+    r = h1.add_run("5. PHẦN 4: DANH SÁCH TÀI KHOẢN MẶC ĐỊNH & NGHIỆM THU")
     r.bold = True
     r.font.name = "Segoe UI"
     r.font.size = Pt(13)
@@ -481,11 +557,11 @@ def create_document():
 
     doc.add_paragraph()
 
-    # --- MỤC 5: PHẦN 4 - VẬN HÀNH & SỰ CỐ ---
+    # --- MỤC 6: PHẦN 5 - VẬN HÀNH & SỰ CỐ ---
     h1 = doc.add_paragraph()
     h1.paragraph_format.space_before = Pt(14)
     h1.paragraph_format.space_after = Pt(4)
-    r = h1.add_run("5. PHẦN 4: HƯỚNG DẪN VẬN HÀNH, SAO LƯU & XỬ LÝ SỰ CỐ")
+    r = h1.add_run("6. PHẦN 5: HƯỚNG DẪN VẬN HÀNH, SAO LƯU & XỬ LÝ SỰ CỐ")
     r.bold = True
     r.font.name = "Segoe UI"
     r.font.size = Pt(13)
@@ -535,10 +611,20 @@ def create_document():
     t_trouble = doc.add_table(rows=1, cols=3)
     style_table(t_trouble, [1.8, 1.8, 2.9], trouble_headers, trouble_data, header_bg="475569")
 
-    # Lưu tài liệu
+    # Lưu tài liệu vào Artifacts
+    artifact_path = r"C:\Users\H\.gemini\antigravity\brain\60b78812-4fb4-4b45-a7e5-90bb596df1a5\HUONG_DAN_CAI_DAT_VA_TRIEN_KHAI_BAKERY_ERP.docx"
+    doc.save(artifact_path)
+    print(f"Artifact document created at: {artifact_path}")
+
+    # Lưu tài liệu vào thư mục dự án
     output_path = r"C:\Users\H\.gemini\antigravity\scratch\bakery-erp\HUONG_DAN_CAI_DAT_VA_TRIEN_KHAI_BAKERY_ERP.docx"
-    doc.save(output_path)
-    print(f"Document successfully created at: {output_path}")
+    try:
+        doc.save(output_path)
+        print(f"Document successfully created at: {output_path}")
+    except PermissionError:
+        fallback_path = r"C:\Users\H\.gemini\antigravity\scratch\bakery-erp\HUONG_DAN_CAI_DAT_VA_TRIEN_KHAI_BAKERY_ERP_MOI.docx"
+        doc.save(fallback_path)
+        print(f"Main docx file is open in Word. Saved updated file to: {fallback_path}")
 
 if __name__ == "__main__":
     create_document()

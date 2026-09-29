@@ -3,9 +3,10 @@
 
 Tài liệu này là cẩm nang hướng dẫn đầy đủ từ A - Z giúp bạn tự tay thiết lập toàn bộ hệ thống từ con số 0:
 - **Phần 1:** Khởi tạo cơ sở dữ liệu Cloud SQL (Supabase) chuẩn bảo mật mới (áp dụng từ 30/10).
-- **Phần 2:** Cấu hình môi trường và triển khai ứng dụng lên đám mây Vercel (chạy 24/7).
-- **Phần 3:** Danh sách tài khoản đăng nhập và quy trình nghiệm thu ban đầu.
-- **Phần 4:** Hướng dẫn vận hành, sao lưu dự phòng và xử lý sự cố.
+- **Phần 2:** Hướng dẫn đẩy mã nguồn lên GitHub & cấu hình xác thực (Token / GitHub Desktop).
+- **Phần 3:** Cấu hình môi trường và triển khai ứng dụng lên đám mây Vercel (chạy 24/7).
+- **Phần 4:** Danh sách tài khoản đăng nhập và quy trình nghiệm thu ban đầu.
+- **Phần 5:** Hướng dẫn vận hành, sao lưu dự phòng và xử lý sự cố.
 
 ---
 
@@ -93,29 +94,92 @@ Sau khi chạy SQL xong, bạn cần lấy 2 thông số kết nối để cài 
 
 ---
 
-## PHẦN 2: CẤU HÌNH MÔI TRƯỜNG & TRIỂN KHAI LÊN VERCEL
+## PHẦN 2: HƯỚNG DẪN ĐẨY MÃ NGUỒN LÊN GITHUB & CẤU HÌNH XÁC THỰC
 
-### Bước 2.1: Đồng Bộ Mã Nguồn Lên GitHub
-Đảm bảo toàn bộ mã nguồn mới nhất của bạn đã được đẩy lên GitHub:
+### Bước 2.1: Cách Đẩy Cập Nhật Hàng Ngày (Cho Dự Án Hiện Tại)
+Dự án Bakery ERP hiện tại của bạn đã được kết nối với repository:  
+👉 `https://github.com/buiquyvietgl4/bakery-pos.git` (nhánh `main`).
+
+Mỗi khi sửa code xong và muốn đẩy lên GitHub để Vercel tự động deploy:
 ```bash
-# Mở terminal tại thư mục bakery-erp
-git status
+# 1. Mở PowerShell / Terminal tại thư mục bakery-erp
+# 2. Gom tất cả các file đã sửa hoặc thêm mới
 git add .
-git commit -m "feat: complete bakery pos deployment"
+
+# 3. Ghi chú nội dung bạn vừa thay đổi
+git commit -m "cập nhật tính năng và giao diện mới"
+
+# 4. Đẩy code lên nhánh main của GitHub
 git push origin main
 ```
-*(Kho mã nguồn mặc định của dự án: `https://github.com/buiquyvietgl4/bakery-pos.git`)*
 
 ---
 
-### Bước 2.2: Import Dự Án Vào Vercel
+### Bước 2.2: Cách Đẩy Một Dự Án Mới Tinh Từ Con Số 0 Lên GitHub
+Nếu bạn tạo một phần mềm mới hoặc kho lưu trữ mới hoàn toàn:
+1. **Tạo Repo trống trên GitHub:**
+   - Vào [https://github.com](https://github.com) -> Bấm dấu **`+`** góc trên bên phải -> **New repository**.
+   - Đặt tên (ví dụ: `my-new-project`), chọn Public hoặc Private.
+   - ⚠️ **Lưu ý quan trọng:** **KHÔNG tích chọn** Add README, .gitignore hoặc License để repo được hoàn toàn trống.
+   - Bấm **Create repository** -> Copy link HTTPS dạng `https://github.com/buiquyvietgl4/my-new-project.git`.
+
+2. **Chạy chuỗi lệnh khởi tạo tại máy tính:**
+```bash
+# Khởi tạo Git cục bộ
+git init
+
+# Gom toàn bộ file
+git add .
+
+# Tạo commit đầu tiên
+git commit -m "Initial commit - Khởi tạo dự án"
+
+# Đổi tên nhánh mặc định thành main
+git branch -M main
+
+# Liên kết với kho GitHub vừa tạo
+git remote add origin https://github.com/buiquyvietgl4/my-new-project.git
+
+# Đẩy mã nguồn lên
+git push -u origin main
+```
+
+---
+
+### Bước 2.3: Cách Tạo Personal Access Token (Khi GitHub Đòi Mật Khẩu)
+Từ năm 2021, GitHub không cho dùng mật khẩu đăng nhập thông thường khi chạy lệnh `git push` qua HTTPS. Bạn cần dùng **Personal Access Token**:
+1. Trên GitHub, bấm vào ảnh đại diện góc trên bên phải -> chọn **Settings**.
+2. Cuộn chuột xuống dưới cùng bên trái -> chọn **Developer settings**.
+3. Chọn **Personal access tokens** -> chọn **Tokens (classic)**.
+4. Bấm **Generate new token** -> chọn **Generate new token (classic)**.
+5. **Note:** Điền tên máy tính (ví dụ: `Laptop-Dell`).
+6. **Expiration:** Chọn `No expiration` (không bao giờ hết hạn).
+7. Tích chọn ô vuông **`repo`** (cấp toàn quyền đọc/ghi mã nguồn).
+8. Bấm **Generate token** -> **Copy chuỗi token** (dạng `ghp_xxxxxxxxxxxxxxxxxxxx`) và lưu lại vào Notepad.
+9. Khi Terminal hỏi:
+   - *Username:* Nhập tên tài khoản GitHub của bạn (`buiquyvietgl4`).
+   - *Password:* Dán chuỗi **Token** vừa copy vào (khi dán trên Terminal sẽ không hiện ký tự, cứ bấm Enter là xong).
+
+---
+
+### Bước 2.4: Sử Dụng Công Cụ Trực Quan GitHub Desktop (Không Cần Gõ Lệnh)
+Nếu không muốn nhớ các câu lệnh đen trắng, bạn có thể dùng phần mềm trực quan:
+1. Tải ứng dụng miễn phí: [https://desktop.github.com/](https://desktop.github.com/).
+2. Đăng nhập tài khoản GitHub trên ứng dụng.
+3. Kéo thả thư mục dự án vào GitHub Desktop -> Bấm **Commit to main** -> Bấm **Push origin**. Tất cả chỉ cần thao tác bằng chuột!
+
+---
+
+## PHẦN 3: CẤU HÌNH MÔI TRƯỜNG & TRIỂN KHAI LÊN VERCEL
+
+### Bước 3.1: Import Dự Án Vào Vercel
 1. Truy cập [https://vercel.com](https://vercel.com) và đăng nhập bằng tài khoản GitHub chứa repository trên.
 2. Tại màn hình Dashboard của Vercel, bấm nút **"Add New..."** (ở góc trên bên phải) -> chọn **"Project"**.
 3. Tại danh sách repositories hiện ra, tìm `bakery-pos` (hoặc tên repo của bạn) -> bấm nút **"Import"**.
 
 ---
 
-### Bước 2.3: Thiết Lập Biến Môi Trường (Environment Variables)
+### Bước 3.2: Thiết Lập Biến Môi Trường (Environment Variables)
 
 > [!IMPORTANT]
 > Đây là bước bắt buộc để website của bạn biết cách kết nối tới database Supabase vừa tạo ở Phần 1!
@@ -138,7 +202,7 @@ Tại màn hình cấu hình trước khi deploy (hoặc vào **Settings** -> **
 
 ---
 
-### Bước 2.4: Tiến Hành Triển Khai (Deploy)
+### Bước 3.3: Tiến Hành Triển Khai (Deploy)
 1. **Framework Preset:** Vercel tự động nhận diện là **Next.js**.
 2. **Build Command:** Để mặc định `next build`.
 3. **Install Command:** Để mặc định.
@@ -148,11 +212,11 @@ Tại màn hình cấu hình trước khi deploy (hoặc vào **Settings** -> **
 
 ---
 
-## PHẦN 3: DANH SÁCH TÀI KHOẢN MẶC ĐỊNH & NGHIỆM THU
+## PHẦN 4: DANH SÁCH TÀI KHOẢN MẶC ĐỊNH & NGHIỆM THU
 
 Sau khi deploy xong, bạn bấm vào liên kết Vercel cung cấp (ví dụ: `https://bakery-pos.vercel.app`) để kiểm tra hệ thống:
 
-### 3.1. Danh Sách Tài Khoản Đăng Nhập
+### 4.1. Danh Sách Tài Khoản Đăng Nhập
 Hệ thống được cài đặt sẵn 5 tài khoản phân quyền chi tiết:
 
 | Tên Đăng Nhập | Mật Khẩu | Tên Nhân Viên | Vai Trò (Role) | Phạm Vi Quyền Hạn |
@@ -165,7 +229,7 @@ Hệ thống được cài đặt sẵn 5 tài khoản phân quyền chi tiết:
 
 ---
 
-### 3.2. Quy Trình Nghiệm Thu 5 Bước
+### 4.2. Quy Trình Nghiệm Thu 5 Bước
 1. **Kiểm tra trạng thái kết nối:**
    - Nhìn lên góc phải thanh Header: Nếu có biểu tượng chấm xanh **"Live Sync"** là ứng dụng đã kết nối thành công với Supabase.
 2. **Đăng nhập thử tài khoản:**
@@ -183,14 +247,14 @@ Hệ thống được cài đặt sẵn 5 tài khoản phân quyền chi tiết:
 
 ---
 
-## PHẦN 4: HƯỚNG DẪN VẬN HÀNH, SAO LƯU & XỬ LÝ SỰ CỐ
+## PHẦN 5: HƯỚNG DẪN VẬN HÀNH, SAO LƯU & XỬ LÝ SỰ CỐ
 
-### 4.1. Cơ Chế Bán Hàng Khi Mất Mạng (Offline Resilience)
+### 5.1. Cơ Chế Bán Hàng Khi Mất Mạng (Offline Resilience)
 - Khi cửa hàng bị đứt cáp quang hoặc rớt Wi-Fi, thanh header sẽ hiển thị badge đỏ **"Offline"**.
 - Nhân viên vẫn tiếp tục bấm chọn bánh và thanh toán tiền mặt bình thường. Đơn hàng sẽ được lưu kiên cố vào bộ nhớ trình duyệt (Dexie IndexedDB).
 - Khi có mạng Internet trở lại, hệ thống sẽ tự động đối soát (`backupReconciler`) và đẩy toàn bộ các đơn hàng offline lên Cloud SQL Supabase mà không làm mất bất kỳ đơn nào.
 
-### 4.2. Sao Lưu & Phục Hồi Dữ Liệu Dự Phòng
+### 5.2. Sao Lưu & Phục Hồi Dữ Liệu Dự Phòng
 - **Sao lưu tự động:** Hệ thống tự động tạo snapshot sao lưu mỗi khi chốt ca cuối ngày vào bảng `system_cloud_backups`.
 - **Sao lưu thủ công:**
   1. Vào menu **Quản trị & Kế toán** -> chọn tab **Sao Lưu & Phục Hồi**.
@@ -199,7 +263,7 @@ Hệ thống được cài đặt sẵn 5 tài khoản phân quyền chi tiết:
 
 ---
 
-### 4.3. Bảng Tra Cứu Lỗi Thường Gặp (Troubleshooting)
+### 5.3. Bảng Tra Cứu Lỗi Thường Gặp (Troubleshooting)
 
 | Hiện tượng | Nguyên nhân | Cách khắc phục |
 |:---|:---|:---|
