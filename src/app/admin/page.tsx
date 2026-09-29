@@ -206,6 +206,8 @@ export default function AdminDashboard() {
     updateRolePermission,
     setAllPermissionsForRole,
     resetPermissionsToDefault,
+    openLoginModal,
+    loginWithCredentials,
   } = useAuth();
   const [activeTab, setActiveTab] = useState<
     | 'overview'
@@ -277,6 +279,7 @@ export default function AdminDashboard() {
   const [viewingAdminProofImage, setViewingAdminProofImage] = useState<string | null>(null);
 
   // ── SECURITY & PERMISSIONS STATE ──
+  const [unlockUsername, setUnlockUsername] = useState('admin');
   const [unlockPassword, setUnlockPassword] = useState('');
   const [unlockError, setUnlockError] = useState('');
   const [adminOldPass, setAdminOldPass] = useState('');
@@ -3706,21 +3709,33 @@ export default function AdminDashboard() {
           Tài khoản <b>{user?.name || 'hiện tại'}</b> chưa được cấp quyền truy cập Quản Trị. Vui lòng đăng nhập tài khoản có quyền Quản trị hoặc nhập mật khẩu Admin để tiếp tục.
         </p>
 
-        {/* Form mở khóa nhanh trực tiếp */}
+        {/* Form đăng nhập quản trị trực tiếp (Tài khoản + Mật khẩu) */}
         <form
           onSubmit={(e) => {
             e.preventDefault();
             setUnlockError('');
-            const res = loginAdmin(unlockPassword);
+            const res = loginWithCredentials(unlockUsername.trim(), unlockPassword.trim());
             if (!res.success) {
-              setUnlockError(res.error || 'Mật khẩu không chính xác!');
+              setUnlockError(res.error || 'Tài khoản hoặc mật khẩu không chính xác!');
             }
           }}
           className="w-full space-y-3 bg-white p-5 rounded-2xl border border-zinc-200 shadow-sm text-left"
         >
-          <div className="space-y-1.5">
+          <div className="space-y-1">
+            <label className="font-bold text-zinc-700 text-xs">Tài Khoản / Username:</label>
+            <input
+              type="text"
+              required
+              value={unlockUsername}
+              onChange={(e) => setUnlockUsername(e.target.value)}
+              placeholder="admin, quanly..."
+              className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <div className="space-y-1">
             <div className="flex justify-between items-center text-xs">
-              <label className="font-bold text-zinc-700">Mật khẩu Chủ Tiệm (Admin):</label>
+              <label className="font-bold text-zinc-700">Mật khẩu:</label>
               <span className="text-[10px] text-zinc-400 font-mono">Mặc định: admin123</span>
             </div>
             <div className="relative">
@@ -3730,8 +3745,8 @@ export default function AdminDashboard() {
                 autoFocus
                 value={unlockPassword}
                 onChange={(e) => setUnlockPassword(e.target.value)}
-                placeholder="Nhập mật khẩu admin..."
-                className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-sm font-black text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                placeholder="Nhập mật khẩu..."
+                className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-black text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500 font-mono"
               />
               <KeyRound className="w-4 h-4 text-zinc-400 absolute right-3.5 top-3" />
             </div>
@@ -3741,12 +3756,21 @@ export default function AdminDashboard() {
             <p className="text-xs text-rose-600 font-bold">⚠️ {unlockError}</p>
           )}
 
-          <button
-            type="submit"
-            className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition cursor-pointer flex items-center justify-center gap-1.5"
-          >
-            <Shield className="w-4 h-4" /> Mở Khóa Quản Trị Ngay
-          </button>
+          <div className="space-y-2 pt-1">
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Shield className="w-4 h-4" /> Đăng Nhập Quản Trị Ngay
+            </button>
+            <button
+              type="button"
+              onClick={() => openLoginModal('admin')}
+              className="w-full py-2.5 rounded-xl border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1.5"
+            >
+              <Users className="w-4 h-4 text-zinc-500" /> Chọn Tài Khoản Từ Danh Sách
+            </button>
+          </div>
         </form>
 
         <div className="pt-2">

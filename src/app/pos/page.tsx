@@ -942,7 +942,7 @@ export default function POSPage() {
       setDeletePinError(null);
       handlePermanentDeleteOrder(orderToDelete);
     } else {
-      setDeletePinError('Mã PIN không chính xác. Mã mặc định: 8888');
+      setDeletePinError('Mật khẩu không chính xác. Mặc định: admin123');
       setDeletePinInput('');
     }
   };
@@ -1110,8 +1110,8 @@ export default function POSPage() {
 
   const requireManagerPin = (
     onSuccess: () => void,
-    title = 'Xác Thực Mã PIN Quản Lý',
-    subtitle = 'Cần quyền Quản lý để thực hiện thao tác này',
+    title = 'Xác Thực Mật Khẩu Quản Lý',
+    subtitle = 'Cần mật khẩu Quản lý hoặc Admin để thực hiện thao tác này',
     actionDescription?: string
   ) => {
     setPinActionData({ onSuccess, title, subtitle, actionDescription });
@@ -10727,12 +10727,12 @@ export default function POSPage() {
                 </div>
               </div>
             ) : (
-              /* Nếu là Nhân viên -> Yêu cầu nhập PIN */
+              /* Nếu là Nhân viên -> Yêu cầu nhập Mật khẩu quản lý */
               <div className="space-y-3 pt-1">
                 <div className="space-y-1">
                   <div className="flex justify-between items-center text-xs">
-                    <label className="font-bold text-zinc-700">Mã PIN Quản Lý xác thực:</label>
-                    <span className="text-[11px] text-amber-700 font-medium">Mặc định: <b>8888</b></span>
+                    <label className="font-bold text-zinc-700">Mật khẩu Quản Lý xác thực:</label>
+                    <span className="text-[11px] text-amber-700 font-medium">Mặc định: <b>admin123</b></span>
                   </div>
                   <input
                     type="password"
@@ -10741,7 +10741,7 @@ export default function POSPage() {
                       setDeletePinInput(e.target.value);
                       setDeletePinError(null);
                     }}
-                    placeholder="Nhập PIN (Mặc định: 8888)"
+                    placeholder="Nhập mật khẩu (Mặc định: admin123)"
                     className="w-full text-center py-2.5 bg-zinc-50 border-2 border-amber-300 rounded-xl text-base font-mono font-black text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
                     autoFocus
                     onKeyDown={(e) => {

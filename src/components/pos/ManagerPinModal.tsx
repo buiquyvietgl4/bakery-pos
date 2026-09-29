@@ -18,8 +18,8 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
   onClose,
   onSuccess,
   onSwitchToAdminApproval,
-  title = 'Xác Thực Mã PIN Quản Lý',
-  subtitle = 'Nhập mã PIN Quản Lý để cấp quyền thực hiện hành động này',
+  title = 'Xác Thực Mật Khẩu Quản Lý',
+  subtitle = 'Nhập mật khẩu Quản Lý hoặc Admin để cấp quyền thực hiện hành động này',
   actionDescription,
 }) => {
   const [pin, setPin] = useState('');
@@ -45,15 +45,15 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
         const secRaw = localStorage.getItem('bakery_security_config');
         if (secRaw) {
           const sec = JSON.parse(secRaw);
+          if (sec?.adminPasswordHash && String(sec.adminPasswordHash).trim()) return String(sec.adminPasswordHash).trim();
           if (sec?.managerPin && String(sec.managerPin).trim()) return String(sec.managerPin).trim();
           if (sec?.adminPin && String(sec.adminPin).trim()) return String(sec.adminPin).trim();
-          if (sec?.staffPin && String(sec.staffPin).trim()) return String(sec.staffPin).trim();
         }
         const saved = localStorage.getItem('bakery_admin_pin');
         if (saved && saved.trim()) return saved.trim();
       } catch {}
     }
-    return '8888';
+    return 'admin123';
   };
 
   const handleVerify = (inputPin: string) => {
@@ -64,7 +64,7 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
       onClose();
     } else {
       setIsShaking(true);
-      setErrorMsg('Mã PIN không chính xác. Thử mã mặc định 8888 hoặc mật khẩu Admin!');
+      setErrorMsg('Mật khẩu không chính xác. Mặc định: admin123');
       setPin('');
       setTimeout(() => setIsShaking(false), 500);
       inputRef.current?.focus();
@@ -146,14 +146,14 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
                 setPin(e.target.value);
                 setErrorMsg(null);
               }}
-              placeholder="Nhập mã PIN (Mặc định: 8888)"
-              className="w-full text-center py-3 bg-zinc-50 border-2 border-amber-300 rounded-2xl text-lg font-mono font-black text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white tracking-widest"
+              placeholder="Nhập mật khẩu (Mặc định: admin123)"
+              className="w-full text-center py-3 bg-zinc-50 border-2 border-amber-300 rounded-2xl text-base font-mono font-black text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
               autoFocus
             />
           </div>
 
           <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-xl text-center font-medium">
-            Mã PIN mặc định: <b className="font-mono text-amber-950 font-bold">8888</b> (hoặc mật khẩu Admin)
+            Mật khẩu mặc định: <b className="font-mono text-amber-950 font-bold">admin123</b>
           </div>
 
           {/* Dấu chấm bảo mật (PIN Dots) */}
@@ -227,12 +227,12 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
               className="flex-1 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs shadow-md shadow-amber-600/30 transition cursor-pointer disabled:opacity-50 active:scale-95 flex items-center justify-center gap-1.5"
             >
               <KeyRound className="w-4 h-4" />
-              <span>Xác Nhận PIN</span>
+              <span>Xác Nhận Mật Khẩu</span>
             </button>
           </div>
 
           <p className="text-[10px] text-zinc-400 text-center italic">
-            Mã PIN mặc định: <b>admin123</b> (hoặc gõ trực tiếp bàn phím)
+            Mật khẩu mặc định: <b>admin123</b> (hoặc gõ trực tiếp bàn phím)
           </p>
 
           {onSwitchToAdminApproval && (

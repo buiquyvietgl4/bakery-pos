@@ -618,7 +618,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
               <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-100 border border-zinc-200 text-[11px] font-bold text-zinc-600">
                 <span>Duyệt:</span>
                 <span className="text-zinc-900 font-black">
-                  {(securityConfig?.returnApprovalMode || 'pin') === 'none' ? '🔓 Không cần xác nhận' : (securityConfig?.returnApprovalMode || 'pin') === 'admin_approval' ? '📱 Gửi Admin (2 Bước)' : '🔑 Mã PIN Quản Lý'}
+                  {(securityConfig?.returnApprovalMode || 'pin') === 'none' ? '🔓 Không cần xác nhận' : (securityConfig?.returnApprovalMode || 'pin') === 'admin_approval' ? '📱 Gửi Admin (2 Bước)' : '🔑 Mật Khẩu Quản Lý'}
                 </span>
               </div>
               <button
@@ -1697,10 +1697,10 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-1.5 font-black text-amber-950 text-sm">
-                    <span>Cách 1: Nhập Mã PIN Quản Lý</span>
+                    <span>Cách 1: Nhập Mật Khẩu Quản Lý</span>
                   </div>
                   <p className="text-xs text-zinc-600 mt-0.5 leading-snug">
-                    Nhập mã PIN Quản Lý trực tiếp tại quầy thu ngân (Mặc định: <b>8888</b> hoặc <b>admin123</b>).
+                    Nhập mật khẩu Quản Lý hoặc Admin trực tiếp tại quầy thu ngân (Mặc định: <b>admin123</b>).
                   </p>
                 </div>
               </button>
@@ -1834,10 +1834,10 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
       <ManagerPinModal
         isOpen={isPinModalOpen}
         onClose={() => setIsPinModalOpen(false)}
-        onSuccess={() => executeFinalizeReturn('Quản Lý (Mã PIN)')}
+        onSuccess={() => executeFinalizeReturn('Quản Lý (Mật Khẩu)')}
         onSwitchToAdminApproval={handleSendApprovalToAdmin}
         title="Duyệt Đổi Trả / Hoàn Tiền"
-        subtitle="Vui lòng nhập mã PIN Quản Lý để xác nhận xuất quỹ hoàn tiền hoặc điều chỉnh đơn"
+        subtitle="Vui lòng nhập mật khẩu Quản Lý hoặc Admin để xác nhận xuất quỹ hoàn tiền hoặc điều chỉnh đơn"
         actionDescription={`Duyệt giao dịch ${returnType === 'refund' ? 'Hoàn tiền' : 'Đổi hàng'} cho đơn #${
           selectedOrder?.order_number || selectedOrder?.orderNumber
         }`}

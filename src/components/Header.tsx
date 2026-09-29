@@ -142,7 +142,7 @@ export default function Header() {
                     key={item.href}
                     type="button"
                     onClick={() => openLoginModal('kitchen')}
-                    title="Khu vực Bếp dành cho Thợ Bếp & Chủ Tiệm (Bấm để nhập PIN bếp)"
+                    title="Khu vực Bếp dành cho Thợ Bếp & Chủ Tiệm (Bấm để đăng nhập)"
                     className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-orange-800 hover:bg-white/80 transition cursor-pointer"
                   >
                     <Lock className="w-3.5 h-3.5 text-orange-400" />
