@@ -380,47 +380,57 @@ export const CakeStickerModal: React.FC<CakeStickerModalProps> = ({
           </div>
 
           {/* Cụm điều chỉnh nhanh độ thu phóng (Chống tràn mép giấy) */}
-          <div className="flex items-center justify-between bg-zinc-50 p-2 rounded-2xl border border-zinc-200/80 text-xs">
-            <div className="flex items-center gap-1.5 font-bold text-zinc-700 pl-1">
-              <ZoomIn className="w-4 h-4 text-amber-600" />
-              <span>Thu phóng (Chống tràn):</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => handleZoomChange(Math.max(70, zoomScale - 2))}
-                className="w-7 h-7 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 font-black text-sm flex items-center justify-center transition cursor-pointer active:scale-95 shadow-2xs"
-                title="Thu nhỏ 2%"
-              >
-                -
-              </button>
-              <span className="font-mono font-black text-amber-700 w-11 text-center text-xs bg-amber-50 py-1 rounded-md border border-amber-200/80">
-                {zoomScale}%
-              </span>
-              <button
-                type="button"
-                onClick={() => handleZoomChange(Math.min(120, zoomScale + 2))}
-                className="w-7 h-7 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 font-black text-sm flex items-center justify-center transition cursor-pointer active:scale-95 shadow-2xs"
-                title="Phóng to 2%"
-              >
-                +
-              </button>
-              <div className="flex gap-1 pl-0.5">
-                {[85, 90, 92, 100].map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => handleZoomChange(s)}
-                    className={`px-1.5 py-1 rounded-md text-[10px] font-bold cursor-pointer transition ${
-                      zoomScale === s
-                        ? 'bg-amber-600 text-white shadow-2xs'
-                        : 'bg-zinc-200/80 text-zinc-700 hover:bg-zinc-300'
-                    }`}
-                  >
-                    {s}%
-                  </button>
-                ))}
+          <div className="bg-zinc-50 p-2 sm:p-2.5 rounded-2xl border border-zinc-200/80 text-xs space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 font-bold text-zinc-700 pl-0.5">
+                <ZoomIn className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>Thu phóng (Chống tràn):</span>
               </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleZoomChange(Math.max(70, zoomScale - 2))}
+                  className="w-7 h-7 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 font-black text-sm flex items-center justify-center transition cursor-pointer active:scale-95 shadow-2xs"
+                  title="Thu nhỏ 2%"
+                >
+                  -
+                </button>
+                <span className="font-mono font-black text-amber-700 min-w-[46px] text-center text-xs bg-amber-50 py-1 px-1 rounded-md border border-amber-200/80">
+                  {zoomScale}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleZoomChange(Math.min(120, zoomScale + 2))}
+                  className="w-7 h-7 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 font-black text-sm flex items-center justify-center transition cursor-pointer active:scale-95 shadow-2xs"
+                  title="Phóng to 2%"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            {/* Thanh chọn nhanh giá trị % - Co giãn đều 100% không bao giờ tràn mép màn hình */}
+            <div className="grid grid-cols-4 gap-1.5 pt-1.5 border-t border-zinc-200/60">
+              {[
+                { val: 85, label: '85%' },
+                { val: 90, label: '90%' },
+                { val: 92, label: '92% (Chuẩn)' },
+                { val: 100, label: '100%' },
+              ].map(({ val, label }) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => handleZoomChange(val)}
+                  className={`py-1 rounded-lg text-[10px] font-bold cursor-pointer transition text-center truncate ${
+                    zoomScale === val
+                      ? 'bg-amber-600 text-white shadow-2xs font-black'
+                      : 'bg-white border border-zinc-200 text-zinc-700 hover:bg-zinc-100'
+                  }`}
+                  title={`Chọn tỉ lệ in ${val}%`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
           </div>
 

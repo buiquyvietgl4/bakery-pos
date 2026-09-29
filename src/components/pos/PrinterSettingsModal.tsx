@@ -521,7 +521,7 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
                       {config.stickerScale ?? 92}%
                     </span>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     <input
                       type="range"
                       min={70}
@@ -531,13 +531,13 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
                       onChange={(e) => handleStickerScaleChange(Number(e.target.value))}
                       className="flex-1 accent-amber-600 cursor-pointer h-2 bg-zinc-200 rounded-lg"
                     />
-                    <div className="flex gap-1 shrink-0">
+                    <div className="grid grid-cols-4 sm:flex gap-1 shrink-0">
                       {[85, 90, 92, 100].map((val) => (
                         <button
                           key={val}
                           type="button"
                           onClick={() => handleStickerScaleChange(val)}
-                          className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition ${
+                          className={`px-2 py-1 rounded-lg text-[10px] font-bold cursor-pointer transition text-center ${
                             (config.stickerScale ?? 92) === val
                               ? 'bg-amber-600 text-white shadow-xs'
                               : 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200'

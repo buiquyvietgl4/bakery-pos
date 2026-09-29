@@ -92,18 +92,18 @@ export default function Header() {
   return (
     <>
       <header className="sticky top-0 z-40 bg-[#fbf7f2]/95 backdrop-blur-xl border-b border-amber-200/50 shadow-xs w-full overflow-x-hidden">
-        <div className="max-w-7xl mx-auto px-2 sm:px-6 flex items-center justify-between h-16 w-full gap-1 sm:gap-2">
+        <div className="max-w-7xl mx-auto px-1.5 sm:px-6 flex items-center justify-between h-14 sm:h-16 w-full gap-1 sm:gap-2">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 sm:gap-3 font-bold text-lg text-amber-950 group shrink-0">
-            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 flex items-center justify-center text-white shadow-lg shadow-amber-500/25 group-hover:scale-105 group-hover:shadow-amber-500/35 transition-all duration-300 shrink-0 overflow-hidden">
+          <Link href="/" className="flex items-center gap-1 sm:gap-3 font-bold text-lg text-amber-950 group shrink-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-gradient-to-tr from-amber-600 via-amber-500 to-orange-400 flex items-center justify-center text-white shadow-md shadow-amber-500/25 group-hover:scale-105 transition-all shrink-0 overflow-hidden">
               {branding.logoUrl ? (
-                <img src={branding.logoUrl} alt={branding.storeName} className="w-full h-full object-cover rounded-xl" />
+                <img src={branding.logoUrl} alt={branding.storeName} className="w-full h-full object-cover rounded-lg sm:rounded-xl" />
               ) : (
                 <Cake className="w-4 h-4 sm:w-5 sm:h-5 drop-shadow-xs" />
               )}
             </div>
-            <div className="shrink-0 flex flex-col justify-center max-w-[95px] xs:max-w-[130px] sm:max-w-xs">
-              <span className="block text-xs sm:text-base font-black tracking-tight text-amber-950 whitespace-nowrap leading-tight truncate uppercase">
+            <div className="shrink-0 flex flex-col justify-center max-w-[70px] xs:max-w-[100px] sm:max-w-xs">
+              <span className="block text-[11px] sm:text-base font-black tracking-tight text-amber-950 whitespace-nowrap leading-tight truncate uppercase">
                 {branding.storeName || 'TIỆM BÁNH ABC'}
               </span>
               <span className="hidden sm:block text-[10px] sm:text-[11px] font-bold text-amber-600 tracking-wide uppercase mt-0.5 whitespace-nowrap truncate">
@@ -113,7 +113,7 @@ export default function Header() {
           </Link>
 
           {/* Navigation Tabs - Modern Segmented Pills */}
-          <nav className="flex items-center gap-0.5 sm:gap-1 p-1 bg-[#ebe0d3]/70 rounded-2xl border border-amber-200/40 shrink-0">
+          <nav className="flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 bg-[#ebe0d3]/70 rounded-xl sm:rounded-2xl border border-amber-200/40 shrink-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname.startsWith(item.href);
@@ -126,7 +126,7 @@ export default function Header() {
                     type="button"
                     onClick={() => openLoginModal(item.requiresAdmin ? 'admin' : (item.href === '/kitchen' ? 'kitchen' : 'cashier'))}
                     title="Vui lòng đăng nhập tài khoản để vào màn hình này"
-                    className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-amber-800 hover:bg-white/80 transition cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-bold text-zinc-400 hover:text-amber-800 hover:bg-white/80 transition cursor-pointer"
                   >
                     <Lock className="w-3.5 h-3.5 text-zinc-400" />
                     <span className="hidden sm:inline">{item.label}</span>
@@ -143,7 +143,7 @@ export default function Header() {
                     type="button"
                     onClick={() => openLoginModal('kitchen')}
                     title="Khu vực Bếp dành cho Thợ Bếp & Chủ Tiệm (Bấm để đăng nhập)"
-                    className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-orange-800 hover:bg-white/80 transition cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-bold text-zinc-400 hover:text-orange-800 hover:bg-white/80 transition cursor-pointer"
                   >
                     <Lock className="w-3.5 h-3.5 text-orange-400" />
                     <span className="hidden sm:inline">{item.label}</span>
@@ -160,7 +160,7 @@ export default function Header() {
                     type="button"
                     onClick={() => openLoginModal('admin')}
                     title="Khu vực dành riêng cho Quản Trị & Chủ Tiệm (Bấm để đăng nhập)"
-                    className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-400 hover:text-amber-800 hover:bg-white/80 transition cursor-pointer"
+                    className="flex items-center justify-center gap-1.5 p-1.5 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl text-xs font-bold text-zinc-400 hover:text-amber-800 hover:bg-white/80 transition cursor-pointer"
                   >
                     <Lock className="w-3.5 h-3.5 text-zinc-400" />
                     <span className="hidden sm:inline">{item.label}</span>
@@ -173,7 +173,7 @@ export default function Header() {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1.5 rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
+                  className={`flex items-center justify-center gap-1 sm:gap-2 p-1.5 sm:px-4 sm:py-1.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
                     isActive
                       ? 'bg-white text-amber-800 shadow-xs shadow-zinc-200'
                       : 'text-zinc-600 hover:text-amber-900 hover:bg-white/50'
@@ -209,8 +209,8 @@ export default function Header() {
                   </div>
                 ) : (
                   // Đã đăng nhập tài khoản
-                  <div className="flex items-center gap-1 bg-stone-100/90 p-1 sm:pl-2 rounded-xl border border-stone-200 text-xs shadow-2xs shrink-0">
-                    <span className="flex items-center gap-1 font-bold text-zinc-800 text-[11px] sm:text-xs shrink-0">
+                  <div className="flex items-center gap-0.5 sm:gap-1 bg-stone-100/90 p-0.5 sm:p-1 sm:pl-2 rounded-xl border border-stone-200 text-xs shadow-2xs shrink-0">
+                    <span className="flex items-center gap-1 font-bold text-zinc-800 text-[11px] sm:text-xs shrink-0 pl-0.5">
                       {isAdmin ? (
                         <Shield className="w-3.5 h-3.5 text-rose-600 shrink-0" />
                       ) : user.role === 'manager' ? (
@@ -223,15 +223,15 @@ export default function Header() {
                       
                       {/* Dải chữ tên tài khoản chạy ngang kiểu banner thông báo */}
                       <div 
-                        className="w-[62px] xs:w-[80px] sm:w-[110px] md:w-[135px] overflow-hidden relative shrink-0 select-none cursor-help"
+                        className="w-[48px] xs:w-[65px] sm:w-[110px] md:w-[135px] overflow-hidden relative shrink-0 select-none cursor-help"
                         title={`Tài khoản: ${user?.name || 'Người dùng'} (@${user?.username || ''})`}
                       >
                         {/* Mờ viền 2 bên kiểu ticker banner */}
-                        <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-r from-stone-100/90 to-transparent z-10 pointer-events-none" />
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-r from-stone-100/90 to-transparent z-10 pointer-events-none" />
                         <div className="absolute right-0 top-0 bottom-0 w-1.5 bg-gradient-to-l from-stone-100/90 to-transparent z-10 pointer-events-none" />
 
                         {/* Banner chạy ngang */}
-                        <div className="animate-marquee-banner inline-flex items-center gap-2.5">
+                        <div className="animate-marquee-banner inline-flex items-center gap-2">
                           <span className="text-[11px] sm:text-xs font-bold text-zinc-800 whitespace-nowrap">
                             {user?.name || 'Người dùng'}
                           </span>
@@ -254,7 +254,7 @@ export default function Header() {
                       <button
                         type="button"
                         onClick={() => openLoginModal('admin')}
-                        className="p-1 sm:px-2 sm:py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold flex items-center gap-1 shadow-2xs transition cursor-pointer shrink-0"
+                        className="w-6 h-6 sm:w-auto sm:h-auto p-1 sm:px-2 sm:py-0.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-[10px] font-bold flex items-center justify-center gap-1 shadow-2xs transition cursor-pointer shrink-0"
                         title="Nhập mật khẩu để mở quyền Chủ Tiệm"
                       >
                         <KeyRound className="w-3 h-3 shrink-0" />
@@ -265,7 +265,7 @@ export default function Header() {
                       type="button"
                       onClick={logout}
                       title="Đăng xuất khỏi ca làm"
-                      className="p-1 sm:px-1.5 sm:py-0.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
+                      className="w-6 h-6 sm:w-auto sm:h-auto p-1 sm:px-1.5 sm:py-0.5 rounded-lg bg-white border border-zinc-200 hover:bg-zinc-100 text-zinc-600 text-[10px] font-bold flex items-center justify-center gap-1 transition cursor-pointer shrink-0"
                     >
                       <LogOut className="w-3 h-3 text-zinc-500 shrink-0" />
                       <span className="hidden sm:inline">Thoát</span>
@@ -277,9 +277,9 @@ export default function Header() {
 
             {/* Offline Sync Queue & Live Sync Badge */}
             {pendingOfflineCount > 0 ? (
-              <div className="inline-flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-black bg-amber-100/90 text-amber-900 border border-amber-300 shadow-2xs">
+              <div className="inline-flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 rounded-full text-[10px] sm:text-[11px] font-black bg-amber-100/90 text-amber-900 border border-amber-300 shadow-2xs shrink-0">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0"></span>
-                <span>{pendingOfflineCount} đơn chờ đẩy</span>
+                <span>{pendingOfflineCount}<span className="hidden sm:inline"> đơn chờ đẩy</span></span>
                 <button
                   type="button"
                   disabled={isFlushingQueue}
@@ -296,11 +296,11 @@ export default function Header() {
                   className="px-1.5 py-0.5 rounded bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-[9px] sm:text-[10px] font-black cursor-pointer shadow-2xs transition shrink-0"
                   title="Bấm để đẩy ngay các đơn hàng offline lên Supabase SQL"
                 >
-                  {isFlushingQueue ? 'Đang đẩy...' : 'Đẩy ngay'}
+                  {isFlushingQueue ? '...' : 'Đẩy'}
                 </button>
               </div>
             ) : isOnline ? (
-              <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs">
+              <span className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-[11px] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/80 shadow-2xs shrink-0">
                 <span className="relative flex h-2 w-2">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
@@ -308,7 +308,7 @@ export default function Header() {
                 <span className="hidden lg:inline">Live Sync</span>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs">
+              <span className="inline-flex items-center gap-1 px-1.5 sm:px-2 py-1 rounded-full text-[10px] font-extrabold bg-rose-50 text-rose-700 border border-rose-200 shadow-2xs shrink-0">
                 <span className="w-2 h-2 rounded-full bg-rose-500"></span>
                 <span className="hidden sm:inline">Offline</span>
               </span>
@@ -326,7 +326,7 @@ export default function Header() {
                   setNotifModalTab('history');
                   setIsNotifSettingsOpen(true);
                 }}
-                className={`relative flex items-center gap-1.5 p-1.5 sm:px-2.5 sm:py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer ${
+                className={`relative flex items-center justify-center w-7 h-7 sm:w-auto sm:h-auto p-1 sm:px-2.5 sm:py-1 rounded-full text-[11px] font-bold border transition-all cursor-pointer shrink-0 ${
                   unreadNotifs > 0
                     ? 'bg-gradient-to-r from-amber-600 via-rose-600 to-pink-600 text-white border-transparent shadow-xs ring-2 ring-rose-300/40 hover:scale-105'
                     : notifPermission === 'granted'
@@ -335,16 +335,25 @@ export default function Header() {
                 }`}
                 title="Bấm để xem lịch sử thông báo hoặc cài đặt báo chuông khi tắt màn hình"
               >
-                <Bell className={`w-3.5 h-3.5 ${unreadNotifs > 0 ? 'text-white animate-bounce' : notifPermission === 'granted' ? 'text-amber-700' : 'text-white animate-bounce'}`} />
+                <div className="relative flex items-center justify-center">
+                  <Bell className={`w-3.5 h-3.5 ${unreadNotifs > 0 ? 'text-white animate-bounce' : notifPermission === 'granted' ? 'text-amber-700' : 'text-white animate-bounce'}`} />
+                  {unreadNotifs > 0 ? (
+                    <span className="sm:hidden absolute -top-1.5 -right-2 px-1 min-w-[13px] h-[13px] rounded-full bg-rose-600 text-white text-[8px] font-black flex items-center justify-center shadow-xs">
+                      {unreadNotifs > 99 ? '99+' : unreadNotifs}
+                    </span>
+                  ) : notifPermission === 'granted' ? (
+                    <span className="sm:hidden absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-500 ring-1 ring-white" />
+                  ) : null}
+                </div>
                 <span className="hidden sm:inline">
                   {unreadNotifs > 0 ? 'Thông Báo' : notifPermission === 'granted' ? 'Báo Đơn' : 'Bật Báo'}
                 </span>
                 {unreadNotifs > 0 ? (
-                  <span className="px-1.5 py-0.2 rounded-full bg-white text-rose-700 text-[10px] font-black shadow-2xs">
+                  <span className="px-1.5 py-0.2 rounded-full bg-white text-rose-700 text-[10px] font-black shadow-2xs hidden sm:inline">
                     {unreadNotifs}
                   </span>
                 ) : notifPermission === 'granted' ? (
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 hidden sm:inline" />
                 ) : (
                   <span className="text-[10px] bg-white/20 px-1 rounded-sm sm:inline hidden">Bật</span>
                 )}
