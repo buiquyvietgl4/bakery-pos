@@ -1059,9 +1059,20 @@ LƯU Ý DÀNH CHO MẠNG LAN (CÁC MÁY CON KẾT NỐI QUA PORT):
         }
       } catch {}
 
-      localDb.security_config = data;
+      const existingSec = localDb.security_config || localDb.settings?.security || {};
+      const mergedSec = {
+        ...existingSec,
+        ...data,
+        active_otp_codes: data.active_otp_codes || existingSec.active_otp_codes || [],
+        used_otp_codes: [
+          ...(Array.isArray(existingSec.used_otp_codes) ? existingSec.used_otp_codes : []),
+          ...(Array.isArray(data.used_otp_codes) ? data.used_otp_codes : []),
+        ],
+      };
+
+      localDb.security_config = mergedSec;
       if (localDb.settings) {
-        localDb.settings.security = data;
+        localDb.settings.security = mergedSec;
       }
       if (Array.isArray(data?.accounts)) {
         localDb.user_accounts = data.accounts;

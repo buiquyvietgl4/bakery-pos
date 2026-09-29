@@ -235,6 +235,34 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig | null
   return null;
 }
 
+export const STORAGE_KEY_BURNED_OTP_CODES = 'bakery_burned_otp_codes';
+
+export function getLocalBurnedOtpCodes(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_BURNED_OTP_CODES);
+    if (raw) {
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) return list;
+    }
+  } catch {}
+  return [];
+}
+
+export function saveBurnedOtpCodeLocally(code: string) {
+  if (typeof window === 'undefined' || !code) return;
+  try {
+    const existing = getLocalBurnedOtpCodes();
+    const clean = code.trim().toUpperCase();
+    const norm = clean.replace(/^(ADM-|ROOT-)/i, '').trim();
+    const set = new Set(existing);
+    set.add(clean);
+    set.add(norm);
+    set.add(`ADM-${norm}`);
+    localStorage.setItem(STORAGE_KEY_BURNED_OTP_CODES, JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
 export async function saveSecurityConfigToDb(cfg: SecurityConfig): Promise<void> {
   if (isLocalMode()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
@@ -252,11 +280,35 @@ export async function saveSecurityConfigToDb(cfg: SecurityConfig): Promise<void>
       }
     } catch {}
 
+    const localBurned = getLocalBurnedOtpCodes();
+    const combinedUsedMap = new Map<string, any>();
+    
+    // Đọc từ existingNotes
+    if (Array.isArray(existingNotes.used_otp_codes)) {
+      existingNotes.used_otp_codes.forEach((it: any) => {
+        const c = typeof it === 'string' ? it : it?.code;
+        if (c) combinedUsedMap.set(c.toUpperCase(), typeof it === 'object' ? it : { code: c, used: true });
+      });
+    }
+    // Đọc từ cfg
+    if (Array.isArray(cfg.used_otp_codes)) {
+      cfg.used_otp_codes.forEach((it: any) => {
+        const c = typeof it === 'string' ? it : it?.code;
+        if (c) combinedUsedMap.set(c.toUpperCase(), typeof it === 'object' ? it : { code: c, used: true });
+      });
+    }
+    // Đọc từ localBurned
+    localBurned.forEach((c: string) => {
+      if (c && !combinedUsedMap.has(c.toUpperCase())) {
+        combinedUsedMap.set(c.toUpperCase(), { code: c, used: true, used_at: new Date().toISOString() });
+      }
+    });
+
     const mergedCfg = {
       ...existingNotes,
       ...cfg,
       active_otp_codes: cfg.active_otp_codes || existingNotes.active_otp_codes || [],
-      used_otp_codes: cfg.used_otp_codes || existingNotes.used_otp_codes || [],
+      used_otp_codes: Array.from(combinedUsedMap.values()),
     };
 
     const notesContent = JSON.stringify(mergedCfg);
@@ -740,6 +792,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: false, error: 'Vui lòng cung cấp Mã Cứu Hộ Dùng 1 Lần!' };
     }
 
+    const localBurned = getLocalBurnedOtpCodes();
+    const cleanUpper = input.toUpperCase();
+    const cleanNorm = cleanUpper.replace(/^(ADM-|ROOT-)/i, '').trim();
+
+    // Chốt chặn 1: Trình duyệt kiểm tra ngay lập tức kho mã đã tự hủy
+    if (localBurned.some(c => c === cleanUpper || c === cleanNorm || c === `ADM-${cleanNorm}`)) {
+      return {
+        success: false,
+        error: 'MÃ CỨU HỘ NÀY ĐÃ ĐƯỢC SỬ DỤNG TRƯỚC ĐÓ VÀ ĐÃ BỊ HỦY! Mỗi mã chỉ có hiệu lực 1 lần duy nhất.',
+      };
+    }
+
     const targetNewPass = (newPassword || '').trim() || 'admin123';
 
     // 1. Gọi API server /api/auth/root-verify để kiểm tra mã 1 lần và tự hủy mã trong CSDL
@@ -747,11 +811,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const res = await fetch('/api/auth/root-verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rootKey: input, newAdminPassword: targetNewPass }),
+        body: JSON.stringify({
+          rootKey: input,
+          newAdminPassword: targetNewPass,
+          clientBurnedCodes: localBurned,
+        }),
       });
       const data = await res.json();
 
       if (res.ok && data.success) {
+        // Tự hủy mã ngay lập tức trên máy khách và gộp các mã đã hủy từ server
+        saveBurnedOtpCodeLocally(input);
+        if (Array.isArray(data.used_otp_codes)) {
+          data.used_otp_codes.forEach((c: any) => {
+            const raw = typeof c === 'string' ? c : c?.code;
+            if (raw) saveBurnedOtpCodeLocally(raw);
+          });
+        }
+
         const currentAccounts = Array.isArray(securityConfig.accounts) && securityConfig.accounts.length > 0
           ? securityConfig.accounts
           : getDefaultAccounts(securityConfig);
@@ -765,10 +842,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return acc;
         });
 
+        const combinedUsedCodes = Array.from(new Set([
+          ...(securityConfig.used_otp_codes || []).map((x: any) => typeof x === 'string' ? x : x?.code),
+          ...(data.used_otp_codes || []).map((x: any) => typeof x === 'string' ? x : x?.code),
+          cleanUpper,
+          cleanNorm,
+          `ADM-${cleanNorm}`,
+        ])).filter(Boolean).map(c => ({ code: c, used: true, used_at: new Date().toISOString() }));
+
         const updated: SecurityConfig = {
           ...securityConfig,
           adminPasswordHash: targetNewPass,
           accounts: updatedAccounts,
+          used_otp_codes: combinedUsedCodes,
         };
         saveSecurityConfig(updated);
 
@@ -787,6 +873,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           message: data.message || `Xác thực thành công! Mật khẩu Admin đã được đặt lại về: "${targetNewPass}"`,
         };
       } else {
+        if (res.status === 403) {
+          saveBurnedOtpCodeLocally(input);
+        }
         return {
           success: false,
           error: data.error || 'Mã cứu hộ không hợp lệ hoặc đã hết hạn!',

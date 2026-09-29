@@ -53,6 +53,9 @@ LOCAL_OTP_FILE = os.path.join(PROJECT_ROOT, ".local_emergency_otp.json")
 PROFILE_FILE = os.path.join(PROJECT_ROOT, ".active_database_profile.json")
 SERVER_STATE_FILE = os.path.join(PROJECT_ROOT, ".local_sql_server_state.json")
 
+DEFAULT_SUPABASE_URL = "https://azgjnahbibrcbjooepef.supabase.co"
+DEFAULT_SUPABASE_ANON_KEY = "sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn"
+
 def load_environment():
     env_vars = {}
     for p in [ENV_PATH, ENV_LOCAL_PATH]:
@@ -78,11 +81,18 @@ def load_environment():
         except Exception:
             pass
 
+    # Chốt chặn mặc định để luôn luôn kết nối Cloud
+    if not env_vars.get("NEXT_PUBLIC_SUPABASE_URL"):
+        env_vars["NEXT_PUBLIC_SUPABASE_URL"] = DEFAULT_SUPABASE_URL
+    if not env_vars.get("NEXT_PUBLIC_SUPABASE_ANON_KEY"):
+        env_vars["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = DEFAULT_SUPABASE_ANON_KEY
+
     return env_vars
 
 def get_burned_codes():
-    """Lấy danh sách các mã đã bị hủy từ local file để không sinh lại mã cũ"""
+    """Lấy danh sách các mã đã bị hủy từ local file, local SQL và Cloud Supabase"""
     burned = set()
+    # 1. Từ LOCAL_OTP_FILE
     if os.path.exists(LOCAL_OTP_FILE):
         try:
             with open(LOCAL_OTP_FILE, "r", encoding="utf-8") as f:
@@ -95,6 +105,53 @@ def get_burned_codes():
                         burned.add(str(c).strip().upper())
         except Exception:
             pass
+
+    # 2. Từ các tệp Local SQL bakery_local_db.json
+    if os.path.exists(SERVER_STATE_FILE):
+        try:
+            with open(SERVER_STATE_FILE, "r", encoding="utf-8") as f:
+                state = json.load(f)
+                dirs = [state.get("production", {}).get("dirPath"), state.get("testing", {}).get("dirPath")]
+                for d in filter(None, dirs):
+                    j_path = os.path.join(d, "bakery_local_db.json")
+                    if os.path.exists(j_path):
+                        with open(j_path, "r", encoding="utf-8") as jf:
+                            db_j = json.load(jf)
+                            sec = db_j.get("bakery_security_config") or db_j.get("security_config") or {}
+                            for item in sec.get("used_otp_codes", []):
+                                c = item if isinstance(item, str) else item.get("code", "")
+                                if c:
+                                    norm = str(c).strip().upper().replace("ADM-", "").replace("ROOT-", "").strip()
+                                    burned.add(norm)
+                                    burned.add(str(c).strip().upper())
+        except Exception:
+            pass
+
+    # 3. Từ Cloud Supabase
+    env_vars = load_environment()
+    sb_url = env_vars.get("NEXT_PUBLIC_SUPABASE_URL")
+    sb_key = env_vars.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+    if sb_url and sb_key:
+        try:
+            url = sb_url.rstrip("/") + f"/rest/v1/recipes?or=(id.eq.{DB_ROW_SECURITY_ID},name.eq.{DB_ROW_SECURITY_NAME})&limit=1"
+            req = urllib.request.Request(url, headers={
+                "apikey": sb_key,
+                "Authorization": f"Bearer {sb_key}",
+                "Content-Type": "application/json"
+            })
+            with urllib.request.urlopen(req, timeout=3) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                if data and isinstance(data, list) and len(data) > 0 and data[0].get("notes"):
+                    parsed = json.loads(data[0]["notes"])
+                    for item in parsed.get("used_otp_codes", []):
+                        c = item if isinstance(item, str) else item.get("code", "")
+                        if c:
+                            norm = str(c).strip().upper().replace("ADM-", "").replace("ROOT-", "").strip()
+                            burned.add(norm)
+                            burned.add(str(c).strip().upper())
+        except Exception:
+            pass
+
     return burned
 
 def generate_cryptographic_code(slot_hint=0):

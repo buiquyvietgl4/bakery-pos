@@ -118,7 +118,8 @@ export default function LoginModal() {
     setRescueErrorMsg('');
     setRescueSuccessMsg('');
 
-    if (!rescueKeyInput.trim()) {
+    const trimmedKey = rescueKeyInput.trim();
+    if (!trimmedKey) {
       setRescueErrorMsg('Vui lòng nhập mã OTP cứu hộ hoặc khóa cứng Root!');
       return;
     }
@@ -127,10 +128,28 @@ export default function LoginModal() {
       return;
     }
 
+    // Chốt chặn tại trình duyệt: Kiểm tra xem mã này đã từng được sử dụng chưa
+    if (typeof window !== 'undefined') {
+      try {
+        const rawBurned = localStorage.getItem('bakery_burned_otp_codes');
+        if (rawBurned) {
+          const burnedList = JSON.parse(rawBurned);
+          const cleanKey = trimmedKey.toUpperCase();
+          const normKey = cleanKey.replace(/^(ADM-|ROOT-)/i, '').trim();
+          if (Array.isArray(burnedList) && burnedList.some((c: string) => c === cleanKey || c === normKey || c === `ADM-${normKey}`)) {
+            setRescueErrorMsg('MÃ CỨU HỘ NÀY ĐÃ ĐƯỢC SỬ DỤNG TRƯỚC ĐÓ VÀ ĐÃ BỊ HỦY! Vui lòng mở ứng dụng cứu hộ trên máy tính để lấy mã mới.');
+            return;
+          }
+        }
+      } catch {}
+    }
+
     try {
-      const res = await resetAdminPasswordWithRecoveryKey(rescueKeyInput.trim(), newAdminPassInput.trim());
+      const res = await resetAdminPasswordWithRecoveryKey(trimmedKey, newAdminPassInput.trim());
       if (res.success) {
         setRescueSuccessMsg(res.message || 'Khôi phục thành công! Đang chuyển vào hệ thống...');
+        setRescueKeyInput('');
+        setNewAdminPassInput('');
         setTimeout(() => {
           closeLoginModal();
         }, 1200);
