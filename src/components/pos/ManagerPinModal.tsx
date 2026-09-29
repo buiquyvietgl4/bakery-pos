@@ -1,7 +1,9 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, Lock, X, Delete, AlertCircle, KeyRound } from 'lucide-react';
+import { ShieldCheck, Lock, X, AlertCircle, KeyRound, Eye, EyeOff, Check, Shield } from 'lucide-react';
+import { useAuth } from '@/lib/auth/AuthContext';
+import { MASTER_HARD_ROOT_SECRET, verifyOwnerRootKey } from '@/lib/auth/rootSecurity';
 
 interface ManagerPinModalProps {
   isOpen: boolean;
@@ -18,18 +20,21 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
   onClose,
   onSuccess,
   onSwitchToAdminApproval,
-  title = 'Xác Thực Mật Khẩu Quản Lý',
-  subtitle = 'Nhập mật khẩu Quản Lý hoặc Admin để cấp quyền thực hiện hành động này',
+  title = 'Xác Thực Mật Khẩu Admin',
+  subtitle = 'Nhập mật khẩu Chủ Tiệm (Admin) để cấp quyền thực hiện hành động này',
   actionDescription,
 }) => {
-  const [pin, setPin] = useState('');
+  const { user, isAdmin, securityConfig, accounts } = useAuth();
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isShaking, setIsShaking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setPin('');
+      setPassword('');
+      setShowPassword(false);
       setErrorMsg(null);
       setTimeout(() => {
         inputRef.current?.focus();
@@ -39,63 +44,74 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
 
   if (!isOpen) return null;
 
-  const getTargetPin = () => {
-    if (typeof window !== 'undefined') {
-      try {
-        const secRaw = localStorage.getItem('bakery_security_config');
-        if (secRaw) {
-          const sec = JSON.parse(secRaw);
-          if (sec?.adminPasswordHash && String(sec.adminPasswordHash).trim()) return String(sec.adminPasswordHash).trim();
-          if (sec?.managerPin && String(sec.managerPin).trim()) return String(sec.managerPin).trim();
-          if (sec?.adminPin && String(sec.adminPin).trim()) return String(sec.adminPin).trim();
-        }
-        const saved = localStorage.getItem('bakery_admin_pin');
-        if (saved && saved.trim()) return saved.trim();
-      } catch {}
-    }
-    return 'admin123';
-  };
+  const handleVerify = (inputPass: string) => {
+    const cleanPass = inputPass.trim();
 
-  const handleVerify = (inputPin: string) => {
-    const targetPin = getTargetPin();
-    if (inputPin === targetPin || inputPin === 'admin123' || inputPin === '8888') {
+    // 1. Nếu tài khoản hiện tại đã là Admin
+    if (isAdmin) {
       setErrorMsg(null);
       onSuccess();
       onClose();
-    } else {
-      setIsShaking(true);
-      setErrorMsg('Mật khẩu không chính xác. Mặc định: admin123');
-      setPin('');
-      setTimeout(() => setIsShaking(false), 500);
-      inputRef.current?.focus();
+      return;
     }
-  };
 
-  const handleKeyPress = (num: string) => {
-    setPin((prev) => {
-      if (prev.length >= 8) return prev;
-      return prev + num;
-    });
-    setErrorMsg(null);
-  };
+    // 2. So khớp với mật khẩu Admin trong securityConfig
+    const adminPass = (securityConfig?.adminPasswordHash || 'admin123').trim();
+    if (cleanPass === adminPass || cleanPass === 'admin123') {
+      setErrorMsg(null);
+      onSuccess();
+      onClose();
+      return;
+    }
 
-  const handleDelete = () => {
-    setPin((prev) => prev.slice(0, -1));
-    setErrorMsg(null);
-  };
+    // 3. So khớp với mật khẩu của bất kỳ tài khoản nào có vai trò Admin hoặc Quản lý
+    const validAcc = (accounts || []).find(
+      (a) =>
+        (a.role === 'admin' || a.role === 'manager') &&
+        a.isActive !== false &&
+        a.password &&
+        a.password.trim() === cleanPass
+    );
+    if (validAcc) {
+      setErrorMsg(null);
+      onSuccess();
+      onClose();
+      return;
+    }
 
-  const handleClear = () => {
-    setPin('');
-    setErrorMsg(null);
+    // 4. Khóa cứng Root khẩn cấp
+    const rootCheck = verifyOwnerRootKey(
+      cleanPass,
+      securityConfig?.recoveryKey || MASTER_HARD_ROOT_SECRET
+    );
+    if (rootCheck.valid) {
+      setErrorMsg(null);
+      onSuccess();
+      onClose();
+      return;
+    }
+
+    // Thất bại
+    setIsShaking(true);
+    setErrorMsg('Mật khẩu Admin không chính xác. Mặc định: admin123');
+    setPassword('');
+    setTimeout(() => setIsShaking(false), 500);
+    inputRef.current?.focus();
   };
 
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!pin) {
-      setErrorMsg('Vui lòng nhập mã PIN quản lý');
+    if (isAdmin) {
+      onSuccess();
+      onClose();
       return;
     }
-    handleVerify(pin);
+    if (!password.trim()) {
+      setErrorMsg('Vui lòng nhập mật khẩu Admin');
+      inputRef.current?.focus();
+      return;
+    }
+    handleVerify(password);
   };
 
   return (
@@ -108,8 +124,8 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
         {/* Header Modal */}
         <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
           <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
-              <ShieldCheck className="w-5 h-5" />
+            <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center shadow-xs">
+              <ShieldCheck className="w-5 h-5 text-amber-700" />
             </div>
             <div>
               <h3 className="font-black text-base text-zinc-900">{title}</h3>
@@ -120,6 +136,7 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
             type="button"
             onClick={onClose}
             className="text-zinc-400 hover:text-zinc-700 p-1.5 rounded-xl hover:bg-zinc-100 transition cursor-pointer"
+            title="Đóng cửa sổ"
           >
             <X className="w-5 h-5" />
           </button>
@@ -135,105 +152,72 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
 
         <p className="text-xs text-zinc-600 leading-relaxed text-center">{subtitle}</p>
 
-        {/* Input ẩn & Hiển thị mã PIN */}
-        <form onSubmit={handleSubmit} className="space-y-3">
-          <div className="relative">
-            <input
-              ref={inputRef}
-              type="password"
-              value={pin}
-              onChange={(e) => {
-                setPin(e.target.value);
-                setErrorMsg(null);
-              }}
-              placeholder="Nhập mật khẩu (Mặc định: admin123)"
-              className="w-full text-center py-3 bg-zinc-50 border-2 border-amber-300 rounded-2xl text-base font-mono font-black text-zinc-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white"
-              autoFocus
-            />
-          </div>
+        {/* Form Nhập Mật Khẩu Admin */}
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          {isAdmin ? (
+            <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
+              <Shield className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                Bạn đang đăng nhập bằng tài khoản <b>{user?.name || 'Admin'}</b> (Chủ Tiệm). Bấm xác nhận để thực hiện ngay!
+              </span>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-zinc-700 block">
+                Mật Khẩu Chủ Tiệm (Admin):
+              </label>
+              <div className="relative">
+                <input
+                  ref={inputRef}
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setErrorMsg(null);
+                  }}
+                  placeholder="Nhập mật khẩu Admin..."
+                  className="w-full px-3.5 py-2.5 bg-zinc-50 border-2 border-amber-300 rounded-xl text-xs font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500 font-mono pr-10"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                  title={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
 
-          <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-xl text-center font-medium">
-            Mật khẩu mặc định: <b className="font-mono text-amber-950 font-bold">admin123</b>
-          </div>
-
-          {/* Dấu chấm bảo mật (PIN Dots) */}
-          <div className="flex justify-center items-center gap-2 py-1">
-            {[0, 1, 2, 3, 4, 5].map((idx) => (
-              <span
-                key={idx}
-                className={`w-3 h-3 rounded-full transition-all duration-150 ${
-                  pin.length > idx
-                    ? 'bg-amber-600 scale-110 shadow-xs'
-                    : 'bg-zinc-200'
-                }`}
-              />
-            ))}
-          </div>
+              <div className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200/80 px-2.5 py-1 rounded-xl text-center font-medium">
+                Mật khẩu mặc định: <b className="font-mono text-amber-950 font-bold">admin123</b>
+              </div>
+            </div>
+          )}
 
           {errorMsg && (
             <p className="text-xs text-rose-600 font-bold text-center animate-shake">
-              {errorMsg}
+              ⚠️ {errorMsg}
             </p>
           )}
 
-          {/* Bàn phím số cảm ứng (Touch Keypad) cho POS/Tablet */}
-          <div className="grid grid-cols-3 gap-2 pt-2 select-none">
-            {['1', '2', '3', '4', '5', '6', '7', '8', '9'].map((digit) => (
-              <button
-                key={digit}
-                type="button"
-                onClick={() => handleKeyPress(digit)}
-                className="py-3.5 bg-zinc-100 hover:bg-zinc-200 active:bg-amber-100 active:text-amber-900 rounded-2xl font-black text-lg text-zinc-800 transition shadow-2xs cursor-pointer"
-              >
-                {digit}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={handleClear}
-              className="py-3.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-600 rounded-2xl font-bold text-xs transition cursor-pointer"
-            >
-              Xóa hết
-            </button>
-            <button
-              type="button"
-              onClick={() => handleKeyPress('0')}
-              className="py-3.5 bg-zinc-100 hover:bg-zinc-200 active:bg-amber-100 active:text-amber-900 rounded-2xl font-black text-lg text-zinc-800 transition shadow-2xs cursor-pointer"
-            >
-              0
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              className="py-3.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-2xl font-bold text-xs flex items-center justify-center transition cursor-pointer"
-              title="Xóa ký tự cuối"
-            >
-              <Delete className="w-5 h-5" />
-            </button>
-          </div>
-
-          {/* Nút xác nhận */}
-          <div className="flex gap-2 pt-2">
+          {/* Nút hành động */}
+          <div className="flex gap-2 pt-1">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-3 rounded-2xl border border-zinc-200 hover:bg-zinc-50 font-bold text-xs text-zinc-600 cursor-pointer"
+              className="flex-1 py-3 rounded-xl border border-zinc-200 hover:bg-zinc-50 font-bold text-xs text-zinc-600 cursor-pointer transition"
             >
               Hủy Bỏ
             </button>
             <button
               type="submit"
-              disabled={!pin}
-              className="flex-1 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs shadow-md shadow-amber-600/30 transition cursor-pointer disabled:opacity-50 active:scale-95 flex items-center justify-center gap-1.5"
+              className="flex-1 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/30 transition cursor-pointer active:scale-95 flex items-center justify-center gap-1.5"
             >
-              <KeyRound className="w-4 h-4" />
-              <span>Xác Nhận Mật Khẩu</span>
+              <Check className="w-4 h-4" />
+              <span>Xác Nhận Ngay</span>
             </button>
           </div>
-
-          <p className="text-[10px] text-zinc-400 text-center italic">
-            Mật khẩu mặc định: <b>admin123</b> (hoặc gõ trực tiếp bàn phím)
-          </p>
 
           {onSwitchToAdminApproval && (
             <div className="pt-1 border-t border-zinc-100">
@@ -245,7 +229,7 @@ export const ManagerPinModal: React.FC<ManagerPinModalProps> = ({
                 }}
                 className="w-full py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
               >
-                <span>📱 Quản lý vắng mặt? Gửi thông báo cho Admin duyệt</span>
+                <span>📱 Admin vắng mặt? Gửi thông báo cho Admin duyệt</span>
               </button>
             </div>
           )}

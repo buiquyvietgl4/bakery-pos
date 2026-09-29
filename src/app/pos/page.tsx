@@ -138,7 +138,7 @@ import { HeldOrdersModal } from '@/components/pos/HeldOrdersModal';
 import { ReturnExchangeModal } from '@/components/pos/ReturnExchangeModal';
 import { OrderReturnRecord } from '@/lib/types/orderReturn';
 import { saveOrderReturnsToDb, fetchOrderReturnsFromDb } from '@/lib/utils/orderReturnManager';
-import { saveHeldOrdersToDb, fetchHeldOrdersFromDb } from '@/lib/utils/heldOrderManager';
+import { saveHeldOrdersToDb, fetchHeldOrdersFromDb, getHeldOrders } from '@/lib/utils/heldOrderManager';
 import { matchesOrderSearch } from '@/lib/utils/orderSearch';
 import { getCashflow, saveCashflowLocally, saveCashflowToDb, CashflowTransaction } from '@/lib/utils/accountingSync';
 
@@ -1418,11 +1418,9 @@ export default function POSPage() {
           if (parsed.activeWallet) setSelectedWalletType(parsed.activeWallet);
         } catch {}
       }
-      const savedHeld = localStorage.getItem('bakery_held_orders');
-      if (savedHeld) {
-        try {
-          setHeldOrders(JSON.parse(savedHeld));
-        } catch {}
+      const initialHeld = getHeldOrders();
+      if (initialHeld && initialHeld.length > 0) {
+        setHeldOrders(initialHeld);
       }
     }
 
@@ -2867,7 +2865,19 @@ export default function POSPage() {
       } catch {}
     }
 
-    setCart(orderToRestore.items);
+    const restoredItems: CartItem[] = (orderToRestore.items || []).map((it: any, itemIdx: number) => ({
+      product: it.product || {
+        id: it.product_id || it.id || `PROD-TEMP-${itemIdx}`,
+        name: it.name || it.product_name || 'Bánh',
+        selling_price: it.price || it.selling_price || 0,
+        retail_price: it.price || it.selling_price || 0,
+        category_id: it.category_id || '',
+        is_active: true,
+      },
+      quantity: Number(it.quantity) || 1,
+      notes: it.notes || '',
+    }));
+    setCart(restoredItems);
     setDiscountMode(orderToRestore.discountMode || 'percent');
     setDiscountPercent(orderToRestore.discountPercent || 0);
     setDiscountCustomAmount(orderToRestore.discountCustomAmount || 0);
@@ -10604,7 +10614,7 @@ export default function POSPage() {
         />
       )}
 
-      {/* ── MODAL XÁC THỰC MÃ PIN QUẢN LÝ ── */}
+      {/* ── MODAL XÁC THỰC MẬT KHẨU ADMIN ── */}
       {pinActionData && (
         <ManagerPinModal
           isOpen={isPinModalOpen}

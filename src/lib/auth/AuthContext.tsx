@@ -631,7 +631,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateKitchenCredentials = (newPin: string, newPass?: string, newName?: string) => {
     if (!newPin || newPin.length < 4) {
-      return { success: false, error: 'Mã PIN bếp phải có ít nhất 4 số!' };
+      return { success: false, error: 'Mật khẩu bếp phải có ít nhất 4 ký tự!' };
     }
     const updated: SecurityConfig = {
       ...securityConfig,
@@ -648,7 +648,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateStaffCredentials = (newPin: string, newPass?: string, newName?: string) => {
     if (!newPin || newPin.length < 4) {
-      return { success: false, error: 'Mã PIN phải có ít nhất 4 số!' };
+      return { success: false, error: 'Mật khẩu phải có ít nhất 4 ký tự!' };
     }
     const updated: SecurityConfig = {
       ...securityConfig,
@@ -666,7 +666,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const updateManagerPin = (newPin: string) => {
     const pin = (newPin || '').trim();
     if (!pin || pin.length < 4) {
-      return { success: false, error: 'Mã PIN Quản lý phải có ít nhất 4 số!' };
+      return { success: false, error: 'Mật khẩu Quản lý phải có ít nhất 4 ký tự!' };
     }
     const updated: SecurityConfig = {
       ...securityConfig,

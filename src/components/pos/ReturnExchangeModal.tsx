@@ -472,7 +472,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
       // Lựa chọn 3: Gửi thông báo cho Admin duyệt (Realtime 2 bước)
       handleSendApprovalToAdmin();
     } else {
-      // Lựa chọn 2: Xác nhận bằng mã PIN Quản Lý
+      // Lựa chọn 2: Xác nhận bằng Mật Khẩu Admin
       setIsPinModalOpen(true);
     }
   };
@@ -1637,7 +1637,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
         </div>
       </div>
 
-      {/* ── 1. MODAL CHỌN HÌNH THỨC XÁC NHẬN ĐỔI TRẢ (PIN vs GỬI ADMIN) ── */}
+      {/* ── 1. MODAL CHỌN HÌNH THỨC XÁC NHẬN ĐỔI TRẢ (MẬT KHẨU ADMIN vs GỬI ADMIN) ── */}
       {isApprovalMethodModalOpen && (
         <div className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-3xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in-95 border border-stone-200 text-zinc-900">
@@ -1815,7 +1815,7 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                 className="w-full py-2.5 px-3 rounded-xl bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
               >
                 <KeyRound className="w-3.5 h-3.5 text-zinc-600" />
-                <span>Nhập mã PIN Quản Lý thay thế (nếu Admin vắng mặt)</span>
+                <span>Nhập mật khẩu Admin trực tiếp tại quầy</span>
               </button>
 
               <button

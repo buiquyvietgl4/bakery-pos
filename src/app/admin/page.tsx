@@ -8811,7 +8811,7 @@ export default function AdminDashboard() {
                   updateReturnApprovalMode('pin');
                   setSecurityMsg({
                     type: 'success',
-                    text: 'Đã lưu: Duyệt đổi trả bằng Mật khẩu / Mã PIN Quản Lý trực tiếp tại quầy!',
+                    text: 'Đã lưu: Duyệt đổi trả bằng Mật khẩu Admin trực tiếp tại quầy!',
                   });
                   setTimeout(() => setSecurityMsg(null), 4000);
                 }}
@@ -8839,10 +8839,10 @@ export default function AdminDashboard() {
                   <div>
                     <div className="flex items-center gap-1.5">
                       <KeyRound className="w-4 h-4 text-amber-600" />
-                      <h4 className="text-sm font-black text-zinc-900">Nhập Mật Khẩu Đổi Trả</h4>
+                      <h4 className="text-sm font-black text-zinc-900">Nhập Mật Khẩu Admin</h4>
                     </div>
                     <p className="text-xs text-zinc-500 mt-1">
-                      Yêu cầu nhập mã PIN Quản Lý trực tiếp tại quầy thu ngân.
+                      Yêu cầu nhập mật khẩu Quản Lý / Admin trực tiếp tại quầy thu ngân.
                     </p>
                   </div>
                   <ul className="text-[11px] text-zinc-600 space-y-1.5 pt-2 border-t border-zinc-200/60">
@@ -8970,7 +8970,7 @@ export default function AdminDashboard() {
                     Tài khoản Admin không cần xác nhận thêm khi thao tác đổi trả
                   </div>
                   <div className="text-[11px] text-zinc-500">
-                    Khi bật, nếu người đứng quầy đăng nhập bằng tài khoản Chủ Tiệm (Admin), hệ thống sẽ tự động hoàn tất ngay mà không cần hỏi mã PIN hay gửi thông báo.
+                    Khi bật, nếu người đứng quầy đăng nhập bằng tài khoản Chủ Tiệm (Admin), hệ thống sẽ tự động hoàn tất ngay mà không cần hỏi mật khẩu Admin hay gửi thông báo.
                   </div>
                 </div>
               </label>

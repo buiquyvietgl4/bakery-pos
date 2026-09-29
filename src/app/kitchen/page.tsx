@@ -3064,7 +3064,7 @@ export default function KitchenPage() {
               className="w-full py-3.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-500 text-white font-black text-sm shadow-md shadow-orange-600/30 flex items-center justify-center gap-2 cursor-pointer transition active:scale-95"
             >
               <KeyRound className="w-4 h-4" />
-              <span>Đăng Nhập Tài Khoản Bếp (PIN 5678)</span>
+              <span>Đăng Nhập Tài Khoản Bếp</span>
             </button>
             <Link
               href="/pos"

@@ -58,11 +58,25 @@ export const HeldOrdersModal: React.FC<HeldOrdersModalProps> = ({
   };
 
   const handleRestoreClick = (order: HeldOrder) => {
+    const cleanedOrder: HeldOrder = {
+      ...order,
+      items: (order.items || []).map((it: any, itemIdx: number) => ({
+        product: it?.product || {
+          id: it?.product_id || it?.id || `PROD-TEMP-${itemIdx}`,
+          name: it?.name || it?.product_name || 'Bánh',
+          selling_price: it?.price || it?.selling_price || 0,
+          retail_price: it?.price || it?.selling_price || 0,
+          category_id: it?.category_id || '',
+          is_active: true,
+        },
+        quantity: Number(it?.quantity) || 1,
+        notes: it?.notes || '',
+      })),
+    };
     if (activeCartCount > 0) {
-      // Giỏ hàng hiện tại đang có món -> Hiển thị cảnh báo thông minh
-      setSelectedOrderToRestore(order);
+      setSelectedOrderToRestore(cleanedOrder);
     } else {
-      onRestoreOrder(order, false);
+      onRestoreOrder(cleanedOrder, false);
       onClose();
     }
   };
@@ -172,7 +186,7 @@ export const HeldOrdersModal: React.FC<HeldOrdersModalProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-stone-200/60">
                     <div className="flex items-center gap-2">
                       <span className="font-mono font-black text-xs px-2.5 py-1 rounded-lg bg-amber-600 text-white shadow-2xs">
-                        {order.holdCode}
+                        {order.holdCode || '#T'}
                       </span>
                       {order.label ? (
                         <span className="font-bold text-xs text-zinc-900 bg-amber-100/70 text-amber-900 px-2 py-0.5 rounded-md">
@@ -183,7 +197,7 @@ export const HeldOrdersModal: React.FC<HeldOrdersModalProps> = ({
                       )}
                       <span className="text-[11px] text-zinc-400 flex items-center gap-1">
                         <Clock className="w-3 h-3" />
-                        {formatRelativeTime(order.createdAt)}
+                        {formatRelativeTime(order.createdAt || (order as any).created_at || new Date().toISOString())}
                       </span>
                     </div>
 
@@ -225,17 +239,22 @@ export const HeldOrdersModal: React.FC<HeldOrdersModalProps> = ({
 
                   {/* Items List Breakdown */}
                   <div className="bg-white rounded-xl p-2.5 border border-stone-200/80 space-y-1 text-xs">
-                    {order.items.map((it, idx) => (
-                      <div key={idx} className="flex justify-between items-center py-0.5 text-zinc-800">
-                        <span className="truncate pr-2">
-                          <b className="text-amber-700 font-bold mr-1">{it.quantity}x</b>
-                          {it.product.name}
-                        </span>
-                        <span className="font-semibold shrink-0">
-                          {((it.product.selling_price || 0) * it.quantity).toLocaleString('vi-VN')}₫
-                        </span>
-                      </div>
-                    ))}
+                    {(order.items || []).map((it, idx) => {
+                      const itemName = it?.product?.name || (it as any)?.name || (it as any)?.product_name || 'Bánh';
+                      const itemPrice = it?.product?.selling_price ?? (it as any)?.price ?? 0;
+                      const itemQty = it?.quantity || 1;
+                      return (
+                        <div key={idx} className="flex justify-between items-center py-0.5 text-zinc-800">
+                          <span className="truncate pr-2">
+                            <b className="text-amber-700 font-bold mr-1">{itemQty}x</b>
+                            {itemName}
+                          </span>
+                          <span className="font-semibold shrink-0">
+                            {(itemPrice * itemQty).toLocaleString('vi-VN')}₫
+                          </span>
+                        </div>
+                      );
+                    })}
                     {order.discountPercent > 0 && (
                       <div className="flex justify-between text-[11px] text-emerald-600 font-bold pt-1 border-t border-stone-100">
                         <span>Giảm giá:</span>
