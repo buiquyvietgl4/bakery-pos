@@ -80,20 +80,57 @@ def load_environment():
 
     return env_vars
 
-def generate_cryptographic_code():
-    """Tạo mã 6 số chuẩn HMAC-SHA256 theo khung 15 phút"""
+def get_burned_codes():
+    """Lấy danh sách các mã đã bị hủy từ local file để không sinh lại mã cũ"""
+    burned = set()
+    if os.path.exists(LOCAL_OTP_FILE):
+        try:
+            with open(LOCAL_OTP_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                for item in data.get("used_otp_codes", []):
+                    c = item if isinstance(item, str) else item.get("code", "")
+                    if c:
+                        norm = str(c).strip().upper().replace("ADM-", "").replace("ROOT-", "").strip()
+                        burned.add(norm)
+                        burned.add(str(c).strip().upper())
+        except Exception:
+            pass
+    return burned
+
+def generate_cryptographic_code(slot_hint=0):
+    """
+    Tạo mã 6 số chuẩn HMAC-SHA256 theo slot (0..9) và khung 15 phút.
+    Nếu mã của slot đó đã bị đánh dấu trong used_otp_codes (đã từng dùng và tự hủy),
+    hàm sẽ tự động nhảy sang slot kế tiếp để luôn luôn cấp một mã MỚI TINH,
+    chưa từng sử dụng!
+    """
     now = time.time()
     current_window = int(now // WINDOW_SECONDS)
     remaining_seconds = int(WINDOW_SECONDS - (now % WINDOW_SECONDS))
+    burned = get_burned_codes()
     
-    h = hmac.new(RESCUE_CODE_SECRET, str(current_window).encode("utf-8"), hashlib.sha256).hexdigest()
-    numeric_code = str(int(h[:8], 16) % 1000000).zfill(6)
+    chosen_slot = slot_hint % 10
+    for s in range(10):
+        slot = (slot_hint + s) % 10
+        payload = f"{current_window}:{slot}"
+        h = hmac.new(RESCUE_CODE_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+        suffix = str(int(h[:8], 16) % 100000).zfill(5)
+        numeric_code = f"{slot}{suffix}"
+        full_code = f"ADM-{numeric_code}"
+        
+        if numeric_code not in burned and full_code not in burned:
+            return numeric_code, full_code, remaining_seconds, slot
+            
+    # Fallback nếu tất cả các slot đều đã sử dụng trong window
+    payload = f"{current_window}:{chosen_slot}"
+    h = hmac.new(RESCUE_CODE_SECRET, payload.encode("utf-8"), hashlib.sha256).hexdigest()
+    suffix = str(int(h[:8], 16) % 100000).zfill(5)
+    numeric_code = f"{chosen_slot}{suffix}"
     full_code = f"ADM-{numeric_code}"
-    
-    return numeric_code, full_code, remaining_seconds
+    return numeric_code, full_code, remaining_seconds, chosen_slot
 
 def sync_to_local_sql(numeric_code, full_code):
-    """Lưu mã vào các file CSDL Local SQL của máy tính"""
+    """Lưu mã vào các file CSDL Local SQL của máy tính (bỏ qua nếu mã đã bị hủy)"""
     success = False
     try:
         local_cfg = {"active_otp_codes": [], "used_otp_codes": []}
@@ -109,15 +146,24 @@ def sync_to_local_sql(numeric_code, full_code):
         if not isinstance(local_cfg.get("used_otp_codes"), list):
             local_cfg["used_otp_codes"] = []
             
+        used_set = set()
+        for item in local_cfg["used_otp_codes"]:
+            c = item if isinstance(item, str) else item.get("code", "")
+            if c:
+                used_set.add(str(c).strip().upper().replace("ADM-", "").replace("ROOT-", "").strip())
+                used_set.add(str(c).strip().upper())
+
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
-        # Lưu cả 2 dạng (có tiền tố ADM- và chỉ 6 số)
+        # Chỉ nạp vào active_otp_codes nếu mã chưa bị dùng
         for c in [full_code, numeric_code]:
-            if not any(item.get("code") == c for item in local_cfg["active_otp_codes"]):
-                local_cfg["active_otp_codes"].append({
-                    "code": c,
-                    "created_at": now_iso,
-                    "used": False
-                })
+            norm = str(c).strip().upper().replace("ADM-", "").replace("ROOT-", "").strip()
+            if norm not in used_set and str(c).strip().upper() not in used_set:
+                if not any(item.get("code") == c for item in local_cfg["active_otp_codes"]):
+                    local_cfg["active_otp_codes"].append({
+                        "code": c,
+                        "created_at": now_iso,
+                        "used": False
+                    })
         
         local_cfg["active_otp_codes"] = local_cfg["active_otp_codes"][-20:]
         local_cfg["updated_at"] = now_iso
@@ -156,21 +202,30 @@ def sync_to_cloud_supabase(numeric_code, full_code, supabase_url, anon_key):
             existing_cfg["active_otp_codes"] = []
         if not isinstance(existing_cfg.get("used_otp_codes"), list):
             existing_cfg["used_otp_codes"] = []
+
+        used_set = set()
+        for item in existing_cfg["used_otp_codes"]:
+            c = item if isinstance(item, str) else item.get("code", "")
+            if c:
+                used_set.add(str(c).strip().upper().replace("ADM-", "").replace("ROOT-", "").strip())
+                used_set.add(str(c).strip().upper())
             
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
         for c in [full_code, numeric_code]:
-            if not any(item.get("code") == c for item in existing_cfg["active_otp_codes"]):
-                existing_cfg["active_otp_codes"].append({
-                    "code": c,
-                    "created_at": now_iso,
-                    "used": False
-                })
+            norm = str(c).strip().upper().replace("ADM-", "").replace("ROOT-", "").strip()
+            if norm not in used_set and str(c).strip().upper() not in used_set:
+                if not any(item.get("code") == c for item in existing_cfg["active_otp_codes"]):
+                    existing_cfg["active_otp_codes"].append({
+                        "code": c,
+                        "created_at": now_iso,
+                        "used": False
+                    })
                 
         existing_cfg["active_otp_codes"] = existing_cfg["active_otp_codes"][-20:]
         existing_cfg["updated_at"] = now_iso
         
-        # Upsert
-        upsert_url = supabase_url.rstrip("/") + "/rest/v1/recipes"
+        # Upsert có ?on_conflict=id
+        upsert_url = supabase_url.rstrip("/") + "/rest/v1/recipes?on_conflict=id"
         payload = [{
             "id": DB_ROW_SECURITY_ID,
             "name": DB_ROW_SECURITY_NAME,
@@ -244,6 +299,7 @@ def launch_gui():
         "numeric_code": "",
         "full_code": "",
         "remaining": 0,
+        "current_slot": 0,
         "cloud_status": "Đang kiểm tra...",
         "local_status": "Sẵn sàng"
     }
@@ -341,8 +397,11 @@ def launch_gui():
             toast_var.set(f"✓ Đã sao chép mã {c} vào bộ nhớ tạm (Clipboard)! Bấm Ctrl+V để dán.")
             root.after(3500, lambda: toast_var.set(""))
 
-    def generate_and_update():
-        n_code, f_code, rem = generate_cryptographic_code()
+    def generate_and_update(advance=False):
+        if advance:
+            state["current_slot"] = (state["current_slot"] + 1) % 10
+        n_code, f_code, rem, slot = generate_cryptographic_code(slot_hint=state["current_slot"])
+        state["current_slot"] = slot
         state["numeric_code"] = n_code
         state["full_code"] = f_code
         state["remaining"] = rem
@@ -395,7 +454,7 @@ def launch_gui():
         padx=18, 
         pady=10, 
         cursor="hand2",
-        command=generate_and_update
+        command=lambda: generate_and_update(advance=True)
     )
     btn_refresh.pack(side=tk.RIGHT, expand=True, fill=tk.X, padx=(6, 0))
 
@@ -485,7 +544,7 @@ def launch_cli():
     supabase_url = env_vars.get("NEXT_PUBLIC_SUPABASE_URL", "")
     supabase_anon = env_vars.get("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
 
-    n_code, f_code, rem = generate_cryptographic_code()
+    n_code, f_code, rem, _ = generate_cryptographic_code()
     copy_to_clipboard(f_code)
 
     print("\n╔══════════════════════════════════════════════════════════════════════╗")

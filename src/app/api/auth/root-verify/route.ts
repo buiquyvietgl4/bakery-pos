@@ -4,26 +4,44 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { MASTER_HARD_ROOT_SECRET } from '@/lib/auth/rootSecurity';
-
-
-
-const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
-const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';
-
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 
 export const RESCUE_CODE_SECRET = 'BAKERY_ERP_ADMIN_RESCUE_SECRET_2026';
 
+const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
+const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';
+
+const PROFILE_FILE = path.join(process.cwd(), '.active_database_profile.json');
+const LOCAL_OTP_FILE = path.join(process.cwd(), '.local_emergency_otp.json');
+const SERVER_STATE_FILE = path.join(process.cwd(), '.local_sql_server_state.json');
+
+export function normalizeOtpCode(code: string): string {
+  return String(code || '').trim().toUpperCase().replace(/^(ADM-|ROOT-)/i, '').trim();
+}
+
 export function verifyCryptographicRescueCode(inputCode: string): boolean {
-  const clean = (inputCode || '').trim().toUpperCase();
-  const codeOnly = clean.replace(/^(ADM-|ROOT-)/i, '').trim();
+  const codeOnly = normalizeOtpCode(inputCode);
   if (!/^\d{6}$/.test(codeOnly)) return false;
 
   const now = Date.now();
   const currentWindow = Math.floor(now / 900000); // 15 phút mỗi khung mã
 
+  // 1. Kiểm tra cấu trúc slot: slot (0..9) + 5 số hash
+  const slot = parseInt(codeOnly[0], 10);
+  const suffix = codeOnly.slice(1);
+  for (let offset = -2; offset <= 2; offset++) {
+    const w = currentWindow + offset;
+    const payload = `${w}:${slot}`;
+    const h = crypto.createHmac('sha256', RESCUE_CODE_SECRET).update(payload).digest('hex');
+    const expected = String(parseInt(h.slice(0, 8), 16) % 100000).padStart(5, '0');
+    if (suffix === expected) {
+      return true;
+    }
+  }
+
+  // 2. Kiểm tra cấu trúc legacy 6 số thuần túy
   for (let offset = -2; offset <= 2; offset++) {
     const w = currentWindow + offset;
     const h = crypto.createHmac('sha256', RESCUE_CODE_SECRET).update(String(w)).digest('hex');
@@ -32,12 +50,41 @@ export function verifyCryptographicRescueCode(inputCode: string): boolean {
       return true;
     }
   }
+
   return false;
 }
 
-const PROFILE_FILE = path.join(process.cwd(), '.active_database_profile.json');
-const LOCAL_OTP_FILE = path.join(process.cwd(), '.local_emergency_otp.json');
-const SERVER_STATE_FILE = path.join(process.cwd(), '.local_sql_server_state.json');
+export function isCodeInList(list: any[], targetCode: string): boolean {
+  if (!Array.isArray(list)) return false;
+  const targetNorm = normalizeOtpCode(targetCode);
+  if (!targetNorm) return false;
+  return list.some((item) => {
+    const raw = typeof item === 'string' ? item : item?.code;
+    return normalizeOtpCode(raw) === targetNorm;
+  });
+}
+
+export function burnCodeInLists(activeList: any[], usedList: any[], codeToBurn: string): void {
+  const norm = normalizeOtpCode(codeToBurn);
+  const nowIso = new Date().toISOString();
+
+  // Thêm vào usedList các biến thể để chặn tái sử dụng
+  const variants = [codeToBurn, norm, `ADM-${norm}`];
+  for (const v of variants) {
+    if (!isCodeInList(usedList, v)) {
+      usedList.push({ code: v, used: true, used_at: nowIso });
+    }
+  }
+
+  // Xóa sạch khỏi activeList
+  for (let i = activeList.length - 1; i >= 0; i--) {
+    const item = activeList[i];
+    const raw = typeof item === 'string' ? item : item?.code;
+    if (normalizeOtpCode(raw) === norm) {
+      activeList.splice(i, 1);
+    }
+  }
+}
 
 function getActiveSupabaseCredentials() {
   let url = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -108,65 +155,9 @@ export async function POST(req: Request) {
     const isMasterMatch = cleanInput === 'Quyviet97@' || cleanInput === serverSecret;
     const { url: SUPABASE_URL, anonKey: SUPABASE_ANON_KEY } = getActiveSupabaseCredentials();
 
-    // ── BƯỚC 1: KIỂM TRA MÃ TRONG CSDL CỤC BỘ (LOCAL SQL / OFFLINE VAULT) ──
-    let localVerified = false;
-    let localCfg: any = null;
-
-    try {
-      if (fs.existsSync(LOCAL_OTP_FILE)) {
-        const raw = fs.readFileSync(LOCAL_OTP_FILE, 'utf-8');
-        localCfg = JSON.parse(raw);
-        const localActive: any[] = Array.isArray(localCfg.active_otp_codes) ? localCfg.active_otp_codes : [];
-        const localUsed: any[] = Array.isArray(localCfg.used_otp_codes) ? localCfg.used_otp_codes : [];
-
-        // Kiểm tra xem mã đã bị hủy cục bộ chưa
-        const isUsedLocal = localUsed.some(
-          (item) => (typeof item === 'string' ? item : item.code) === cleanInput
-        ) || localActive.some((item) => item.code === cleanInput && item.used === true);
-
-        if (isUsedLocal && !isMasterMatch) {
-          return NextResponse.json(
-            {
-              success: false,
-              error: 'MÃ CỨU HỘ NÀY ĐÃ ĐƯỢC SỬ DỤNG TRƯỚC ĐÓ VÀ ĐÃ BỊ HỦY! Mỗi mã chỉ có hiệu lực 1 lần duy nhất.',
-            },
-            { status: 403 }
-          );
-        }
-
-        // Tìm trong mã đang kích hoạt cục bộ
-        const localIdx = localActive.findIndex((item) => item.code === cleanInput && !item.used);
-        if (localIdx !== -1) {
-          // Tự hủy mã cục bộ ngay tức thì
-          const burned = localActive[localIdx];
-          burned.used = true;
-          burned.used_at = new Date().toISOString();
-          localUsed.push(burned);
-          localActive.splice(localIdx, 1);
-
-          localCfg.active_otp_codes = localActive;
-          localCfg.used_otp_codes = localUsed;
-          localCfg.adminPasswordHash = targetPassword;
-          localCfg.updated_at = new Date().toISOString();
-          if (Array.isArray(localCfg.accounts)) {
-            localCfg.accounts = localCfg.accounts.map((acc: any) =>
-              acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
-            );
-          }
-
-          fs.writeFileSync(LOCAL_OTP_FILE, JSON.stringify(localCfg, null, 2), 'utf-8');
-          syncPasswordToLocalSqlFiles(targetPassword);
-          localVerified = true;
-        }
-      }
-    } catch (localErr) {
-      console.warn('[root-verify] Lỗi kiểm tra CSDL Local:', localErr);
-    }
-
-    // ── BƯỚC 2: XÁC THỰC MÃ TỐI CAO MASTER (FAILSAFE KHÔNG PHỤ THUỘC BẤT KỲ CSDL NÀO) ──
+    // ── BƯỚC 1: XÁC THỰC MÃ TỐI CAO MASTER (FAILSAFE KHÔNG PHỤ THUỘC BẤT KỲ CSDL NÀO) ──
     if (isMasterMatch) {
       syncPasswordToLocalSqlFiles(targetPassword);
-      // Đồng bộ sang Cloud nếu có mạng
       if (SUPABASE_URL && SUPABASE_ANON_KEY) {
         try {
           const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
@@ -212,126 +203,22 @@ export async function POST(req: Request) {
       });
     }
 
-    // Nếu đã xác thực thành công qua file Local Cục Bộ:
-    if (localVerified) {
-      // Cố gắng đồng bộ hủy mã lên Supabase nếu có mạng
-      if (SUPABASE_URL && SUPABASE_ANON_KEY) {
-        try {
-          const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-          const { data } = await supabase
-            .from('recipes')
-            .select('id, notes')
-            .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
-            .limit(1)
-            .maybeSingle();
-
-          let cfg: any = {};
-          if (data?.notes) {
-            try { cfg = JSON.parse(data.notes); } catch {}
-          }
-          const activeCodes: any[] = Array.isArray(cfg.active_otp_codes) ? cfg.active_otp_codes : [];
-          const usedCodes: any[] = Array.isArray(cfg.used_otp_codes) ? cfg.used_otp_codes : [];
-          const idx = activeCodes.findIndex((item) => item.code === cleanInput);
-          if (idx !== -1) {
-            const b = activeCodes[idx];
-            b.used = true;
-            b.used_at = new Date().toISOString();
-            usedCodes.push(b);
-            activeCodes.splice(idx, 1);
-          }
-          cfg.active_otp_codes = activeCodes;
-          cfg.used_otp_codes = usedCodes;
-          cfg.adminPasswordHash = targetPassword;
-          cfg.updated_at = new Date().toISOString();
-          if (Array.isArray(cfg.accounts)) {
-            cfg.accounts = cfg.accounts.map((acc: any) =>
-              acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
-            );
-          }
-
-          await supabase.from('recipes').upsert(
-            {
-              id: DB_ROW_SECURITY_ID,
-              name: DB_ROW_SECURITY_NAME,
-              yield_qty: 1,
-              yield_unit: 'chiếc',
-              cost_per_unit: 0,
-              total_material_cost: 0,
-              notes: JSON.stringify(cfg),
-              is_active: false,
-            },
-            { onConflict: 'id' }
-          );
-        } catch {}
+    // ── BƯỚC 2: ĐỌC DỮ LIỆU CSDL LOCAL VÀ SUPABASE CLOUD ──
+    let localCfg: any = null;
+    try {
+      if (fs.existsSync(LOCAL_OTP_FILE)) {
+        const raw = fs.readFileSync(LOCAL_OTP_FILE, 'utf-8');
+        localCfg = JSON.parse(raw);
       }
-
-      return NextResponse.json({
-        success: true,
-        message: `Xác thực CSDL Cục Bộ (Local SQL) thành công! Mã cứu hộ đã TỰ HỦY và mật khẩu Admin đã được đặt lại về: "${targetPassword}"`,
-        newPassword: targetPassword,
-      });
+    } catch (localErr) {
+      console.warn('[root-verify] Lỗi đọc CSDL Local:', localErr);
     }
 
-    // ── BƯỚC 3: NẾU CHƯA XÁC THỰC ĐƯỢC CỤC BỘ → KIỂM TRA TRÊN CLOUD SUPABASE ──
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      if (verifyCryptographicRescueCode(cleanInput)) {
-        try {
-          let local = localCfg || { active_otp_codes: [], used_otp_codes: [] };
-          if (!Array.isArray(local.used_otp_codes)) local.used_otp_codes = [];
-          local.used_otp_codes.push({ code: cleanInput, used: true, used_at: new Date().toISOString() });
-          local.adminPasswordHash = targetPassword;
-          local.updated_at = new Date().toISOString();
-          if (Array.isArray(local.accounts)) {
-            local.accounts = local.accounts.map((acc: any) =>
-              acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
-            );
-          }
-          fs.writeFileSync(LOCAL_OTP_FILE, JSON.stringify(local, null, 2), 'utf-8');
-          syncPasswordToLocalSqlFiles(targetPassword);
-        } catch {}
+    const localActive: any[] = Array.isArray(localCfg?.active_otp_codes) ? localCfg.active_otp_codes : [];
+    const localUsed: any[] = Array.isArray(localCfg?.used_otp_codes) ? localCfg.used_otp_codes : [];
 
-        return NextResponse.json({
-          success: true,
-          message: `Xác thực Mã Đăng Nhập 1 Lần thành công! Mật khẩu Admin đã được đặt lại về: "${targetPassword}"`,
-          newPassword: targetPassword,
-        });
-      }
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Mã cứu hộ không tồn tại trong CSDL Cục Bộ và hệ thống chưa cấu hình Cloud Supabase!',
-        },
-        { status: 401 }
-      );
-    }
-
-    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    const { data } = await supabase
-      .from('recipes')
-      .select('id, notes')
-      .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
-      .limit(1)
-      .maybeSingle();
-
-    let cfg: any = {};
-    if (data?.notes) {
-      try {
-        cfg = JSON.parse(data.notes);
-      } catch {}
-    }
-
-    const activeCodes: any[] = Array.isArray(cfg.active_otp_codes) ? cfg.active_otp_codes : [];
-    const usedCodes: any[] = Array.isArray(cfg.used_otp_codes) ? cfg.used_otp_codes : [];
-
-    // Kiểm tra đã sử dụng chưa
-    const isAlreadyUsed = usedCodes.some(
-      (item) => (typeof item === 'string' ? item : item.code) === cleanInput
-    ) || activeCodes.some(
-      (item) => item.code === cleanInput && item.used === true
-    );
-
-    if (isAlreadyUsed) {
+    // Kiểm tra xem mã đã bị hủy cục bộ chưa
+    if (isCodeInList(localUsed, cleanInput)) {
       return NextResponse.json(
         {
           success: false,
@@ -341,47 +228,50 @@ export async function POST(req: Request) {
       );
     }
 
-    // Kiểm tra trong mã đang kích hoạt
-    const activeIndex = activeCodes.findIndex((item) => item.code === cleanInput && !item.used);
+    let cloudCfg: any = null;
+    let cloudActive: any[] = [];
+    let cloudUsed: any[] = [];
+    let supabaseClient: any = null;
 
-    if (activeIndex === -1) {
-      if (verifyCryptographicRescueCode(cleanInput)) {
-        const burned = { code: cleanInput, used: true, used_at: new Date().toISOString() };
-        usedCodes.push(burned);
+    if (SUPABASE_URL && SUPABASE_ANON_KEY) {
+      try {
+        supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const { data } = await supabaseClient
+          .from('recipes')
+          .select('id, notes')
+          .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
+          .limit(1)
+          .maybeSingle();
 
-        cfg.active_otp_codes = activeCodes;
-        cfg.used_otp_codes = usedCodes;
-        cfg.adminPasswordHash = targetPassword;
-        cfg.updated_at = new Date().toISOString();
-        if (Array.isArray(cfg.accounts)) {
-          cfg.accounts = cfg.accounts.map((acc: any) =>
-            acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
-          );
+        if (data?.notes) {
+          try { cloudCfg = JSON.parse(data.notes); } catch {}
         }
-
-        await supabase.from('recipes').upsert(
-          {
-            id: DB_ROW_SECURITY_ID,
-            name: DB_ROW_SECURITY_NAME,
-            yield_qty: 1,
-            yield_unit: 'chiếc',
-            cost_per_unit: 0,
-            total_material_cost: 0,
-            notes: JSON.stringify(cfg),
-            is_active: false,
-          },
-          { onConflict: 'id' }
-        );
-
-        syncPasswordToLocalSqlFiles(targetPassword);
-
-        return NextResponse.json({
-          success: true,
-          message: `Xác thực Mã Đăng Nhập 1 Lần thành công! Mã đã tự hủy và mật khẩu Admin đã được đặt lại về: "${targetPassword}"`,
-          newPassword: targetPassword,
-        });
+        if (cloudCfg) {
+          cloudActive = Array.isArray(cloudCfg.active_otp_codes) ? cloudCfg.active_otp_codes : [];
+          cloudUsed = Array.isArray(cloudCfg.used_otp_codes) ? cloudCfg.used_otp_codes : [];
+        }
+      } catch (cloudErr) {
+        console.warn('[root-verify] Lỗi đọc Supabase Cloud:', cloudErr);
       }
+    }
 
+    // Kiểm tra xem mã đã bị hủy trên Cloud chưa
+    if (isCodeInList(cloudUsed, cleanInput)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'MÃ CỨU HỘ NÀY ĐÃ ĐƯỢC SỬ DỤNG TRƯỚC ĐÓ VÀ ĐÃ BỊ HỦY! Mỗi mã chỉ có hiệu lực 1 lần duy nhất.',
+        },
+        { status: 403 }
+      );
+    }
+
+    // ── BƯỚC 3: KIỂM TRA TÍNH HỢP LỆ CỦA MÃ ──
+    const isLocalActive = isCodeInList(localActive, cleanInput);
+    const isCloudActive = isCodeInList(cloudActive, cleanInput);
+    const isCryptoValid = verifyCryptographicRescueCode(cleanInput);
+
+    if (!isLocalActive && !isCloudActive && !isCryptoValid) {
       return NextResponse.json(
         {
           success: false,
@@ -391,44 +281,64 @@ export async function POST(req: Request) {
       );
     }
 
-    // Hủy mã trên Cloud Supabase
-    const usedItem = activeCodes[activeIndex];
-    usedItem.used = true;
-    usedItem.used_at = new Date().toISOString();
+    // ── BƯỚC 4: TIẾN HÀNH TỰ HỦY MÃ VĨNH VIỄN & CẬP NHẬT MẬT KHẨU MỚI ──
+    // 4.1. Hủy mã cục bộ (Local SQL)
+    try {
+      let local = localCfg || { active_otp_codes: [], used_otp_codes: [] };
+      if (!Array.isArray(local.active_otp_codes)) local.active_otp_codes = [];
+      if (!Array.isArray(local.used_otp_codes)) local.used_otp_codes = [];
 
-    usedCodes.push(usedItem);
-    activeCodes.splice(activeIndex, 1);
-
-    cfg.active_otp_codes = activeCodes;
-    cfg.used_otp_codes = usedCodes;
-    cfg.adminPasswordHash = targetPassword;
-    cfg.updated_at = new Date().toISOString();
-    if (Array.isArray(cfg.accounts)) {
-      cfg.accounts = cfg.accounts.map((acc: any) =>
-        acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
-      );
+      burnCodeInLists(local.active_otp_codes, local.used_otp_codes, cleanInput);
+      local.adminPasswordHash = targetPassword;
+      local.updated_at = new Date().toISOString();
+      if (Array.isArray(local.accounts)) {
+        local.accounts = local.accounts.map((acc: any) =>
+          acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
+        );
+      }
+      fs.writeFileSync(LOCAL_OTP_FILE, JSON.stringify(local, null, 2), 'utf-8');
+      syncPasswordToLocalSqlFiles(targetPassword);
+    } catch (e) {
+      console.warn('[root-verify] Lỗi tự hủy mã Local:', e);
     }
 
-    await supabase.from('recipes').upsert(
-      {
-        id: DB_ROW_SECURITY_ID,
-        name: DB_ROW_SECURITY_NAME,
-        yield_qty: 1,
-        yield_unit: 'chiếc',
-        cost_per_unit: 0,
-        total_material_cost: 0,
-        notes: JSON.stringify(cfg),
-        is_active: false,
-      },
-      { onConflict: 'id' }
-    );
+    // 4.2. Hủy mã trên Cloud (Supabase)
+    if (supabaseClient) {
+      try {
+        let cloud = cloudCfg || {};
+        if (!Array.isArray(cloud.active_otp_codes)) cloud.active_otp_codes = [];
+        if (!Array.isArray(cloud.used_otp_codes)) cloud.used_otp_codes = [];
 
-    // Đồng bộ ngược lại file Local SQL nếu có
-    syncPasswordToLocalSqlFiles(targetPassword);
+        burnCodeInLists(cloud.active_otp_codes, cloud.used_otp_codes, cleanInput);
+        cloud.adminPasswordHash = targetPassword;
+        cloud.updated_at = new Date().toISOString();
+        if (Array.isArray(cloud.accounts)) {
+          cloud.accounts = cloud.accounts.map((acc: any) =>
+            acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
+          );
+        }
+
+        await supabaseClient.from('recipes').upsert(
+          {
+            id: DB_ROW_SECURITY_ID,
+            name: DB_ROW_SECURITY_NAME,
+            yield_qty: 1,
+            yield_unit: 'chiếc',
+            cost_per_unit: 0,
+            total_material_cost: 0,
+            notes: JSON.stringify(cloud),
+            is_active: false,
+          },
+          { onConflict: 'id' }
+        );
+      } catch (e) {
+        console.warn('[root-verify] Lỗi tự hủy mã Cloud:', e);
+      }
+    }
 
     return NextResponse.json({
       success: true,
-      message: `Xác thực Cloud thành công! Mã cứu hộ đã được HỦY VĨNH VIỄN và mật khẩu Admin đã được đặt lại về: "${targetPassword}"`,
+      message: `Xác thực Mã Đăng Nhập 1 Lần thành công! Mã đã TỰ HỦY VĨNH VIỄN và mật khẩu Admin đã được đặt lại về: "${targetPassword}"`,
       newPassword: targetPassword,
     });
   } catch (err: any) {

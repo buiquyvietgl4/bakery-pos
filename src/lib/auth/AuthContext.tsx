@@ -123,6 +123,8 @@ export interface SecurityConfig {
   returnSkipForAdmin?: boolean; // Tùy chọn bỏ qua xác nhận đổi trả nếu tài khoản đang thao tác là Admin
   permissions?: RolePermissionsConfig;
   accounts?: UserAccount[]; // Danh sách tài khoản người dùng cá nhân trong hệ thống
+  active_otp_codes?: any[];
+  used_otp_codes?: any[];
 }
 
 export function getDefaultAccounts(cfg?: Partial<SecurityConfig>): UserAccount[] {
@@ -208,6 +210,8 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig | null
           ...DEFAULT_SECURITY_CONFIG,
           ...parsed,
           accounts: resolvedAccounts,
+          active_otp_codes: Array.isArray(parsed.active_otp_codes) ? parsed.active_otp_codes : [],
+          used_otp_codes: Array.isArray(parsed.used_otp_codes) ? parsed.used_otp_codes : [],
           returnSkipForAdmin: parsed.returnSkipForAdmin !== undefined ? Boolean(parsed.returnSkipForAdmin) : true,
           permissions: {
             admin: { ...DEFAULT_PERMISSIONS.admin, ...(parsed.permissions?.admin || {}) },
@@ -235,7 +239,27 @@ export async function saveSecurityConfigToDb(cfg: SecurityConfig): Promise<void>
   if (isLocalMode()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   try {
-    const notesContent = JSON.stringify(cfg);
+    let existingNotes: any = {};
+    try {
+      const { data } = await supabase
+        .from('recipes')
+        .select('notes')
+        .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
+        .limit(1)
+        .maybeSingle();
+      if (data?.notes) {
+        existingNotes = JSON.parse(data.notes);
+      }
+    } catch {}
+
+    const mergedCfg = {
+      ...existingNotes,
+      ...cfg,
+      active_otp_codes: cfg.active_otp_codes || existingNotes.active_otp_codes || [],
+      used_otp_codes: cfg.used_otp_codes || existingNotes.used_otp_codes || [],
+    };
+
+    const notesContent = JSON.stringify(mergedCfg);
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_SECURITY_ID,
