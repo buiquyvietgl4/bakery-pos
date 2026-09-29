@@ -39,7 +39,7 @@ export default function LoginModal() {
   const [errorMsg, setErrorMsg] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Khôi phục quyền Admin khẩn cấp (Root/Telegram OTP)
+  // Khôi phục quyền Admin bằng Master Password
   const [isRecoveringAdmin, setIsRecoveringAdmin] = useState(false);
   const [rescueKeyInput, setRescueKeyInput] = useState('');
   const [newAdminPassInput, setNewAdminPassInput] = useState('');
@@ -112,7 +112,7 @@ export default function LoginModal() {
     }
   };
 
-  // Xử lý khôi phục Admin khẩn cấp
+  // Xử lý khôi phục Admin bằng Master Password
   const handleRescueSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setRescueErrorMsg('');
@@ -120,28 +120,12 @@ export default function LoginModal() {
 
     const trimmedKey = rescueKeyInput.trim();
     if (!trimmedKey) {
-      setRescueErrorMsg('Vui lòng nhập mã OTP cứu hộ hoặc khóa cứng Root!');
+      setRescueErrorMsg('Vui lòng nhập Mật Khẩu Chủ Tiệm (Master Password)!');
       return;
     }
     if (!newAdminPassInput.trim() || newAdminPassInput.length < 4) {
       setRescueErrorMsg('Mật khẩu mới phải có ít nhất 4 ký tự!');
       return;
-    }
-
-    // Chốt chặn tại trình duyệt: Kiểm tra xem mã này đã từng được sử dụng chưa
-    if (typeof window !== 'undefined') {
-      try {
-        const rawBurned = localStorage.getItem('bakery_burned_otp_codes');
-        if (rawBurned) {
-          const burnedList = JSON.parse(rawBurned);
-          const cleanKey = trimmedKey.toUpperCase();
-          const normKey = cleanKey.replace(/^(ADM-|ROOT-)/i, '').trim();
-          if (Array.isArray(burnedList) && burnedList.some((c: string) => c === cleanKey || c === normKey || c === `ADM-${normKey}`)) {
-            setRescueErrorMsg('MÃ CỨU HỘ NÀY ĐÃ ĐƯỢC SỬ DỤNG TRƯỚC ĐÓ VÀ ĐÃ BỊ HỦY! Vui lòng mở ứng dụng cứu hộ trên máy tính để lấy mã mới.');
-            return;
-          }
-        }
-      } catch {}
     }
 
     try {
@@ -154,7 +138,7 @@ export default function LoginModal() {
           closeLoginModal();
         }, 1200);
       } else {
-        setRescueErrorMsg(res.error || 'Mã xác thực không hợp lệ hoặc đã hết hạn!');
+        setRescueErrorMsg(res.error || 'Mật khẩu Chủ Tiệm không chính xác!');
       }
     } catch (err: any) {
       setRescueErrorMsg(err?.message || 'Lỗi hệ thống khi khôi phục quyền Admin!');
@@ -218,7 +202,7 @@ export default function LoginModal() {
                 <ChevronLeft className="w-4 h-4" /> Quay lại đăng nhập
               </button>
               <span className="text-[11px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200">
-                Cứu Hộ Khẩn Cấp
+                Khôi Phục Admin
               </span>
             </div>
 
@@ -228,20 +212,20 @@ export default function LoginModal() {
                 Dành cho Chủ Tiệm quên mật khẩu Admin:
               </p>
               <p className="text-[11px] text-rose-800 leading-relaxed">
-                Mở ứng dụng <strong>Tao_Ma_Admin_1_Lan</strong> trên máy tính để lấy mã đăng nhập 1 lần (hoặc dùng Khóa Root) đặt lại mật khẩu mới.
+                Nhập <strong>Mật Khẩu Chủ Tiệm (Master Password)</strong> để xác minh danh tính và đặt lại mật khẩu đăng nhập mới.
               </p>
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-bold text-zinc-700">Mã Đăng Nhập 1 Lần / Khóa Root:</label>
+              <label className="text-xs font-bold text-zinc-700">Mật Khẩu Chủ Tiệm (Master Password):</label>
               <input
-                type="text"
+                type="password"
                 required
                 autoFocus
                 value={rescueKeyInput}
                 onChange={(e) => setRescueKeyInput(e.target.value)}
-                placeholder="Nhập mã (vd: ADM-123456 hoặc 123456)..."
-                className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500 uppercase"
+                placeholder="Nhập mật khẩu chủ tiệm..."
+                className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-rose-500"
               />
             </div>
 
