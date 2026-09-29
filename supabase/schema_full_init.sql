@@ -1490,6 +1490,30 @@ GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, service_role;
 GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, service_role;
 
+-- Bảng tài khoản người dùng & phân quyền đồng bộ
+CREATE TABLE IF NOT EXISTS public.user_accounts (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    role TEXT NOT NULL,
+    password TEXT,
+    phone TEXT,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    custom_permissions_json JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_accounts_username ON public.user_accounts(username);
+ALTER TABLE public.user_accounts ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all for user_accounts" ON public.user_accounts;
+CREATE POLICY "Allow all for user_accounts"
+    ON public.user_accounts
+    FOR ALL
+    TO anon, authenticated
+    USING (true)
+    WITH CHECK (true);
+
 DO $$
 DECLARE
     tbl text;
@@ -1499,7 +1523,7 @@ DECLARE
         'purchase_orders', 'purchase_order_items', 'expense_categories', 'operating_expenses',
         'cashflow_transactions', 'monthly_accounting_summary', 'audit_logs',
         'cake_costing_config', 'material_transactions', 'stock_adjustments', 'spoilage_logs',
-        'bakery_bom_settings', 'material_stock_adjustments', 'system_cloud_backups'
+        'bakery_bom_settings', 'material_stock_adjustments', 'system_cloud_backups', 'user_accounts'
     ];
 BEGIN
     FOREACH tbl IN ARRAY tables LOOP
