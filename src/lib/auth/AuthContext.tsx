@@ -125,6 +125,7 @@ export interface SecurityConfig {
   accounts?: UserAccount[]; // Danh sách tài khoản người dùng cá nhân trong hệ thống
   active_otp_codes?: any[];
   used_otp_codes?: any[];
+  updated_at?: string;
 }
 
 export function getDefaultAccounts(cfg?: Partial<SecurityConfig>): UserAccount[] {
@@ -309,6 +310,7 @@ export async function saveSecurityConfigToDb(cfg: SecurityConfig): Promise<void>
       ...cfg,
       active_otp_codes: cfg.active_otp_codes || existingNotes.active_otp_codes || [],
       used_otp_codes: Array.from(combinedUsedMap.values()),
+      updated_at: cfg.updated_at || new Date().toISOString(),
     };
 
     const notesContent = JSON.stringify(mergedCfg);
@@ -341,6 +343,84 @@ export async function saveSecurityConfigToDb(cfg: SecurityConfig): Promise<void>
     }
   } catch (err) {
     console.warn('Lỗi khi saveSecurityConfigToDb:', err);
+  }
+}
+
+/**
+ * ĐỐI SOÁT & ĐỒNG BỘ 2 CHIỀU GIỮA LOCAL VÀ CLOUD SUPABASE
+ * - Nếu mật khẩu/tài khoản được đổi khi Offline / Local SQL: khi có mạng hoặc kết nối lại Cloud SQL,
+ *   hàm này tự động phát hiện mốc thời gian updated_at mới hơn và ĐẨY BÙ NGAY LẬP TỨC LÊN CLOUD SUPABASE!
+ * - Nếu Cloud có thay đổi mới hơn từ thiết bị khác: kéo về cập nhật vào máy khách, đồng thời bảo toàn
+ *   danh sách các mã OTP đã tự hủy (used_otp_codes).
+ */
+export async function reconcileSecurityConfigWithCloudDb(): Promise<SecurityConfig | null> {
+  if (isLocalMode()) return null;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
+
+  try {
+    // 1. Đọc cấu hình từ Local Storage
+    let localCfg: SecurityConfig | null = null;
+    if (typeof window !== 'undefined') {
+      const raw = localStorage.getItem('bakery_security_config');
+      if (raw) {
+        try { localCfg = JSON.parse(raw); } catch {}
+      }
+    }
+
+    // 2. Đọc từ Cloud Supabase
+    const cloudCfg = await fetchSecurityConfigFromDb();
+
+    // Nếu Cloud trống mà Local có -> Đẩy Local lên Cloud ngay
+    if (!cloudCfg && localCfg) {
+      await saveSecurityConfigToDb(localCfg);
+      return localCfg;
+    }
+    if (!cloudCfg) return localCfg;
+    if (!localCfg) return cloudCfg;
+
+    // 3. So sánh mốc thời gian updated_at giữa Local và Cloud
+    const localTime = new Date(localCfg.updated_at || 0).getTime();
+    const cloudTime = new Date(cloudCfg.updated_at || 0).getTime();
+
+    // TRƯỜNG HỢP A: Local mới hơn Cloud (Đổi mật khẩu khi đang offline/mất mạng)
+    // -> ĐẨY MẬT KHẨU MỚI TỪ LOCAL LÊN CLOUD SUPABASE NGAY LẬP TỨC!
+    if (localTime > cloudTime) {
+      console.log('🔄 [Reconcile] Phát hiện mật khẩu/cài đặt đổi khi offline mới hơn Cloud. Đang tự động đẩy lên Cloud Supabase...');
+      const mergedToCloud: SecurityConfig = {
+        ...cloudCfg,
+        ...localCfg,
+        active_otp_codes: localCfg.active_otp_codes || cloudCfg.active_otp_codes || [],
+        used_otp_codes: Array.from(new Set([
+          ...(cloudCfg.used_otp_codes || []).map((x: any) => typeof x === 'string' ? x : x?.code),
+          ...(localCfg.used_otp_codes || []).map((x: any) => typeof x === 'string' ? x : x?.code),
+          ...getLocalBurnedOtpCodes(),
+        ])).filter(Boolean).map(c => ({ code: c, used: true, used_at: new Date().toISOString() })),
+        updated_at: localCfg.updated_at || new Date().toISOString(),
+      };
+      await saveSecurityConfigToDb(mergedToCloud);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_security_config', JSON.stringify(mergedToCloud));
+      }
+      return mergedToCloud;
+    }
+
+    // TRƯỜNG HỢP B: Cloud mới hơn hoặc bằng Local
+    const mergedFromCloud: SecurityConfig = {
+      ...localCfg,
+      ...cloudCfg,
+      used_otp_codes: Array.from(new Set([
+        ...(cloudCfg.used_otp_codes || []).map((x: any) => typeof x === 'string' ? x : x?.code),
+        ...(localCfg.used_otp_codes || []).map((x: any) => typeof x === 'string' ? x : x?.code),
+        ...getLocalBurnedOtpCodes(),
+      ])).filter(Boolean).map(c => ({ code: c, used: true, used_at: new Date().toISOString() })),
+    };
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bakery_security_config', JSON.stringify(mergedFromCloud));
+    }
+    return mergedFromCloud;
+  } catch (err) {
+    console.warn('[reconcileSecurityConfigWithCloudDb] Lỗi đối soát bảo mật:', err);
+    return null;
   }
 }
 
@@ -469,7 +549,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return null;
   }, []);
 
-  // Fetch cấu hình bảo mật: Cloud SQL → Local SQL → localStorage
+  // Fetch cấu hình bảo mật: Cloud SQL ↔ Local SQL ↔ localStorage (2-way LWW reconciliation)
   useEffect(() => {
     (async () => {
       // 0. Nạp trước từ localStorage ngay khi mount
@@ -479,19 +559,46 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           if (saved) setSecurityConfig(prev => ({ ...prev, ...JSON.parse(saved) }));
         } catch {}
       }
-      // 1. Thử Cloud SQL trước
-      const cloudCfg = await fetchSecurityConfigFromDb();
-      if (cloudCfg) {
-        setSecurityConfig(cloudCfg);
+      // 1. Đối soát 2 chiều thông minh với Cloud SQL (nếu ở chế độ Online):
+      //    Nếu đổi mật khẩu khi offline/Local SQL -> tự động đẩy ngay mật khẩu mới lên Cloud Supabase!
+      //    Nếu Cloud có thay đổi mới hơn từ máy khác -> kéo về máy khách.
+      const reconciled = await reconcileSecurityConfigWithCloudDb();
+      if (reconciled) {
+        setSecurityConfig(reconciled);
         return;
       }
-      // 2. Fallback Local SQL
+      // 2. Fallback Local SQL khi ở Local mode hoặc mất mạng
       const localCfg = await fetchSecurityConfigFromLocalSql();
       if (localCfg) {
         setSecurityConfig(prev => ({ ...prev, ...localCfg }));
       }
     })().catch(console.error);
   }, [fetchSecurityConfigFromLocalSql]);
+
+  // Lắng nghe sự kiện Online hoặc Chuyển đổi CSDL (Local -> Online) để tự động đối soát và đẩy bù mật khẩu lên Cloud SQL
+  useEffect(() => {
+    const handleReconcile = async () => {
+      console.log('🔄 [AuthContext] Nhận sự kiện mạng hoặc DB thay đổi, bắt đầu đối soát bảo mật với Cloud SQL...');
+      const synced = await reconcileSecurityConfigWithCloudDb();
+      if (synced) {
+        setSecurityConfig(synced);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleReconcile);
+      window.addEventListener('bakery_db_mode_changed', handleReconcile);
+      window.addEventListener('bakery_db_profile_changed', handleReconcile);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleReconcile);
+        window.removeEventListener('bakery_db_mode_changed', handleReconcile);
+        window.removeEventListener('bakery_db_profile_changed', handleReconcile);
+      }
+    };
+  }, []);
 
   // Lắng nghe realtime broadcast cập nhật bảo mật & phân quyền từ thiết bị khác
   useEffect(() => {
@@ -558,16 +665,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // DUAL SYNC: Lưu vào Cloud SQL + Local SQL + Broadcast Realtime tới tất cả thiết bị
   const saveSecurityConfig = (cfg: SecurityConfig) => {
-    setSecurityConfig(cfg);
+    const stampedCfg: SecurityConfig = {
+      ...cfg,
+      updated_at: cfg.updated_at || new Date().toISOString(),
+    };
+    setSecurityConfig(stampedCfg);
     if (typeof window !== 'undefined') {
-      localStorage.setItem('bakery_security_config', JSON.stringify(cfg));
+      localStorage.setItem('bakery_security_config', JSON.stringify(stampedCfg));
     }
     // 1. Cloud SQL (Supabase)
-    saveSecurityConfigToDb(cfg).catch(console.error);
+    saveSecurityConfigToDb(stampedCfg).catch(console.error);
     // 2. Local SQL (ổ cứng máy tính)
-    saveSecurityConfigToLocalSql(cfg).catch(console.error);
+    saveSecurityConfigToLocalSql(stampedCfg).catch(console.error);
     // 3. Broadcast Realtime tới POS, Kitchen, Admin trên thiết bị khác
-    broadcastSecurityConfig(cfg).catch(console.error);
+    broadcastSecurityConfig(stampedCfg).catch(console.error);
   };
 
   const saveCurrentUser = (u: CurrentUser | null) => {

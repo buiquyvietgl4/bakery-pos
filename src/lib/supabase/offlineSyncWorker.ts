@@ -5,6 +5,7 @@ import { db } from '@/lib/db/dexie';
 import { syncOrderToSupabase, broadcastNewOrder } from './realtimeSync';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { reconcileSecurityConfigWithCloudDb } from '@/lib/auth/AuthContext';
 
 class OfflineSyncWorker {
   private isRunning: boolean = false;
@@ -105,6 +106,11 @@ class OfflineSyncWorker {
     const errors: any[] = [];
 
     try {
+      // 0. Tự động đối soát và đẩy bù mật khẩu Admin / Cấu hình bảo mật lên Cloud Supabase nếu có thay đổi lúc offline
+      await reconcileSecurityConfigWithCloudDb().catch((secErr) => {
+        console.warn('Lỗi đối soát cấu hình bảo mật trong offlineSyncWorker:', secErr);
+      });
+
       // A. Thu thập các đơn pending từ Dexie DB
       let dexiePending: any[] = [];
       try {
