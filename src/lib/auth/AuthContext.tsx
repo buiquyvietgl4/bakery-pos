@@ -617,10 +617,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!newPass || newPass.length < 4) {
       return { success: false, error: 'Mật khẩu mới phải có ít nhất 4 ký tự!' };
     }
+    const currentAccounts = Array.isArray(securityConfig.accounts) && securityConfig.accounts.length > 0
+      ? securityConfig.accounts
+      : getDefaultAccounts(securityConfig);
+    const updatedAccounts = currentAccounts.map(acc => {
+      if (acc.role === 'admin') {
+        return {
+          ...acc,
+          password: newPass,
+          name: newName || acc.name,
+        };
+      }
+      return acc;
+    });
+
     const updated: SecurityConfig = {
       ...securityConfig,
       adminPasswordHash: newPass,
       adminName: newName || securityConfig.adminName,
+      accounts: updatedAccounts,
     };
     saveSecurityConfig(updated);
     if (user && user.role === 'admin') {
@@ -713,9 +728,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json();
 
       if (res.ok && data.success) {
+        const currentAccounts = Array.isArray(securityConfig.accounts) && securityConfig.accounts.length > 0
+          ? securityConfig.accounts
+          : getDefaultAccounts(securityConfig);
+        const updatedAccounts = currentAccounts.map(acc => {
+          if (acc.role === 'admin') {
+            return {
+              ...acc,
+              password: targetNewPass,
+            };
+          }
+          return acc;
+        });
+
         const updated: SecurityConfig = {
           ...securityConfig,
           adminPasswordHash: targetNewPass,
+          accounts: updatedAccounts,
         };
         saveSecurityConfig(updated);
 
@@ -745,9 +774,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const verification = verifyOwnerRootKey(input, currentRecoveryKey);
 
       if (verification.valid) {
+        const currentAccounts = Array.isArray(securityConfig.accounts) && securityConfig.accounts.length > 0
+          ? securityConfig.accounts
+          : getDefaultAccounts(securityConfig);
+        const updatedAccounts = currentAccounts.map(acc => {
+          if (acc.role === 'admin') {
+            return {
+              ...acc,
+              password: targetNewPass,
+            };
+          }
+          return acc;
+        });
+
         const updated: SecurityConfig = {
           ...securityConfig,
           adminPasswordHash: targetNewPass,
+          accounts: updatedAccounts,
         };
         saveSecurityConfig(updated);
 
@@ -785,9 +828,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const forceResetAdminToDefault = () => {
+    const currentAccounts = Array.isArray(securityConfig.accounts) && securityConfig.accounts.length > 0
+      ? securityConfig.accounts
+      : getDefaultAccounts(securityConfig);
+    const updatedAccounts = currentAccounts.map(acc => {
+      if (acc.role === 'admin') {
+        return { ...acc, password: 'admin123' };
+      }
+      return acc;
+    });
+
     const updated: SecurityConfig = {
       ...securityConfig,
       adminPasswordHash: 'admin123',
+      accounts: updatedAccounts,
     };
     saveSecurityConfig(updated);
     return { success: true };
@@ -878,17 +932,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     let syncCfg: SecurityConfig = { ...securityConfig, accounts: updatedAccounts };
-    if (updatedAcc.role === 'admin' && updatedAcc.username === 'admin') {
+    if (updatedAcc.role === 'admin') {
       if (updatedAcc.password) syncCfg.adminPasswordHash = updatedAcc.password;
       if (updatedAcc.name) syncCfg.adminName = updatedAcc.name;
-    } else if (updatedAcc.role === 'kitchen' && updatedAcc.username === 'bep') {
+      if (updatedAcc.username) syncCfg.adminUsername = updatedAcc.username;
+    } else if (updatedAcc.role === 'kitchen') {
       if (updatedAcc.pin) syncCfg.kitchenPin = updatedAcc.pin;
       if (updatedAcc.password) syncCfg.kitchenPasswordHash = updatedAcc.password;
       if (updatedAcc.name) syncCfg.kitchenName = updatedAcc.name;
-    } else if ((updatedAcc.role === 'cashier' || updatedAcc.role === 'staff') && updatedAcc.username === (securityConfig.staffUsername || 'nhanvien')) {
+    } else if (updatedAcc.role === 'cashier' || updatedAcc.role === 'staff') {
       if (updatedAcc.pin) syncCfg.staffPin = updatedAcc.pin;
       if (updatedAcc.password) syncCfg.staffPasswordHash = updatedAcc.password;
       if (updatedAcc.name) syncCfg.staffName = updatedAcc.name;
+      if (updatedAcc.username) syncCfg.staffUsername = updatedAcc.username;
     }
 
     saveSecurityConfig(syncCfg);

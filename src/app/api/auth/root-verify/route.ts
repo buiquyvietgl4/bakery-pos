@@ -53,6 +53,11 @@ function syncPasswordToLocalSqlFiles(newPassword: string) {
           if (dbJson.bakery_security_config) {
             dbJson.bakery_security_config.adminPasswordHash = newPassword;
             dbJson.bakery_security_config.updated_at = new Date().toISOString();
+            if (Array.isArray(dbJson.bakery_security_config.accounts)) {
+              dbJson.bakery_security_config.accounts = dbJson.bakery_security_config.accounts.map((acc: any) =>
+                acc.role === 'admin' ? { ...acc, password: newPassword } : acc
+              );
+            }
             fs.writeFileSync(jsonDbPath, JSON.stringify(dbJson, null, 2), 'utf-8');
           }
         }
@@ -121,6 +126,11 @@ export async function POST(req: Request) {
           localCfg.used_otp_codes = localUsed;
           localCfg.adminPasswordHash = targetPassword;
           localCfg.updated_at = new Date().toISOString();
+          if (Array.isArray(localCfg.accounts)) {
+            localCfg.accounts = localCfg.accounts.map((acc: any) =>
+              acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
+            );
+          }
 
           fs.writeFileSync(LOCAL_OTP_FILE, JSON.stringify(localCfg, null, 2), 'utf-8');
           syncPasswordToLocalSqlFiles(targetPassword);
@@ -138,6 +148,25 @@ export async function POST(req: Request) {
       if (SUPABASE_URL && SUPABASE_ANON_KEY) {
         try {
           const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+          const { data } = await supabase
+            .from('recipes')
+            .select('id, notes')
+            .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
+            .limit(1)
+            .maybeSingle();
+
+          let cfg: any = {};
+          if (data?.notes) {
+            try { cfg = JSON.parse(data.notes); } catch {}
+          }
+          cfg.adminPasswordHash = targetPassword;
+          cfg.updated_at = new Date().toISOString();
+          if (Array.isArray(cfg.accounts)) {
+            cfg.accounts = cfg.accounts.map((acc: any) =>
+              acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
+            );
+          }
+
           await supabase.from('recipes').upsert(
             {
               id: DB_ROW_SECURITY_ID,
@@ -146,7 +175,7 @@ export async function POST(req: Request) {
               yield_unit: 'chiếc',
               cost_per_unit: 0,
               total_material_cost: 0,
-              notes: JSON.stringify({ adminPasswordHash: targetPassword, updated_at: new Date().toISOString() }),
+              notes: JSON.stringify(cfg),
               is_active: false,
             },
             { onConflict: 'id' }
@@ -192,6 +221,11 @@ export async function POST(req: Request) {
           cfg.used_otp_codes = usedCodes;
           cfg.adminPasswordHash = targetPassword;
           cfg.updated_at = new Date().toISOString();
+          if (Array.isArray(cfg.accounts)) {
+            cfg.accounts = cfg.accounts.map((acc: any) =>
+              acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
+            );
+          }
 
           await supabase.from('recipes').upsert(
             {
@@ -287,6 +321,11 @@ export async function POST(req: Request) {
     cfg.used_otp_codes = usedCodes;
     cfg.adminPasswordHash = targetPassword;
     cfg.updated_at = new Date().toISOString();
+    if (Array.isArray(cfg.accounts)) {
+      cfg.accounts = cfg.accounts.map((acc: any) =>
+        acc.role === 'admin' ? { ...acc, password: targetPassword } : acc
+      );
+    }
 
     await supabase.from('recipes').upsert(
       {
