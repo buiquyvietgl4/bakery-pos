@@ -172,7 +172,57 @@ Nếu không muốn nhớ các câu lệnh đen trắng, bạn có thể dùng p
 
 ## PHẦN 3: CẤU HÌNH MÔI TRƯỜNG & TRIỂN KHAI LÊN VERCEL
 
-### Bước 3.1: Import Dự Án Vào Vercel
+Bạn có thể lựa chọn 1 trong 2 cách sau để triển khai ứng dụng lên Vercel:
+- **CÁCH 1 (MỚI - KHUYÊN DÙNG):** Triển khai trực tiếp từ máy tính bằng Vercel CLI (**KHÔNG CẦN QUA GIT/GITHUB**).
+- **CÁCH 2:** Kết nối qua GitHub Repository (Tự động build lại mỗi khi đẩy code).
+
+---
+
+### 🚀 CÁCH 1: TRIỂN KHAI TRỰC TIẾP LÊN VERCEL (KHÔNG CẦN DÙNG GIT)
+
+> [!TIP]
+> **Ưu điểm của cách này:** Bạn không cần tài khoản GitHub, không cần tạo repo, không cần gõ lệnh `git commit`/`git push`. Toàn bộ mã nguồn trên máy tính sẽ được Vercel CLI nén và tải thẳng lên đám mây Vercel!
+
+#### Bước 3.1A: Đăng nhập Vercel CLI trên máy tính
+1. Mở PowerShell / Terminal tại thư mục dự án `C:\Users\H\.gemini\antigravity\scratch\bakery-erp`.
+2. Chạy lệnh đăng nhập:
+```bash
+npx vercel login
+```
+3. Terminal sẽ hỏi phương thức đăng nhập:
+   - Dùng phím mũi tên lên/xuống để chọn **Continue with Email** (hoặc GitHub/Google nếu có).
+   - Nhập địa chỉ Email tài khoản Vercel của bạn -> Bấm **Enter**.
+4. Mở hộp thư Email của bạn, tìm email từ Vercel và bấm nút **"Verify"** để xác nhận. Terminal sẽ báo `Success! Email confirmed`.
+
+#### Bước 3.1B: Chạy lệnh đẩy dự án trực tiếp lên Vercel
+Sau khi đăng nhập xong, chạy lệnh:
+```bash
+npx vercel
+```
+Hệ thống sẽ hỏi bạn 5 câu hỏi cấu hình ban đầu (chỉ hỏi lần đầu tiên):
+1. `Set up and deploy “...” [Y/n]`: Gõ **Y** rồi Enter.
+2. `Which scope do you want to deploy to?`: Bấm **Enter** để chọn tài khoản của bạn.
+3. `Link to existing project? [y/N]`:
+   - Nếu là lần đầu tiên đẩy: Gõ **N** rồi Enter.
+   - Nếu muốn cập nhật vào dự án đã có trên Vercel: Gõ **Y** rồi chọn tên dự án.
+4. `What’s your project’s name?`: Đặt tên ứng dụng (ví dụ: `bakery-pos`) rồi Enter.
+5. `In which directory is your code located?`: Bấm **Enter** (để nguyên `./`).
+6. `Want to modify these settings? [y/N]`: Gõ **N** rồi Enter.
+
+Vercel sẽ tự động nén mã nguồn, tải lên máy chủ và cấp cho bạn 1 đường link Preview chạy thử!
+
+#### Bước 3.1C: Xuất bản chính thức (Production)
+Khi muốn xuất bản bản chính thức (Production URL) chạy ổn định:
+```bash
+npx vercel --prod
+```
+Mỗi lần sửa code xong trên máy tính, bạn chỉ cần gõ đúng 1 lệnh `npx vercel --prod` là website tự động cập nhật ngay lập tức mà không cần đụng đến Git!
+
+---
+
+### 🌐 CÁCH 2: IMPORT QUA GITHUB (TỰ ĐỘNG ĐỒNG BỘ CI/CD)
+
+Nếu bạn muốn liên kết dự án với GitHub để mỗi khi `git push` Vercel sẽ tự động cập nhật:
 1. Truy cập [https://vercel.com](https://vercel.com) và đăng nhập bằng tài khoản GitHub chứa repository trên.
 2. Tại màn hình Dashboard của Vercel, bấm nút **"Add New..."** (ở góc trên bên phải) -> chọn **"Project"**.
 3. Tại danh sách repositories hiện ra, tìm `bakery-pos` (hoặc tên repo của bạn) -> bấm nút **"Import"**.
@@ -182,11 +232,7 @@ Nếu không muốn nhớ các câu lệnh đen trắng, bạn có thể dùng p
 ### Bước 3.2: Thiết Lập Biến Môi Trường (Environment Variables)
 
 > [!IMPORTANT]
-> Đây là bước bắt buộc để website của bạn biết cách kết nối tới database Supabase vừa tạo ở Phần 1!
-
-Tại màn hình cấu hình trước khi deploy (hoặc vào **Settings** -> **Environment Variables** nếu dự án đã tồn tại trên Vercel):
-1. Tìm đến mục **Environment Variables**.
-2. Thêm lần lượt các biến sau:
+> Dù dùng **Cách 1** hay **Cách 2**, bạn đều cần điền các biến môi trường này vào Vercel (tại mục **Settings** -> **Environment Variables** trên trang quản trị Vercel Dashboard) để website kết nối tới Supabase:
 
 | Tên Biến (Key) | Giá trị (Value) | Mô tả & Chức năng | Bắt Buộc? |
 |:---|:---|:---|:---:|
@@ -207,7 +253,7 @@ Tại màn hình cấu hình trước khi deploy (hoặc vào **Settings** -> **
 2. **Build Command:** Để mặc định `next build`.
 3. **Install Command:** Để mặc định.
    *(Lưu ý: Dự án đã tích hợp sẵn file `.npmrc` chứa cấu hình `legacy-peer-deps=true` để tự động xử lý các xung đột gói, đảm bảo quá trình build trên Vercel luôn thành công 100%)*.
-4. Bấm nút **"Deploy"** màu xanh.
+4. Bấm nút **"Deploy"** màu xanh (hoặc hoàn tất qua lệnh `npx vercel --prod`).
 5. Chờ khoảng 1 - 2 phút để Vercel biên dịch ứng dụng. Khi màn hình pháo hoa chúc mừng xuất hiện là bạn đã xuất bản website thành công!
 
 ---

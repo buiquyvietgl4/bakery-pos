@@ -233,7 +233,8 @@ def create_document():
         "   - Bước 2.3: Cách lấy Personal Access Token khi GitHub đòi mật khẩu",
         "   - Bước 2.4: Dùng công cụ trực quan GitHub Desktop",
         "4. PHẦN 3: Hướng Dẫn Cấu Hình Môi Trường & Triển Khai Lên Vercel",
-        "   - Bước 3.1: Import dự án từ GitHub vào Vercel",
+        "   - CÁCH 1: Triển khai trực tiếp bằng Vercel CLI (Không cần qua Git)",
+        "   - CÁCH 2: Kết nối qua GitHub Repository (Tự động đồng bộ CI/CD)",
         "   - Bước 3.2: Thiết lập các Biến Môi Trường (Environment Variables)",
         "   - Bước 3.3: Biên dịch và Xuất bản website",
         "5. PHẦN 4: Danh Sách Tài Khoản Đăng Nhập & Quy Trình Nghiệm Thu",
@@ -451,13 +452,90 @@ def create_document():
     r.font.color.rgb = RGBColor(180, 83, 9)
 
     p = doc.add_paragraph()
-    r = p.add_run("Bước 3.1: Import Dự Án Từ GitHub Vào Vercel\n")
+    r = p.add_run("LỰA CHỌN PHƯƠNG THỨC TRIỂN KHAI:\n")
+    r.bold = True
+    r.font.size = Pt(10.5)
+    r.font.color.rgb = RGBColor(180, 83, 9)
+    r_body = p.add_run(
+        "Bạn có thể chọn 1 trong 2 cách sau để triển khai ứng dụng lên máy chủ đám mây Vercel:\n"
+        "• CÁCH 1 (Khuyên dùng - Nhanh nhất): Triển khai trực tiếp từ máy tính bằng Vercel CLI — KHÔNG CẦN QUA GIT/GITHUB.\n"
+        "• CÁCH 2: Kết nối tự động qua GitHub Repository (Tự động build lại mỗi khi đẩy code)."
+    )
+    r_body.font.size = Pt(10)
+
+    # CÁCH 1: VERCEL CLI
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(8)
+    r = p.add_run("🚀 CÁCH 1: TRIỂN KHAI TRỰC TIẾP LÊN VERCEL (KHÔNG CẦN DÙNG GIT)\n")
+    r.bold = True
+    r.font.size = Pt(11)
+    r.font.color.rgb = RGBColor(30, 58, 138)
+    
+    add_callout(
+        doc,
+        "Ưu điểm lớn nhất của cách này: Bạn KHÔNG CẦN tài khoản GitHub, không cần tạo repo, không cần gõ lệnh git commit hay push. Toàn bộ mã nguồn trên máy tính sẽ được Vercel CLI đóng gói và tải thẳng lên đám mây Vercel!",
+        title="ĐIỂM NỔI BẬT",
+        box_type="tip"
+    )
+
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(6)
+    r = p.add_run("Bước 3.1A: Đăng nhập Vercel CLI trên máy tính\n")
+    r.bold = True
+    r.font.size = Pt(10.5)
+    r.font.color.rgb = RGBColor(30, 58, 138)
+    r_body = p.add_run(
+        "1. Mở PowerShell / Command Prompt tại thư mục dự án bakery-erp.\n"
+        "2. Chạy lệnh: npx vercel login\n"
+        "3. Dùng phím mũi tên chọn 'Continue with Email' (hoặc GitHub/Google) -> Nhập Email -> Bấm Enter.\n"
+        "4. Mở hòm thư Email, bấm nút 'Verify' để xác nhận. Màn hình Terminal sẽ báo 'Success! Email confirmed'."
+    )
+    r_body.font.size = Pt(10)
+
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(6)
+    r = p.add_run("Bước 3.1B: Chạy lệnh đẩy dự án lên Vercel\n")
+    r.bold = True
+    r.font.size = Pt(10.5)
+    r.font.color.rgb = RGBColor(30, 58, 138)
+    r_body = p.add_run(
+        "Tại thư mục dự án, chạy lệnh: npx vercel\n"
+        "Hệ thống sẽ hỏi 5 câu cấu hình ban đầu (chỉ hỏi 1 lần đầu tiên):\n"
+        "  1. Set up and deploy? -> Gõ Y rồi Enter.\n"
+        "  2. Which scope? -> Bấm Enter (chọn tài khoản của bạn).\n"
+        "  3. Link to existing project? -> Gõ N (nếu là dự án mới) rồi Enter.\n"
+        "  4. What's your project's name? -> Nhập tên bakery-pos rồi Enter.\n"
+        "  5. In which directory is your code located? -> Bấm Enter (để nguyên ./).\n"
+        "  6. Want to modify these settings? -> Gõ N rồi Enter.\n"
+        "Vercel sẽ tự động nén mã nguồn, tải lên máy chủ và cấp cho bạn 1 đường link Preview chạy thử ngay lập tức!"
+    )
+    r_body.font.size = Pt(10)
+
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(6)
+    r = p.add_run("Bước 3.1C: Xuất bản chính thức (Production Deploy)\n")
+    r.bold = True
+    r.font.size = Pt(10.5)
+    r.font.color.rgb = RGBColor(30, 58, 138)
+    r_body = p.add_run(
+        "Khi muốn cập nhật bản chính thức ổn định lên môi trường Production, chỉ cần chạy đúng 1 lệnh:\n\n"
+        "   npx vercel --prod\n\n"
+        "Mỗi lần bạn sửa đổi code trên máy tính, chỉ cần gõ đúng 1 dòng lệnh trên là website tự động cập nhật ngay lập tức mà không cần đụng đến Git!"
+    )
+    r_body.font.size = Pt(10)
+
+    # CÁCH 2: QUA GITHUB
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(10)
+    r = p.add_run("🌐 CÁCH 2: IMPORT QUA GITHUB (TỰ ĐỘNG ĐỒNG BỘ CI/CD)\n")
     r.bold = True
     r.font.size = Pt(11)
     r.font.color.rgb = RGBColor(30, 58, 138)
     r_body = p.add_run(
+        "Nếu bạn muốn liên kết dự án với GitHub để mỗi khi chạy 'git push' Vercel tự động build lại:\n"
         "1. Truy cập https://vercel.com và đăng nhập bằng tài khoản GitHub.\n"
-        "2. Bấm 'Add New...' (góc phải trên) -> chọn 'Project' -> tìm repository 'bakery-pos' và bấm 'Import'."
+        "2. Bấm nút 'Add New...' (góc phải trên) -> chọn 'Project'.\n"
+        "3. Tại danh sách repositories hiện ra, tìm 'bakery-pos' -> bấm nút 'Import'."
     )
     r_body.font.size = Pt(10)
 
