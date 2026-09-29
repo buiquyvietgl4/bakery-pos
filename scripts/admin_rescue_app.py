@@ -139,7 +139,7 @@ def get_burned_codes():
                 "Authorization": f"Bearer {sb_key}",
                 "Content-Type": "application/json"
             })
-            with urllib.request.urlopen(req, timeout=3) as resp:
+            with urllib.request.urlopen(req, timeout=1.5) as resp:
                 data = json.loads(resp.read().decode("utf-8"))
                 if data and isinstance(data, list) and len(data) > 0 and data[0].get("notes"):
                     parsed = json.loads(data[0]["notes"])
@@ -227,6 +227,37 @@ def sync_to_local_sql(numeric_code, full_code):
         
         with open(LOCAL_OTP_FILE, "w", encoding="utf-8") as f:
             json.dump(local_cfg, f, indent=2, ensure_ascii=False)
+
+        # Đồng bộ trực tiếp vào bakery_local_db.json nếu có
+        if os.path.exists(SERVER_STATE_FILE):
+            try:
+                with open(SERVER_STATE_FILE, "r", encoding="utf-8") as sf:
+                    state = json.load(sf)
+                    dirs = [state.get("production", {}).get("dirPath"), state.get("testing", {}).get("dirPath")]
+                    for d in filter(None, dirs):
+                        j_path = os.path.join(d, "bakery_local_db.json")
+                        if os.path.exists(j_path):
+                            with open(j_path, "r", encoding="utf-8") as jf:
+                                db_j = json.load(jf)
+                            sec = db_j.get("bakery_security_config") or db_j.get("security_config") or {}
+                            if not isinstance(sec.get("active_otp_codes"), list):
+                                sec["active_otp_codes"] = []
+                            if not isinstance(sec.get("used_otp_codes"), list):
+                                sec["used_otp_codes"] = []
+                            sec_used = {str(item if isinstance(item, str) else item.get("code", "")).strip().upper() for item in sec["used_otp_codes"]}
+                            for c in [full_code, numeric_code]:
+                                if c.upper() not in sec_used and not any(it.get("code") == c for it in sec["active_otp_codes"]):
+                                    sec["active_otp_codes"].append({"code": c, "created_at": now_iso, "used": False})
+                            sec["active_otp_codes"] = sec["active_otp_codes"][-20:]
+                            sec["updated_at"] = now_iso
+                            db_j["bakery_security_config"] = sec
+                            if db_j.get("settings"):
+                                db_j["settings"]["security"] = sec
+                            with open(j_path, "w", encoding="utf-8") as jf:
+                                json.dump(db_j, jf, indent=2, ensure_ascii=False)
+            except Exception:
+                pass
+
         success = True
     except Exception as e:
         print(f"Lỗi lưu Local OTP: {e}")
