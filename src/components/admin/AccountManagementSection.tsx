@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   useAuth,
   UserAccount,
@@ -34,6 +34,7 @@ import {
   QrCode,
   AlertCircle,
   CheckCircle2,
+  RotateCcw,
 } from 'lucide-react';
 
 const ROLE_INFO: Record<
@@ -135,9 +136,9 @@ export default function AccountManagementSection() {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterRole, setFilterRole] = useState<string>('all');
-  const [showPinMap, setShowPinMap] = useState<Record<string, boolean>>({});
+  const [showPasswordMap, setShowPasswordMap] = useState<Record<string, boolean>>({});
 
-  // Trạng thái Modal Tạo / Sửa tài khoản
+  // Trạng thái Modal Tạo / Sửa tài khoản (Bao gồm thông tin + phân quyền tích hợp)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
 
@@ -145,8 +146,8 @@ export default function AccountManagementSection() {
   const [formName, setFormName] = useState('');
   const [formUsername, setFormUsername] = useState('');
   const [formRole, setFormRole] = useState<UserRole>('cashier');
-  const [formPin, setFormPin] = useState('');
   const [formPassword, setFormPassword] = useState('');
+  const [showFormPassword, setShowFormPassword] = useState(false);
   const [formPhone, setFormPhone] = useState('');
   const [formIsActive, setFormIsActive] = useState(true);
 
@@ -161,6 +162,24 @@ export default function AccountManagementSection() {
     bomCost: false,
     paymentSettings: false,
   });
+
+  // Modal Phân Quyền Riêng Nhanh
+  const [permissionModalAccount, setPermissionModalAccount] = useState<UserAccount | null>(null);
+  const [permModalCustomEnabled, setPermModalCustomEnabled] = useState(false);
+  const [permModalPerms, setPermModalPerms] = useState<RolePermissions>({
+    pos: true,
+    cakeOrder: true,
+    kitchenKds: false,
+    adminAccess: false,
+    reports: false,
+    bomCost: false,
+    paymentSettings: false,
+  });
+
+  // Modal Đổi Mật Khẩu Nhanh
+  const [passwordModalAccount, setPasswordModalAccount] = useState<UserAccount | null>(null);
+  const [newQuickPassword, setNewQuickPassword] = useState('');
+  const [showQuickPass, setShowQuickPass] = useState(false);
 
   const [notification, setNotification] = useState<{
     type: 'success' | 'error';
@@ -178,23 +197,24 @@ export default function AccountManagementSection() {
     setFormName('');
     setFormUsername('');
     setFormRole('cashier');
-    setFormPin('');
     setFormPassword('');
+    setShowFormPassword(false);
     setFormPhone('');
     setFormIsActive(true);
     setIsCustomPermsEnabled(false);
-    setCustomPerms({ ...DEFAULT_PERMISSIONS.cashier });
+    const base = rolePermissions.cashier || DEFAULT_PERMISSIONS.cashier;
+    setCustomPerms({ ...base });
     setIsModalOpen(true);
   };
 
-  // Mở modal chỉnh sửa
+  // Mở modal chỉnh sửa toàn bộ
   const handleOpenEditModal = (acc: UserAccount) => {
     setEditingAccountId(acc.id);
     setFormName(acc.name);
     setFormUsername(acc.username);
     setFormRole(acc.role);
-    setFormPin(acc.pin || '');
     setFormPassword(acc.password || '');
+    setShowFormPassword(false);
     setFormPhone(acc.phone || '');
     setFormIsActive(acc.isActive);
 
@@ -214,6 +234,60 @@ export default function AccountManagementSection() {
     setIsModalOpen(true);
   };
 
+  // Mở modal phân quyền nhanh cho tài khoản
+  const handleOpenPermissionModal = (acc: UserAccount) => {
+    setPermissionModalAccount(acc);
+    if (acc.customPermissions && Object.keys(acc.customPermissions).length > 0) {
+      setPermModalCustomEnabled(true);
+      const base = rolePermissions[acc.role] || DEFAULT_PERMISSIONS[acc.role] || DEFAULT_PERMISSIONS.staff;
+      setPermModalPerms({
+        ...base,
+        ...acc.customPermissions,
+      });
+    } else {
+      setPermModalCustomEnabled(false);
+      const base = rolePermissions[acc.role] || DEFAULT_PERMISSIONS[acc.role] || DEFAULT_PERMISSIONS.staff;
+      setPermModalPerms({ ...base });
+    }
+  };
+
+  const handleSavePermissionModal = () => {
+    if (!permissionModalAccount) return;
+    const updates: Partial<UserAccount> = {
+      customPermissions: permModalCustomEnabled ? permModalPerms : undefined,
+    };
+    const res = updateAccount(permissionModalAccount.id, updates);
+    if (res.success) {
+      showNotify('success', `Đã cập nhật quyền truy cập cho tài khoản "${permissionModalAccount.name}" thành công!`);
+      setPermissionModalAccount(null);
+    } else {
+      showNotify('error', res.error || 'Cập nhật phân quyền thất bại!');
+    }
+  };
+
+  // Mở modal đổi mật khẩu nhanh
+  const handleOpenPasswordModal = (acc: UserAccount) => {
+    setPasswordModalAccount(acc);
+    setNewQuickPassword('');
+    setShowQuickPass(false);
+  };
+
+  const handleSaveQuickPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordModalAccount) return;
+    if (!newQuickPassword || newQuickPassword.trim().length < 4) {
+      showNotify('error', 'Mật khẩu phải có tối thiểu 4 ký tự!');
+      return;
+    }
+    const res = updateAccount(passwordModalAccount.id, { password: newQuickPassword.trim() });
+    if (res.success) {
+      showNotify('success', `Đã đổi mật khẩu cho tài khoản "${passwordModalAccount.name}" thành công!`);
+      setPasswordModalAccount(null);
+    } else {
+      showNotify('error', res.error || 'Đổi mật khẩu thất bại!');
+    }
+  };
+
   // Khi người dùng thay đổi vai trò trong form modal
   const handleRoleChange = (newRole: UserRole) => {
     setFormRole(newRole);
@@ -223,7 +297,7 @@ export default function AccountManagementSection() {
     }
   };
 
-  // Toggle từng quyền tùy chọn
+  // Toggle từng quyền tùy chọn trong Create/Edit modal
   const handleTogglePerm = (key: PermissionKey) => {
     setCustomPerms(prev => ({
       ...prev,
@@ -231,7 +305,15 @@ export default function AccountManagementSection() {
     }));
   };
 
-  // Xử lý lưu form
+  // Toggle từng quyền trong Quick Permission modal
+  const handleTogglePermModal = (key: PermissionKey) => {
+    setPermModalPerms(prev => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  };
+
+  // Xử lý lưu form Create / Edit
   const handleSaveForm = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -243,47 +325,52 @@ export default function AccountManagementSection() {
       showNotify('error', 'Vui lòng nhập tên đăng nhập!');
       return;
     }
-    if (formPin && formPin.trim().length < 4) {
-      showNotify('error', 'Mã PIN đăng nhập nhanh phải có tối thiểu 4 chữ số!');
+
+    if (!editingAccountId) {
+      if (!formPassword || formPassword.trim().length < 4) {
+        showNotify('error', 'Vui lòng nhập mật khẩu đăng nhập (tối thiểu 4 ký tự)!');
+        return;
+      }
+    } else if (formPassword && formPassword.trim().length < 4) {
+      showNotify('error', 'Mật khẩu đăng nhập phải có tối thiểu 4 ký tự!');
       return;
     }
 
-    const permissionPayload = isCustomPermsEnabled ? { ...customPerms } : undefined;
+    const payloadCustomPermissions = isCustomPermsEnabled ? customPerms : undefined;
 
     if (editingAccountId) {
-      // Cập nhật tài khoản hiện có
-      const res = updateAccount(editingAccountId, {
+      const updates: Partial<UserAccount> = {
         name: formName.trim(),
         username: formUsername.trim().toLowerCase(),
         role: formRole,
-        pin: formPin.trim() || undefined,
-        password: formPassword.trim() || undefined,
         phone: formPhone.trim() || undefined,
         isActive: formIsActive,
-        customPermissions: permissionPayload,
-      });
+        customPermissions: payloadCustomPermissions,
+      };
+      if (formPassword.trim()) {
+        updates.password = formPassword.trim();
+      }
 
+      const res = updateAccount(editingAccountId, updates);
       if (res.success) {
-        showNotify('success', `Đã cập nhật thông tin tài khoản "${formName}" thành công!`);
+        showNotify('success', `Đã cập nhật tài khoản "${formName}" thành công!`);
         setIsModalOpen(false);
       } else {
         showNotify('error', res.error || 'Cập nhật tài khoản thất bại!');
       }
     } else {
-      // Tạo tài khoản mới
       const res = createAccount({
         name: formName.trim(),
         username: formUsername.trim().toLowerCase(),
         role: formRole,
-        pin: formPin.trim() || undefined,
-        password: formPassword.trim() || undefined,
+        password: formPassword.trim(),
         phone: formPhone.trim() || undefined,
         isActive: formIsActive,
-        customPermissions: permissionPayload,
+        customPermissions: payloadCustomPermissions,
       });
 
       if (res.success) {
-        showNotify('success', `Đã tạo tài khoản mới cho "${formName}" thành công!`);
+        showNotify('success', `Đã tạo tài khoản "${formName}" thành công!`);
         setIsModalOpen(false);
       } else {
         showNotify('error', res.error || 'Tạo tài khoản thất bại!');
@@ -291,14 +378,14 @@ export default function AccountManagementSection() {
     }
   };
 
-  // Xử lý xóa tài khoản
-  const handleDelete = (acc: UserAccount) => {
+  // Xóa tài khoản
+  const handleDeleteAccount = (acc: UserAccount) => {
     if (acc.username === 'admin' && acc.role === 'admin') {
       showNotify('error', 'Không thể xóa tài khoản Quản Trị Viên (Admin) gốc của hệ thống!');
       return;
     }
 
-    if (confirm(`Bạn có chắc chắn muốn xóa tài khoản "${acc.name}" (@${acc.username}) khỏi hệ thống?`)) {
+    if (confirm(`Bạn có chắc chắn muốn xóa tài khoản "${acc.name}" (@${acc.username}) không? Hành động này không thể hoàn tác.`)) {
       const res = deleteAccount(acc.id);
       if (res.success) {
         showNotify('success', `Đã xóa tài khoản "${acc.name}" thành công!`);
@@ -308,489 +395,568 @@ export default function AccountManagementSection() {
     }
   };
 
-  // Lọc tài khoản theo tìm kiếm và vai trò
-  const filteredAccounts = useMemo(() => {
-    return accounts.filter((acc) => {
-      const matchQuery =
-        !searchQuery ||
-        acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        acc.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (acc.phone && acc.phone.includes(searchQuery));
+  // Lọc tài khoản theo ô tìm kiếm và vai trò
+  const filteredAccounts = (accounts || []).filter(acc => {
+    const matchQuery =
+      acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      acc.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (acc.phone && acc.phone.includes(searchQuery));
+    const matchRole = filterRole === 'all' || acc.role === filterRole;
+    return matchQuery && matchRole;
+  });
 
-      const matchRole = filterRole === 'all' || acc.role === filterRole;
-      return matchQuery && matchRole;
-    });
-  }, [accounts, searchQuery, filterRole]);
+  // Tính số lượng thống kê
+  const stats = {
+    total: (accounts || []).length,
+    active: (accounts || []).filter(a => a.isActive).length,
+    locked: (accounts || []).filter(a => !a.isActive).length,
+  };
 
-  const activeCount = accounts.filter(a => a.isActive).length;
-  const inactiveCount = accounts.length - activeCount;
+  const getEffectivePermissions = (acc: UserAccount): RolePermissions => {
+    if (acc.customPermissions && Object.keys(acc.customPermissions).length > 0) {
+      const base = rolePermissions[acc.role] || DEFAULT_PERMISSIONS[acc.role] || DEFAULT_PERMISSIONS.staff;
+      return { ...base, ...acc.customPermissions };
+    }
+    return rolePermissions[acc.role] || DEFAULT_PERMISSIONS[acc.role] || DEFAULT_PERMISSIONS.staff;
+  };
 
   return (
-    <div className="space-y-6">
-      {/* THÔNG BÁO ALERT */}
+    <div className="bg-white rounded-3xl border border-zinc-200 shadow-xs p-5 sm:p-6 space-y-6">
+      {/* ── THÔNG BÁO POPUP ── */}
       {notification && (
         <div
-          className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-3 transition-all animate-in fade-in duration-200 ${
+          className={`p-3.5 rounded-2xl border text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in slide-in-from-top-2 ${
             notification.type === 'success'
-              ? 'bg-emerald-50 text-emerald-900 border-emerald-200'
-              : 'bg-rose-50 text-rose-900 border-rose-200'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
           }`}
         >
-          {notification.type === 'success' ? (
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-          ) : (
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-          )}
-          <span>{notification.message}</span>
+          <div className="flex items-center gap-2">
+            {notification.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{notification.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setNotification(null)}
+            className="text-zinc-400 hover:text-zinc-700 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
       )}
 
-      {/* HEADER QUẢN LÝ TÀI KHOẢN */}
-      <div className="bg-white p-5 sm:p-6 rounded-3xl border border-zinc-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* ── HEADER PHÂN HỆ QUẢN LÝ TÀI KHOẢN ── */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 border-b border-zinc-100">
         <div>
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
+          <div className="flex items-center gap-2.5">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center font-black shadow-xs">
               <Users className="w-5 h-5" />
             </div>
             <div>
               <h2 className="text-lg font-black text-zinc-900 flex items-center gap-2">
-                Quản Lý Danh Sách Tài Khoản &amp; Phân Quyền Cá Nhân
+                Quản Lý Tài Khoản & Phân Quyền Nhân Viên
               </h2>
-              <p className="text-xs text-zinc-500 mt-0.5">
-                Tạo tài khoản riêng cho từng nhân viên, thiết lập mã PIN bán hàng và tùy biến cấp quyền cho từng người.
+              <p className="text-xs text-zinc-500">
+                Tạo tài khoản cá nhân, cài đặt vai trò và cấp quyền truy cập chi tiết cho từng người
               </p>
             </div>
           </div>
-
-          <div className="flex items-center gap-2 mt-3 flex-wrap">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-zinc-100 text-zinc-700 text-xs font-bold">
-              👥 Tổng: <b>{accounts.length}</b> tài khoản
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-bold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-              Đang hoạt động: <b>{activeCount}</b>
-            </span>
-            {inactiveCount > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-rose-50 text-rose-800 border border-rose-200 text-xs font-bold">
-                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
-                Tạm khóa: <b>{inactiveCount}</b>
-              </span>
-            )}
-          </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenCreateModal}
-          className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm transition active:scale-95 cursor-pointer shrink-0"
-        >
-          <UserPlus className="w-4 h-4" />
-          <span>+ Thêm Tài Khoản Mới</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Thống kê nhanh */}
+          <div className="flex items-center gap-2 text-xs font-bold bg-zinc-100 px-3 py-1.5 rounded-2xl">
+            <span className="text-zinc-600">Tổng: <b>{stats.total}</b></span>
+            <span className="text-zinc-300">|</span>
+            <span className="text-emerald-700">Đang bật: <b>{stats.active}</b></span>
+            <span className="text-zinc-300">|</span>
+            <span className="text-rose-700">Đã khóa: <b>{stats.locked}</b></span>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleOpenCreateModal}
+            className="px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-2 shadow-md shadow-amber-600/20 active:scale-95 transition cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>Thêm Tài Khoản Mới</span>
+          </button>
+        </div>
       </div>
 
-      {/* THANH TÌM KIẾM & BỘ LỌC */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white p-3.5 rounded-2xl border border-zinc-200">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+      {/* ── THANH TÌM KIẾM & BỘ LỌC VAI TRÒ ── */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="relative flex-1 max-w-md">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Tìm theo tên nhân viên, tên đăng nhập, số điện thoại..."
-            className="w-full pl-9 pr-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs text-zinc-900 focus:bg-white focus:outline-none focus:border-amber-500 transition"
+            placeholder="Tìm theo tên nhân viên, tên đăng nhập hoặc số điện thoại..."
+            className="w-full pl-9 pr-3.5 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-medium text-zinc-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500 focus:bg-white transition"
           />
+          <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-2.5" />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-2 text-zinc-400 hover:text-zinc-600 p-0.5"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-2">
-          <label className="text-xs font-bold text-zinc-500 shrink-0">Lọc vai trò:</label>
-          <select
-            value={filterRole}
-            onChange={(e) => setFilterRole(e.target.value)}
-            className="px-3 py-2 bg-zinc-50 border border-zinc-200 rounded-xl text-xs font-bold text-zinc-800 focus:bg-white focus:outline-none focus:border-amber-500 transition cursor-pointer"
+        {/* Lọc theo Vai Trò */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+          <button
+            type="button"
+            onClick={() => setFilterRole('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap cursor-pointer ${
+              filterRole === 'all'
+                ? 'bg-zinc-900 text-white shadow-2xs'
+                : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+            }`}
           >
-            <option value="all">Tất cả vai trò ({accounts.length})</option>
-            <option value="admin">Chủ Tiệm (Admin)</option>
-            <option value="manager">Quản Lý Tiệm (Manager)</option>
-            <option value="cashier">Thu Ngân / Bán Hàng</option>
-            <option value="kitchen">Nhân Viên Bếp</option>
-            <option value="staff">Nhân Viên Hỗ Trợ</option>
-          </select>
+            Tất cả ({stats.total})
+          </button>
+          {(['admin', 'manager', 'cashier', 'kitchen', 'staff'] as UserRole[]).map((r) => {
+            const count = (accounts || []).filter(a => a.role === r).length;
+            const rInfo = ROLE_INFO[r];
+            return (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setFilterRole(r)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1 cursor-pointer ${
+                  filterRole === r
+                    ? 'bg-amber-600 text-white shadow-2xs'
+                    : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                }`}
+              >
+                <span>{rInfo.icon}</span>
+                <span>{rInfo.label.split(' ')[0]} ({count})</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* BẢNG DANH SÁCH TÀI KHOẢN */}
-      <div className="bg-white rounded-3xl border border-zinc-200 overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-xs text-left">
-            <thead>
-              <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-600 font-bold uppercase tracking-wider text-[10px]">
-                <th className="p-4">Người Dùng &amp; Tên Đăng Nhập</th>
-                <th className="p-4 text-center">Vai Trò</th>
-                <th className="p-4">Cơ Chế Phân Quyền</th>
-                <th className="p-4 text-center">Mã PIN &amp; Mật Khẩu</th>
-                <th className="p-4 text-center">Trạng Thái</th>
-                <th className="p-4 text-right">Thao Tác</th>
+      {/* ── BẢNG DANH SÁCH TÀI KHOẢN NGƯỜI DÙNG ── */}
+      <div className="overflow-x-auto rounded-2xl border border-zinc-200">
+        <table className="w-full text-xs text-left">
+          <thead>
+            <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-600 font-bold uppercase tracking-wider text-[10px]">
+              <th className="p-3.5 min-w-[200px]">Họ Tên & Tên Đăng Nhập</th>
+              <th className="p-3.5 min-w-[150px]">Vai Trò</th>
+              <th className="p-3.5 min-w-[130px]">Mật Khẩu</th>
+              <th className="p-3.5 min-w-[280px]">Quyền Hạn Truy Cập</th>
+              <th className="p-3.5 text-center min-w-[100px]">Trạng Thái</th>
+              <th className="p-3.5 text-right min-w-[160px]">Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-100 font-medium text-zinc-800">
+            {filteredAccounts.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="p-8 text-center text-zinc-400">
+                  <div className="flex flex-col items-center justify-center gap-2">
+                    <Users className="w-8 h-8 text-zinc-300" />
+                    <span>Không tìm thấy tài khoản nào phù hợp với bộ lọc</span>
+                  </div>
+                </td>
               </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100 text-zinc-800">
-              {filteredAccounts.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="p-8 text-center text-zinc-400">
-                    <Users className="w-8 h-8 mx-auto mb-2 opacity-50" />
-                    <p className="font-bold text-sm">Không tìm thấy tài khoản nào phù hợp</p>
-                    <p className="text-xs text-zinc-400 mt-1">Hãy thử tìm kiếm với từ khóa khác hoặc bấm "+ Thêm Tài Khoản Mới".</p>
-                  </td>
-                </tr>
-              ) : (
-                filteredAccounts.map((acc) => {
-                  const roleMeta = ROLE_INFO[acc.role] || ROLE_INFO.staff;
-                  const isShowPin = Boolean(showPinMap[acc.id]);
-                  const hasCustom = Boolean(acc.customPermissions && Object.keys(acc.customPermissions).length > 0);
-                  const isCurrentLoggedUser = user?.id === acc.id;
+            ) : (
+              filteredAccounts.map((acc) => {
+                const rInfo = ROLE_INFO[acc.role] || ROLE_INFO.staff;
+                const hasCustom = Boolean(acc.customPermissions && Object.keys(acc.customPermissions).length > 0);
+                const isPasswordShown = Boolean(showPasswordMap[acc.id]);
+                const effectivePerms = getEffectivePermissions(acc);
 
-                  // Đếm số quyền được cấp
-                  let grantedCount = 0;
-                  const base = rolePermissions[acc.role] || DEFAULT_PERMISSIONS[acc.role] || DEFAULT_PERMISSIONS.staff;
-                  const activePerms = hasCustom ? { ...base, ...acc.customPermissions } : base;
-                  PERMISSION_DEFINITIONS.forEach(p => {
-                    if (acc.role === 'admin' || activePerms[p.key]) grantedCount++;
-                  });
-
-                  return (
-                    <tr
-                      key={acc.id}
-                      className={`hover:bg-zinc-50/70 transition ${
-                        !acc.isActive ? 'bg-zinc-50/40 opacity-75' : ''
-                      }`}
-                    >
-                      {/* Cột 1: Thông tin người dùng */}
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-zinc-100 border border-zinc-200 flex items-center justify-center text-xl shrink-0">
-                            {roleMeta.icon}
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <span className="font-black text-sm text-zinc-900">{acc.name}</span>
-                              {isCurrentLoggedUser && (
-                                <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-black border border-amber-300">
-                                  Bạn
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-2 text-zinc-400 text-xs mt-0.5">
-                              <span className="font-mono text-zinc-600 font-bold">@{acc.username}</span>
-                              {acc.phone && <span>• 📞 {acc.phone}</span>}
-                            </div>
-                          </div>
+                return (
+                  <tr
+                    key={acc.id}
+                    className={`hover:bg-amber-50/30 transition ${
+                      !acc.isActive ? 'bg-zinc-50/70 opacity-60' : ''
+                    }`}
+                  >
+                    {/* Tên & Username */}
+                    <td className="p-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-2xl bg-amber-100 text-amber-900 font-black flex items-center justify-center shrink-0 shadow-2xs">
+                          {acc.name.charAt(0).toUpperCase()}
                         </div>
-                      </td>
-
-                      {/* Cột 2: Vai trò */}
-                      <td className="p-4 text-center">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold border ${roleMeta.badgeClass}`}
-                        >
-                          <span>{roleMeta.icon}</span>
-                          <span>{roleMeta.label}</span>
-                        </span>
-                      </td>
-
-                      {/* Cột 3: Quyền hạn */}
-                      <td className="p-4">
-                        {hasCustom ? (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-lg bg-emerald-50 text-emerald-800 border border-emerald-200 text-[11px] font-black">
-                              <Sparkles className="w-3 h-3 text-emerald-600" />
-                              Tùy chỉnh riêng ({grantedCount}/7 quyền)
-                            </span>
-                            <div className="flex items-center gap-1 flex-wrap">
-                              {PERMISSION_DEFINITIONS.map(p => {
-                                const isAllowed = acc.role === 'admin' || activePerms[p.key];
-                                return (
-                                  <span
-                                    key={p.key}
-                                    title={`${p.label}: ${isAllowed ? 'Được phép' : 'Bị khóa'}`}
-                                    className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                      isAllowed
-                                        ? 'bg-emerald-100 text-emerald-900'
-                                        : 'bg-zinc-100 text-zinc-400 line-through'
-                                    }`}
-                                  >
-                                    {p.label.split(' ')[0]}
-                                  </span>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-1">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg bg-zinc-100 text-zinc-700 text-[11px] font-bold">
-                              Theo mặc định vai trò ({grantedCount}/7 quyền)
-                            </span>
-                            <p className="text-[10px] text-zinc-400">{roleMeta.desc}</p>
-                          </div>
-                        )}
-                      </td>
-
-                      {/* Cột 4: PIN & Mật khẩu */}
-                      <td className="p-4 text-center">
-                        <div className="inline-flex items-center gap-2 bg-zinc-100/80 px-2.5 py-1.5 rounded-xl border border-zinc-200">
-                          <div className="text-left font-mono text-xs">
-                            {acc.pin ? (
-                              <div>
-                                <span className="text-[10px] text-zinc-500 block">PIN:</span>
-                                <span className="font-black text-zinc-900 tracking-wider">
-                                  {isShowPin ? acc.pin : '••••'}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-zinc-400 italic text-[11px]">Chưa đặt PIN</span>
+                        <div>
+                          <div className="font-bold text-zinc-900 flex items-center gap-1.5">
+                            <span>{acc.name}</span>
+                            {user && user.id === acc.id && (
+                              <span className="text-[9px] bg-amber-500 text-white px-1.5 py-0.2 rounded-full font-bold">
+                                Bạn
+                              </span>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setShowPinMap((prev) => ({ ...prev, [acc.id]: !prev[acc.id] }))
-                            }
-                            className="p-1 text-zinc-400 hover:text-zinc-700 transition cursor-pointer"
-                            title={isShowPin ? 'Ẩn mã PIN' : 'Hiện mã PIN'}
-                          >
-                            {isShowPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
+                          <div className="text-[11px] text-zinc-400 font-mono">
+                            @{acc.username}
+                            {acc.phone && <span className="ml-2 font-sans text-zinc-500">📞 {acc.phone}</span>}
+                          </div>
                         </div>
-                      </td>
+                      </div>
+                    </td>
 
-                      {/* Cột 5: Trạng thái On/Off */}
-                      <td className="p-4 text-center">
+                    {/* Vai trò */}
+                    <td className="p-3.5">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[11px] font-bold border ${rInfo.badgeClass}`}
+                      >
+                        <span>{rInfo.icon}</span>
+                        <span>{rInfo.label}</span>
+                      </span>
+                    </td>
+
+                    {/* Mật khẩu */}
+                    <td className="p-3.5 font-mono">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-zinc-800">
+                          {isPasswordShown ? (acc.password || '(Trống)') : '••••••••'}
+                        </span>
                         <button
                           type="button"
                           onClick={() => {
-                            if (acc.username === 'admin' && acc.isActive) {
-                              showNotify('error', 'Không thể tạm khóa tài khoản Quản Trị Viên (Admin) gốc!');
-                              return;
-                            }
-                            toggleAccountActive(acc.id);
-                            showNotify(
-                              'success',
-                              `Đã ${acc.isActive ? 'tạm khóa' : 'mở kích hoạt'} tài khoản "${acc.name}"!`
-                            );
+                            setShowPasswordMap(prev => ({
+                              ...prev,
+                              [acc.id]: !prev[acc.id],
+                            }));
                           }}
-                          className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black transition cursor-pointer ${
-                            acc.isActive
-                              ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
-                              : 'bg-zinc-200 text-zinc-600 border border-zinc-300 hover:bg-emerald-50 hover:text-emerald-800 hover:border-emerald-200'
-                          }`}
-                          title={acc.isActive ? 'Bấm để tạm khóa tài khoản' : 'Bấm để kích hoạt lại tài khoản'}
+                          className="text-zinc-400 hover:text-zinc-600 p-1 rounded-md hover:bg-zinc-100 transition cursor-pointer"
+                          title={isPasswordShown ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
                         >
-                          {acc.isActive ? (
-                            <>
-                              <Unlock className="w-3 h-3 text-emerald-600" />
-                              <span>Hoạt động</span>
-                            </>
+                          {isPasswordShown ? (
+                            <EyeOff className="w-3.5 h-3.5 text-zinc-500" />
                           ) : (
-                            <>
-                              <Lock className="w-3 h-3 text-zinc-500" />
-                              <span>Tạm khóa</span>
-                            </>
+                            <Eye className="w-3.5 h-3.5 text-zinc-400" />
                           )}
                         </button>
-                      </td>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPasswordModal(acc)}
+                          className="text-amber-600 hover:text-amber-800 hover:underline text-[10px] font-bold ml-1 cursor-pointer"
+                          title="Đổi mật khẩu tài khoản"
+                        >
+                          Đổi
+                        </button>
+                      </div>
+                    </td>
 
-                      {/* Cột 6: Thao tác Edit/Delete */}
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenEditModal(acc)}
-                            className="p-2 rounded-xl border border-zinc-200 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-200 text-zinc-600 transition cursor-pointer"
-                            title="Chỉnh sửa thông tin & phân quyền"
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
-
-                          {acc.username === 'admin' && acc.role === 'admin' ? (
-                            <span
-                              title="Tài khoản Admin gốc được hệ thống bảo vệ cố định"
-                              className="p-2 rounded-xl bg-zinc-100 text-zinc-300 border border-zinc-200 cursor-not-allowed inline-block"
-                            >
-                              <Lock className="w-3.5 h-3.5" />
+                    {/* Quyền hạn truy cập */}
+                    <td className="p-3.5">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {hasCustom ? (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-black text-[10px] border border-amber-200">
+                              <Sparkles className="w-3 h-3 text-amber-600" /> Tùy chỉnh riêng
                             </span>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(acc)}
-                              className="p-2 rounded-xl border border-zinc-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 text-zinc-400 transition cursor-pointer"
-                              title="Xóa tài khoản này"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md bg-zinc-100 text-zinc-600 font-bold text-[10px] border border-zinc-200">
+                              🌟 Chuẩn vai trò
+                            </span>
+                          )}
+
+                          {/* Huy hiệu các quyền được cấp */}
+                          {effectivePerms.pos && (
+                            <span className="px-1.5 py-0.2 rounded bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200">
+                              POS
+                            </span>
+                          )}
+                          {effectivePerms.cakeOrder && (
+                            <span className="px-1.5 py-0.2 rounded bg-pink-50 text-pink-700 text-[10px] font-bold border border-pink-200">
+                              Đặt Bánh
+                            </span>
+                          )}
+                          {effectivePerms.kitchenKds && (
+                            <span className="px-1.5 py-0.2 rounded bg-orange-50 text-orange-700 text-[10px] font-bold border border-orange-200">
+                              Bếp KDS
+                            </span>
+                          )}
+                          {effectivePerms.adminAccess && (
+                            <span className="px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 text-[10px] font-bold border border-rose-200">
+                              Admin
+                            </span>
+                          )}
+                          {effectivePerms.reports && (
+                            <span className="px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 text-[10px] font-bold border border-purple-200">
+                              Báo Cáo
+                            </span>
+                          )}
+                          {effectivePerms.bomCost && (
+                            <span className="px-1.5 py-0.2 rounded bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200">
+                              BOM
+                            </span>
+                          )}
+                          {effectivePerms.paymentSettings && (
+                            <span className="px-1.5 py-0.2 rounded bg-blue-50 text-blue-700 text-[10px] font-bold border border-blue-200">
+                              VietQR
+                            </span>
                           )}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                      </div>
+                    </td>
+
+                    {/* Trạng thái hoạt động */}
+                    <td className="p-3.5 text-center">
+                      <button
+                        type="button"
+                        disabled={acc.username === 'admin' && acc.isActive}
+                        onClick={() => {
+                          const res = toggleAccountActive(acc.id);
+                          if (res.success) {
+                            showNotify(
+                              'success',
+                              `Đã ${acc.isActive ? 'khóa' : 'kích hoạt'} tài khoản "${acc.name}"!`
+                            );
+                          } else {
+                            showNotify('error', res.error || 'Thao tác thất bại');
+                          }
+                        }}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-[10px] font-bold transition cursor-pointer ${
+                          acc.isActive
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200'
+                            : 'bg-zinc-100 text-zinc-500 border border-zinc-200 hover:bg-emerald-50 hover:text-emerald-700 hover:border-emerald-200'
+                        } ${acc.username === 'admin' && acc.isActive ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        title={acc.username === 'admin' ? 'Tài khoản Admin chính không thể khóa' : (acc.isActive ? 'Bấm để tạm khóa' : 'Bấm để kích hoạt')}
+                      >
+                        {acc.isActive ? (
+                          <>
+                            <Unlock className="w-3 h-3 text-emerald-600" />
+                            <span>Hoạt động</span>
+                          </>
+                        ) : (
+                          <>
+                            <Lock className="w-3 h-3 text-zinc-400" />
+                            <span>Đã khóa</span>
+                          </>
+                        )}
+                      </button>
+                    </td>
+
+                    {/* Thao tác */}
+                    <td className="p-3.5 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleOpenPermissionModal(acc)}
+                          className="px-2.5 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] flex items-center gap-1 transition cursor-pointer"
+                          title="Cài đặt quyền truy cập cho tài khoản này"
+                        >
+                          <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="hidden sm:inline">Phân Quyền</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditModal(acc)}
+                          className="p-1.5 rounded-xl border border-zinc-200 hover:bg-zinc-100 text-zinc-600 transition cursor-pointer"
+                          title="Chỉnh sửa thông tin tài khoản"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+
+                        {acc.username !== 'admin' && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteAccount(acc)}
+                            className="p-1.5 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-600 transition cursor-pointer"
+                            title="Xóa tài khoản"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
       </div>
 
-      {/* MODAL THÊM / CHỈNH SỬA TÀI KHOẢN */}
+      {/* ── MODAL 1: THÊM MỚI / CHỈNH SỬA TÀI KHOẢN (TÍCH HỢP CÀI ĐẶT QUYỀN) ── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl border border-zinc-200 shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-5 sm:p-6 shadow-2xl space-y-5 animate-in zoom-in duration-200 border border-zinc-200 max-h-[92vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="sticky top-0 bg-white/95 backdrop-blur-xs px-6 py-4 border-b border-zinc-100 flex items-center justify-between z-10">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
               <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-800 flex items-center justify-center font-bold">
-                  {editingAccountId ? <Edit2 className="w-5 h-5" /> : <UserPlus className="w-5 h-5" />}
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <UserPlus className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="font-black text-base text-zinc-900">
-                    {editingAccountId ? 'Chỉnh Sửa Tài Khoản Nhân Viên' : 'Tạo Tài Khoản Nhân Viên Mới'}
+                    {editingAccountId ? 'Chỉnh Sửa Tài Khoản & Phân Quyền' : 'Thêm Tài Khoản Người Dùng Mới'}
                   </h3>
-                  <p className="text-xs text-zinc-500">
-                    Điền thông tin và lựa chọn quyền hạn cho tài khoản.
+                  <p className="text-[11px] text-zinc-500">
+                    Thiết lập thông tin đăng nhập, vai trò và tùy chỉnh quyền truy cập hệ thống
                   </p>
                 </div>
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 rounded-xl transition cursor-pointer"
+                className="text-zinc-400 hover:text-zinc-600 p-1 rounded-lg hover:bg-zinc-100 transition cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Modal Body */}
-            <form onSubmit={handleSaveForm} className="p-6 space-y-5 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Họ và tên */}
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">
-                    Họ và Tên Nhân Viên <span className="text-rose-500">*</span>:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={formName}
-                    onChange={(e) => setFormName(e.target.value)}
-                    placeholder="VD: Trần Thị Thu Ngân"
-                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-900 font-bold focus:bg-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
+            <form onSubmit={handleSaveForm} className="space-y-5">
+              {/* PHẦN 1: THÔNG TIN CƠ BẢN */}
+              <div className="space-y-3.5">
+                <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                  <span>1. Thông Tin Cá Nhân & Đăng Nhập</span>
+                </h4>
 
-                {/* Tên đăng nhập */}
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">
-                    Tên Đăng Nhập (Username) <span className="text-rose-500">*</span>:
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    disabled={editingAccountId !== null && formUsername === 'admin'}
-                    value={formUsername}
-                    onChange={(e) => setFormUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
-                    placeholder="VD: thungan01 (viết liền, không dấu)"
-                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl font-mono text-zinc-900 font-bold focus:bg-white focus:outline-none focus:border-amber-500 disabled:bg-zinc-100 disabled:cursor-not-allowed"
-                  />
-                </div>
-
-                {/* Số điện thoại */}
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Số Điện Thoại:</label>
-                  <input
-                    type="text"
-                    value={formPhone}
-                    onChange={(e) => setFormPhone(e.target.value)}
-                    placeholder="VD: 0912345678"
-                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl text-zinc-900 focus:bg-white focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                {/* Vai trò */}
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">
-                    Chọn Vai Trò (Role) <span className="text-rose-500">*</span>:
-                  </label>
-                  <select
-                    value={formRole}
-                    disabled={editingAccountId !== null && formUsername === 'admin'}
-                    onChange={(e) => handleRoleChange(e.target.value as UserRole)}
-                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl font-bold text-zinc-900 focus:bg-white focus:outline-none focus:border-amber-500 cursor-pointer disabled:bg-zinc-100 disabled:cursor-not-allowed"
-                  >
-                    <option value="cashier">🛒 Thu Ngân / Bán Hàng (POS)</option>
-                    <option value="kitchen">🍳 Nhân Viên Bếp Làm Bánh (Kitchen KDS)</option>
-                    <option value="manager">👔 Quản Lý Tiệm (Manager - Xem Báo Cáo &amp; Duyệt)</option>
-                    <option value="staff">👤 Nhân Viên Hỗ Trợ (Staff)</option>
-                    <option value="admin">👑 Chủ Tiệm (Admin - Toàn Quyền)</option>
-                  </select>
-                </div>
-
-                {/* Mã PIN đăng nhập nhanh */}
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">
-                    Mã PIN Đăng Nhập Nhanh (4 - 6 số):
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={6}
-                    value={formPin}
-                    onChange={(e) => setFormPin(e.target.value.replace(/[^0-9]/g, ''))}
-                    placeholder="VD: 1234 (Bấm số trên quầy POS)"
-                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl font-mono text-zinc-900 font-black tracking-widest text-center focus:bg-white focus:outline-none focus:border-amber-500"
-                  />
-                  <p className="text-[10px] text-zinc-400 mt-1">Dùng để bấm nhanh trên bàn phím số quầy thu ngân.</p>
-                </div>
-
-                {/* Mật khẩu */}
-                <div>
-                  <label className="font-bold text-zinc-700 block mb-1">Mật Khẩu Đăng Nhập:</label>
-                  <input
-                    type="password"
-                    value={formPassword}
-                    onChange={(e) => setFormPassword(e.target.value)}
-                    placeholder="Nhập mật khẩu (nếu cần đăng nhập bằng pass)"
-                    className="w-full p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl font-mono text-zinc-900 focus:bg-white focus:outline-none focus:border-amber-500"
-                  />
-                  <p className="text-[10px] text-zinc-400 mt-1">Có thể để trống nếu nhân viên chỉ dùng mã PIN.</p>
-                </div>
-              </div>
-
-              {/* Trạng thái Kích hoạt */}
-              <div className="flex items-center justify-between p-3.5 bg-zinc-50 rounded-2xl border border-zinc-200">
-                <div>
-                  <span className="font-bold text-zinc-900 block">Kích hoạt tài khoản:</span>
-                  <span className="text-[11px] text-zinc-500">
-                    Khi tắt, tài khoản này sẽ bị khóa và không thể đăng nhập vào hệ thống.
-                  </span>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formIsActive}
-                    onChange={(e) => setFormIsActive(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-zinc-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
-                </label>
-              </div>
-
-              {/* KHU VỰC CẤP QUYỀN TÙY CHỈNH CHO TÀI KHOẢN (CUSTOM PERMISSIONS) */}
-              <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-200/80 space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-amber-200/60">
-                  <div className="flex items-center gap-2">
-                    <Sliders className="w-4 h-4 text-amber-700" />
-                    <span className="font-black text-amber-950 text-xs">
-                      Cấp Quyền Hạn Cho Tài Khoản Này:
-                    </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 block mb-1">
+                      Họ và tên nhân viên *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formName}
+                      onChange={(e) => setFormName(e.target.value)}
+                      placeholder="Ví dụ: Nguyễn Văn A"
+                      className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                    />
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 block mb-1">
+                      Tên đăng nhập (Username) *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formUsername}
+                      onChange={(e) => setFormUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))}
+                      placeholder="Ví dụ: nguyenvana"
+                      className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="text-xs font-bold text-zinc-700">
+                        {editingAccountId ? 'Mật khẩu mới (Để trống nếu giữ nguyên)' : 'Mật khẩu đăng nhập *'}
+                      </label>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type={showFormPassword ? 'text' : 'password'}
+                        required={!editingAccountId}
+                        value={formPassword}
+                        onChange={(e) => setFormPassword(e.target.value)}
+                        placeholder="Tối thiểu 4 ký tự..."
+                        className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500 pr-10"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowFormPassword(!showFormPassword)}
+                        className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                        title={showFormPassword ? 'Ẩn' : 'Hiện'}
+                      >
+                        {showFormPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-bold text-zinc-700 block mb-1">
+                      Số điện thoại liên hệ (Tùy chọn)
+                    </label>
+                    <input
+                      type="text"
+                      value={formPhone}
+                      onChange={(e) => setFormPhone(e.target.value)}
+                      placeholder="Ví dụ: 0912345678"
+                      className="w-full px-3.5 py-2.5 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                {/* Trạng thái hoạt động switch */}
+                <div className="flex items-center justify-between p-3 bg-zinc-50 rounded-2xl border border-zinc-200">
+                  <div>
+                    <span className="text-xs font-bold text-zinc-800 block">Kích hoạt tài khoản</span>
+                    <span className="text-[11px] text-zinc-500">Cho phép tài khoản này đăng nhập vào hệ thống</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formIsActive}
+                      onChange={(e) => setFormIsActive(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-zinc-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              {/* PHẦN 2: CHỌN VAI TRÒ */}
+              <div className="space-y-2.5">
+                <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                  <span>2. Chọn Vai Trò Hệ Thống</span>
+                </h4>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                  {(['admin', 'manager', 'cashier', 'kitchen', 'staff'] as UserRole[]).map((r) => {
+                    const rInfo = ROLE_INFO[r];
+                    const isSelected = formRole === r;
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => handleRoleChange(r)}
+                        className={`p-3 rounded-2xl border text-left transition cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? 'border-amber-500 bg-amber-50/70 shadow-xs ring-2 ring-amber-400/30'
+                            : 'border-zinc-200 hover:border-zinc-300 bg-white'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-sm font-black text-zinc-900 flex items-center gap-1.5">
+                            <span>{rInfo.icon}</span>
+                            <span>{rInfo.label.split(' ')[0]}</span>
+                          </span>
+                          {isSelected && <Check className="w-4 h-4 text-amber-600 font-black" />}
+                        </div>
+                        <p className="text-[10px] text-zinc-500 leading-tight">
+                          {rInfo.desc}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* PHẦN 3: CÀI ĐẶT QUYỀN TRUY CẬP (CUSTOM PERMISSIONS) */}
+              <div className="space-y-3 pt-2 border-t border-zinc-100">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                      <span>3. Phân Quyền Truy Cập Tính Năng</span>
+                    </h4>
+                    <p className="text-[11px] text-zinc-500">
+                      Chọn áp dụng theo vai trò chuẩn hoặc tùy chỉnh bật/tắt từng quyền riêng
+                    </p>
+                  </div>
+
+                  {/* Switcher 2 chế độ quyền */}
+                  <div className="flex items-center gap-1 bg-zinc-100 p-1 rounded-xl text-xs font-bold self-start sm:self-auto">
                     <button
                       type="button"
                       onClick={() => {
@@ -798,143 +964,406 @@ export default function AccountManagementSection() {
                         const base = rolePermissions[formRole] || DEFAULT_PERMISSIONS[formRole] || DEFAULT_PERMISSIONS.staff;
                         setCustomPerms({ ...base });
                       }}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                         !isCustomPermsEnabled
-                          ? 'bg-amber-600 text-white shadow-2xs'
-                          : 'bg-white border border-amber-200 text-amber-800 hover:bg-amber-100'
+                          ? 'bg-white text-zinc-900 shadow-xs'
+                          : 'text-zinc-600 hover:text-zinc-900'
                       }`}
                     >
-                      Theo vai trò ({ROLE_INFO[formRole]?.label.split(' ')[0]})
+                      🌟 Theo vai trò ({ROLE_INFO[formRole].label.split(' ')[0]})
                     </button>
                     <button
                       type="button"
                       onClick={() => setIsCustomPermsEnabled(true)}
-                      className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                      className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
                         isCustomPermsEnabled
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'bg-white border border-amber-200 text-amber-800 hover:bg-amber-100'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-zinc-600 hover:text-zinc-900'
                       }`}
                     >
-                      ⭐ Tùy chỉnh riêng
+                      ⚙️ Tùy chỉnh riêng
                     </button>
                   </div>
                 </div>
 
-                {!isCustomPermsEnabled ? (
-                  <div className="p-3 bg-white rounded-xl border border-amber-200 text-zinc-600">
-                    <p className="font-bold text-amber-900 mb-1">
-                      ℹ️ Đang áp dụng quyền mặc định của vai trò "{ROLE_INFO[formRole]?.label}":
-                    </p>
-                    <p className="text-[11px] leading-relaxed text-zinc-500">
-                      Tài khoản sẽ tự động đồng bộ theo các quyền được thiết lập tại bảng Ma Trận Phân Quyền. Nếu muốn cấp thêm hoặc bớt quyền riêng cho cá nhân này, hãy chọn nút <b>"⭐ Tùy chỉnh riêng"</b> ở trên.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-2 bg-white p-3 rounded-xl border border-emerald-200">
-                    <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
-                      <span className="text-[11px] font-bold text-emerald-800">
-                        Bật / Tắt từng quyền cho nhân viên này:
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCustomPerms({
-                              pos: true,
-                              cakeOrder: true,
-                              kitchenKds: true,
-                              adminAccess: formRole === 'admin',
-                              reports: true,
-                              bomCost: true,
-                              paymentSettings: true,
-                            });
-                          }}
-                          className="text-[10px] text-emerald-700 hover:underline font-bold"
-                        >
-                          Chọn tất cả
-                        </button>
-                        <span>•</span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setCustomPerms({
-                              pos: false,
-                              cakeOrder: false,
-                              kitchenKds: false,
-                              adminAccess: false,
-                              reports: false,
-                              bomCost: false,
-                              paymentSettings: false,
-                            });
-                          }}
-                          className="text-[10px] text-rose-700 hover:underline font-bold"
-                        >
-                          Bỏ chọn hết
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
-                      {PERMISSION_DEFINITIONS.map((p) => {
-                        const Icon = p.icon;
-                        const isGranted = formRole === 'admin' ? true : customPerms[p.key];
-
-                        return (
-                          <div
-                            key={p.key}
-                            onClick={() => {
-                              if (formRole !== 'admin') handleTogglePerm(p.key);
-                            }}
-                            className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 transition cursor-pointer select-none ${
-                              isGranted
-                                ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950'
-                                : 'bg-zinc-50 border-zinc-200 text-zinc-400 hover:bg-zinc-100'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <div
-                                className={`w-6 h-6 rounded-lg flex items-center justify-center shrink-0 ${
-                                  isGranted ? 'bg-emerald-100 text-emerald-700' : 'bg-zinc-200 text-zinc-500'
-                                }`}
-                              >
-                                <Icon className="w-3.5 h-3.5" />
-                              </div>
-                              <div>
-                                <span className="font-bold text-xs block leading-tight">{p.label}</span>
-                                <span className="text-[9px] text-zinc-400 leading-tight block">{p.desc}</span>
-                              </div>
-                            </div>
-
-                            <span
-                              className={`w-5 h-5 rounded-lg flex items-center justify-center shrink-0 font-bold text-xs ${
-                                isGranted ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-400'
-                              }`}
-                            >
-                              {isGranted ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                {/* Các nút thao tác nhanh khi ở chế độ tùy chỉnh riêng */}
+                {isCustomPermsEnabled && (
+                  <div className="flex items-center gap-2 pt-1 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomPerms({
+                          pos: true,
+                          cakeOrder: true,
+                          kitchenKds: true,
+                          adminAccess: true,
+                          reports: true,
+                          bomCost: true,
+                          paymentSettings: true,
+                        });
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] border border-emerald-200 transition cursor-pointer"
+                    >
+                      ✅ Cấp toàn bộ quyền
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomPerms({
+                          pos: false,
+                          cakeOrder: false,
+                          kitchenKds: false,
+                          adminAccess: false,
+                          reports: false,
+                          bomCost: false,
+                          paymentSettings: false,
+                        });
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-[10px] border border-rose-200 transition cursor-pointer"
+                    >
+                      ❌ Tắt toàn bộ quyền
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const base = rolePermissions[formRole] || DEFAULT_PERMISSIONS[formRole] || DEFAULT_PERMISSIONS.staff;
+                        setCustomPerms({ ...base });
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-[10px] border border-zinc-200 transition cursor-pointer flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Đặt lại theo vai trò
+                    </button>
                   </div>
                 )}
+
+                {/* Danh sách 7 quyền hệ thống */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                  {PERMISSION_DEFINITIONS.map((p) => {
+                    const IconComp = p.icon;
+                    const isGranted = isCustomPermsEnabled
+                      ? Boolean(customPerms[p.key])
+                      : Boolean((rolePermissions[formRole] || DEFAULT_PERMISSIONS[formRole] || DEFAULT_PERMISSIONS.staff)[p.key]);
+
+                    return (
+                      <div
+                        key={p.key}
+                        onClick={() => {
+                          if (isCustomPermsEnabled) {
+                            handleTogglePerm(p.key);
+                          }
+                        }}
+                        className={`p-3 rounded-2xl border transition flex items-start gap-2.5 ${
+                          isCustomPermsEnabled ? 'cursor-pointer active:scale-[0.99]' : 'cursor-default'
+                        } ${
+                          isGranted
+                            ? 'bg-emerald-50/50 border-emerald-200'
+                            : 'bg-zinc-50 border-zinc-200'
+                        }`}
+                      >
+                        <div
+                          className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                            isGranted ? 'bg-emerald-600 text-white shadow-2xs' : 'bg-zinc-200 text-zinc-500'
+                          }`}
+                        >
+                          <IconComp className="w-4 h-4" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-xs text-zinc-900">{p.label}</span>
+                            {isCustomPermsEnabled ? (
+                              <input
+                                type="checkbox"
+                                checked={isGranted}
+                                onChange={() => handleTogglePerm(p.key)}
+                                className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500 cursor-pointer"
+                              />
+                            ) : (
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
+                                  isGranted
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : 'bg-zinc-200 text-zinc-600'
+                                }`}
+                              >
+                                {isGranted ? 'Bật' : 'Tắt'}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-zinc-500 leading-tight mt-0.5">
+                            {p.desc}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* Modal Footer Buttons */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-100">
+              {/* Form Buttons */}
+              <div className="flex gap-2.5 pt-3 border-t border-zinc-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-zinc-200 hover:bg-zinc-100 text-zinc-600 font-bold transition cursor-pointer"
+                  className="flex-1 py-3 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
                 >
-                  Hủy Bỏ
+                  Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold transition shadow-xs cursor-pointer flex items-center gap-2"
+                  className="flex-2 py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
                 >
                   <Check className="w-4 h-4" />
-                  <span>{editingAccountId ? 'Cập Nhật Tài Khoản' : 'Tạo Tài Khoản Mới'}</span>
+                  <span>{editingAccountId ? 'Lưu Thay Đổi' : 'Tạo Tài Khoản & Cấp Quyền'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 2: PHÂN QUYỀN NHANH CHO TÀI KHOẢN (QUICK PERMISSIONS MODAL) ── */}
+      {permissionModalAccount && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl space-y-5 animate-in zoom-in duration-200 border border-zinc-200 max-h-[90vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center">
+                  <Sliders className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-zinc-900">
+                    Cài Đặt Quyền Truy Cập: {permissionModalAccount.name}
+                  </h3>
+                  <p className="text-[11px] text-zinc-500">
+                    @{permissionModalAccount.username} • Vai trò: {ROLE_INFO[permissionModalAccount.role]?.label}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPermissionModalAccount(null)}
+                className="text-zinc-400 hover:text-zinc-600 p-1 rounded-lg hover:bg-zinc-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Chế độ cấp quyền */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 bg-zinc-50 rounded-2xl border border-zinc-200">
+              <div>
+                <span className="text-xs font-bold text-zinc-800 block">Chế độ phân quyền</span>
+                <span className="text-[11px] text-zinc-500">
+                  {permModalCustomEnabled ? 'Đang tùy chỉnh quyền riêng cho tài khoản này' : 'Đang dùng quyền chuẩn theo vai trò'}
+                </span>
+              </div>
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-zinc-200 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setPermModalCustomEnabled(false)}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    !permModalCustomEnabled ? 'bg-zinc-900 text-white' : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  Theo vai trò
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPermModalCustomEnabled(true)}
+                  className={`px-3 py-1.5 rounded-lg transition cursor-pointer ${
+                    permModalCustomEnabled ? 'bg-amber-600 text-white' : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  Tùy chỉnh riêng
+                </button>
+              </div>
+            </div>
+
+            {/* Nút thao tác nhanh khi tùy chỉnh riêng */}
+            {permModalCustomEnabled && (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPermModalPerms({
+                      pos: true,
+                      cakeOrder: true,
+                      kitchenKds: true,
+                      adminAccess: true,
+                      reports: true,
+                      bomCost: true,
+                      paymentSettings: true,
+                    });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-[10px] border border-emerald-200 transition cursor-pointer"
+                >
+                  ✅ Cấp tất cả quyền
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPermModalPerms({
+                      pos: false,
+                      cakeOrder: false,
+                      kitchenKds: false,
+                      adminAccess: false,
+                      reports: false,
+                      bomCost: false,
+                      paymentSettings: false,
+                    });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-800 font-bold text-[10px] border border-rose-200 transition cursor-pointer"
+                >
+                  ❌ Tắt tất cả quyền
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const base = rolePermissions[permissionModalAccount.role] || DEFAULT_PERMISSIONS[permissionModalAccount.role] || DEFAULT_PERMISSIONS.staff;
+                    setPermModalPerms({ ...base });
+                  }}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-[10px] border border-zinc-200 transition cursor-pointer flex items-center gap-1"
+                >
+                  <RotateCcw className="w-3 h-3" /> Đặt lại theo vai trò
+                </button>
+              </div>
+            )}
+
+            {/* Danh sách 7 quyền */}
+            <div className="space-y-2">
+              {PERMISSION_DEFINITIONS.map((p) => {
+                const IconComp = p.icon;
+                const isGranted = permModalCustomEnabled
+                  ? Boolean(permModalPerms[p.key])
+                  : Boolean((rolePermissions[permissionModalAccount.role] || DEFAULT_PERMISSIONS[permissionModalAccount.role] || DEFAULT_PERMISSIONS.staff)[p.key]);
+
+                return (
+                  <div
+                    key={p.key}
+                    onClick={() => {
+                      if (permModalCustomEnabled) handleTogglePermModal(p.key);
+                    }}
+                    className={`p-3 rounded-2xl border transition flex items-center justify-between ${
+                      permModalCustomEnabled ? 'cursor-pointer hover:border-amber-300' : 'cursor-default'
+                    } ${
+                      isGranted ? 'bg-emerald-50/60 border-emerald-200' : 'bg-zinc-50 border-zinc-200'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          isGranted ? 'bg-emerald-600 text-white' : 'bg-zinc-200 text-zinc-500'
+                        }`}
+                      >
+                        <IconComp className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="font-bold text-xs text-zinc-900 block">{p.label}</span>
+                        <span className="text-[10px] text-zinc-500">{p.desc}</span>
+                      </div>
+                    </div>
+
+                    {permModalCustomEnabled ? (
+                      <input
+                        type="checkbox"
+                        checked={isGranted}
+                        onChange={() => handleTogglePermModal(p.key)}
+                        className="w-4 h-4 text-emerald-600 rounded-sm focus:ring-emerald-500 cursor-pointer"
+                      />
+                    ) : (
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          isGranted ? 'bg-emerald-100 text-emerald-800' : 'bg-zinc-200 text-zinc-600'
+                        }`}
+                      >
+                        {isGranted ? 'Cho phép' : 'Khóa'}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-2.5 pt-2 border-t border-zinc-100">
+              <button
+                type="button"
+                onClick={() => setPermissionModalAccount(null)}
+                className="flex-1 py-2.5 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSavePermissionModal}
+                className="flex-2 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <Check className="w-4 h-4" /> Lưu Phân Quyền
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL 3: ĐỔI MẬT KHẨU NHANH ── */}
+      {passwordModalAccount && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-sm w-full p-5 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in duration-200 border border-zinc-200">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-zinc-900">Đổi Mật Khẩu</h3>
+                  <p className="text-[11px] text-zinc-500">{passwordModalAccount.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPasswordModalAccount(null)}
+                className="text-zinc-400 hover:text-zinc-600 p-1 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuickPassword} className="space-y-4">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-zinc-700">Mật khẩu mới (Tối thiểu 4 ký tự):</label>
+                <div className="relative">
+                  <input
+                    type={showQuickPass ? 'text' : 'password'}
+                    required
+                    autoFocus
+                    value={newQuickPassword}
+                    onChange={(e) => setNewQuickPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full px-3 py-2 bg-zinc-50 border border-zinc-300 rounded-xl text-xs font-mono font-bold text-zinc-900 focus:outline-hidden focus:ring-2 focus:ring-amber-500 pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowQuickPass(!showQuickPass)}
+                    className="absolute right-3 top-2.5 text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                  >
+                    {showQuickPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPasswordModalAccount(null)}
+                  className="flex-1 py-2 rounded-xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex-2 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-xs transition cursor-pointer"
+                >
+                  Lưu Mật Khẩu
                 </button>
               </div>
             </form>

@@ -562,7 +562,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoginModalOpen(false);
       return { success: true };
     }
-    return { success: false, error: 'Mã PIN bếp không đúng! (Mặc định: 5678)' };
+    return { success: false, error: 'Mật khẩu bếp không đúng! (Mặc định: 567890 hoặc 5678)' };
   };
 
   // 3. ĐĂNG NHẬP THU NGÂN / BÁN HÀNG - CHỈ QUYỀN VÀO POS
@@ -592,14 +592,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoginModalOpen(false);
       return { success: true };
     }
-    return { success: false, error: 'Mã PIN bán hàng không đúng! (Mặc định: 1234 hoặc 123456)' };
+    return { success: false, error: 'Mật khẩu bán hàng không đúng! (Mặc định: 123456 hoặc 1234)' };
   };
 
-  // 4. HỖ TRỢ TỰ ĐỘNG PHÂN BIỆT KHI NHẬP MÃ PIN CHUNG
+  // 4. HỖ TRỢ TỰ ĐỘNG PHÂN BIỆT KHI NHẬP MẬT KHẨU CHUNG
   const loginStaff = (pinOrPassword: string) => {
     const input = (pinOrPassword || '').trim();
     const kitchenPin = (securityConfig.kitchenPin || '5678').trim();
-    if (input === kitchenPin || input === '5678' || input.toLowerCase() === 'bep') {
+    const kitchenPass = (securityConfig.kitchenPasswordHash || '567890').trim();
+    if (input === kitchenPin || input === kitchenPass || input === '5678' || input === '567890' || input.toLowerCase() === 'bep') {
       return loginKitchen(pinOrPassword);
     }
     return loginCashier(pinOrPassword);
@@ -807,11 +808,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: false, error: `Tên đăng nhập "${username}" đã tồn tại! Vui lòng chọn tên khác.` };
     }
 
-    if (newAcc.pin) {
-      const pinTrim = newAcc.pin.trim();
-      if (pinTrim.length < 4) {
-        return { success: false, error: 'Mã PIN phải có tối thiểu 4 chữ số!' };
+    if (newAcc.password) {
+      const passTrim = newAcc.password.trim();
+      if (passTrim.length < 4) {
+        return { success: false, error: 'Mật khẩu phải có tối thiểu 4 ký tự!' };
       }
+    } else {
+      return { success: false, error: 'Vui lòng cung cấp mật khẩu cho tài khoản!' };
     }
 
     const created: UserAccount = {
@@ -845,10 +848,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    if (updates.pin) {
-      const pinTrim = updates.pin.trim();
-      if (pinTrim.length < 4) {
-        return { success: false, error: 'Mã PIN phải có tối thiểu 4 chữ số!' };
+    if (updates.password !== undefined && updates.password !== '') {
+      const passTrim = updates.password.trim();
+      if (passTrim.length < 4) {
+        return { success: false, error: 'Mật khẩu phải có tối thiểu 4 ký tự!' };
       }
     }
 
@@ -923,11 +926,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return updateAccount(id, { isActive: !acc.isActive });
   };
 
-  const loginWithPin = (pin: string): { success: boolean; error?: string; user?: CurrentUser } => {
-    const inputPin = (pin || '').trim();
-    if (!inputPin) return { success: false, error: 'Vui lòng nhập mã PIN!' };
+  const loginWithPin = (passOrPin: string): { success: boolean; error?: string; user?: CurrentUser } => {
+    const input = (passOrPin || '').trim();
+    if (!input) return { success: false, error: 'Vui lòng nhập mật khẩu!' };
 
-    const matchedAccount = accounts.find(a => a.isActive && a.pin && a.pin.trim() === inputPin);
+    const matchedAccount = accounts.find(
+      a => a.isActive && ((a.password && a.password.trim() === input) || (a.pin && a.pin.trim() === input))
+    );
     if (matchedAccount) {
       const loggedUser: CurrentUser = {
         id: matchedAccount.id,
@@ -942,25 +947,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { success: true, user: loggedUser };
     }
 
-    if (inputPin === (securityConfig.kitchenPin || '5678') || inputPin === '5678') {
-      return loginKitchen(inputPin);
+    if (input === (securityConfig.kitchenPasswordHash || '567890') || input === (securityConfig.kitchenPin || '5678') || input === '5678') {
+      return loginKitchen(input);
     }
-    if (inputPin === (securityConfig.staffPin || '1234') || inputPin === '1234') {
-      return loginCashier(inputPin);
+    if (input === (securityConfig.staffPasswordHash || '123456') || input === (securityConfig.staffPin || '1234') || input === '1234') {
+      return loginCashier(input);
     }
-    if (inputPin === (securityConfig.adminPasswordHash || 'admin123')) {
-      return loginAdmin(inputPin);
+    if (input === (securityConfig.adminPasswordHash || 'admin123')) {
+      return loginAdmin(input);
     }
 
-    return { success: false, error: 'Mã PIN không đúng hoặc tài khoản đã bị khóa!' };
+    return { success: false, error: 'Mật khẩu không đúng hoặc tài khoản đã bị khóa!' };
   };
 
-  const loginWithCredentials = (username: string, passOrPin: string): { success: boolean; error?: string; user?: CurrentUser } => {
+  const loginWithCredentials = (username: string, password: string): { success: boolean; error?: string; user?: CurrentUser } => {
     const uInput = (username || '').trim().toLowerCase();
-    const pInput = (passOrPin || '').trim();
+    const pInput = (password || '').trim();
 
     if (!uInput) return { success: false, error: 'Vui lòng nhập tên tài khoản!' };
-    if (!pInput) return { success: false, error: 'Vui lòng nhập mật khẩu hoặc mã PIN!' };
+    if (!pInput) return { success: false, error: 'Vui lòng nhập mật khẩu!' };
 
     const acc = accounts.find(a => a.username.toLowerCase() === uInput);
     if (acc) {
@@ -984,7 +989,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoginModalOpen(false);
         return { success: true, user: loggedUser };
       }
-      return { success: false, error: 'Mật khẩu hoặc mã PIN không chính xác!' };
+      return { success: false, error: 'Mật khẩu không chính xác!' };
     }
 
     if (uInput === (securityConfig.adminUsername || 'admin').toLowerCase()) {
