@@ -34,15 +34,49 @@ const formatVND = (val: any) => {
   return `${prefix}${Math.abs(rounded).toLocaleString('vi-VN')}₫`;
 };
 
-export const isOrderCash = (o: any): boolean => {
+export type StandardPaymentMethod = 'cash' | 'transfer' | 'momo' | 'split' | 'card' | 'unknown';
+
+export const getOrderPaymentMethod = (o: any): StandardPaymentMethod => {
+  if (!o) return 'cash';
+
+  // 1. Kiểm tra mảng payments chi tiết
+  if (Array.isArray(o.payments) && o.payments.length > 0) {
+    const methods = new Set(o.payments.map((p: any) => String(p.method || '').toLowerCase().trim()).filter(Boolean));
+    if (methods.size > 1 || (methods.has('cash') && (methods.has('transfer') || methods.has('bank')))) {
+      return 'split';
+    }
+    if (methods.has('momo')) return 'momo';
+    if (methods.has('card')) return 'card';
+    if (methods.has('transfer') || methods.has('bank') || methods.has('vietqr')) return 'transfer';
+    if (methods.has('cash')) return 'cash';
+  }
+
+  // 2. Kiểm tra các trường payment_method / paymentMethod
   const m = (
     o?.payment_method ||
     o?.paymentMethod ||
     o?.final_payment_method ||
-    o?.payments?.[0]?.method ||
     ''
-  ).toString().toLowerCase();
-  return m === 'cash' || m === 'tiền mặt' || m === 'tien mat';
+  ).toString().toLowerCase().trim();
+
+  if (m === 'cash' || m === 'tiền mặt' || m === 'tien mat') return 'cash';
+  if (m === 'transfer' || m === 'bank' || m === 'vietqr' || m === 'ck' || m === 'chuyển khoản' || m === 'chuyen khoan') return 'transfer';
+  if (m === 'momo' || m === 'ví momo' || m === 'vi momo') return 'momo';
+  if (m === 'split' || m === 'kết hợp' || m === 'ket hop') return 'split';
+  if (m === 'card' || m === 'thẻ' || m === 'the') return 'card';
+
+  // 3. Kiểm tra ghi chú hoặc ảnh bill chuyển khoản đối soát
+  const notes = String(o?.notes || '').toLowerCase();
+  if (o?.transfer_proof_image || notes.includes('bill ck') || notes.includes('chuyển khoản') || notes.includes('vietqr')) {
+    return 'transfer';
+  }
+  if (notes.includes('momo')) return 'momo';
+
+  return 'cash';
+};
+
+export const isOrderCash = (o: any): boolean => {
+  return getOrderPaymentMethod(o) === 'cash';
 };
 
 export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
@@ -130,14 +164,29 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
     return Math.round(diff);
   }, [totalRevenue, prevRevenue]);
 
-  // Phân tách Doanh thu Tiền mặt & VietQR thuần
+  // Phân tách Doanh thu Tiền mặt & VietQR/Khác thuần
   const cashRevenue = useMemo(() => {
-    return periodOrders
-      .filter(isOrderCash)
-      .reduce((acc, o) => acc + getOrderNetRevenue(o), 0);
+    return periodOrders.reduce((acc, o) => {
+      const method = getOrderPaymentMethod(o);
+      const netRev = getOrderNetRevenue(o);
+      if (method === 'cash') return acc + netRev;
+      if (method === 'split') {
+        if (Array.isArray(o.payments) && o.payments.length > 0) {
+          const cashAmt = o.payments
+            .filter((p: any) => String(p.method).toLowerCase() === 'cash')
+            .reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+          return acc + Math.min(cashAmt, netRev);
+        }
+        if (o.splitCashAmount) {
+          return acc + Math.min(Number(o.splitCashAmount || 0), netRev);
+        }
+        return acc + Math.round(netRev / 2);
+      }
+      return acc;
+    }, 0);
   }, [periodOrders]);
 
-  const bankRevenue = totalRevenue - cashRevenue;
+  const bankRevenue = Math.max(0, totalRevenue - cashRevenue);
 
   // 3. Giá vốn hàng bán (COGS BOM ~ 36.5% hoặc 31.8%)
   const totalCOGS = useMemo(() => Math.round(totalRevenue * 0.365), [totalRevenue]);
@@ -1052,9 +1101,49 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                     </td>
                     <td className="py-2.5 text-right font-black text-zinc-900">{formatVND(o.total_amount || o.totalPrice || 0)}</td>
                     <td className="py-2.5 text-center">
-                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${isOrderCash(o) ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-700'}`}>
-                        {isOrderCash(o) ? 'Tiền mặt' : 'VietQR'}
-                      </span>
+                      {(() => {
+                        const m = getOrderPaymentMethod(o);
+                        if (m === 'cash') {
+                          return (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                              Tiền mặt
+                            </span>
+                          );
+                        }
+                        if (m === 'transfer') {
+                          return (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200/60">
+                              VietQR / CK
+                            </span>
+                          );
+                        }
+                        if (m === 'momo') {
+                          return (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-50 text-pink-700 border border-pink-200/60">
+                              Ví MoMo
+                            </span>
+                          );
+                        }
+                        if (m === 'split') {
+                          return (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/60" title={o.splitCashAmount ? `TM: ${formatVND(o.splitCashAmount)} | CK: ${formatVND(o.splitTransferAmount)}` : 'Kết hợp TM + CK'}>
+                              Kết hợp (TM+CK)
+                            </span>
+                          );
+                        }
+                        if (m === 'card') {
+                          return (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                              Quẹt thẻ
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 text-zinc-700 border border-zinc-200">
+                            Tiền mặt
+                          </span>
+                        );
+                      })()}
                       {Boolean(o.transfer_proof_image) && (
                         <button
                           type="button"

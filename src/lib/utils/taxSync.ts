@@ -510,6 +510,13 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
             unit_price,
             line_total,
             notes
+          ),
+          payments (
+            id,
+            method,
+            amount,
+            reference_code,
+            paid_at
           )
         `)
         .order('created_at', { ascending: false })
@@ -550,10 +557,58 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
               })
             : (existing?.items || []);
 
+          // Tổng hợp danh sách thanh toán chi tiết từ Supabase hoặc cache cục bộ
+          const payments = Array.isArray(so.payments) && so.payments.length > 0
+            ? so.payments
+            : (Array.isArray(existing?.payments) && existing.payments.length > 0 ? existing.payments : []);
+
+          // Xác định chính xác phương thức thanh toán
+          let resolvedMethod = existing?.payment_method || existing?.paymentMethod || existing?.final_payment_method;
+          let splitCashAmt = existing?.splitCashAmount || existing?.split_cash_amount;
+          let splitTransferAmt = existing?.splitTransferAmount || existing?.split_transfer_amount;
+
+          if (payments.length > 0) {
+            const methods = new Set(payments.map((p: any) => String(p.method || '').toLowerCase().trim()).filter(Boolean));
+            if (methods.size > 1 || (methods.has('cash') && (methods.has('transfer') || methods.has('bank')))) {
+              resolvedMethod = 'split';
+              if (!splitCashAmt) {
+                splitCashAmt = payments
+                  .filter((p: any) => String(p.method).toLowerCase() === 'cash')
+                  .reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+              }
+              if (!splitTransferAmt) {
+                splitTransferAmt = payments
+                  .filter((p: any) => String(p.method).toLowerCase() !== 'cash')
+                  .reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+              }
+            } else if (!resolvedMethod) {
+              if (methods.has('momo')) resolvedMethod = 'momo';
+              else if (methods.has('card')) resolvedMethod = 'card';
+              else if (methods.has('transfer') || methods.has('bank') || methods.has('vietqr')) resolvedMethod = 'transfer';
+              else if (methods.has('cash')) resolvedMethod = 'cash';
+            }
+          }
+
+          if (!resolvedMethod) {
+            const rawNotes = String(so.notes || existing?.notes || '').toLowerCase();
+            if (existing?.transfer_proof_image || rawNotes.includes('bill ck') || rawNotes.includes('chuyển khoản') || rawNotes.includes('vietqr')) {
+              resolvedMethod = 'transfer';
+            } else if (rawNotes.includes('momo')) {
+              resolvedMethod = 'momo';
+            } else {
+              resolvedMethod = 'cash';
+            }
+          }
+
           orderMap.set(key, {
             ...existing,
             ...so,
             items,
+            payments,
+            payment_method: resolvedMethod,
+            paymentMethod: resolvedMethod,
+            splitCashAmount: splitCashAmt,
+            splitTransferAmount: splitTransferAmt,
           });
         });
 

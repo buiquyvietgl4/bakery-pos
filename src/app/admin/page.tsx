@@ -1345,7 +1345,15 @@ export default function AdminDashboard() {
           tong_tien: total,
           da_coc: deposit,
           con_thu: remaining,
-          hinh_thuc: o.payment_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / Ví',
+          hinh_thuc: (() => {
+            const m = String(o.payment_method || o.paymentMethod || '').toLowerCase();
+            if (m === 'cash' || m === 'tiền mặt') return 'Tiền mặt';
+            if (m === 'momo') return 'Ví MoMo';
+            if (m === 'split' || m === 'kết hợp') return 'Kết hợp (TM + CK)';
+            if (m === 'card') return 'Quẹt thẻ';
+            if (m === 'transfer' || m === 'bank' || m === 'vietqr') return 'VietQR / CK';
+            return 'Tiền mặt';
+          })(),
         };
       }),
     };

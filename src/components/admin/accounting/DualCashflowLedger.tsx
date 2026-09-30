@@ -6,7 +6,7 @@ import {
   Search, Plus, Download, FileSpreadsheet, CheckCircle2, 
   Calendar, RefreshCw, Filter, Banknote, Building2, AlertCircle
 } from 'lucide-react';
-import { isOrderCash } from './AccountingOverview';
+import { isOrderCash, getOrderPaymentMethod } from './AccountingOverview';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 
 export interface DualCashflowLedgerProps {
@@ -42,19 +42,42 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
   const [txAmount, setTxAmount] = useState<number>(0);
   const [txDesc, setTxDesc] = useState('');
 
+  // Hàm tính toán phân bổ Tiền mặt và Ngân hàng của từng đơn hàng
+  const getOrderCashAndBank = (o: any) => {
+    const total = Number(o.total_amount || o.totalPrice || 0);
+    if (total <= 0) return { cash: 0, bank: 0 };
+    const method = getOrderPaymentMethod(o);
+    if (method === 'cash') return { cash: total, bank: 0 };
+    if (method === 'transfer' || method === 'momo' || method === 'card') return { cash: 0, bank: total };
+    if (method === 'split') {
+      if (Array.isArray(o.payments) && o.payments.length > 0) {
+        const cashAmt = o.payments
+          .filter((p: any) => String(p.method).toLowerCase() === 'cash')
+          .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+        const bankAmt = o.payments
+          .filter((p: any) => String(p.method).toLowerCase() !== 'cash')
+          .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+        return { cash: cashAmt, bank: bankAmt || Math.max(0, total - cashAmt) };
+      }
+      const c = Number(o.splitCashAmount || 0);
+      const b = Number(o.splitTransferAmount || 0);
+      if (c > 0 || b > 0) return { cash: c, bank: b || Math.max(0, total - c) };
+      return { cash: Math.round(total / 2), bank: total - Math.round(total / 2) };
+    }
+    return { cash: total, bank: 0 };
+  };
+
   // 1. Tính toán Dòng tiền Tiền Mặt
-  // Thu tiền mặt: Từ hóa đơn bán hàng payment_method === 'cash'
+  // Thu tiền mặt: Từ hóa đơn bán hàng
   const cashSalesIncome = useMemo(() => {
     return orders
       .filter((o) => {
-        const isCash = isOrderCash(o);
-        if (!isCash) return false;
         const timeStr = o.created_at || o.createdAt || '';
         if (!timeStr) return true;
         const t = new Date(timeStr).getTime();
         return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
-      .reduce((acc, o) => acc + Number(o.total_amount || o.totalPrice || 0), 0);
+      .reduce((acc, o) => acc + getOrderCashAndBank(o).cash, 0);
   }, [orders, startDateMs, endDateMs]);
 
   // Chi tiền mặt từ expenses hoặc cashflow
@@ -72,18 +95,16 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
 
   const cashBalance = cashSalesIncome - cashExpenses;
 
-  // 2. Tính toán Dòng tiền Ngân Hàng VietQR
+  // 2. Tính toán Dòng tiền Ngân Hàng VietQR / Chuyển khoản
   const bankSalesIncome = useMemo(() => {
     return orders
       .filter((o) => {
-        const isBank = !isOrderCash(o);
-        if (!isBank) return false;
         const timeStr = o.created_at || o.createdAt || '';
         if (!timeStr) return true;
         const t = new Date(timeStr).getTime();
         return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
-      .reduce((acc, o) => acc + Number(o.total_amount || o.totalPrice || 0), 0);
+      .reduce((acc, o) => acc + getOrderCashAndBank(o).bank, 0);
   }, [orders, startDateMs, endDateMs]);
 
   const bankExpenses = useMemo(() => {
@@ -177,19 +198,50 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
 
     // Hóa đơn POS (Thu tiền)
     orders.forEach((o) => {
-      const isCash = isOrderCash(o);
       const amt = Number(o.total_amount || o.totalPrice || 0);
       if (amt <= 0) return;
       const num = o.order_number || o.orderNumber || 'BK';
-      list.push({
-        id: 'ord-' + (o.id || num),
-        date: o.created_at || o.createdAt || new Date().toISOString(),
-        type: 'income' as const,
-        source: isCash ? 'cash' : 'bank',
-        category: 'Doanh thu bán bánh',
-        desc: `Thu tiền đơn hàng #${num} (${o.customer_name || 'Khách lẻ'})`,
-        amount: amt,
-      });
+      const date = o.created_at || o.createdAt || new Date().toISOString();
+      const method = getOrderPaymentMethod(o);
+      const { cash, bank } = getOrderCashAndBank(o);
+
+      if (method === 'split') {
+        if (cash > 0) {
+          list.push({
+            id: 'ord-' + (o.id || num) + '-cash',
+            date,
+            type: 'income' as const,
+            source: 'cash',
+            category: 'Doanh thu bán bánh (Tiền mặt)',
+            desc: `Thu tiền mặt đơn hàng #${num} (${o.customer_name || 'Khách lẻ'})`,
+            amount: cash,
+          });
+        }
+        if (bank > 0) {
+          list.push({
+            id: 'ord-' + (o.id || num) + '-bank',
+            date,
+            type: 'income' as const,
+            source: 'bank',
+            category: 'Doanh thu bán bánh (VietQR/CK)',
+            desc: `Thu VietQR/CK đơn hàng #${num} (${o.customer_name || 'Khách lẻ'})`,
+            amount: bank,
+          });
+        }
+      } else {
+        const isCash = method === 'cash';
+        list.push({
+          id: 'ord-' + (o.id || num),
+          date,
+          type: 'income' as const,
+          source: isCash ? 'cash' : 'bank',
+          category: isCash 
+            ? 'Doanh thu bán bánh (Tiền mặt)' 
+            : (method === 'momo' ? 'Doanh thu bán bánh (Ví MoMo)' : 'Doanh thu bán bánh (VietQR/CK)'),
+          desc: `Thu tiền đơn hàng #${num} (${o.customer_name || 'Khách lẻ'})`,
+          amount: amt,
+        });
+      }
     });
 
     // Chi phí OPEX (Chi tiền)

@@ -1,0 +1,76 @@
+import { describe, it, expect } from 'vitest';
+import { getOrderPaymentMethod, isOrderCash } from '@/components/admin/accounting/AccountingOverview';
+
+describe('getOrderPaymentMethod & isOrderCash', () => {
+  it('nhận diện chính xác đơn tiền mặt từ payment_method', () => {
+    const order = { payment_method: 'cash', total_amount: 100000 };
+    expect(getOrderPaymentMethod(order)).toBe('cash');
+    expect(isOrderCash(order)).toBe(true);
+  });
+
+  it('nhận diện chính xác đơn chuyển khoản VietQR từ payment_method', () => {
+    const order = { payment_method: 'transfer', total_amount: 150000 };
+    expect(getOrderPaymentMethod(order)).toBe('transfer');
+    expect(isOrderCash(order)).toBe(false);
+  });
+
+  it('nhận diện chính xác đơn ví MoMo', () => {
+    const order = { payment_method: 'momo', total_amount: 80000 };
+    expect(getOrderPaymentMethod(order)).toBe('momo');
+    expect(isOrderCash(order)).toBe(false);
+  });
+
+  it('nhận diện chính xác đơn thanh toán kết hợp Split (TM + CK) từ payments array', () => {
+    const order = {
+      order_number: 'BK-20260928-001',
+      total_amount: 90000,
+      payments: [
+        { method: 'cash', amount: 45000 },
+        { method: 'transfer', amount: 45000 },
+      ],
+    };
+    expect(getOrderPaymentMethod(order)).toBe('split');
+    expect(isOrderCash(order)).toBe(false);
+  });
+
+  it('nhận diện chính xác phương thức từ payments array đơn lẻ', () => {
+    const order1 = {
+      total_amount: 50000,
+      payments: [{ method: 'cash', amount: 50000 }],
+    };
+    expect(getOrderPaymentMethod(order1)).toBe('cash');
+    expect(isOrderCash(order1)).toBe(true);
+
+    const order2 = {
+      total_amount: 120000,
+      payments: [{ method: 'transfer', amount: 120000 }],
+    };
+    expect(getOrderPaymentMethod(order2)).toBe('transfer');
+    expect(isOrderCash(order2)).toBe(false);
+  });
+
+  it('suy luận phương thức từ ảnh bill chuyển khoản hoặc ghi chú', () => {
+    const orderWithProof = {
+      total_amount: 200000,
+      transfer_proof_image: 'data:image/png;base64,...',
+    };
+    expect(getOrderPaymentMethod(orderWithProof)).toBe('transfer');
+    expect(isOrderCash(orderWithProof)).toBe(false);
+
+    const orderWithNote = {
+      total_amount: 200000,
+      notes: 'Khách thanh toán chuyển khoản qua VietQR MB Bank',
+    };
+    expect(getOrderPaymentMethod(orderWithNote)).toBe('transfer');
+    expect(isOrderCash(orderWithNote)).toBe(false);
+  });
+
+  it('mặc định tiền mặt cho đơn hoàn thành tại quầy nếu không có dữ liệu thanh toán khác', () => {
+    const plainOrder = {
+      order_number: 'BK-001',
+      total_amount: 35000,
+    };
+    expect(getOrderPaymentMethod(plainOrder)).toBe('cash');
+    expect(isOrderCash(plainOrder)).toBe(true);
+  });
+});
