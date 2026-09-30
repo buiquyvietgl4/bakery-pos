@@ -12,6 +12,33 @@ export const MATERIAL_TRANSACTION_EVENT = 'bakery_material_transactions_updated'
 const DB_ROW_MATERIAL_TRANSACTIONS_ID = '00000000-0000-0000-0000-000000000031';
 const DB_ROW_MATERIAL_TRANSACTIONS_NAME = 'SYS_CONFIG_MATERIAL_TRANSACTIONS';
 
+export function deduplicateMaterialTransactions(logs: MaterialTransaction[]): MaterialTransaction[] {
+  if (!Array.isArray(logs) || logs.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const result: MaterialTransaction[] = [];
+
+  for (const log of logs) {
+    if (!log) continue;
+    const cleanId = (log.id || '').trim();
+    if (cleanId && seenIds.has(cleanId)) continue;
+
+    const mat = (log.materialId || log.materialName || '').trim().toLowerCase();
+    const type = (log.type || '').trim().toLowerCase();
+    const qty = Number(log.quantity) || 0;
+    const date = (log.date || log.createdAt || '').slice(0, 19);
+    const amount = Number(log.totalAmount) || 0;
+    const fingerprint = `${date}_${mat}_${type}_${qty}_${amount}`;
+
+    if (seenFingerprints.has(fingerprint)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    seenFingerprints.add(fingerprint);
+    result.push(log);
+  }
+  return result;
+}
+
 /**
  * Lấy toàn bộ danh sách lịch sử xuất nhập kho vật tư từ LocalStorage
  */
@@ -21,7 +48,7 @@ export function getMaterialTransactions(): MaterialTransaction[] {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? deduplicateMaterialTransactions(parsed) : [];
     } catch (e) {
       console.error('Lỗi khi đọc lịch sử xuất nhập vật tư:', e);
       return [];
@@ -51,13 +78,18 @@ export async function fetchMaterialTransactionsFromDb(): Promise<MaterialTransac
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        const deduped = deduplicateMaterialTransactions(parsed);
         if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-            window.dispatchEvent(new CustomEvent(MATERIAL_TRANSACTION_EVENT, { detail: parsed[0] }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
+            window.dispatchEvent(new CustomEvent(MATERIAL_TRANSACTION_EVENT, { detail: deduped[0] }));
           } catch {}
         }
-        return parsed;
+        // Tự động chữa lành DB nếu có bản ghi trùng
+        if (deduped.length !== parsed.length) {
+          saveMaterialTransactionsToDb(deduped).catch(() => {});
+        }
+        return deduped;
       }
     }
   } catch (err) {
@@ -72,9 +104,10 @@ export async function fetchMaterialTransactionsFromDb(): Promise<MaterialTransac
 export async function saveMaterialTransactionsToDb(
   logs: MaterialTransaction[]
 ): Promise<{ success: boolean; error?: string }> {
+  const deduped = deduplicateMaterialTransactions(logs);
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(logs.slice(0, 500)));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped.slice(0, 500)));
     } catch {}
   }
 
@@ -90,7 +123,7 @@ export async function saveMaterialTransactionsToDb(
   }
 
   try {
-    const notesContent = JSON.stringify(logs.slice(0, 300));
+    const notesContent = JSON.stringify(deduped.slice(0, 300));
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_MATERIAL_TRANSACTIONS_ID,

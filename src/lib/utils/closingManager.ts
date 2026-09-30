@@ -12,6 +12,27 @@ export const CLOSING_UPDATED_EVENT = 'bakery_closing_records_updated';
 const DB_ROW_CLOSINGS_ID = '00000000-0000-0000-0000-00000000000a';
 const DB_ROW_CLOSINGS_NAME = 'SYS_CONFIG_CLOSINGS';
 
+export function deduplicateClosingRecords(records: AccountingClosingRecord[]): AccountingClosingRecord[] {
+  if (!Array.isArray(records) || records.length === 0) return [];
+  const seenKeys = new Set<string>();
+  const seenIds = new Set<string>();
+  const result: AccountingClosingRecord[] = [];
+
+  for (const r of records) {
+    if (!r) continue;
+    const cleanId = (r.id || '').trim();
+    const periodKey = `${r.periodType}_${r.periodKey}`.trim().toLowerCase();
+
+    if (cleanId && seenIds.has(cleanId)) continue;
+    if (periodKey && seenKeys.has(periodKey)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    if (periodKey) seenKeys.add(periodKey);
+    result.push(r);
+  }
+  return result;
+}
+
 /**
  * Lấy toàn bộ danh sách các kỳ đã chốt sổ
  */
@@ -21,7 +42,7 @@ export function getClosingRecords(): AccountingClosingRecord[] {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return Array.isArray(parsed) ? deduplicateClosingRecords(parsed) : [];
   } catch (e) {
     console.error('Lỗi khi đọc danh sách chốt sổ:', e);
     return [];
@@ -49,13 +70,18 @@ export async function fetchClosingRecordsFromDb(): Promise<AccountingClosingReco
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        const deduped = deduplicateClosingRecords(parsed);
         if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-            window.dispatchEvent(new CustomEvent(CLOSING_UPDATED_EVENT, { detail: parsed[0] }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
+            window.dispatchEvent(new CustomEvent(CLOSING_UPDATED_EVENT, { detail: deduped[0] }));
           } catch {}
         }
-        return parsed;
+        // Tự động chữa lành DB nếu có bản ghi trùng lặp
+        if (deduped.length !== parsed.length) {
+          saveClosingRecordsToDb(deduped).catch(() => {});
+        }
+        return deduped;
       }
     }
   } catch (err) {
@@ -70,6 +96,7 @@ export async function fetchClosingRecordsFromDb(): Promise<AccountingClosingReco
 export async function saveClosingRecordsToDb(
   records: AccountingClosingRecord[]
 ): Promise<{ success: boolean; error?: string }> {
+  const deduped = deduplicateClosingRecords(records);
   // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
   try {
     autoSyncToLocalSqlFolder().catch(() => {});
@@ -80,7 +107,7 @@ export async function saveClosingRecordsToDb(
   }
 
   try {
-    const notesContent = JSON.stringify(records);
+    const notesContent = JSON.stringify(deduped);
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_CLOSINGS_ID,

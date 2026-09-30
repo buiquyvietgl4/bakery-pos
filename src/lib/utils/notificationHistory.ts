@@ -111,6 +111,27 @@ function dispatchChange() {
   }
 }
 
+export function deduplicateNotifications(list: NotificationLogItem[]): NotificationLogItem[] {
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const result: NotificationLogItem[] = [];
+
+  for (const item of list) {
+    if (!item) continue;
+    const cleanId = (item.id || '').trim();
+    const fp = `${item.title}_${item.message}_${item.timestamp}`;
+
+    if (cleanId && seenIds.has(cleanId)) continue;
+    if (fp && seenFingerprints.has(fp)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    if (fp) seenFingerprints.add(fp);
+    result.push(item);
+  }
+  return result;
+}
+
 /**
  * Lấy toàn bộ danh sách lịch sử thông báo
  */
@@ -121,7 +142,7 @@ export function getNotificationHistory(): NotificationLogItem[] {
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed;
+        return deduplicateNotifications(parsed);
       }
       return [];
     }
@@ -158,7 +179,8 @@ export async function saveNotificationHistoryToDb(list: NotificationLogItem[]): 
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
 
   try {
-    const trimmed = list.slice(0, MAX_LOGS);
+    const deduped = deduplicateNotifications(list);
+    const trimmed = deduped.slice(0, MAX_LOGS);
     await supabase.from('recipes').upsert(
       {
         id: DB_ROW_NOTIFICATION_HISTORY_ID,
@@ -196,14 +218,18 @@ export async function fetchNotificationHistoryFromDb(): Promise<NotificationLogI
       if (data?.notes) {
         const parsed = JSON.parse(data.notes);
         if (Array.isArray(parsed)) {
+          const deduped = deduplicateNotifications(parsed);
           if (typeof window !== 'undefined') {
             try {
-              localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
               localStorage.setItem('bakery_notifs_initialized', 'true');
               dispatchChange();
             } catch {}
           }
-          return parsed;
+          if (deduped.length !== parsed.length) {
+            saveNotificationHistoryToDb(deduped).catch(() => {});
+          }
+          return deduped;
         }
       } else {
         // CSDL không có bản ghi (đã bị xóa do reset hoặc chưa lưu)

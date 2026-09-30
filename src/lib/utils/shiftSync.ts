@@ -223,6 +223,27 @@ export async function saveCurrentShiftToDb(shift: ShiftState): Promise<void> {
 // 2. QUẢN LÝ LỊCH SỬ GIAO CA & KIỂM KÉT (SHIFT HISTORY)
 // ══════════════════════════════════════════════════════════════════════════════
 
+export function deduplicateShiftHistory(history: ShiftRecord[]): ShiftRecord[] {
+  if (!Array.isArray(history) || history.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenCodes = new Set<string>();
+  const result: ShiftRecord[] = [];
+
+  for (const record of history) {
+    if (!record) continue;
+    const cleanId = (record.id || '').trim();
+    const cleanCode = (record.shiftCode || '').trim();
+
+    if (cleanId && seenIds.has(cleanId)) continue;
+    if (cleanCode && seenCodes.has(cleanCode)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    if (cleanCode) seenCodes.add(cleanCode);
+    result.push(record);
+  }
+  return result;
+}
+
 /**
  * Lấy danh sách lịch sử các ca đã giao từ LocalStorage
  */
@@ -261,11 +282,12 @@ export function getShiftHistoryLocally(): ShiftRecord[] {
               };
             });
 
-          // Nếu có item rác bị lọc bỏ, đồng bộ lại localStorage cho sạch sẽ
-          if (valid.length !== parsed.length) {
-            localStorage.setItem(STORAGE_KEY_SHIFT_HISTORY, JSON.stringify(valid));
+          const deduped = deduplicateShiftHistory(valid);
+          // Nếu có item rác hoặc trùng bị lọc bỏ, đồng bộ lại localStorage cho sạch sẽ
+          if (deduped.length !== parsed.length) {
+            localStorage.setItem(STORAGE_KEY_SHIFT_HISTORY, JSON.stringify(deduped));
           }
-          return valid;
+          return deduped;
         }
       }
     } catch (e) {
@@ -281,8 +303,9 @@ export function getShiftHistoryLocally(): ShiftRecord[] {
 export function saveShiftHistoryLocally(history: ShiftRecord[]): void {
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(STORAGE_KEY_SHIFT_HISTORY, JSON.stringify(history));
-      window.dispatchEvent(new CustomEvent(EVENT_SHIFT_HISTORY_UPDATED, { detail: history }));
+      const deduped = deduplicateShiftHistory(history);
+      localStorage.setItem(STORAGE_KEY_SHIFT_HISTORY, JSON.stringify(deduped));
+      window.dispatchEvent(new CustomEvent(EVENT_SHIFT_HISTORY_UPDATED, { detail: deduped }));
     } catch (e) {
       console.warn('Lỗi lưu lịch sử giao ca cục bộ:', e);
     }
@@ -335,8 +358,13 @@ export async function fetchShiftHistoryFromDb(): Promise<ShiftRecord[]> {
               };
             });
 
-          saveShiftHistoryLocally(valid);
-          return valid;
+          const deduped = deduplicateShiftHistory(valid);
+          saveShiftHistoryLocally(deduped);
+          // Tự động chữa lành DB nếu có bản ghi trùng
+          if (deduped.length !== parsed.length) {
+            saveShiftHistoryToDb(deduped).catch(() => {});
+          }
+          return deduped;
         }
       } catch (parseErr) {
         console.warn('Lỗi parse JSON SYS_CONFIG_SHIFT_HISTORY:', parseErr);
@@ -353,7 +381,8 @@ export async function fetchShiftHistoryFromDb(): Promise<ShiftRecord[]> {
  * Lưu danh sách lịch sử giao ca lên SQL (cả Cloud Supabase và Local SQL)
  */
 export async function saveShiftHistoryToDb(history: ShiftRecord[]): Promise<void> {
-  saveShiftHistoryLocally(history);
+  const deduped = deduplicateShiftHistory(history);
+  saveShiftHistoryLocally(deduped);
 
   // 1. Chế độ Local SQL: Ghi đĩa cục bộ
   if (isLocalMode()) {
@@ -366,7 +395,7 @@ export async function saveShiftHistoryToDb(history: ShiftRecord[]): Promise<void
 
   // 3. Chế độ Cloud Supabase SQL
   try {
-    const notesContent = JSON.stringify(history);
+    const notesContent = JSON.stringify(deduped);
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: SYS_CONFIG_SHIFT_HISTORY,

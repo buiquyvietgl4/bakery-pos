@@ -12,6 +12,27 @@ export const ORDER_RETURNS_UPDATED_EVENT = 'bakery_order_returns_updated';
 export const DB_ROW_ORDER_RETURNS_ID = '00000000-0000-0000-0000-000000000028';
 export const DB_ROW_ORDER_RETURNS_NAME = 'SYS_CONFIG_ORDER_RETURNS';
 
+export function deduplicateOrderReturns(records: OrderReturnRecord[]): OrderReturnRecord[] {
+  if (!Array.isArray(records) || records.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const result: OrderReturnRecord[] = [];
+
+  for (const r of records) {
+    if (!r) continue;
+    const cleanId = (r.id || '').trim();
+    const fp = `${r.order_id || r.order_number}_${r.refund_amount}_${(r.created_at || '').slice(0, 19)}`;
+
+    if (cleanId && seenIds.has(cleanId)) continue;
+    if (fp && seenFingerprints.has(fp)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    if (fp) seenFingerprints.add(fp);
+    result.push(r);
+  }
+  return result;
+}
+
 /**
  * Lấy danh sách phiếu đổi trả từ LocalStorage
  */
@@ -21,7 +42,7 @@ export function getOrderReturns(): OrderReturnRecord[] {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? deduplicateOrderReturns(parsed) : [];
     } catch (e) {
       console.error('Lỗi khi đọc danh sách phiếu đổi trả:', e);
       return [];
@@ -36,8 +57,9 @@ export function getOrderReturns(): OrderReturnRecord[] {
 export function saveOrderReturnsLocally(records: OrderReturnRecord[]): void {
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-      window.dispatchEvent(new CustomEvent(ORDER_RETURNS_UPDATED_EVENT, { detail: records }));
+      const deduped = deduplicateOrderReturns(records);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
+      window.dispatchEvent(new CustomEvent(ORDER_RETURNS_UPDATED_EVENT, { detail: deduped }));
     } catch {}
   }
 }
@@ -61,8 +83,13 @@ export async function fetchOrderReturnsFromDb(): Promise<OrderReturnRecord[]> {
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (Array.isArray(parsed)) {
-        saveOrderReturnsLocally(parsed);
-        return parsed;
+        const deduped = deduplicateOrderReturns(parsed);
+        saveOrderReturnsLocally(deduped);
+        // Tự động chữa lành DB nếu có bản ghi trùng lặp
+        if (deduped.length !== parsed.length) {
+          saveOrderReturnsToDb(deduped).catch(() => {});
+        }
+        return deduped;
       }
     }
   } catch (err) {
@@ -77,7 +104,8 @@ export async function fetchOrderReturnsFromDb(): Promise<OrderReturnRecord[]> {
 export async function saveOrderReturnsToDb(
   records: OrderReturnRecord[]
 ): Promise<{ success: boolean; error?: string }> {
-  saveOrderReturnsLocally(records);
+  const deduped = deduplicateOrderReturns(records);
+  saveOrderReturnsLocally(deduped);
 
   try {
     if (isLocalMode()) {
@@ -90,7 +118,7 @@ export async function saveOrderReturnsToDb(
   }
 
   try {
-    const notesContent = JSON.stringify(records.slice(0, 300));
+    const notesContent = JSON.stringify(deduped.slice(0, 300));
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_ORDER_RETURNS_ID,

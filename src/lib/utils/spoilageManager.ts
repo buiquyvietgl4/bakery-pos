@@ -8,6 +8,32 @@ const STORAGE_KEY = 'bakery_spoilage_logs';
 const DB_ROW_SPOILAGE_ID = '00000000-0000-0000-0000-000000000008';
 const DB_ROW_SPOILAGE_NAME = 'SYS_CONFIG_SPOILAGE';
 
+export function deduplicateSpoilageLogs(logs: SpoilageLog[]): SpoilageLog[] {
+  if (!Array.isArray(logs) || logs.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const result: SpoilageLog[] = [];
+
+  for (const log of logs) {
+    if (!log) continue;
+    const cleanId = (log.id || '').trim();
+    if (cleanId && seenIds.has(cleanId)) continue;
+
+    const prod = (log.productName || log.productId || '').trim().toLowerCase();
+    const qty = Number(log.quantity) || 0;
+    const date = (log.loggedAt || '').slice(0, 19);
+    const reason = (log.reason || '').trim().toLowerCase();
+    const fingerprint = `${date}_${prod}_${qty}_${reason}`;
+
+    if (seenFingerprints.has(fingerprint)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    seenFingerprints.add(fingerprint);
+    result.push(log);
+  }
+  return result;
+}
+
 export function getSpoilageLogs(): SpoilageLog[] {
   if (typeof window === 'undefined') return [];
   try {
@@ -15,7 +41,7 @@ export function getSpoilageLogs(): SpoilageLog[] {
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed;
+        return deduplicateSpoilageLogs(parsed);
       }
     }
   } catch (err) {
@@ -27,7 +53,8 @@ export function getSpoilageLogs(): SpoilageLog[] {
 export function saveSpoilageLogs(logs: SpoilageLog[]): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(logs));
+    const deduped = deduplicateSpoilageLogs(logs);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
     window.dispatchEvent(new Event('bakery_spoilage_updated'));
   } catch (err) {
     console.error('Lỗi khi lưu nhật ký hao hụt bánh:', err);
@@ -52,8 +79,13 @@ export async function fetchSpoilageLogsFromDb(): Promise<SpoilageLog[]> {
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        saveSpoilageLogs(parsed);
-        return parsed;
+        const deduped = deduplicateSpoilageLogs(parsed);
+        saveSpoilageLogs(deduped);
+        // Tự động chữa lành DB nếu trước đó có bản ghi trùng lặp
+        if (deduped.length !== parsed.length) {
+          saveSpoilageLogsToDb(deduped).catch(() => {});
+        }
+        return deduped;
       }
     }
   } catch (err) {
@@ -63,7 +95,8 @@ export async function fetchSpoilageLogsFromDb(): Promise<SpoilageLog[]> {
 }
 
 export async function saveSpoilageLogsToDb(logs: SpoilageLog[]): Promise<{ success: boolean; error?: string }> {
-  saveSpoilageLogs(logs);
+  const deduped = deduplicateSpoilageLogs(logs);
+  saveSpoilageLogs(deduped);
 
   if (isLocalMode()) {
     autoSyncToLocalSqlFolder().catch(() => {});
@@ -75,7 +108,7 @@ export async function saveSpoilageLogsToDb(logs: SpoilageLog[]): Promise<{ succe
   }
 
   try {
-    const notesContent = JSON.stringify(logs.slice(0, 300));
+    const notesContent = JSON.stringify(deduped.slice(0, 300));
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_SPOILAGE_ID,

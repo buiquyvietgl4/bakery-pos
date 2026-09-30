@@ -9,6 +9,33 @@ export const STOCK_ADJUSTMENT_EVENT = 'bakery_stock_adjustment_logs_updated';
 const DB_ROW_STOCK_ADJUSTMENTS_ID = '00000000-0000-0000-0000-000000000009';
 const DB_ROW_STOCK_ADJUSTMENTS_NAME = 'SYS_CONFIG_STOCK_ADJUSTMENTS';
 
+export function deduplicateStockAdjustmentLogs(logs: StockAdjustmentLog[]): StockAdjustmentLog[] {
+  if (!Array.isArray(logs) || logs.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const result: StockAdjustmentLog[] = [];
+
+  for (const log of logs) {
+    if (!log) continue;
+    const cleanId = (log.id || '').trim();
+    if (cleanId && seenIds.has(cleanId)) continue;
+
+    const prod = (log.productId || log.productName || '').trim().toLowerCase();
+    const oldQ = Number(log.oldQuantity) || 0;
+    const newQ = Number(log.newQuantity) || 0;
+    const date = (log.adjustedAt || '').slice(0, 19);
+    const reason = (log.reason || '').trim().toLowerCase();
+    const fingerprint = `${date}_${prod}_${oldQ}_${newQ}_${reason}`;
+
+    if (seenFingerprints.has(fingerprint)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    seenFingerprints.add(fingerprint);
+    result.push(log);
+  }
+  return result;
+}
+
 /**
  * Lấy toàn bộ danh sách lịch sử thay đổi tồn kho bánh
  */
@@ -18,7 +45,7 @@ export function getStockAdjustmentLogs(): StockAdjustmentLog[] {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
       const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
+      return Array.isArray(parsed) ? deduplicateStockAdjustmentLogs(parsed) : [];
     } catch (e) {
       console.error('Lỗi khi đọc lịch sử thay đổi tồn kho:', e);
       return [];
@@ -48,13 +75,18 @@ export async function fetchStockAdjustmentLogsFromDb(): Promise<StockAdjustmentL
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (Array.isArray(parsed) && parsed.length > 0) {
+        const deduped = deduplicateStockAdjustmentLogs(parsed);
         if (typeof window !== 'undefined') {
           try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
-            window.dispatchEvent(new CustomEvent(STOCK_ADJUSTMENT_EVENT, { detail: parsed[0] }));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
+            window.dispatchEvent(new CustomEvent(STOCK_ADJUSTMENT_EVENT, { detail: deduped[0] }));
           } catch {}
         }
-        return parsed;
+        // Tự động chữa lành DB nếu có mục trùng lặp
+        if (deduped.length !== parsed.length) {
+          saveStockAdjustmentLogsToDb(deduped).catch(() => {});
+        }
+        return deduped;
       }
     }
   } catch (err) {
@@ -69,9 +101,10 @@ export async function fetchStockAdjustmentLogsFromDb(): Promise<StockAdjustmentL
 export async function saveStockAdjustmentLogsToDb(
   logs: StockAdjustmentLog[]
 ): Promise<{ success: boolean; error?: string }> {
+  const deduped = deduplicateStockAdjustmentLogs(logs);
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(logs.slice(0, 500)));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped.slice(0, 500)));
     } catch {}
   }
 
@@ -85,7 +118,7 @@ export async function saveStockAdjustmentLogsToDb(
   }
 
   try {
-    const notesContent = JSON.stringify(logs.slice(0, 300));
+    const notesContent = JSON.stringify(deduped.slice(0, 300));
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_STOCK_ADJUSTMENTS_ID,

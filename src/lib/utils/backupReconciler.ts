@@ -9,22 +9,22 @@ import {
 } from '@/lib/types/backup';
 import { supabase } from '@/lib/supabase/client';
 import { db } from '@/lib/db/dexie';
-import { getStockAdjustmentLogs, saveStockAdjustmentLogsToDb } from './stockAdjustmentManager';
-import { getSpoilageLogs, saveSpoilageLogs, saveSpoilageLogsToDb } from './spoilageManager';
+import { getStockAdjustmentLogs, saveStockAdjustmentLogsToDb, deduplicateStockAdjustmentLogs } from './stockAdjustmentManager';
+import { getSpoilageLogs, saveSpoilageLogs, saveSpoilageLogsToDb, deduplicateSpoilageLogs } from './spoilageManager';
 import { saveExpensesToDb, saveCashflowToDb, deduplicateExpenses, deduplicateCashflow } from './accountingSync';
 import { saveVietqrConfigToDb, saveEwalletConfigToDb, saveAutoBankConfigToDb, saveTransferVerificationConfigToDb } from './paymentSync';
 import { saveStoreBranding, saveStoreBrandingToDb } from './storeBranding';
 import { syncCakeBomConfigToDb } from './cakeBomManager';
 import { filterActiveProducts, syncDeletedProductIdsToDb } from './productManager';
 import { saveSecurityConfigToDb } from '@/lib/auth/AuthContext';
-import { saveShiftHistoryToDb, saveCurrentShiftToDb } from './shiftSync';
-import { saveClosingRecordsToDb } from './closingManager';
+import { saveShiftHistoryToDb, saveCurrentShiftToDb, deduplicateShiftHistory } from './shiftSync';
+import { saveClosingRecordsToDb, deduplicateClosingRecords } from './closingManager';
 import { saveCakeCostingConfigToDb } from './customCakeCosting';
 import { restorePrintTemplatesFromBackup } from './printTemplateManager';
-import { saveMaterialTransactionsToDb } from './materialTransactionManager';
-import { saveMaterialStockAdjustmentLogsToDb } from './materialStockAdjustmentManager';
-import { saveOrderReturnsToDb } from './orderReturnManager';
-import { saveHeldOrdersToDb } from './heldOrderManager';
+import { saveMaterialTransactionsToDb, deduplicateMaterialTransactions } from './materialTransactionManager';
+import { saveMaterialStockAdjustmentLogsToDb, deduplicateMaterialStockAdjustmentLogs } from './materialStockAdjustmentManager';
+import { saveOrderReturnsToDb, deduplicateOrderReturns } from './orderReturnManager';
+import { saveHeldOrdersToDb, deduplicateHeldOrders } from './heldOrderManager';
 import { saveOvenBatchesToDb } from '@/lib/supabase/realtimeSync';
 import { saveTelegramConfigToDb } from './telegramNotify';
 import { saveDeliveryAlertConfigToDb } from './deliveryAlerts';
@@ -1163,12 +1163,13 @@ export async function executePushToSQL(
           .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
           .map((it) => it.backupItem)
       : [];
-    if (newStockLogs.length > 0) {
+    if (newStockLogs.length > 0 || (mergeMode === 'full_overwrite' && backupData.stock_adjustments)) {
       const currentLogs = getStockAdjustmentLogs();
-      const mergedLogs = [...newStockLogs, ...currentLogs].slice(0, 500);
+      const sourceLogs = mergeMode === 'full_overwrite' ? (backupData.stock_adjustments || []) : [...newStockLogs, ...currentLogs];
+      const mergedLogs = deduplicateStockAdjustmentLogs(sourceLogs).slice(0, 500);
       try {
         localStorage.setItem('bakery_stock_adjustment_logs', JSON.stringify(mergedLogs));
-        details.stockLogsPushed = newStockLogs.length;
+        details.stockLogsPushed = mergedLogs.length;
         await saveStockAdjustmentLogsToDb(mergedLogs).catch(console.error);
       } catch {}
     }
@@ -1178,11 +1179,12 @@ export async function executePushToSQL(
           .filter((it) => (mergeMode === 'append_only' || mergeMode === 'smart_merge' ? it.status === 'new' : true))
           .map((it) => it.backupItem)
       : [];
-    if (newSpoilageLogs.length > 0) {
+    if (newSpoilageLogs.length > 0 || (mergeMode === 'full_overwrite' && backupData.spoilage_logs)) {
       const currentSpoilage = getSpoilageLogs();
-      const mergedSpoilage = [...newSpoilageLogs, ...currentSpoilage];
+      const sourceSpoilage = mergeMode === 'full_overwrite' ? (backupData.spoilage_logs || []) : [...newSpoilageLogs, ...currentSpoilage];
+      const mergedSpoilage = deduplicateSpoilageLogs(sourceSpoilage);
       saveSpoilageLogs(mergedSpoilage);
-      details.spoilageLogsPushed = newSpoilageLogs.length;
+      details.spoilageLogsPushed = mergedSpoilage.length;
       await saveSpoilageLogsToDb(mergedSpoilage).catch(console.error);
     }
 
@@ -1206,14 +1208,22 @@ export async function executePushToSQL(
     // ── VẬT TƯ & XUẤT NHẬP KHO (MATERIAL TRANSACTIONS & STOCK ADJUSTMENTS) ──
     if (backupData.material_transactions && Array.isArray(backupData.material_transactions) && backupData.material_transactions.length > 0) {
       try {
-        localStorage.setItem('bakery_material_transactions', JSON.stringify(backupData.material_transactions));
-        await saveMaterialTransactionsToDb(backupData.material_transactions).catch(console.error);
+        const rawMat = localStorage.getItem('bakery_material_transactions');
+        const currentMat = rawMat ? JSON.parse(rawMat) : [];
+        const sourceMat = mergeMode === 'full_overwrite' ? backupData.material_transactions : [...backupData.material_transactions, ...currentMat];
+        const mergedMat = deduplicateMaterialTransactions(sourceMat);
+        localStorage.setItem('bakery_material_transactions', JSON.stringify(mergedMat));
+        await saveMaterialTransactionsToDb(mergedMat).catch(console.error);
       } catch {}
     }
     if (backupData.material_stock_adjustments && Array.isArray(backupData.material_stock_adjustments) && backupData.material_stock_adjustments.length > 0) {
       try {
-        localStorage.setItem('bakery_material_stock_adjustments', JSON.stringify(backupData.material_stock_adjustments));
-        await saveMaterialStockAdjustmentLogsToDb(backupData.material_stock_adjustments).catch(console.error);
+        const rawMsa = localStorage.getItem('bakery_material_stock_adjustments');
+        const currentMsa = rawMsa ? JSON.parse(rawMsa) : [];
+        const sourceMsa = mergeMode === 'full_overwrite' ? backupData.material_stock_adjustments : [...backupData.material_stock_adjustments, ...currentMsa];
+        const mergedMsa = deduplicateMaterialStockAdjustmentLogs(sourceMsa);
+        localStorage.setItem('bakery_material_stock_adjustments', JSON.stringify(mergedMsa));
+        await saveMaterialStockAdjustmentLogsToDb(mergedMsa).catch(console.error);
       } catch {}
     }
 
@@ -1232,10 +1242,14 @@ export async function executePushToSQL(
     // ── CA BÁN HÀNG & LỊCH SỬ KÉT TIỀN (SHIFTS & CURRENT SHIFT) ──
     if (backupData.shifts && Array.isArray(backupData.shifts) && backupData.shifts.length > 0) {
       try {
-        localStorage.setItem('bakery_shift_history', JSON.stringify(backupData.shifts));
-        await saveShiftHistoryToDb(backupData.shifts).catch(console.error);
+        const rawShifts = localStorage.getItem('bakery_shift_history');
+        const currentShifts = rawShifts ? JSON.parse(rawShifts) : [];
+        const sourceShifts = mergeMode === 'full_overwrite' ? backupData.shifts : [...backupData.shifts, ...currentShifts];
+        const mergedShifts = deduplicateShiftHistory(sourceShifts);
+        localStorage.setItem('bakery_shift_history', JSON.stringify(mergedShifts));
+        await saveShiftHistoryToDb(mergedShifts).catch(console.error);
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('bakery_shift_history_updated', { detail: backupData.shifts }));
+          window.dispatchEvent(new CustomEvent('bakery_shift_history_updated', { detail: mergedShifts }));
         }
       } catch {}
     }
@@ -1252,10 +1266,14 @@ export async function executePushToSQL(
     // ── CHỐT SỔ KẾ TOÁN (ACCOUNTING CLOSINGS) ──
     if (backupData.accounting_closings && Array.isArray(backupData.accounting_closings) && backupData.accounting_closings.length > 0) {
       try {
-        localStorage.setItem('bakery_closing_records', JSON.stringify(backupData.accounting_closings));
-        await saveClosingRecordsToDb(backupData.accounting_closings).catch(console.error);
+        const rawClosings = localStorage.getItem('bakery_closing_records');
+        const currentClosings = rawClosings ? JSON.parse(rawClosings) : [];
+        const sourceClosings = mergeMode === 'full_overwrite' ? backupData.accounting_closings : [...backupData.accounting_closings, ...currentClosings];
+        const mergedClosings = deduplicateClosingRecords(sourceClosings);
+        localStorage.setItem('bakery_closing_records', JSON.stringify(mergedClosings));
+        await saveClosingRecordsToDb(mergedClosings).catch(console.error);
         if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('bakery_closing_records_updated', { detail: backupData.accounting_closings[0] }));
+          window.dispatchEvent(new CustomEvent('bakery_closing_records_updated', { detail: mergedClosings[0] }));
         }
       } catch {}
     }
@@ -1263,8 +1281,12 @@ export async function executePushToSQL(
     // ── LỊCH SỬ ĐỔI TRẢ HÀNG & THÔNG BÁO ──
     if (backupData.order_returns && Array.isArray(backupData.order_returns)) {
       try {
-        localStorage.setItem('bakery_order_returns', JSON.stringify(backupData.order_returns));
-        await saveOrderReturnsToDb(backupData.order_returns).catch(console.error);
+        const rawReturns = localStorage.getItem('bakery_order_returns');
+        const currentReturns = rawReturns ? JSON.parse(rawReturns) : [];
+        const sourceReturns = mergeMode === 'full_overwrite' ? backupData.order_returns : [...backupData.order_returns, ...currentReturns];
+        const mergedReturns = deduplicateOrderReturns(sourceReturns);
+        localStorage.setItem('bakery_order_returns', JSON.stringify(mergedReturns));
+        await saveOrderReturnsToDb(mergedReturns).catch(console.error);
       } catch {}
     }
     if (backupData.notification_history && Array.isArray(backupData.notification_history)) {
@@ -1287,8 +1309,12 @@ export async function executePushToSQL(
     // ── ĐƠN TẠM GIỮ, MẺ NƯỚNG LÒ, CHUYỂN KHOẢN & METADATA ──
     if (backupData.held_orders && Array.isArray(backupData.held_orders)) {
       try {
-        localStorage.setItem('bakery_held_orders', JSON.stringify(backupData.held_orders));
-        await saveHeldOrdersToDb(backupData.held_orders).catch(console.error);
+        const rawHeld = localStorage.getItem('bakery_held_orders');
+        const currentHeld = rawHeld ? JSON.parse(rawHeld) : [];
+        const sourceHeld = mergeMode === 'full_overwrite' ? backupData.held_orders : [...backupData.held_orders, ...currentHeld];
+        const mergedHeld = deduplicateHeldOrders(sourceHeld);
+        localStorage.setItem('bakery_held_orders', JSON.stringify(mergedHeld));
+        await saveHeldOrdersToDb(mergedHeld).catch(console.error);
       } catch {}
     }
     if (backupData.oven_batches && Array.isArray(backupData.oven_batches)) {

@@ -64,9 +64,31 @@ export function normalizeHeldOrder(raw: any, idx: number = 0): HeldOrder {
   };
 }
 
+export function deduplicateHeldOrders(orders: HeldOrder[]): HeldOrder[] {
+  if (!Array.isArray(orders) || orders.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenCodes = new Set<string>();
+  const result: HeldOrder[] = [];
+
+  for (const o of orders) {
+    if (!o) continue;
+    const cleanId = (o.id || '').trim();
+    const cleanCode = (o.holdCode || '').trim();
+
+    if (cleanId && seenIds.has(cleanId)) continue;
+    if (cleanCode && seenCodes.has(cleanCode)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    if (cleanCode) seenCodes.add(cleanCode);
+    result.push(o);
+  }
+  return result;
+}
+
 export function normalizeHeldOrders(rawList: any[]): HeldOrder[] {
   if (!Array.isArray(rawList)) return [];
-  return rawList.map((item, idx) => normalizeHeldOrder(item, idx));
+  const mapped = rawList.map((item, idx) => normalizeHeldOrder(item, idx));
+  return deduplicateHeldOrders(mapped);
 }
 
 /**
@@ -121,6 +143,10 @@ export async function fetchHeldOrdersFromDb(): Promise<HeldOrder[]> {
       if (Array.isArray(parsed)) {
         const cleaned = normalizeHeldOrders(parsed);
         saveHeldOrdersLocally(cleaned);
+        // Tự động chữa lành DB nếu có bản ghi trùng lặp
+        if (cleaned.length !== parsed.length) {
+          saveHeldOrdersToDb(cleaned).catch(() => {});
+        }
         return cleaned;
       }
     }
