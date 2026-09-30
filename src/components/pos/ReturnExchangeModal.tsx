@@ -779,11 +779,51 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                     onClick={() => {
                       const printEl = document.getElementById('printable-return-receipt');
                       if (printEl) {
-                        const win = window.open('', '', 'width=400,height=600');
+                        const win = window.open('', '_blank', 'width=420,height=700');
                         if (win) {
-                          win.document.write(`<html><head><title>Phiếu Đổi Trả</title><style>body{font-family:monospace;padding:16px;font-size:12px;}</style></head><body>${printEl.outerHTML}</body></html>`);
+                          win.document.write(`
+                            <!DOCTYPE html>
+                            <html lang="vi">
+                              <head>
+                                <meta charset="utf-8">
+                                <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+                                <title>Phiếu Đổi Trả Hàng</title>
+                                <style>
+                                  @page { size: 80mm auto; margin: 0; }
+                                  * { box-sizing: border-box; }
+                                  @media screen {
+                                    body { background: #f1f5f9; margin: 0; padding: 12px 10px 40px; font-family: monospace; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+                                    .action-bar { position: sticky; top: 8px; z-index: 1000; display: flex; gap: 8px; width: 100%; max-width: 400px; margin-bottom: 12px; }
+                                    .btn { flex: 1; padding: 12px 14px; font-weight: 700; font-size: 14px; border: none; border-radius: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+                                    .btn-close { background: #ef4444; color: #fff; }
+                                    .btn-print { background: #0284c7; color: #fff; }
+                                    .card { background: #fff; padding: 16px 14px; border-radius: 14px; max-width: 400px; width: 100%; box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid #e2e8f0; }
+                                    .bottom-close { width: 100%; max-width: 400px; margin-top: 16px; padding: 12px; background: #e2e8f0; color: #334155; border: none; border-radius: 8px; font-weight: 700; cursor: pointer; text-align: center; }
+                                  }
+                                  @media print {
+                                    .no-print { display: none !important; }
+                                    body { margin: 0; padding: 4px; background: #fff; }
+                                    .card { width: 72mm; margin: 0 auto; box-shadow: none; border: none; padding: 0; }
+                                  }
+                                </style>
+                              </head>
+                              <body>
+                                <div class="action-bar no-print">
+                                  <button type="button" class="btn btn-close" onclick="window.close(); setTimeout(function(){ if(!window.closed) window.history.back(); }, 250);">✕ Đóng Cửa Sổ</button>
+                                  <button type="button" class="btn btn-print" onclick="window.print();">🖨️ In Lại</button>
+                                </div>
+                                <div class="card">
+                                  ${printEl.outerHTML}
+                                  <button type="button" class="bottom-close no-print" onclick="window.close(); setTimeout(function(){ if(!window.closed) window.history.back(); }, 250);">✕ Đóng & Quay Lại</button>
+                                </div>
+                              </body>
+                            </html>
+                          `);
                           win.document.close();
-                          win.print();
+                          setTimeout(() => {
+                            win.focus();
+                            win.print();
+                          }, 350);
                         }
                       }
                     }}

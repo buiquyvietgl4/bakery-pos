@@ -379,13 +379,120 @@ export function printClosingReceipt(record: AccountingClosingRecord) {
 
   const html = `
     <!DOCTYPE html>
-    <html>
+    <html lang="vi">
       <head>
         <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
         <title>Phiếu Chốt Sổ - ${record.periodLabel}</title>
         <style>
           @page { size: auto; margin: 5mm; }
-          body { font-family: 'Segoe UI', Arial, sans-serif; padding: 12px; margin: 0; color: #111; font-size: 13px; line-height: 1.4; }
+          * { box-sizing: border-box; }
+
+          /* Màn hình (Mobile & Desktop) */
+          @media screen {
+            body {
+              background-color: #f1f5f9;
+              margin: 0;
+              padding: 12px 10px 40px;
+              font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              min-height: 100vh;
+              color: #111;
+            }
+            .action-bar {
+              position: sticky;
+              top: 8px;
+              z-index: 1000;
+              display: flex;
+              gap: 8px;
+              width: 100%;
+              max-width: 480px;
+              margin-bottom: 12px;
+            }
+            .btn-action {
+              flex: 1;
+              padding: 12px 14px;
+              font-size: 14px;
+              font-weight: 700;
+              border: none;
+              border-radius: 10px;
+              cursor: pointer;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 6px;
+              box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+              -webkit-tap-highlight-color: transparent;
+              transition: transform 0.1s, opacity 0.1s;
+            }
+            .btn-action:active {
+              transform: scale(0.97);
+              opacity: 0.9;
+            }
+            .btn-close {
+              background-color: #ef4444;
+              color: #ffffff;
+            }
+            .btn-print {
+              background-color: #0284c7;
+              color: #ffffff;
+            }
+            .receipt-container {
+              background-color: #ffffff;
+              width: 100%;
+              max-width: 480px;
+              padding: 20px 16px;
+              border-radius: 14px;
+              box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+              border: 1px solid #e2e8f0;
+              font-size: 13px;
+              line-height: 1.4;
+            }
+            .bottom-close-btn {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              width: 100%;
+              margin-top: 20px;
+              padding: 12px;
+              background-color: #f1f5f9;
+              color: #475569;
+              border: 1px solid #cbd5e1;
+              border-radius: 8px;
+              font-size: 13px;
+              font-weight: 700;
+              cursor: pointer;
+              -webkit-tap-highlight-color: transparent;
+            }
+            .bottom-close-btn:active {
+              background-color: #e2e8f0;
+            }
+          }
+
+          /* Khi in ra giấy */
+          @media print {
+            .no-print { display: none !important; }
+            body {
+              margin: 0 !important;
+              padding: 4px !important;
+              background: #ffffff !important;
+              font-family: 'Segoe UI', Arial, sans-serif;
+              color: #111;
+              font-size: 13px;
+              line-height: 1.4;
+            }
+            .receipt-container {
+              width: 100% !important;
+              max-width: 100% !important;
+              margin: 0 !important;
+              padding: 0 !important;
+              box-shadow: none !important;
+              border: none !important;
+            }
+          }
+
           .center { text-align: center; }
           .bold { font-weight: bold; }
           .border-b { border-bottom: 1px dashed #666; padding-bottom: 8px; margin-bottom: 8px; }
@@ -400,59 +507,93 @@ export function printClosingReceipt(record: AccountingClosingRecord) {
         </style>
       </head>
       <body>
-        <div class="center border-b">
-          <div class="title">PHIẾU CHỐT SỔ KẾ TOÁN</div>
-          <div class="bold" style="font-size: 14px; text-transform: uppercase;">${branding.storeName || 'TIỆM BÁNH HẠNH PHÚC'}</div>
-          ${branding.address ? `<div style="font-size: 11px; color: #555;">${branding.address}</div>` : ''}
-          ${branding.phone ? `<div style="font-size: 11px; color: #555;">Hotline: ${branding.phone}</div>` : ''}
-          <div class="badge">${record.periodLabel}</div>
-          <div style="font-size: 11px; color: #555; margin-top: 6px;">Thời gian chốt: ${new Date(record.closedAt).toLocaleString('vi-VN')}</div>
-          <div style="font-size: 11px; color: #555;">Người chốt: <b>${record.closedBy || 'Chủ tiệm'}</b></div>
+        <!-- Thanh công cụ điều khiển trên màn hình (Ẩn khi in) -->
+        <div class="action-bar no-print">
+          <button type="button" class="btn-action btn-close" onclick="closeReceiptWindow()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            <span>✕ Đóng Cửa Sổ</span>
+          </button>
+          <button type="button" class="btn-action btn-print" onclick="window.print()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+            <span>🖨️ In Phiếu</span>
+          </button>
         </div>
 
-        <div class="border-b">
-          <div class="bold" style="color: #b45309; text-transform: uppercase; margin-bottom: 4px;">I. DOANH THU BÁN HÀNG</div>
-          <div class="row"><span>Tổng số đơn hàng:</span><span class="bold">${record.totalOrders} đơn</span></div>
-          <div class="row large"><span>TỔNG DOANH THU:</span><span class="bold">${record.totalRevenue.toLocaleString('vi-VN')} đ</span></div>
-          <div class="row" style="padding-left: 8px; color: #444;"><span>• Thu Tiền Mặt:</span><span>${record.cashRevenue.toLocaleString('vi-VN')} đ</span></div>
-          <div class="row" style="padding-left: 8px; color: #444;"><span>• Thu Chuyển Khoản / Ví:</span><span>${record.bankRevenue.toLocaleString('vi-VN')} đ</span></div>
-        </div>
-
-        <div class="border-b">
-          <div class="bold" style="color: #b45309; text-transform: uppercase; margin-bottom: 4px;">II. CHI PHÍ & GIÁ VỐN</div>
-          <div class="row"><span>Giá vốn nguyên liệu (COGS ~31.8%):</span><span>-${record.totalCOGS.toLocaleString('vi-VN')} đ</span></div>
-          <div class="row"><span>Chi phí vận hành (OPEX):</span><span>-${record.totalOpex.toLocaleString('vi-VN')} đ</span></div>
-          <div class="row"><span>Hao hụt bánh hỏng (${record.spoilageQty} cái):</span><span>-${record.spoilageCost.toLocaleString('vi-VN')} đ</span></div>
-        </div>
-
-        <div class="border-b highlight">
-          <div class="row large" style="color: #065f46;">
-            <span>LỢI NHUẬN RÒNG (P&L):</span>
-            <span>${record.netProfit >= 0 ? '+' : ''}${record.netProfit.toLocaleString('vi-VN')} đ</span>
+        <div class="receipt-container">
+          <div class="center border-b">
+            <div class="title">PHIẾU CHỐT SỔ KẾ TOÁN</div>
+            <div class="bold" style="font-size: 14px; text-transform: uppercase;">${branding.storeName || 'TIỆM BÁNH HẠNH PHÚC'}</div>
+            ${branding.address ? `<div style="font-size: 11px; color: #555;">${branding.address}</div>` : ''}
+            ${branding.phone ? `<div style="font-size: 11px; color: #555;">Hotline: ${branding.phone}</div>` : ''}
+            <div class="badge">${record.periodLabel}</div>
+            <div style="font-size: 11px; color: #555; margin-top: 6px;">Thời gian chốt: ${new Date(record.closedAt).toLocaleString('vi-VN')}</div>
+            <div style="font-size: 11px; color: #555;">Người chốt: <b>${record.closedBy || 'Chủ tiệm'}</b></div>
           </div>
+
+          <div class="border-b">
+            <div class="bold" style="color: #b45309; text-transform: uppercase; margin-bottom: 4px;">I. DOANH THU BÁN HÀNG</div>
+            <div class="row"><span>Tổng số đơn hàng:</span><span class="bold">${record.totalOrders} đơn</span></div>
+            <div class="row large"><span>TỔNG DOANH THU:</span><span class="bold">${record.totalRevenue.toLocaleString('vi-VN')} đ</span></div>
+            <div class="row" style="padding-left: 8px; color: #444;"><span>• Thu Tiền Mặt:</span><span>${record.cashRevenue.toLocaleString('vi-VN')} đ</span></div>
+            <div class="row" style="padding-left: 8px; color: #444;"><span>• Thu Chuyển Khoản / Ví:</span><span>${record.bankRevenue.toLocaleString('vi-VN')} đ</span></div>
+          </div>
+
+          <div class="border-b">
+            <div class="bold" style="color: #b45309; text-transform: uppercase; margin-bottom: 4px;">II. CHI PHÍ & GIÁ VỐN</div>
+            <div class="row"><span>Giá vốn nguyên liệu (COGS ~31.8%):</span><span>-${record.totalCOGS.toLocaleString('vi-VN')} đ</span></div>
+            <div class="row"><span>Chi phí vận hành (OPEX):</span><span>-${record.totalOpex.toLocaleString('vi-VN')} đ</span></div>
+            <div class="row"><span>Hao hụt bánh hỏng (${record.spoilageQty} cái):</span><span>-${record.spoilageCost.toLocaleString('vi-VN')} đ</span></div>
+          </div>
+
+          <div class="border-b highlight">
+            <div class="row large" style="color: #065f46;">
+              <span>LỢI NHUẬN RÒNG (P&L):</span>
+              <span>${record.netProfit >= 0 ? '+' : ''}${record.netProfit.toLocaleString('vi-VN')} đ</span>
+            </div>
+          </div>
+
+          <div class="border-b">
+            <div class="bold" style="color: #b45309; text-transform: uppercase; margin-bottom: 4px;">III. ĐỐI SOÁT TIỀN MẶT TRONG KÉT</div>
+            <div class="row"><span>Tiền mặt hệ thống tính:</span><span>${record.systemCash.toLocaleString('vi-VN')} đ</span></div>
+            <div class="row"><span>Tiền mặt thực tế đếm được:</span><span class="bold">${record.actualCashInRegister.toLocaleString('vi-VN')} đ</span></div>
+            <div class="row bold" style="color: ${diffColor};"><span>Chênh lệch két (Thừa/Thiếu):</span><span>${diffText}</span></div>
+            ${record.notes ? `<div style="font-size: 11px; margin-top: 4px; color: #555;">Ghi chú: <i>${record.notes}</i></div>` : ''}
+          </div>
+
+          <div class="footer">
+            <div class="signature-box">
+              <div class="bold">Nhân Viên Thu Ngân</div>
+              <div style="font-size: 10px; color: #777;">(Ký & ghi rõ họ tên)</div>
+              <div style="height: 50px;"></div>
+            </div>
+            <div class="signature-box">
+              <div class="bold">Chủ Tiệm / Quản Lý</div>
+              <div style="font-size: 10px; color: #777;">(Ký & duyệt)</div>
+              <div style="height: 50px;"></div>
+              <div class="bold">${record.closedBy || 'Chủ tiệm'}</div>
+            </div>
+          </div>
+
+          <!-- Nút Đóng phụ ở chân phiếu -->
+          <button type="button" class="bottom-close-btn no-print" onclick="closeReceiptWindow()">
+            ✕ Đóng Cửa Sổ & Quay Lại
+          </button>
         </div>
 
-        <div class="border-b">
-          <div class="bold" style="color: #b45309; text-transform: uppercase; margin-bottom: 4px;">III. ĐỐI SOÁT TIỀN MẶT TRONG KÉT</div>
-          <div class="row"><span>Tiền mặt hệ thống tính:</span><span>${record.systemCash.toLocaleString('vi-VN')} đ</span></div>
-          <div class="row"><span>Tiền mặt thực tế đếm được:</span><span class="bold">${record.actualCashInRegister.toLocaleString('vi-VN')} đ</span></div>
-          <div class="row bold" style="color: ${diffColor};"><span>Chênh lệch két (Thừa/Thiếu):</span><span>${diffText}</span></div>
-          ${record.notes ? `<div style="font-size: 11px; margin-top: 4px; color: #555;">Ghi chú: <i>${record.notes}</i></div>` : ''}
-        </div>
-
-        <div class="footer">
-          <div class="signature-box">
-            <div class="bold">Nhân Viên Thu Ngân</div>
-            <div style="font-size: 10px; color: #777;">(Ký & ghi rõ họ tên)</div>
-            <div style="height: 50px;"></div>
-          </div>
-          <div class="signature-box">
-            <div class="bold">Chủ Tiệm / Quản Lý</div>
-            <div style="font-size: 10px; color: #777;">(Ký & duyệt)</div>
-            <div style="height: 50px;"></div>
-            <div class="bold">${record.closedBy || 'Chủ tiệm'}</div>
-          </div>
-        </div>
+        <script>
+          function closeReceiptWindow() {
+            window.close();
+            setTimeout(function() {
+              if (!window.closed) {
+                if (window.history.length > 1) {
+                  window.history.back();
+                } else {
+                  window.location.href = '/admin';
+                }
+              }
+            }, 250);
+          }
+        </script>
       </body>
     </html>
   `;

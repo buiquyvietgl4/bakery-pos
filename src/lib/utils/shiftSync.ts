@@ -533,24 +533,122 @@ export function printShiftHandoverReceipt(record: ShiftRecord, storeInfo?: any):
     ? `THỪA +${formatVnd(record.difference)}` 
     : `THIẾU -${formatVnd(Math.abs(record.difference))}`;
 
-  const diffClass = record.difference === 0 ? 'color: green;' : record.difference > 0 ? 'color: blue;' : 'color: red; font-weight: bold;';
+  const diffClass = record.difference === 0 ? 'color: #166534;' : record.difference > 0 ? 'color: #1e40af;' : 'color: #b91c1c; font-weight: bold;';
 
   const html = `
 <!DOCTYPE html>
-<html>
+<html lang="vi">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Phiếu Bàn Giao Ca - ${record.shiftCode}</title>
   <style>
     @page { size: 80mm auto; margin: 0; }
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      width: 72mm;
-      margin: 0 auto;
-      padding: 10px 4px;
+    * { box-sizing: border-box; }
+
+    /* Màn hình (Mobile / Desktop) */
+    @media screen {
+      body {
+        background-color: #f1f5f9;
+        margin: 0;
+        padding: 12px 10px 40px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-height: 100vh;
+      }
+      .action-bar {
+        position: sticky;
+        top: 8px;
+        z-index: 1000;
+        display: flex;
+        gap: 8px;
+        width: 100%;
+        max-width: 380px;
+        margin-bottom: 12px;
+      }
+      .btn-action {
+        flex: 1;
+        padding: 12px 14px;
+        font-size: 14px;
+        font-weight: 700;
+        border: none;
+        border-radius: 10px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        -webkit-tap-highlight-color: transparent;
+        transition: transform 0.1s, opacity 0.1s;
+      }
+      .btn-action:active {
+        transform: scale(0.97);
+        opacity: 0.9;
+      }
+      .btn-close {
+        background-color: #ef4444;
+        color: #ffffff;
+      }
+      .btn-print {
+        background-color: #0284c7;
+        color: #ffffff;
+      }
+      .receipt-container {
+        background-color: #ffffff;
+        width: 100%;
+        max-width: 380px;
+        padding: 18px 14px;
+        border-radius: 14px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        border: 1px solid #e2e8f0;
+      }
+      .bottom-close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        margin-top: 20px;
+        padding: 12px;
+        background-color: #f1f5f9;
+        color: #475569;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+      }
+      .bottom-close-btn:active {
+        background-color: #e2e8f0;
+      }
+    }
+
+    /* Khi in ra giấy (Máy in nhiệt 80mm / A4) */
+    @media print {
+      .no-print { display: none !important; }
+      body {
+        margin: 0 !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+      }
+      .receipt-container {
+        width: 72mm !important;
+        max-width: 72mm !important;
+        margin: 0 auto !important;
+        padding: 4px 0 !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+    }
+
+    .receipt-body {
       color: #000;
       font-size: 12px;
       line-height: 1.4;
+      font-family: Arial, Helvetica, sans-serif;
     }
     .text-center { text-align: center; }
     .text-right { text-align: right; }
@@ -565,64 +663,98 @@ export function printShiftHandoverReceipt(record: ShiftRecord, storeInfo?: any):
   </style>
 </head>
 <body>
-  <div class="text-center font-bold" style="font-size: 13px;">${storeName.toUpperCase()}</div>
-  ${storeAddress ? `<div class="text-center" style="font-size: 10px;">${storeAddress}</div>` : ''}
-  ${storePhone ? `<div class="text-center" style="font-size: 10px;">Hotline: ${storePhone}</div>` : ''}
-  
-  <div class="divider"></div>
-  <div class="text-center title">BIÊN BẢN BÀN GIAO CA</div>
-  <div class="text-center subtitle font-bold">Mã ca: ${record.shiftCode}</div>
+  <!-- Thanh công cụ điều khiển trên màn hình (Tự động ẩn khi in) -->
+  <div class="action-bar no-print">
+    <button type="button" class="btn-action btn-close" onclick="closeReceiptWindow()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      <span>✕ Đóng Cửa Sổ</span>
+    </button>
+    <button type="button" class="btn-action btn-print" onclick="window.print()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
+      <span>🖨️ In Phiếu</span>
+    </button>
+  </div>
 
-  <div class="row"><span>Thu ngân bàn giao:</span><span class="font-bold">${record.staffName}</span></div>
-  <div class="row"><span>Bắt đầu ca:</span><span>${formatDateTime(record.startedAt)}</span></div>
-  <div class="row"><span>Kết thúc ca:</span><span>${formatDateTime(record.endedAt)}</span></div>
-  <div class="row"><span>Số đơn hàng:</span><span class="font-bold">${record.orderCount} đơn</span></div>
-
-  <div class="divider"></div>
-  <div class="row"><span>Tiền vốn đầu ca:</span><span class="font-bold">${formatVnd(record.openingCash)}</span></div>
-  <div class="row"><span>Doanh thu tiền mặt (+):</span><span class="font-bold">${formatVnd(record.cashSales)}</span></div>
-  <div class="row"><span>Doanh thu CK/Ví (+):</span><span class="font-bold">${formatVnd(record.transferSales)}</span></div>
-  ${(record.refundCash || 0) > 0 ? `<div class="row" style="color: #b91c1c;"><span>Chi hoàn trả tiền mặt (-):</span><span class="font-bold">-${formatVnd(record.refundCash || 0)}</span></div>` : ''}
-  ${(record.refundTransfer || 0) > 0 ? `<div class="row" style="color: #b91c1c;"><span>Chi hoàn trả CK/Ví (-):</span><span class="font-bold">-${formatVnd(record.refundTransfer || 0)}</span></div>` : ''}
-  <div class="row font-bold" style="font-size: 13px;"><span>TỔNG DOANH THU:</span><span>${formatVnd(record.totalRevenue)}</span></div>
-
-  <div class="divider"></div>
-  <div class="row font-bold"><span>Tiền mặt lý thuyết két:</span><span>${formatVnd(record.expectedCash)}</span></div>
-  <div class="row font-bold" style="font-size: 13px;"><span>TIỀN THỰC TẾ ĐẾM:</span><span>${formatVnd(record.closingCash)}</span></div>
-  <div class="row" style="margin-top: 4px;"><span>CHÊNH LỆCH QUỸ:</span><span style="${diffClass}">${diffLabel}</span></div>
-  <div class="row" style="margin-top: 4px;"><span>Vốn để lại ca sau:</span><span class="font-bold">${formatVnd(record.transferredToNextShift || 0)}</span></div>
-
-  ${record.notes ? `
+  <div class="receipt-container receipt-body">
+    <div class="text-center font-bold" style="font-size: 13px;">${storeName.toUpperCase()}</div>
+    ${storeAddress ? `<div class="text-center" style="font-size: 10px;">${storeAddress}</div>` : ''}
+    ${storePhone ? `<div class="text-center" style="font-size: 10px;">Hotline: ${storePhone}</div>` : ''}
+    
     <div class="divider"></div>
-    <div style="font-size: 11px;">
-      <span class="font-bold">Ghi chú giải trình:</span>
-      <div>${record.notes}</div>
-    </div>
-  ` : ''}
+    <div class="text-center title">BIÊN BẢN BÀN GIAO CA</div>
+    <div class="text-center subtitle font-bold">Mã ca: ${record.shiftCode}</div>
 
-  <div class="double-divider"></div>
-  <div class="signatures">
-    <div class="sig-col">
-      <div class="font-bold">Người bàn giao</div>
-      <div style="font-size: 9px; color: #555;">(Ký & ghi rõ họ tên)</div>
-      <div style="margin-top: 35px;">${record.staffName}</div>
+    <div class="row"><span>Thu ngân bàn giao:</span><span class="font-bold">${record.staffName}</span></div>
+    <div class="row"><span>Bắt đầu ca:</span><span>${formatDateTime(record.startedAt)}</span></div>
+    <div class="row"><span>Kết thúc ca:</span><span>${formatDateTime(record.endedAt)}</span></div>
+    <div class="row"><span>Số đơn hàng:</span><span class="font-bold">${record.orderCount} đơn</span></div>
+
+    <div class="divider"></div>
+    <div class="row"><span>Tiền vốn đầu ca:</span><span class="font-bold">${formatVnd(record.openingCash)}</span></div>
+    <div class="row"><span>Doanh thu tiền mặt (+):</span><span class="font-bold">${formatVnd(record.cashSales)}</span></div>
+    <div class="row"><span>Doanh thu CK/Ví (+):</span><span class="font-bold">${formatVnd(record.transferSales)}</span></div>
+    ${(record.refundCash || 0) > 0 ? `<div class="row" style="color: #b91c1c;"><span>Chi hoàn trả tiền mặt (-):</span><span class="font-bold">-${formatVnd(record.refundCash || 0)}</span></div>` : ''}
+    ${(record.refundTransfer || 0) > 0 ? `<div class="row" style="color: #b91c1c;"><span>Chi hoàn trả CK/Ví (-):</span><span class="font-bold">-${formatVnd(record.refundTransfer || 0)}</span></div>` : ''}
+    <div class="row font-bold" style="font-size: 13px;"><span>TỔNG DOANH THU:</span><span>${formatVnd(record.totalRevenue)}</span></div>
+
+    <div class="divider"></div>
+    <div class="row font-bold"><span>Tiền mặt lý thuyết két:</span><span>${formatVnd(record.expectedCash)}</span></div>
+    <div class="row font-bold" style="font-size: 13px;"><span>TIỀN THỰC TẾ ĐẾM:</span><span>${formatVnd(record.closingCash)}</span></div>
+    <div class="row" style="margin-top: 4px;"><span>CHÊNH LỆCH QUỸ:</span><span style="${diffClass}">${diffLabel}</span></div>
+    <div class="row" style="margin-top: 4px;"><span>Vốn để lại ca sau:</span><span class="font-bold">${formatVnd(record.transferredToNextShift || 0)}</span></div>
+
+    ${record.notes ? `
+      <div class="divider"></div>
+      <div style="font-size: 11px;">
+        <span class="font-bold">Ghi chú giải trình:</span>
+        <div>${record.notes}</div>
+      </div>
+    ` : ''}
+
+    <div class="double-divider"></div>
+    <div class="signatures">
+      <div class="sig-col">
+        <div class="font-bold">Người bàn giao</div>
+        <div style="font-size: 9px; color: #555;">(Ký & ghi rõ họ tên)</div>
+        <div style="margin-top: 35px;">${record.staffName}</div>
+      </div>
+      <div class="sig-col">
+        <div class="font-bold">Người nhận / Quản lý</div>
+        <div style="font-size: 9px; color: #555;">(Ký & ghi rõ họ tên)</div>
+        <div style="margin-top: 35px;">..........................</div>
+      </div>
     </div>
-    <div class="sig-col">
-      <div class="font-bold">Người nhận / Quản lý</div>
-      <div style="font-size: 9px; color: #555;">(Ký & ghi rõ họ tên)</div>
-      <div style="margin-top: 35px;">..........................</div>
+
+    <div class="divider" style="margin-top: 20px;"></div>
+    <div class="text-center" style="font-size: 9px; color: #777;">
+      Hệ thống Tiệm Bánh ERP • In lúc ${formatDateTime(new Date().toISOString())}
     </div>
+
+    <!-- Nút Đóng phụ ở chân phiếu (Ẩn khi in) -->
+    <button type="button" class="bottom-close-btn no-print" onclick="closeReceiptWindow()">
+      ✕ Đóng Cửa Sổ & Quay Lại
+    </button>
   </div>
 
-  <div class="divider" style="margin-top: 20px;"></div>
-  <div class="text-center" style="font-size: 9px; color: #777;">
-    Hệ thống Tiệm Bánh ERP • In lúc ${formatDateTime(new Date().toISOString())}
-  </div>
+  <script>
+    function closeReceiptWindow() {
+      window.close();
+      setTimeout(function() {
+        if (!window.closed) {
+          if (window.history.length > 1) {
+            window.history.back();
+          } else {
+            window.location.href = '/pos';
+          }
+        }
+      }, 250);
+    }
+  </script>
 </body>
 </html>
   `;
 
-  const printWindow = window.open('', '_blank', 'width=380,height=600');
+  const printWindow = window.open('', '_blank', 'width=420,height=700');
   if (printWindow) {
     printWindow.document.open();
     printWindow.document.write(html);
@@ -630,6 +762,6 @@ export function printShiftHandoverReceipt(record: ShiftRecord, storeInfo?: any):
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
-    }, 250);
+    }, 350);
   }
 }
