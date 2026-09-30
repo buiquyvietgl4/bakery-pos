@@ -34,6 +34,8 @@ export function exportS2aExcel(
       const pm = String(r.payment_method || '').toLowerCase().trim();
       if (pm === 'transfer' || pm === 'bank' || pm === 'vietqr' || pm.includes('chuyển khoản')) return 'Chuyển khoản (VietQR)';
       if (pm === 'momo' || pm.includes('momo')) return 'Ví MoMo';
+      if (pm === 'zalopay' || pm.includes('zalopay') || pm.includes('zalo')) return 'Ví ZaloPay';
+      if (pm === 'viettelmoney' || pm.includes('viettel')) return 'Viettel Money';
       if (pm === 'split' || pm.includes('kết hợp')) return 'Kết hợp (TM + CK)';
       if (pm === 'card' || pm.includes('thẻ')) return 'Quẹt thẻ';
       return 'Tiền mặt';

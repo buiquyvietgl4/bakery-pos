@@ -49,7 +49,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
     if (total <= 0) return { cash: 0, bank: 0 };
     const method = getOrderPaymentMethod(o);
     if (method === 'cash') return { cash: total, bank: 0 };
-    if (method === 'transfer' || method === 'momo' || method === 'card') return { cash: 0, bank: total };
+    if (method === 'transfer' || method === 'momo' || method === 'zalopay' || method === 'viettelmoney' || method === 'card') return { cash: 0, bank: total };
     if (method === 'split') {
       if (Array.isArray(o.payments) && o.payments.length > 0) {
         const cashAmt = o.payments
@@ -238,7 +238,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           source: isCash ? 'cash' : 'bank',
           category: isCash 
             ? 'Doanh thu bán bánh (Tiền mặt)' 
-            : (method === 'momo' ? 'Doanh thu bán bánh (Ví MoMo)' : 'Doanh thu bán bánh (VietQR/CK)'),
+            : (method === 'momo'
+              ? 'Doanh thu bán bánh (Ví MoMo)'
+              : method === 'zalopay'
+              ? 'Doanh thu bán bánh (Ví ZaloPay)'
+              : method === 'viettelmoney'
+              ? 'Doanh thu bán bánh (Viettel Money)'
+              : 'Doanh thu bán bánh (VietQR/CK)'),
           desc: `Thu tiền đơn hàng #${num} (${o.customer_name || 'Khách lẻ'})`,
           amount: amt,
         });

@@ -738,6 +738,8 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                                 const m = (completedReturnRecord.exchange_payment_detail?.method || '').toLowerCase();
                                 if (m === 'cash') return '💵 Tiền mặt';
                                 if (m === 'momo') return '📱 Ví MoMo';
+                                if (m === 'zalopay') return '📱 Ví ZaloPay';
+                                if (m === 'viettelmoney' || m === 'viettel') return '📱 Viettel Money';
                                 if (m === 'split') return '💳 Kết hợp (Tiền mặt + Chuyển khoản)';
                                 if (m === 'card') return '💳 Quẹt thẻ';
                                 return '🏦 Chuyển khoản VietQR';
@@ -890,6 +892,8 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                               ).toLowerCase().trim();
                               if (m === 'cash') return 'Tiền mặt';
                               if (m === 'momo') return 'Ví MoMo';
+                              if (m === 'zalopay') return 'Ví ZaloPay';
+                              if (m === 'viettelmoney' || m === 'viettel') return 'Viettel Money';
                               if (m === 'split') return 'Kết hợp TM+CK';
                               if (m === 'card') return 'Quẹt thẻ';
                               if (m === 'transfer' || m === 'bank' || m === 'vietqr') return 'Chuyển khoản VietQR';

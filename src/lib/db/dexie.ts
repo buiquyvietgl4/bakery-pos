@@ -31,7 +31,7 @@ export interface LocalOrder {
     supplier_name?: string;
   }>;
   payments: Array<{
-    method: 'cash' | 'transfer' | 'momo' | 'card';
+    method: 'cash' | 'transfer' | 'momo' | 'zalopay' | 'viettelmoney' | 'card' | string;
     amount: number;
     reference_code?: string;
   }>;

@@ -35,7 +35,7 @@ const formatVND = (val: any) => {
   return `${prefix}${Math.abs(rounded).toLocaleString('vi-VN')}₫`;
 };
 
-export type StandardPaymentMethod = 'cash' | 'transfer' | 'momo' | 'split' | 'card' | 'unknown';
+export type StandardPaymentMethod = 'cash' | 'transfer' | 'momo' | 'zalopay' | 'viettelmoney' | 'split' | 'card' | 'unknown';
 
 export const getOrderPaymentMethod = (o: any): StandardPaymentMethod => {
   if (!o) return 'cash';
@@ -47,6 +47,8 @@ export const getOrderPaymentMethod = (o: any): StandardPaymentMethod => {
       return 'split';
     }
     if (methods.has('momo')) return 'momo';
+    if (methods.has('zalopay')) return 'zalopay';
+    if (methods.has('viettelmoney') || methods.has('viettel')) return 'viettelmoney';
     if (methods.has('card')) return 'card';
     if (methods.has('transfer') || methods.has('bank') || methods.has('vietqr')) return 'transfer';
     if (methods.has('cash')) return 'cash';
@@ -63,6 +65,8 @@ export const getOrderPaymentMethod = (o: any): StandardPaymentMethod => {
   if (m === 'cash' || m === 'tiền mặt' || m === 'tien mat') return 'cash';
   if (m === 'transfer' || m === 'bank' || m === 'vietqr' || m === 'ck' || m === 'chuyển khoản' || m === 'chuyen khoan') return 'transfer';
   if (m === 'momo' || m === 'ví momo' || m === 'vi momo') return 'momo';
+  if (m === 'zalopay' || m === 'ví zalopay' || m === 'vi zalopay' || m === 'zalo pay') return 'zalopay';
+  if (m === 'viettelmoney' || m === 'viettel' || m === 'viettel money' || m === 'ví viettel') return 'viettelmoney';
   if (m === 'split' || m === 'kết hợp' || m === 'ket hop') return 'split';
   if (m === 'card' || m === 'thẻ' || m === 'the') return 'card';
 
@@ -72,6 +76,8 @@ export const getOrderPaymentMethod = (o: any): StandardPaymentMethod => {
     return 'transfer';
   }
   if (notes.includes('momo')) return 'momo';
+  if (notes.includes('zalopay') || notes.includes('zalo pay')) return 'zalopay';
+  if (notes.includes('viettel')) return 'viettelmoney';
 
   return 'cash';
 };
@@ -383,7 +389,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
       data: [
         { chi_tieu: 'I. TỔNG DOANH THU THUẦN', gia_tri: totalRevenue, ty_le: '100.0%', ghi_chu: `Tổng ${periodOrders.length} đơn hàng trong kỳ (${periodLabel})` },
         { chi_tieu: '   1. Doanh thu Tiền mặt tại quầy', gia_tri: cashRevenue, ty_le: totalRevenue > 0 ? `${((cashRevenue / totalRevenue) * 100).toFixed(1)}%` : '0.0%', ghi_chu: 'Khách thanh toán tiền mặt tại quầy POS' },
-        { chi_tieu: '   2. Doanh thu Chuyển khoản / VietQR / Ví', gia_tri: bankRevenue, ty_le: totalRevenue > 0 ? `${((bankRevenue / totalRevenue) * 100).toFixed(1)}%` : '0.0%', ghi_chu: 'Khách thanh toán VietQR, MoMo, Thẻ ngân hàng' },
+        { chi_tieu: '   2. Doanh thu Chuyển khoản / VietQR / Ví', gia_tri: bankRevenue, ty_le: totalRevenue > 0 ? `${((bankRevenue / totalRevenue) * 100).toFixed(1)}%` : '0.0%', ghi_chu: 'Khách thanh toán VietQR, Ví điện tử (MoMo, ZaloPay, Viettel Money), Thẻ ngân hàng' },
         { chi_tieu: 'II. GIÁ VỐN HÀNG BÁN (COGS)', gia_tri: -totalCOGS, ty_le: totalRevenue > 0 ? `${cogsPct}%` : '0.0%', ghi_chu: 'Định mức BOM nguyên vật liệu sản xuất bánh (~36.5%)' },
         { chi_tieu: '   1. Chi phí Bột mì, bơ, sữa, kem & nguyên liệu', gia_tri: -flourCost, ty_le: totalRevenue > 0 ? `${((flourCost / (totalRevenue || 1)) * 100).toFixed(1)}%` : '0.0%', ghi_chu: '~70% giá vốn nguyên vật liệu chính' },
         { chi_tieu: '   2. Chi phí Bao bì hộp bánh, dao nến & phụ kiện', gia_tri: -milkPackagingCost, ty_le: totalRevenue > 0 ? `${((milkPackagingCost / (totalRevenue || 1)) * 100).toFixed(1)}%` : '0.0%', ghi_chu: '~30% giá vốn hoàn thiện đóng gói' },
@@ -503,6 +509,8 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
           method === 'cash' ? 'Tiền mặt' :
           method === 'transfer' ? 'VietQR / CK' :
           method === 'momo' ? 'Ví MoMo' :
+          method === 'zalopay' ? 'Ví ZaloPay' :
+          method === 'viettelmoney' ? 'Viettel Money' :
           method === 'split' ? 'Kết hợp (TM+CK)' :
           method === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
 
@@ -1293,6 +1301,20 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                           return (
                             <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-pink-50 text-pink-700 border border-pink-200/60">
                               Ví MoMo
+                            </span>
+                          );
+                        }
+                        if (m === 'zalopay') {
+                          return (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-700 border border-sky-200/60">
+                              Ví ZaloPay
+                            </span>
+                          );
+                        }
+                        if (m === 'viettelmoney') {
+                          return (
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200/60">
+                              Viettel Money
                             </span>
                           );
                         }

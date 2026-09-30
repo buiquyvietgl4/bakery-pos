@@ -260,6 +260,8 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
           m === 'cash' || m === 'tiền mặt' ? 'Tiền mặt' :
           m === 'transfer' || m === 'bank' || m === 'vietqr' ? 'VietQR / CK' :
           m === 'momo' ? 'Ví MoMo' :
+          m === 'zalopay' ? 'Ví ZaloPay' :
+          m === 'viettelmoney' || m === 'viettel' ? 'Viettel Money' :
           m === 'split' || m === 'kết hợp' ? 'Kết hợp (TM+CK)' :
           m === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
 

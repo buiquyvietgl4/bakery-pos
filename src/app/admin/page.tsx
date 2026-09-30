@@ -1345,6 +1345,8 @@ export default function AdminDashboard() {
           m === 'cash' || m === 'tiền mặt' ? 'Tiền mặt' :
           m === 'transfer' || m === 'bank' || m === 'vietqr' ? 'VietQR / CK' :
           m === 'momo' ? 'Ví MoMo' :
+          m === 'zalopay' ? 'Ví ZaloPay' :
+          m === 'viettelmoney' || m === 'viettel' ? 'Viettel Money' :
           m === 'split' || m === 'kết hợp' ? 'Kết hợp (TM+CK)' :
           m === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
 
@@ -1382,7 +1384,7 @@ export default function AdminDashboard() {
       const amt = Number(o.total_amount || o.totalPrice || 0);
       if (amt <= 0) return;
       const m = String(o.payment_method || o.paymentMethod || '').toLowerCase();
-      const isBank = m === 'transfer' || m === 'bank' || m === 'vietqr' || m === 'momo';
+      const isBank = m === 'transfer' || m === 'bank' || m === 'vietqr' || m === 'momo' || m === 'zalopay' || m === 'viettelmoney' || m === 'viettel';
       list.push({
         ngay: o.created_at ? new Date(o.created_at).toLocaleString('vi-VN') : '',
         nguon: isBank ? 'VietQR / Ngân Hàng' : 'Tiền mặt tại két',
@@ -1507,6 +1509,8 @@ export default function AdminDashboard() {
           m === 'cash' || m === 'tiền mặt' ? 'Tiền mặt' :
           m === 'transfer' || m === 'bank' || m === 'vietqr' ? 'VietQR / CK' :
           m === 'momo' ? 'Ví MoMo' :
+          m === 'zalopay' ? 'Ví ZaloPay' :
+          m === 'viettelmoney' || m === 'viettel' ? 'Viettel Money' :
           m === 'split' || m === 'kết hợp' ? 'Kết hợp (TM+CK)' :
           m === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
 

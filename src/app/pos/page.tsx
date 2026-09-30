@@ -173,7 +173,7 @@ interface PreorderFormData {
   notes: string;
   totalPrice: number;
   depositAmount: number;
-  paymentMethod: 'cash' | 'transfer' | 'momo';
+  paymentMethod: 'cash' | 'transfer' | 'momo' | 'zalopay' | 'viettelmoney';
   referenceImageUrl: string;
   isReadyStock?: boolean;
 }
@@ -362,7 +362,7 @@ export default function POSPage() {
 
   // Normal Checkout Modal State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'momo' | 'split'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'transfer' | 'momo' | 'zalopay' | 'viettelmoney' | 'split'>('cash');
   const [cashGiven, setCashGiven] = useState<number>(0);
   const [splitCashAmount, setSplitCashAmount] = useState<number>(0);
   const [splitTransferAmount, setSplitTransferAmount] = useState<number>(0);
@@ -856,7 +856,7 @@ export default function POSPage() {
               const method = (order.payment_method || order.paymentMethod || '').toLowerCase();
               const amt = Number(order.total_amount || order.totalPrice || order.deposit_amount || 0);
               if (method === 'cash') cashToDeduct = amt;
-              else if (method === 'transfer' || method === 'momo') transferToDeduct = amt;
+              else if (method === 'transfer' || method === 'momo' || method === 'zalopay' || method === 'viettelmoney' || method === 'viettel') transferToDeduct = amt;
               else if (method === 'split') {
                 cashToDeduct = Number(order.split_cash_amount || order.splitCashAmount || 0);
                 transferToDeduct = Number(order.split_transfer_amount || order.splitTransferAmount || 0);
@@ -3409,9 +3409,12 @@ export default function POSPage() {
     skipTwoStepCheck = false
   ) => {
     if (cart.length === 0) return;
-    const effectivePaymentMethod: 'cash' | 'transfer' | 'momo' | 'split' =
-      (typeof overridePaymentMethod === 'string' && ['cash', 'transfer', 'momo', 'split'].includes(overridePaymentMethod))
-        ? (overridePaymentMethod as 'cash' | 'transfer' | 'momo' | 'split')
+    const isEwalletMethod = (m: string) => ['momo', 'zalopay', 'viettelmoney'].includes(m);
+    const effectivePaymentMethod: 'cash' | 'transfer' | 'momo' | 'zalopay' | 'viettelmoney' | 'split' =
+      (typeof overridePaymentMethod === 'string' && ['cash', 'transfer', 'momo', 'zalopay', 'viettelmoney', 'split'].includes(overridePaymentMethod))
+        ? (overridePaymentMethod as 'cash' | 'transfer' | 'momo' | 'zalopay' | 'viettelmoney' | 'split')
+        : isEwalletMethod(paymentMethod)
+        ? selectedWalletType
         : paymentMethod;
 
     if (fulfillmentType === 'shipping' && !posShippingAddress.trim()) {
@@ -3710,7 +3713,8 @@ export default function POSPage() {
 
       // 2. Cập nhật tiền ca bán (chỉ tính số tiền thu ngay lúc này) và lưu vĩnh viễn vào CSDL
       const addedCash = effectivePaymentMethod === 'cash' ? dueNow : effectivePaymentMethod === 'split' ? splitCashAmount : 0;
-      const addedTransfer = (effectivePaymentMethod === 'transfer' || effectivePaymentMethod === 'momo') ? dueNow : effectivePaymentMethod === 'split' ? splitTransferAmount : 0;
+      const isEwalletMethodNow = ['momo', 'zalopay', 'viettelmoney'].includes(effectivePaymentMethod);
+      const addedTransfer = (effectivePaymentMethod === 'transfer' || isEwalletMethodNow) ? dueNow : effectivePaymentMethod === 'split' ? splitTransferAmount : 0;
       setShift((prev) => {
         const updated: ShiftState = {
           ...prev,
@@ -6586,20 +6590,54 @@ export default function POSPage() {
                 <div>
                   <label className="font-semibold text-zinc-600 block mb-1">Hình thức nhận cọc:</label>
                   <div className="grid grid-cols-3 gap-1.5">
-                    {(['cash', 'transfer', 'momo'] as const).map((m) => (
-                      <button
-                        key={m}
-                        type="button"
-                        onClick={() => setPreorderForm({ ...preorderForm, paymentMethod: m })}
-                        className={`py-1.5 rounded-lg font-bold border text-[11px] ${
-                          preorderForm.paymentMethod === m
-                            ? 'bg-amber-600 text-white border-amber-600'
-                            : 'bg-white text-zinc-600 border-zinc-200'
-                        }`}
-                      >
-                        {m === 'cash' ? 'Tiền mặt' : m === 'transfer' ? 'Chuyển khoản' : 'Ví MoMo'}
-                      </button>
-                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setPreorderForm({ ...preorderForm, paymentMethod: 'cash' })}
+                      className={`py-1.5 rounded-lg font-bold border text-[11px] ${
+                        preorderForm.paymentMethod === 'cash'
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-white text-zinc-600 border-zinc-200'
+                      }`}
+                    >
+                      Tiền mặt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPreorderForm({ ...preorderForm, paymentMethod: 'transfer' })}
+                      className={`py-1.5 rounded-lg font-bold border text-[11px] ${
+                        preorderForm.paymentMethod === 'transfer'
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-white text-zinc-600 border-zinc-200'
+                      }`}
+                    >
+                      Chuyển khoản
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const targetWallet = ['momo', 'zalopay', 'viettelmoney'].includes(preorderForm.paymentMethod)
+                          ? preorderForm.paymentMethod
+                          : (ewalletConfig.activeWallet || 'momo');
+                        setPreorderForm({ ...preorderForm, paymentMethod: targetWallet });
+                      }}
+                      className={`py-1.5 rounded-lg font-bold border text-[11px] ${
+                        ['momo', 'zalopay', 'viettelmoney'].includes(preorderForm.paymentMethod)
+                          ? 'bg-amber-600 text-white border-amber-600'
+                          : 'bg-white text-zinc-600 border-zinc-200'
+                      }`}
+                    >
+                      {preorderForm.paymentMethod === 'zalopay'
+                        ? 'Ví ZaloPay'
+                        : preorderForm.paymentMethod === 'viettelmoney'
+                        ? 'Viettel Money'
+                        : preorderForm.paymentMethod === 'momo'
+                        ? 'Ví MoMo'
+                        : (ewalletConfig.activeWallet === 'zalopay'
+                          ? 'Ví ZaloPay'
+                          : ewalletConfig.activeWallet === 'viettelmoney'
+                          ? 'Viettel Money'
+                          : 'Ví MoMo')}
+                    </button>
                   </div>
                 </div>
 
@@ -6671,15 +6709,33 @@ export default function POSPage() {
                 )}
 
                 {/* Mã QR Ví Điện Tử Đặt Cọc (MoMo / ZaloPay / Viettel Money) */}
-                {preorderForm.paymentMethod === 'momo' && (
+                {['momo', 'zalopay', 'viettelmoney'].includes(preorderForm.paymentMethod) && (
                   <div className="p-3 bg-white rounded-xl border border-pink-300 space-y-2 text-center">
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-pink-900 flex items-center gap-1">
                         <Wallet className="w-3.5 h-3.5 text-pink-600" /> Mã Ví Điện Tử Nhận Cọc
                       </span>
-                      <span className="text-[10px] font-bold text-pink-700 bg-pink-50 px-2 py-0.5 rounded-full border border-pink-200">
-                        {ewalletConfig.activeWallet === 'momo' ? 'Ví MoMo' : ewalletConfig.activeWallet === 'zalopay' ? 'ZaloPay' : 'Viettel Money'}
-                      </span>
+                      {/* Switcher giữa MoMo / ZaloPay / Viettel Money */}
+                      <div className="flex gap-1 bg-pink-50 p-0.5 rounded-lg border border-pink-200 text-[10px]">
+                        {(['momo', 'zalopay', 'viettelmoney'] as const).map((w) => (
+                          <button
+                            key={w}
+                            type="button"
+                            onClick={() => setPreorderForm({ ...preorderForm, paymentMethod: w })}
+                            className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
+                              preorderForm.paymentMethod === w
+                                ? w === 'momo'
+                                  ? 'bg-[#d82d8b] text-white'
+                                  : w === 'zalopay'
+                                  ? 'bg-[#0068ff] text-white'
+                                  : 'bg-[#ee0033] text-white'
+                                : 'text-zinc-600 hover:text-zinc-900'
+                            }`}
+                          >
+                            {w === 'momo' ? 'MoMo' : w === 'zalopay' ? 'ZaloPay' : 'Viettel'}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     {preorderForm.depositAmount > 0 ? (
@@ -6687,9 +6743,9 @@ export default function POSPage() {
                         <div className="inline-block p-1.5 bg-zinc-50 rounded-xl border border-zinc-200 shadow-xs max-w-[200px] mx-auto">
                           <img
                             src={
-                              ewalletConfig.activeWallet === 'momo'
+                              preorderForm.paymentMethod === 'momo'
                                 ? (ewalletConfig.momo.qrUrl || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`2|99|${ewalletConfig.momo.phone}|${ewalletConfig.momo.name}||0|0|${preorderForm.depositAmount}|COC BANH ${preorderForm.customerPhone || 'KHACH'}|transfer_p2p`)}`)
-                                : ewalletConfig.activeWallet === 'zalopay'
+                                : preorderForm.paymentMethod === 'zalopay'
                                 ? (ewalletConfig.zalopay.qrUrl || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`ZALOPAY|${ewalletConfig.zalopay.phone}|${ewalletConfig.zalopay.name}|${preorderForm.depositAmount}|COC BANH`)}`)
                                 : (ewalletConfig.viettelmoney.qrUrl || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`VIETTEL|${ewalletConfig.viettelmoney.phone}|${ewalletConfig.viettelmoney.name}|${preorderForm.depositAmount}|COC BANH`)}`)
                             }
@@ -6700,15 +6756,15 @@ export default function POSPage() {
 
                         <div className="text-[11px] text-left text-zinc-700 space-y-1 bg-zinc-50 p-2.5 rounded-xl border border-zinc-200">
                           <div className="flex justify-between items-center">
-                            <span className="text-zinc-500">Số ví {ewalletConfig.activeWallet === 'momo' ? 'MoMo' : ewalletConfig.activeWallet === 'zalopay' ? 'ZaloPay' : 'Viettel'}:</span>
+                            <span className="text-zinc-500">Số ví {preorderForm.paymentMethod === 'momo' ? 'MoMo' : preorderForm.paymentMethod === 'zalopay' ? 'ZaloPay' : 'Viettel'}:</span>
                             <div className="flex items-center gap-1 font-mono font-bold text-zinc-900">
                               <span>
-                                {ewalletConfig.activeWallet === 'momo' ? ewalletConfig.momo.phone : ewalletConfig.activeWallet === 'zalopay' ? ewalletConfig.zalopay.phone : ewalletConfig.viettelmoney.phone}
+                                {preorderForm.paymentMethod === 'momo' ? ewalletConfig.momo.phone : preorderForm.paymentMethod === 'zalopay' ? ewalletConfig.zalopay.phone : ewalletConfig.viettelmoney.phone}
                               </span>
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const p = ewalletConfig.activeWallet === 'momo' ? ewalletConfig.momo.phone : ewalletConfig.activeWallet === 'zalopay' ? ewalletConfig.zalopay.phone : ewalletConfig.viettelmoney.phone;
+                                  const p = preorderForm.paymentMethod === 'momo' ? ewalletConfig.momo.phone : preorderForm.paymentMethod === 'zalopay' ? ewalletConfig.zalopay.phone : ewalletConfig.viettelmoney.phone;
                                   navigator.clipboard.writeText(p);
                                   setCopiedPreorderWalletPhone(true);
                                   setTimeout(() => setCopiedPreorderWalletPhone(false), 2000);
@@ -6723,7 +6779,7 @@ export default function POSPage() {
                           <div className="flex justify-between">
                             <span className="text-zinc-500">Chủ ví:</span>
                             <span className="font-bold text-zinc-900">
-                              {ewalletConfig.activeWallet === 'momo' ? ewalletConfig.momo.name : ewalletConfig.activeWallet === 'zalopay' ? ewalletConfig.zalopay.name : ewalletConfig.viettelmoney.name}
+                              {preorderForm.paymentMethod === 'momo' ? ewalletConfig.momo.name : preorderForm.paymentMethod === 'zalopay' ? ewalletConfig.zalopay.name : ewalletConfig.viettelmoney.name}
                             </span>
                           </div>
                           <div className="flex justify-between">
@@ -7282,6 +7338,8 @@ export default function POSPage() {
                         ).toLowerCase().trim();
                         if (m === 'cash' || m === 'tiền mặt') return 'Tiền mặt';
                         if (m === 'momo') return 'Ví MoMo';
+                        if (m === 'zalopay') return 'Ví ZaloPay';
+                        if (m === 'viettelmoney' || m === 'viettel') return 'Viettel Money';
                         if (m === 'split' || m === 'kết hợp') return 'Kết hợp (TM + CK)';
                         if (m === 'card') return 'Quẹt thẻ';
                         if (m === 'transfer' || m === 'bank' || m === 'vietqr') return 'Chuyển khoản VietQR';
@@ -7451,6 +7509,20 @@ export default function POSPage() {
                               return (
                                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-100 text-pink-800 border border-pink-200">
                                   📱 Ví MoMo
+                                </span>
+                              );
+                            }
+                            if (m === 'zalopay') {
+                              return (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-800 border border-sky-200">
+                                  📱 Ví ZaloPay
+                                </span>
+                              );
+                            }
+                            if (m === 'viettelmoney' || m === 'viettel') {
+                              return (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                                  📱 Viettel Money
                                 </span>
                               );
                             }
@@ -8952,14 +9024,21 @@ export default function POSPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPaymentMethod('momo')}
+                  onClick={() => setPaymentMethod(selectedWalletType || 'momo')}
                   className={`py-2.5 px-2 rounded-xl border text-xs font-bold flex flex-col items-center gap-1.5 transition cursor-pointer ${
-                    paymentMethod === 'momo'
+                    ['momo', 'zalopay', 'viettelmoney'].includes(paymentMethod)
                       ? 'border-amber-600 bg-amber-50 text-amber-700 shadow-xs'
                       : 'border-zinc-200 text-zinc-600 hover:bg-zinc-50'
                   }`}
                 >
-                  <Wallet className="w-4 h-4" /> Ví MoMo
+                  <Wallet className="w-4 h-4" />
+                  <span>
+                    {selectedWalletType === 'zalopay'
+                      ? 'Ví ZaloPay'
+                      : selectedWalletType === 'viettelmoney'
+                      ? 'Viettel Money'
+                      : 'Ví MoMo'}
+                  </span>
                 </button>
               </div>
             </div>
@@ -9524,7 +9603,7 @@ export default function POSPage() {
               </div>
             )}
 
-            {paymentMethod === 'momo' && (
+            {['momo', 'zalopay', 'viettelmoney'].includes(paymentMethod) && (
               <div className="p-3.5 bg-pink-50/40 rounded-2xl border border-pink-200 text-center space-y-3">
                 <div className="flex items-center justify-between px-1 text-xs">
                   <span className="font-bold text-pink-900 flex items-center gap-1.5">
@@ -9536,7 +9615,10 @@ export default function POSPage() {
                       <button
                         key={w}
                         type="button"
-                        onClick={() => setSelectedWalletType(w)}
+                        onClick={() => {
+                          setSelectedWalletType(w);
+                          setPaymentMethod(w);
+                        }}
                         className={`px-2 py-0.5 rounded font-bold transition cursor-pointer ${
                           selectedWalletType === w
                             ? w === 'momo'
@@ -9863,9 +9945,11 @@ export default function POSPage() {
 
                     const isCash = effMethod === 'cash' || effMethod === 'tiền mặt';
                     const isMomo = effMethod === 'momo';
+                    const isZaloPay = effMethod === 'zalopay';
+                    const isViettel = effMethod === 'viettelmoney' || effMethod === 'viettel';
                     const isSplit = effMethod === 'split' || effMethod === 'kết hợp';
                     const isCard = effMethod === 'card';
-                    const isTransfer = !isCash && !isMomo && !isSplit && !isCard;
+                    const isTransfer = !isCash && !isMomo && !isZaloPay && !isViettel && !isSplit && !isCard;
 
                     const splitCashVal = completedOrder.splitCashAmount ?? completedOrder.split_cash_amount ?? (isSplit ? completedOrder.payments?.find((p: any) => p.method === 'cash')?.amount : 0) ?? 0;
                     const splitTransferVal = completedOrder.splitTransferAmount ?? completedOrder.split_transfer_amount ?? (isSplit ? completedOrder.payments?.find((p: any) => p.method !== 'cash')?.amount : 0) ?? 0;
@@ -9879,6 +9963,10 @@ export default function POSPage() {
                               ? '💵 Tiền mặt'
                               : isMomo
                               ? '📱 Ví MoMo'
+                              : isZaloPay
+                              ? '📱 Ví ZaloPay'
+                              : isViettel
+                              ? '📱 Viettel Money'
                               : isSplit
                               ? '💳 + 💵 Kết hợp (TM + CK)'
                               : isCard
@@ -9916,6 +10004,22 @@ export default function POSPage() {
                             {isDepositOrder
                               ? `✓ ĐÃ CỌC QUA VÍ MOMO (${targetDue.toLocaleString('vi-VN')}₫)`
                               : '✓ ĐÃ THANH TOÁN QUA VÍ MOMO'}
+                          </div>
+                        )}
+
+                        {isZaloPay && (
+                          <div className="text-center py-1.5 mt-2 bg-sky-50 text-sky-800 font-black text-[11px] rounded-xl border border-sky-200/80">
+                            {isDepositOrder
+                              ? `✓ ĐÃ CỌC QUA VÍ ZALOPAY (${targetDue.toLocaleString('vi-VN')}₫)`
+                              : '✓ ĐÃ THANH TOÁN QUA VÍ ZALOPAY'}
+                          </div>
+                        )}
+
+                        {isViettel && (
+                          <div className="text-center py-1.5 mt-2 bg-rose-50 text-rose-800 font-black text-[11px] rounded-xl border border-rose-200/80">
+                            {isDepositOrder
+                              ? `✓ ĐÃ CỌC QUA VIETTEL MONEY (${targetDue.toLocaleString('vi-VN')}₫)`
+                              : '✓ ĐÃ THANH TOÁN QUA VIETTEL MONEY'}
                           </div>
                         )}
 

@@ -20,6 +20,18 @@ describe('getOrderPaymentMethod & isOrderCash', () => {
     expect(isOrderCash(order)).toBe(false);
   });
 
+  it('nhận diện chính xác đơn ví ZaloPay', () => {
+    const order = { payment_method: 'zalopay', total_amount: 95000 };
+    expect(getOrderPaymentMethod(order)).toBe('zalopay');
+    expect(isOrderCash(order)).toBe(false);
+  });
+
+  it('nhận diện chính xác đơn Viettel Money', () => {
+    const order = { payment_method: 'viettelmoney', total_amount: 110000 };
+    expect(getOrderPaymentMethod(order)).toBe('viettelmoney');
+    expect(isOrderCash(order)).toBe(false);
+  });
+
   it('nhận diện chính xác đơn thanh toán kết hợp Split (TM + CK) từ payments array', () => {
     const order = {
       order_number: 'BK-20260928-001',
@@ -113,6 +125,18 @@ describe('calculateClosingMetrics - Phân loại doanh thu Tiền mặt & Chuy�
         paymentMethod: 'momo',
       },
       {
+        order_number: 'BK-ZALO-01',
+        created_at: '2026-09-30T11:15:00',
+        total_amount: 70000,
+        paymentMethod: 'zalopay',
+      },
+      {
+        order_number: 'BK-VIETTEL-01',
+        created_at: '2026-09-30T11:20:00',
+        total_amount: 80000,
+        paymentMethod: 'viettelmoney',
+      },
+      {
         order_number: 'BK-CASH-01',
         created_at: '2026-09-30T11:30:00',
         total_amount: 100000,
@@ -121,9 +145,9 @@ describe('calculateClosingMetrics - Phân loại doanh thu Tiền mặt & Chuy�
     ];
 
     const result = calculateClosingMetrics('day', testDate, orders, [], []);
-    expect(result.totalRevenue).toBe(300000);
+    expect(result.totalRevenue).toBe(450000);
     expect(result.cashRevenue).toBe(100000);
-    expect(result.bankRevenue).toBe(200000); // 150k transfer + 50k momo
+    expect(result.bankRevenue).toBe(350000); // 150k transfer + 50k momo + 70k zalo + 80k viettel
   });
 
   it('chia đều 50/50 cho đơn Split nếu không có trường số tiền cụ thể', () => {

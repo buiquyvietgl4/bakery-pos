@@ -583,6 +583,8 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
               }
             } else if (!resolvedMethod) {
               if (methods.has('momo')) resolvedMethod = 'momo';
+              else if (methods.has('zalopay')) resolvedMethod = 'zalopay';
+              else if (methods.has('viettelmoney') || methods.has('viettel')) resolvedMethod = 'viettelmoney';
               else if (methods.has('card')) resolvedMethod = 'card';
               else if (methods.has('transfer') || methods.has('bank') || methods.has('vietqr')) resolvedMethod = 'transfer';
               else if (methods.has('cash')) resolvedMethod = 'cash';
@@ -595,6 +597,10 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
               resolvedMethod = 'transfer';
             } else if (rawNotes.includes('momo')) {
               resolvedMethod = 'momo';
+            } else if (rawNotes.includes('zalopay') || rawNotes.includes('zalo pay')) {
+              resolvedMethod = 'zalopay';
+            } else if (rawNotes.includes('viettel')) {
+              resolvedMethod = 'viettelmoney';
             } else {
               resolvedMethod = 'cash';
             }
@@ -904,6 +910,10 @@ export function generateS2aLedger(
       paymentMethod = 'Chuyển khoản (VietQR)';
     } else if (rawMethod === 'momo') {
       paymentMethod = 'Ví MoMo';
+    } else if (rawMethod === 'zalopay') {
+      paymentMethod = 'Ví ZaloPay';
+    } else if (rawMethod === 'viettelmoney' || rawMethod === 'viettel') {
+      paymentMethod = 'Viettel Money';
     } else if (rawMethod === 'split' || rawMethod === 'kết hợp') {
       paymentMethod = 'Kết hợp (TM + CK)';
     } else if (rawMethod === 'card') {
@@ -1208,7 +1218,13 @@ export function generateS2eLedger(
           amount: amt,
           desc: isCash
             ? `Thu tiền mặt bán bánh đơn #${num} (${customerName})`
-            : (method === 'momo' ? `Thu Ví MoMo đơn #${num} (${customerName})` : `Thu VietQR/CK đơn #${num} (${customerName})`),
+            : (method === 'momo'
+              ? `Thu Ví MoMo đơn #${num} (${customerName})`
+              : method === 'zalopay'
+              ? `Thu Ví ZaloPay đơn #${num} (${customerName})`
+              : method === 'viettelmoney' || method === 'viettel'
+              ? `Thu Viettel Money đơn #${num} (${customerName})`
+              : `Thu VietQR/CK đơn #${num} (${customerName})`),
           fund_type: isCash ? 'Quỹ tiền mặt (111)' : 'Ngân hàng VietQR (112)',
           source: isCash ? 'cash' : 'bank',
         });
