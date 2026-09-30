@@ -131,7 +131,7 @@ export function saveStoredPendingReturns(list: ReturnApprovalPayload[]) {
 }
 
 export default function AdminTransferApprovalWatcher() {
-  const { isAdmin, user, openLoginModal } = useAuth();
+  const { isAdmin, user, openLoginModal, securityConfig } = useAuth();
   const [pendingList, setPendingList] = useState<TransferApprovalPayload[]>([]);
   const [activeRequest, setActiveRequest] = useState<TransferApprovalPayload | null>(null);
   const [processing, setProcessing] = useState(false);
@@ -377,7 +377,7 @@ export default function AdminTransferApprovalWatcher() {
 
         setActiveReturnRequest(payload);
 
-        if (isAdmin) {
+        if (isAdmin && (securityConfig.returnSoundAlert ?? true)) {
           try {
             soundManager.playUrgentAlert();
           } catch {}
@@ -453,7 +453,7 @@ export default function AdminTransferApprovalWatcher() {
           return updated;
         });
         setActiveReturnRequest(payload);
-        if (isAdmin) {
+        if (isAdmin && (securityConfig.returnSoundAlert ?? true)) {
           try {
             soundManager.playUrgentAlert();
           } catch {}

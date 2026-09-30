@@ -15,7 +15,7 @@ import {
   Zap, Link2, Settings, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale, RotateCcw, ShoppingCart, FileKey, LockOpen, Cloud
 } from 'lucide-react';
 import { soundManager } from '@/lib/utils/audioAlert';
-import { useAuth, PermissionKey } from '@/lib/auth/AuthContext';
+import { useAuth, PermissionKey, saveSecurityConfigToDb } from '@/lib/auth/AuthContext';
 import { downloadOwnerRootKeyFile, verifyOwnerRootKey, MASTER_HARD_ROOT_SECRET } from '@/lib/auth/rootSecurity';
 import Link from 'next/link';
 import { db } from '@/lib/db/dexie';
@@ -198,6 +198,7 @@ export default function AdminDashboard() {
     updateManagerPin,
     updateReturnApprovalMode,
     updateReturnSkipForAdmin,
+    updateReturnSoundAlert,
     updateAdminRecoveryKey,
     forceResetAdminToDefault,
     securityConfig,
@@ -1977,19 +1978,34 @@ export default function AdminDashboard() {
   const handleSaveTransferVerify = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setTransferVerifySaving(true);
-    saveTransferVerificationConfigLocally(transferVerifyConfig);
-    // Nếu chọn chế độ theo dõi ngân hàng, lưu luôn cấu hình webhook
-    if (transferVerifyConfig.mode === 'bank_webhook') {
-      saveAutoBankConfigLocally(autoBankConfig);
-      await saveAutoBankConfigToDb(autoBankConfig);
-    }
-    const res = await saveTransferVerificationConfigToDb(transferVerifyConfig, securityConfig.adminName || 'Admin');
-    setTransferVerifySaving(false);
-    if (res.success) {
-      setTransferVerifySaved(true);
-      setTimeout(() => setTransferVerifySaved(false), 3500);
-    } else {
-      alert(`Lỗi khi lưu cấu hình xác thực chuyển khoản: ${res.error}`);
+    try {
+      // 1. Lưu cấu hình xác thực chuyển khoản (Local + Cloud DB)
+      saveTransferVerificationConfigLocally(transferVerifyConfig);
+      if (transferVerifyConfig.mode === 'bank_webhook') {
+        saveAutoBankConfigLocally(autoBankConfig);
+        await saveAutoBankConfigToDb(autoBankConfig);
+      }
+      const res = await saveTransferVerificationConfigToDb(transferVerifyConfig, securityConfig.adminName || 'Admin');
+
+      // 2. Lưu cấu hình bảo mật / phê duyệt đổi trả (Local + Cloud DB)
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('bakery_security_config', JSON.stringify(securityConfig));
+        } catch {}
+      }
+      await saveSecurityConfigToDb(securityConfig);
+
+      setTransferVerifySaving(false);
+      if (res.success) {
+        setTransferVerifySaved(true);
+        setTimeout(() => setTransferVerifySaved(false), 3500);
+      } else {
+        alert(`Lỗi khi lưu cấu hình xác thực chuyển khoản: ${res.error}`);
+      }
+    } catch (err: any) {
+      setTransferVerifySaving(false);
+      console.error('Lỗi khi lưu cài đặt phê duyệt:', err);
+      alert(`Lỗi khi lưu cài đặt phê duyệt: ${err?.message || err}`);
     }
   };
 
@@ -8254,63 +8270,101 @@ export default function AdminDashboard() {
                     <Smartphone className="w-4 h-4 text-amber-600" /> Tùy Chọn Xác Thực 2 Bước:
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-amber-200/80 cursor-pointer hover:border-amber-400 transition">
-                      <input
-                        type="checkbox"
-                        checked={transferVerifyConfig.two_step?.skipForAdmin ?? transferVerifyConfig.twoStep?.skipForAdmin ?? true}
-                        onChange={(e) => {
-                          const isSkip = e.target.checked;
-                          const updatedSettings = {
-                            skipForAdmin: isSkip,
-                            alertSound: transferVerifyConfig.two_step?.alertSound ?? transferVerifyConfig.twoStep?.alertSound ?? true,
-                            autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? transferVerifyConfig.twoStep?.autoCompleteOnApprove ?? true,
-                          };
-                          const updatedConfig = {
-                            ...transferVerifyConfig,
-                            two_step: updatedSettings,
-                            twoStep: updatedSettings,
-                          };
-                          setTransferVerifyConfig(updatedConfig);
-                          saveTransferVerificationConfigLocally(updatedConfig);
-                          saveTransferVerificationConfigToDb(updatedConfig, securityConfig.adminName || 'Admin').catch(console.error);
-                        }}
-                        className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-zinc-800">Bỏ qua khi Admin trực tiếp bán</div>
-                        <div className="text-[10px] text-zinc-500">Nếu tài khoản Chủ tiệm (Admin) đang đăng nhập POS, không cần yêu cầu duyệt lại</div>
-                      </div>
-                    </label>
+                    {/* Bỏ qua khi Admin trực tiếp bán */}
+                    {(() => {
+                      const isSkipAdmin = transferVerifyConfig.two_step?.skipForAdmin ?? transferVerifyConfig.twoStep?.skipForAdmin ?? true;
+                      return (
+                        <label className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 min-h-[64px] active:scale-[0.99] ${
+                          isSkipAdmin ? 'bg-amber-500/10 border-amber-300 shadow-xs' : 'bg-white border-zinc-200 hover:border-amber-200'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={isSkipAdmin}
+                            onChange={(e) => {
+                              const isSkip = e.target.checked;
+                              const updatedSettings = {
+                                skipForAdmin: isSkip,
+                                alertSound: transferVerifyConfig.two_step?.alertSound ?? transferVerifyConfig.twoStep?.alertSound ?? true,
+                                autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? transferVerifyConfig.twoStep?.autoCompleteOnApprove ?? true,
+                              };
+                              const updatedConfig = {
+                                ...transferVerifyConfig,
+                                two_step: updatedSettings,
+                                twoStep: updatedSettings,
+                              };
+                              setTransferVerifyConfig(updatedConfig);
+                              saveTransferVerificationConfigLocally(updatedConfig);
+                              saveTransferVerificationConfigToDb(updatedConfig, securityConfig.adminName || 'Admin').catch(console.error);
+                            }}
+                          />
+                          <div className="space-y-1">
+                            <div className="text-xs sm:text-sm font-bold text-zinc-800 flex items-center gap-1.5">
+                              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>Bỏ qua khi Admin trực tiếp bán</span>
+                            </div>
+                            <div className="text-[11px] sm:text-xs text-zinc-500 leading-snug">
+                              Nếu tài khoản Chủ tiệm (Admin) đang đăng nhập POS, tự động thông qua mà không cần chờ duyệt
+                            </div>
+                          </div>
+                          <div className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                            isSkipAdmin ? 'bg-amber-600' : 'bg-zinc-300'
+                          }`}>
+                            <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                              isSkipAdmin ? 'translate-x-5' : 'translate-x-0'
+                            }`} />
+                          </div>
+                        </label>
+                      );
+                    })()}
 
-                    <label className="flex items-center gap-3 p-3 rounded-xl bg-white border border-amber-200/80 cursor-pointer hover:border-amber-400 transition">
-                      <input
-                        type="checkbox"
-                        checked={transferVerifyConfig.two_step?.alertSound ?? transferVerifyConfig.twoStep?.alertSound ?? true}
-                        onChange={(e) => {
-                          const isAlert = e.target.checked;
-                          const updatedSettings = {
-                            skipForAdmin: transferVerifyConfig.two_step?.skipForAdmin ?? transferVerifyConfig.twoStep?.skipForAdmin ?? true,
-                            alertSound: isAlert,
-                            autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? transferVerifyConfig.twoStep?.autoCompleteOnApprove ?? true,
-                          };
-                          const updatedConfig = {
-                            ...transferVerifyConfig,
-                            two_step: updatedSettings,
-                            twoStep: updatedSettings,
-                          };
-                          setTransferVerifyConfig(updatedConfig);
-                          saveTransferVerificationConfigLocally(updatedConfig);
-                          saveTransferVerificationConfigToDb(updatedConfig, securityConfig.adminName || 'Admin').catch(console.error);
-                        }}
-                        className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
-                      />
-                      <div>
-                        <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
-                          <Volume2 className="w-3.5 h-3.5 text-amber-600" /> Chuông Cảnh Báo Cấp Báo
-                        </div>
-                        <div className="text-[10px] text-zinc-500">Phát âm thanh chuông ngân to rõ trên máy Admin khi có đơn cần duyệt</div>
-                      </div>
-                    </label>
+                    {/* Chuông Cảnh Báo Cấp Báo */}
+                    {(() => {
+                      const isAlert = transferVerifyConfig.two_step?.alertSound ?? transferVerifyConfig.twoStep?.alertSound ?? true;
+                      return (
+                        <label className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 min-h-[64px] active:scale-[0.99] ${
+                          isAlert ? 'bg-amber-500/10 border-amber-300 shadow-xs' : 'bg-white border-zinc-200 hover:border-amber-200'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            className="sr-only"
+                            checked={isAlert}
+                            onChange={(e) => {
+                              const checkedVal = e.target.checked;
+                              const updatedSettings = {
+                                skipForAdmin: transferVerifyConfig.two_step?.skipForAdmin ?? transferVerifyConfig.twoStep?.skipForAdmin ?? true,
+                                alertSound: checkedVal,
+                                autoCompleteOnApprove: transferVerifyConfig.two_step?.autoCompleteOnApprove ?? transferVerifyConfig.twoStep?.autoCompleteOnApprove ?? true,
+                              };
+                              const updatedConfig = {
+                                ...transferVerifyConfig,
+                                two_step: updatedSettings,
+                                twoStep: updatedSettings,
+                              };
+                              setTransferVerifyConfig(updatedConfig);
+                              saveTransferVerificationConfigLocally(updatedConfig);
+                              saveTransferVerificationConfigToDb(updatedConfig, securityConfig.adminName || 'Admin').catch(console.error);
+                            }}
+                          />
+                          <div className="space-y-1">
+                            <div className="text-xs sm:text-sm font-bold text-zinc-800 flex items-center gap-1.5">
+                              <Volume2 className="w-4 h-4 text-amber-600 shrink-0" />
+                              <span>Chuông Cảnh Báo Cấp Báo</span>
+                            </div>
+                            <div className="text-[11px] sm:text-xs text-zinc-500 leading-snug">
+                              Phát âm thanh chuông ngân to rõ trên máy Admin khi có đơn chuyển khoản mới cần duyệt
+                            </div>
+                          </div>
+                          <div className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                            isAlert ? 'bg-amber-600' : 'bg-zinc-300'
+                          }`}>
+                            <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                              isAlert ? 'translate-x-5' : 'translate-x-0'
+                            }`} />
+                          </div>
+                        </label>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -8465,46 +8519,78 @@ export default function AdminDashboard() {
 
                 {/* Các tùy chọn phản hồi khi có tiền về */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
-                  <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                  <label className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 min-h-[64px] active:scale-[0.99] ${
+                    autoBankConfig.autoConfirmOrder ? 'bg-amber-500/10 border-amber-300 shadow-xs' : 'bg-white border-zinc-200 hover:border-amber-200'
+                  }`}>
                     <input
                       type="checkbox"
+                      className="sr-only"
                       checked={autoBankConfig.autoConfirmOrder}
                       onChange={(e) => setAutoBankConfig({ ...autoBankConfig, autoConfirmOrder: e.target.checked })}
-                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
                     />
-                    <div>
-                      <div className="text-xs font-bold text-zinc-800">Tự Động Đóng Đơn</div>
-                      <div className="text-[10px] text-zinc-500">Tự hoàn thành đơn tại POS khi nhận đủ tiền</div>
+                    <div className="space-y-1">
+                      <div className="text-xs sm:text-sm font-bold text-zinc-800 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Tự Động Đóng Đơn</span>
+                      </div>
+                      <div className="text-[11px] sm:text-xs text-zinc-500 leading-snug">Tự hoàn thành đơn tại POS khi nhận đủ tiền</div>
+                    </div>
+                    <div className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      autoBankConfig.autoConfirmOrder ? 'bg-amber-600' : 'bg-zinc-300'
+                    }`}>
+                      <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        autoBankConfig.autoConfirmOrder ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
                     </div>
                   </label>
 
-                  <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                  <label className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 min-h-[64px] active:scale-[0.99] ${
+                    autoBankConfig.soundAlert ? 'bg-amber-500/10 border-amber-300 shadow-xs' : 'bg-white border-zinc-200 hover:border-amber-200'
+                  }`}>
                     <input
                       type="checkbox"
+                      className="sr-only"
                       checked={autoBankConfig.soundAlert}
                       onChange={(e) => setAutoBankConfig({ ...autoBankConfig, soundAlert: e.target.checked })}
-                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
                     />
-                    <div>
-                      <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
-                        <Volume2 className="w-3.5 h-3.5 text-amber-600" /> Chuông Ting Ting
+                    <div className="space-y-1">
+                      <div className="text-xs sm:text-sm font-bold text-zinc-800 flex items-center gap-1.5">
+                        <Volume2 className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Chuông Ting Ting</span>
                       </div>
-                      <div className="text-[10px] text-zinc-500">Phát âm thanh ngân vang tươi sáng báo nhận tiền</div>
+                      <div className="text-[11px] sm:text-xs text-zinc-500 leading-snug">Phát âm thanh ngân vang tươi sáng báo nhận tiền</div>
+                    </div>
+                    <div className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      autoBankConfig.soundAlert ? 'bg-amber-600' : 'bg-zinc-300'
+                    }`}>
+                      <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        autoBankConfig.soundAlert ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
                     </div>
                   </label>
 
-                  <label className="flex items-center gap-3 p-3 rounded-2xl border border-zinc-200 hover:border-amber-400 bg-zinc-50 cursor-pointer transition">
+                  <label className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 min-h-[64px] active:scale-[0.99] ${
+                    autoBankConfig.speechAlert ? 'bg-amber-500/10 border-amber-300 shadow-xs' : 'bg-white border-zinc-200 hover:border-amber-200'
+                  }`}>
                     <input
                       type="checkbox"
+                      className="sr-only"
                       checked={autoBankConfig.speechAlert}
                       onChange={(e) => setAutoBankConfig({ ...autoBankConfig, speechAlert: e.target.checked })}
-                      className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
                     />
-                    <div>
-                      <div className="text-xs font-bold text-zinc-800 flex items-center gap-1">
-                        <Mic className="w-3.5 h-3.5 text-amber-600" /> Giọng Nói Tiếng Việt
+                    <div className="space-y-1">
+                      <div className="text-xs sm:text-sm font-bold text-zinc-800 flex items-center gap-1.5">
+                        <Mic className="w-4 h-4 text-amber-600 shrink-0" />
+                        <span>Giọng Nói Tiếng Việt</span>
                       </div>
-                      <div className="text-[10px] text-zinc-500">Đọc số tiền và mã đơn: &quot;Đã nhận 150.000đ...&quot;</div>
+                      <div className="text-[11px] sm:text-xs text-zinc-500 leading-snug">Đọc số tiền và mã đơn: &quot;Đã nhận 150.000đ...&quot;</div>
+                    </div>
+                    <div className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                      autoBankConfig.speechAlert ? 'bg-amber-600' : 'bg-zinc-300'
+                    }`}>
+                      <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                        autoBankConfig.speechAlert ? 'translate-x-5' : 'translate-x-0'
+                      }`} />
                     </div>
                   </label>
                 </div>
@@ -8543,24 +8629,6 @@ export default function AdminDashboard() {
                 </div>
               </div>
             )}
-
-            {/* NÚT LƯU CẤU HÌNH XÁC THỰC CHUYỂN KHOẢN */}
-            <div className="pt-4 border-t border-zinc-100 flex items-center justify-between">
-              <button
-                type="button"
-                disabled={transferVerifySaving}
-                onClick={handleSaveTransferVerify}
-                className="px-6 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-black transition flex items-center gap-2 cursor-pointer shadow-md shadow-amber-600/20"
-              >
-                <Save className="w-4 h-4" />
-                <span>{transferVerifySaving ? 'Đang Lưu...' : 'Lưu Cấu Hình Xác Thực Chuyển Khoản'}</span>
-              </button>
-              {transferVerifySaved && (
-                <span className="text-xs font-bold text-emerald-600 flex items-center gap-1 animate-in fade-in">
-                  <CheckCircle2 className="w-4 h-4" /> Đã áp dụng trên toàn bộ thiết bị POS!
-                </span>
-              )}
-            </div>
           </div>
 
           {/* CƠ CHẾ KHẨN CẤP: XÁC NHẬN NGAY & CHỤP ẢNH BILL KHÁCH */}
@@ -8938,42 +9006,132 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            {/* CÀI ĐẶT BỔ TRỢ: MIỄN XÁC NHẬN CHO TÀI KHOẢN ADMIN */}
-            <div className="p-3.5 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-2">
+            {/* CÀI ĐẶT BỔ TRỢ: TÙY CHỌN DUYỆT ĐỔI TRẢ */}
+            <div className="p-4 bg-rose-50/50 rounded-2xl border border-rose-200 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="font-bold text-amber-950 text-xs flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-amber-600" /> Tùy Chọn Miễn Xác Nhận Cho Admin:
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
-                  Khuyên dùng
+                <h4 className="text-xs font-bold text-rose-900 uppercase tracking-wider flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-rose-600" /> Tùy Chọn Phê Duyệt Đổi Trả / Hoàn Tiền:
+                </h4>
+                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 border border-rose-200">
+                  Tùy chỉnh hệ thống
                 </span>
               </div>
-              <label className="flex items-center gap-3 p-3 bg-white border border-amber-200 rounded-xl cursor-pointer hover:border-amber-400 transition">
-                <input
-                  type="checkbox"
-                  checked={securityConfig.returnSkipForAdmin ?? true}
-                  onChange={(e) => {
-                    const isSkip = e.target.checked;
-                    updateReturnSkipForAdmin(isSkip);
-                    setSecurityMsg({
-                      type: 'success',
-                      text: isSkip
-                        ? 'Đã bật: Tài khoản Admin sẽ được duyệt đổi trả tức thì tại POS!'
-                        : 'Đã tắt: Mọi tài khoản (kể cả Admin) đều phải xác nhận khi đổi trả.',
-                    });
-                    setTimeout(() => setSecurityMsg(null), 4000);
-                  }}
-                  className="w-4 h-4 accent-amber-600 rounded cursor-pointer"
-                />
-                <div>
-                  <div className="text-xs font-bold text-zinc-900">
-                    Tài khoản Admin không cần xác nhận thêm khi thao tác đổi trả
-                  </div>
-                  <div className="text-[11px] text-zinc-500">
-                    Khi bật, nếu người đứng quầy đăng nhập bằng tài khoản Chủ Tiệm (Admin), hệ thống sẽ tự động hoàn tất ngay mà không cần hỏi mật khẩu Admin hay gửi thông báo.
-                  </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* 1. Miễn xác nhận cho tài khoản Admin */}
+                {(() => {
+                  const isSkipAdmin = securityConfig.returnSkipForAdmin ?? true;
+                  return (
+                    <label className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 min-h-[64px] active:scale-[0.99] ${
+                      isSkipAdmin ? 'bg-rose-500/10 border-rose-300 shadow-xs' : 'bg-white border-zinc-200 hover:border-rose-200'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={isSkipAdmin}
+                        onChange={(e) => {
+                          const isSkip = e.target.checked;
+                          updateReturnSkipForAdmin(isSkip);
+                          setSecurityMsg({
+                            type: 'success',
+                            text: isSkip
+                              ? 'Đã bật: Tài khoản Admin sẽ được duyệt đổi trả tức thì tại POS!'
+                              : 'Đã tắt: Mọi tài khoản (kể cả Admin) đều phải xác nhận khi đổi trả.',
+                          });
+                          setTimeout(() => setSecurityMsg(null), 4000);
+                        }}
+                      />
+                      <div className="space-y-1">
+                        <div className="text-xs sm:text-sm font-bold text-zinc-900 flex items-center gap-1.5">
+                          <UserCheck className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>Miễn xác nhận cho tài khoản Admin</span>
+                        </div>
+                        <div className="text-[11px] sm:text-xs text-zinc-500 leading-snug">
+                          Khi Chủ Tiệm (Admin) trực tiếp thao tác tại quầy POS, hệ thống sẽ duyệt hoàn tất ngay lập tức
+                        </div>
+                      </div>
+                      <div className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                        isSkipAdmin ? 'bg-rose-600' : 'bg-zinc-300'
+                      }`}>
+                        <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          isSkipAdmin ? 'translate-x-5' : 'translate-x-0'
+                        }`} />
+                      </div>
+                    </label>
+                  );
+                })()}
+
+                {/* 2. Âm thanh thông báo khi có yêu cầu đổi trả */}
+                {(() => {
+                  const isSoundAlert = securityConfig.returnSoundAlert ?? true;
+                  return (
+                    <label className={`p-3.5 sm:p-4 rounded-2xl border transition-all cursor-pointer select-none flex items-center justify-between gap-3 min-h-[64px] active:scale-[0.99] ${
+                      isSoundAlert ? 'bg-rose-500/10 border-rose-300 shadow-xs' : 'bg-white border-zinc-200 hover:border-rose-200'
+                    }`}>
+                      <input
+                        type="checkbox"
+                        className="sr-only"
+                        checked={isSoundAlert}
+                        onChange={(e) => {
+                          const isAlert = e.target.checked;
+                          updateReturnSoundAlert(isAlert);
+                          setSecurityMsg({
+                            type: 'success',
+                            text: isAlert
+                              ? 'Đã bật: Âm thanh thông báo chuông cấp báo khi có yêu cầu đổi trả!'
+                              : 'Đã tắt: Âm thanh thông báo khi có yêu cầu đổi trả.',
+                          });
+                          setTimeout(() => setSecurityMsg(null), 4000);
+                        }}
+                      />
+                      <div className="space-y-1">
+                        <div className="text-xs sm:text-sm font-bold text-zinc-900 flex items-center gap-1.5">
+                          <Volume2 className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>Âm thanh chuông báo đổi trả</span>
+                        </div>
+                        <div className="text-[11px] sm:text-xs text-zinc-500 leading-snug">
+                          Phát âm thanh chuông cảnh báo cấp báo trên thiết bị Admin khi nhân viên POS gửi yêu cầu duyệt đổi trả
+                        </div>
+                      </div>
+                      <div className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${
+                        isSoundAlert ? 'bg-rose-600' : 'bg-zinc-300'
+                      }`}>
+                        <span className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                          isSoundAlert ? 'translate-x-5' : 'translate-x-0'
+                        }`} />
+                      </div>
+                    </label>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* NÚT LƯU CÀI ĐẶT PHÊ DUYỆT TỔNG HỢP (CHUYỂN KHOẢN & ĐỔI TRẢ) */}
+            <div className="pt-6 border-t-2 border-zinc-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <button
+                type="button"
+                disabled={transferVerifySaving}
+                onClick={handleSaveTransferVerify}
+                className="w-full sm:w-auto px-8 py-3.5 rounded-2xl bg-gradient-to-r from-amber-600 via-orange-600 to-rose-600 hover:from-amber-700 hover:via-orange-700 hover:to-rose-700 disabled:opacity-50 text-white text-sm font-black transition flex items-center justify-center gap-2.5 cursor-pointer shadow-lg shadow-amber-600/20 active:scale-[0.99]"
+              >
+                {transferVerifySaving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>Đang Lưu Cài Đặt Toàn Hệ Thống...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>Lưu Cài Đặt Phê Duyệt (Chuyển Khoản &amp; Đổi Trả)</span>
+                  </>
+                )}
+              </button>
+              {transferVerifySaved && (
+                <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-emerald-700 bg-emerald-50 px-4 py-2.5 rounded-2xl border border-emerald-200 animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Đã áp dụng và đồng bộ cấu hình phê duyệt trên toàn bộ thiết bị POS!</span>
                 </div>
-              </label>
+              )}
             </div>
           </div>
         </div>

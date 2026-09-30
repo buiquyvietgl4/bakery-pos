@@ -123,6 +123,7 @@ export interface SecurityConfig {
   managerPin?: string; // Mã PIN Quản lý duyệt đổi trả / chi tiền / hủy đơn
   returnApprovalMode?: ReturnApprovalMode; // 1: 'pin' (Xác nhận mã), 2: 'admin_approval' (Gửi thông báo duyệt)
   returnSkipForAdmin?: boolean; // Tùy chọn bỏ qua xác nhận đổi trả nếu tài khoản đang thao tác là Admin
+  returnSoundAlert?: boolean; // Tùy chọn bật/tắt âm thanh thông báo khi có yêu cầu đổi trả
   permissions?: RolePermissionsConfig;
   accounts?: UserAccount[]; // Danh sách tài khoản người dùng cá nhân trong hệ thống
   forceLogoutAt?: string; // Mốc thời gian bắt buộc đăng xuất tất cả các thiết bị
@@ -181,6 +182,7 @@ const DEFAULT_SECURITY_CONFIG: SecurityConfig = {
   managerPin: '8888',
   returnApprovalMode: 'pin',
   returnSkipForAdmin: true,
+  returnSoundAlert: true,
   permissions: DEFAULT_PERMISSIONS,
   accounts: getDefaultAccounts(),
 };
@@ -214,6 +216,7 @@ export async function fetchSecurityConfigFromDb(): Promise<SecurityConfig | null
           ...parsed,
           accounts: resolvedAccounts,
           returnSkipForAdmin: parsed.returnSkipForAdmin !== undefined ? Boolean(parsed.returnSkipForAdmin) : true,
+          returnSoundAlert: parsed.returnSoundAlert !== undefined ? Boolean(parsed.returnSoundAlert) : true,
           permissions: {
             admin: { ...DEFAULT_PERMISSIONS.admin, ...(parsed.permissions?.admin || {}) },
             manager: { ...DEFAULT_PERMISSIONS.manager, ...(parsed.permissions?.manager || {}) },
@@ -384,6 +387,7 @@ interface AuthContextType {
   updateManagerPin: (newPin: string) => { success: boolean; error?: string };
   updateReturnApprovalMode: (mode: ReturnApprovalMode) => { success: boolean };
   updateReturnSkipForAdmin: (skip: boolean) => { success: boolean };
+  updateReturnSoundAlert: (enabled: boolean) => { success: boolean };
   resetAdminPasswordWithRecoveryKey: (recoveryKeyOrPhone: string, newPassword?: string) => Promise<{ success: boolean; message?: string; error?: string }>;
   updateAdminRecoveryKey: (newKey: string, newRecoveryPhone?: string) => { success: boolean; error?: string };
   forceResetAdminToDefault: () => { success: boolean };
@@ -431,6 +435,7 @@ const AuthContext = createContext<AuthContextType>({
   updateManagerPin: () => ({ success: false }),
   updateReturnApprovalMode: () => ({ success: false }),
   updateReturnSkipForAdmin: () => ({ success: false }),
+  updateReturnSoundAlert: () => ({ success: false }),
   resetAdminPasswordWithRecoveryKey: async () => ({ success: false }),
   updateAdminRecoveryKey: () => ({ success: false }),
   forceResetAdminToDefault: () => ({ success: false }),
@@ -915,6 +920,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const updated: SecurityConfig = {
       ...securityConfig,
       returnSkipForAdmin: Boolean(skip),
+    };
+    saveSecurityConfig(updated);
+    return { success: true };
+  };
+
+  const updateReturnSoundAlert = (enabled: boolean) => {
+    const updated: SecurityConfig = {
+      ...securityConfig,
+      returnSoundAlert: Boolean(enabled),
     };
     saveSecurityConfig(updated);
     return { success: true };
@@ -1414,6 +1428,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateManagerPin,
         updateReturnApprovalMode,
         updateReturnSkipForAdmin,
+        updateReturnSoundAlert,
         resetAdminPasswordWithRecoveryKey,
         updateAdminRecoveryKey,
         forceResetAdminToDefault,
