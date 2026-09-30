@@ -52,5 +52,7 @@ SQL backup/
 config.yml
 .local_emergency_otp.json
 .local_sql_server_state.json
+/archives/
+/docs/
 .active_database_profile.json
 
