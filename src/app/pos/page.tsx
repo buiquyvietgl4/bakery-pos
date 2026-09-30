@@ -7271,6 +7271,7 @@ export default function POSPage() {
                       khach_hang: inv.customer_name || inv.customerName || 'Khách vãng lai',
                       sdt: inv.customer_phone || inv.customerPhone || '',
                       tong_tien: inv.total_amount || inv.totalPrice || 0,
+                      tien_coc: inv.deposit_amount !== undefined ? inv.deposit_amount : (inv.depositAmount || 0),
                       hinh_thuc: (() => {
                         const m = String(
                           inv.payment_method ||
@@ -7286,6 +7287,7 @@ export default function POSPage() {
                         if (m === 'transfer' || m === 'bank' || m === 'vietqr') return 'Chuyển khoản VietQR';
                         return 'Tiền mặt';
                       })(),
+                      trang_thai: inv.status === 'completed' ? 'Hoàn tất' : inv.status === 'ready' ? 'Sẵn sàng giao' : 'Đang xử lý',
                     }));
                     exportToCSV('lich_su_hoa_don_tiem_banh', [
                       { header: 'STT', key: 'stt' },

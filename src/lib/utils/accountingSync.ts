@@ -12,6 +12,7 @@ export interface ExpenseItem {
   description: string;
   date: string;
   paymentMethod?: 'cash' | 'bank';
+  payment_source?: 'cash' | 'bank';
 }
 
 export interface CashflowTransaction {

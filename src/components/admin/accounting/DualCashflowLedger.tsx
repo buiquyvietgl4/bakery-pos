@@ -8,13 +8,14 @@ import {
 } from 'lucide-react';
 import { isOrderCash, getOrderPaymentMethod } from './AccountingOverview';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
+import { exportMultiSheetExcel, ExcelSheet } from '@/lib/utils/exportExcel';
 
 export interface DualCashflowLedgerProps {
   orders: any[];
   expenses: any[];
   cashflow: any[];
   onAddCashflowTransaction?: (tx: any) => void;
-  onExportCashflow: () => void;
+  onExportCashflow?: () => void;
   periodLabel: string;
   startDateMs: number;
   endDateMs: number;
@@ -324,6 +325,64 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
     setTxDesc('');
   };
 
+  const formatVND = (val: number) => (Number(val) || 0).toLocaleString('vi-VN') + '₫';
+
+  // ── XUẤT SỔ QUỸ KÉP RA EXCEL (.XLSX) KHỚP 100% SỐ LIỆU ĐANG HIỂN THỊ ──
+  const handleExportCashflow_Direct = () => {
+    const safeLabel = (periodLabel || 'Ky_Ke_Toan').replace(/[/\\?%*:|"<> ()]/g, '_');
+    const listToExport = filteredTransactions;
+
+    const totalIncome = listToExport
+      .filter((t) => t.type === 'income')
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+
+    const totalExpense = listToExport
+      .filter((t) => t.type === 'expense')
+      .reduce((s, t) => s + Number(t.amount || 0), 0);
+
+    const sourceLabel =
+      filterSource === 'cash' ? 'Quỹ Tiền Mặt' :
+      filterSource === 'bank' ? 'Tài Khoản VietQR / Ngân Hàng' : 'Tất Cả Nguồn Quỹ';
+
+    const typeLabel =
+      filterType === 'income' ? 'Chỉ Phiếu Thu' :
+      filterType === 'expense' ? 'Chỉ Phiếu Chi' : 'Tất Cả Thu & Chi';
+
+    const sheetLedger: ExcelSheet = {
+      name: 'So_Quy_Dong_Tien',
+      title: 'SỔ QUỸ KÉP THEO DÕI DÒNG TIỀN (TIỀN MẶT & TÀI KHOẢN NGÂN HÀNG)',
+      subtitles: [
+        `Kỳ kế toán: ${periodLabel}`,
+        `Bộ lọc áp dụng: ${sourceLabel} | ${typeLabel}${searchTerm ? ` | Tìm kiếm: "${searchTerm}"` : ''}`,
+        `Số lượng giao dịch trong danh sách: ${listToExport.length} giao dịch`,
+        `Tổng Thu vào: ${formatVND(totalIncome)} | Tổng Chi ra: ${formatVND(totalExpense)} | Dòng tiền ròng: ${formatVND(totalIncome - totalExpense)}`,
+        `Tồn Quỹ Tiền Mặt: ${formatVND(totalCashBalance)} | Tồn Quỹ VietQR/Bank: ${formatVND(totalBankBalance)} | Tổng thanh khoản: ${formatVND(totalLiquidityFull)}`,
+      ],
+      columns: [
+        { header: 'STT', key: 'stt', width: 50, type: 'number' },
+        { header: 'Thời Gian', key: 'ngay', width: 140, type: 'string' },
+        { header: 'Nguồn Quỹ', key: 'nguon_quy', width: 130, type: 'string' },
+        { header: 'Phân Loại', key: 'loai_gd', width: 100, type: 'string' },
+        { header: 'Hạng Mục', key: 'hang_muc', width: 180, type: 'string' },
+        { header: 'Diễn Giải Chi Tiết', key: 'dien_giai', width: 280, type: 'string' },
+        { header: 'Thu Vào (VNĐ)', key: 'thu_vao', width: 140, type: 'currency' },
+        { header: 'Chi Ra (VNĐ)', key: 'chi_ra', width: 140, type: 'currency' },
+      ],
+      data: listToExport.map((t, idx) => ({
+        stt: idx + 1,
+        ngay: t.date ? new Date(t.date).toLocaleString('vi-VN') : '',
+        nguon_quy: t.source === 'cash' ? 'Tiền mặt' : 'VietQR / Bank',
+        loai_gd: t.type === 'income' ? 'Thu vào' : 'Chi ra',
+        hang_muc: t.category || '',
+        dien_giai: t.desc || '',
+        thu_vao: t.type === 'income' ? Number(t.amount || 0) : 0,
+        chi_ra: t.type === 'expense' ? Number(t.amount || 0) : 0,
+      })),
+    };
+
+    exportMultiSheetExcel(`So_Quy_Dong_Tien_${safeLabel}_${Date.now()}`, [sheetLedger]);
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
 
@@ -459,10 +518,11 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
 
             <button
               type="button"
-              onClick={onExportCashflow}
+              onClick={handleExportCashflow_Direct}
               className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold text-xs flex items-center gap-1 transition cursor-pointer shadow-xs"
+              title="Xuất sổ quỹ dòng tiền theo bộ lọc (Khớp 100% dữ liệu hiển thị)"
             >
-              <FileSpreadsheet className="w-3.5 h-3.5" /> Xuất Excel Sổ Quỹ
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" /> Xuất Excel Sổ Quỹ
             </button>
           </div>
         </div>

@@ -135,7 +135,7 @@ export function exportFullTaxBooksExcel(
       { header: 'Thuế GTGT (VNĐ)', key: 'vat_amount', width: 120, type: 'currency' },
       { header: 'Thuế TNCN (VNĐ)', key: 'pit_amount', width: 120, type: 'currency' },
     ],
-    data: s2aData.rows.slice(0, 500),
+    data: s2aData.rows,
   });
 
   // Sheet 2: S2c-HKD Doanh thu chi phí
@@ -164,7 +164,7 @@ export function exportFullTaxBooksExcel(
       { header: 'Doanh thu vào (VNĐ)', key: 'income', width: 150, type: 'currency' },
       { header: 'Chi phí ra (VNĐ)', key: 'expense', width: 150, type: 'currency' },
     ],
-    data: s2cData.slice(0, 500),
+    data: s2cData,
   });
 
   // Sheet 3: S2d-HKD Vật tư kho

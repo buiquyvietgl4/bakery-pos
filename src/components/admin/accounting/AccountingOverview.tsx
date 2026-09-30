@@ -7,6 +7,7 @@ import {
   RefreshCw, DollarSign, Wallet, ShieldCheck, Printer, ArrowRight,
   Calendar, Sparkles, Award, Camera, X
 } from 'lucide-react';
+import { exportMultiSheetExcel, ExcelSheet } from '@/lib/utils/exportExcel';
 
 export interface AccountingOverviewProps {
   orders: any[];
@@ -19,9 +20,9 @@ export interface AccountingOverviewProps {
   endDateMs: number;
   prevStartDateMs?: number;
   prevEndDateMs?: number;
-  onExportPL: () => void;
-  onExportSales: () => void;
-  onExportFull: () => void;
+  onExportPL?: () => void;
+  onExportSales?: () => void;
+  onExportFull?: () => void;
   onOpenCashflow?: () => void;
   onOpenOpex?: () => void;
   onOpenClosing?: () => void;
@@ -243,6 +244,7 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   // 6. Lợi nhuận ròng (Net Profit)
   const netProfit = grossProfit - totalOpex - spoilageCost;
   const netMarginPct = totalRevenue > 0 ? ((netProfit / totalRevenue) * 100).toFixed(1) : '0.0';
+  const grossMarginPct = totalRevenue > 0 ? ((grossProfit / totalRevenue) * 100).toFixed(1) : '0.0';
 
   // Tỷ lệ % trên doanh thu
   const cogsPct = totalRevenue > 0 ? ((totalCOGS / totalRevenue) * 100).toFixed(1) : '0.0';
@@ -358,6 +360,175 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
     if (datePreset === 'today') return 'vs. Hôm qua';
     return 'vs. Month';
   }, [datePreset]);
+
+  // ── XUẤT BÁO CÁO P&L CHI TIẾT RA EXCEL (KHỚP 100% SỐ LIỆU ĐANG HIỂN THỊ TRÊN MÀN HÌNH) ──
+  const handleExportPL_Direct = () => {
+    const safeLabel = (periodLabel || 'Ky_Ke_Toan').replace(/[/\\?%*:|"<> ()]/g, '_');
+
+    // Sheet 1: Báo cáo P&L
+    const sheetPL: ExcelSheet = {
+      name: 'Bao_Cao_PL_Chi_Tiet',
+      title: 'BÁO CÁO KẾT QUẢ HOẠT ĐỘNG KINH DOANH (P&L)',
+      subtitles: [
+        `Kỳ báo cáo: ${periodLabel}`,
+        `Thời điểm kết xuất: ${new Date().toLocaleString('vi-VN')}`,
+        `Số lượng đơn hàng thực tế phát sinh: ${periodOrders.length} đơn`,
+      ],
+      columns: [
+        { header: 'Chỉ Tiêu Kế Toán Tài Chính', key: 'chi_tieu', width: 260, type: 'string' },
+        { header: 'Số Tiền (VNĐ)', key: 'gia_tri', width: 140, type: 'currency' },
+        { header: 'Tỷ Trọng (%)', key: 'ty_le', width: 110, type: 'string' },
+        { header: 'Diễn Giải Chi Tiết', key: 'ghi_chu', width: 280, type: 'string' },
+      ],
+      data: [
+        { chi_tieu: 'I. TỔNG DOANH THU THUẦN', gia_tri: totalRevenue, ty_le: '100.0%', ghi_chu: `Tổng ${periodOrders.length} đơn hàng trong kỳ (${periodLabel})` },
+        { chi_tieu: '   1. Doanh thu Tiền mặt tại quầy', gia_tri: cashRevenue, ty_le: totalRevenue > 0 ? `${((cashRevenue / totalRevenue) * 100).toFixed(1)}%` : '0.0%', ghi_chu: 'Khách thanh toán tiền mặt tại quầy POS' },
+        { chi_tieu: '   2. Doanh thu Chuyển khoản / VietQR / Ví', gia_tri: bankRevenue, ty_le: totalRevenue > 0 ? `${((bankRevenue / totalRevenue) * 100).toFixed(1)}%` : '0.0%', ghi_chu: 'Khách thanh toán VietQR, MoMo, Thẻ ngân hàng' },
+        { chi_tieu: 'II. GIÁ VỐN HÀNG BÁN (COGS)', gia_tri: -totalCOGS, ty_le: totalRevenue > 0 ? `${cogsPct}%` : '0.0%', ghi_chu: 'Định mức BOM nguyên vật liệu sản xuất bánh (~36.5%)' },
+        { chi_tieu: '   1. Chi phí Bột mì, bơ, sữa, kem & nguyên liệu', gia_tri: -flourCost, ty_le: totalRevenue > 0 ? `${((flourCost / (totalRevenue || 1)) * 100).toFixed(1)}%` : '0.0%', ghi_chu: '~70% giá vốn nguyên vật liệu chính' },
+        { chi_tieu: '   2. Chi phí Bao bì hộp bánh, dao nến & phụ kiện', gia_tri: -milkPackagingCost, ty_le: totalRevenue > 0 ? `${((milkPackagingCost / (totalRevenue || 1)) * 100).toFixed(1)}%` : '0.0%', ghi_chu: '~30% giá vốn hoàn thiện đóng gói' },
+        { chi_tieu: 'III. LỢI NHUẬN GỘP (GROSS PROFIT)', gia_tri: grossProfit, ty_le: totalRevenue > 0 ? `${grossMarginPct}%` : '0.0%', ghi_chu: 'Lợi nhuận gộp sau khi trừ giá vốn' },
+        { chi_tieu: 'IV. CHI PHÍ VẬN HÀNH (OPEX)', gia_tri: -totalOpex, ty_le: totalRevenue > 0 ? `${opexPct}%` : '0.0%', ghi_chu: `Tổng ${periodExpenses.length} khoản chi phí phát sinh trong kỳ` },
+        { chi_tieu: '   1. Lương nhân viên & thợ bánh', gia_tri: -salaryExpense, ty_le: totalRevenue > 0 ? `${salaryPct}%` : '0.0%', ghi_chu: 'Chi phí nhân sự' },
+        { chi_tieu: '   2. Tiền thuê mặt bằng tiệm bánh', gia_tri: -rentExpense, ty_le: totalRevenue > 0 ? `${rentPct}%` : '0.0%', ghi_chu: 'Chi phí mặt bằng cố định' },
+        { chi_tieu: '   3. Điện, nước, gas & chi phí khác', gia_tri: -utilityExpense, ty_le: totalRevenue > 0 ? `${utilityPct}%` : '0.0%', ghi_chu: 'Chi phí vận hành biến đổi' },
+        { chi_tieu: 'V. HAO HỤT & THIỆT HẠI BÁNH HỎNG', gia_tri: -spoilageCost, ty_le: totalRevenue > 0 ? `${spoilagePct}%` : '0.0%', ghi_chu: `${spoilageQty} cái bánh hủy/hết hạn ghi nhận trong kỳ` },
+        { chi_tieu: 'VI. LỢI NHUẬN RÒNG (NET PROFIT)', gia_tri: netProfit, ty_le: totalRevenue > 0 ? `${netMarginPct}%` : '0.0%', ghi_chu: 'Lợi nhuận ròng thực nhận của tiệm bánh' },
+      ],
+      notes: [
+        `Ghi chú: Báo cáo được trích xuất từ dữ liệu kế toán thực tế theo kỳ [${periodLabel}].`,
+        `Người lập báo cáo: Kế toán trưởng / Quản lý tiệm bánh.`,
+      ],
+    };
+
+    // Sheet 2: Chi tiết chi phí OPEX trong kỳ
+    const sheetExpenses: ExcelSheet = {
+      name: 'Chi_Tiet_Chi_Phi_OPEX',
+      title: 'BẢNG KÊ CHI TIẾT CHI PHÍ VẬN HÀNH TRONG KỲ',
+      subtitles: [
+        `Kỳ báo cáo: ${periodLabel}`,
+        `Tổng chi phí OPEX: ${formatVND(totalOpex)} (${periodExpenses.length} khoản chi)`,
+      ],
+      columns: [
+        { header: 'STT', key: 'stt', width: 60, type: 'number' },
+        { header: 'Ngày Chi', key: 'ngay', width: 110, type: 'string' },
+        { header: 'Khoản Mục Chi Phí', key: 'category', width: 180, type: 'string' },
+        { header: 'Nội Dung Diễn Giải', key: 'description', width: 240, type: 'string' },
+        { header: 'Nguồn Tiền Chi', key: 'source', width: 130, type: 'string' },
+        { header: 'Số Tiền (VNĐ)', key: 'amount', width: 130, type: 'currency' },
+      ],
+      data: periodExpenses.map((e, idx) => ({
+        stt: idx + 1,
+        ngay: e.date || '',
+        category: e.category || 'Chi phí',
+        description: e.description || e.desc || '',
+        source: e.payment_source === 'bank' ? 'Chuyển khoản (VietQR)' : 'Tiền mặt tại két',
+        amount: Number(e.amount || 0),
+      })),
+    };
+
+    // Sheet 3: Chi tiết bánh hỏng / hao hụt trong kỳ
+    const sheetSpoilage: ExcelSheet = {
+      name: 'Chi_Tiet_Banh_Huy_Hao_Hut',
+      title: 'BẢNG KÊ CHI TIẾT THIỆT HẠI BÁNH HỎNG / HAO HỤT TRONG KỲ',
+      subtitles: [
+        `Kỳ báo cáo: ${periodLabel}`,
+        `Tổng thiệt hại: ${formatVND(spoilageCost)} (${spoilageQty} cái bánh)`,
+      ],
+      columns: [
+        { header: 'STT', key: 'stt', width: 60, type: 'number' },
+        { header: 'Thời Điểm Ghi Nhận', key: 'time', width: 140, type: 'string' },
+        { header: 'Tên Sản Phẩm Bánh', key: 'product', width: 220, type: 'string' },
+        { header: 'Số Lượng', key: 'qty', width: 90, type: 'number' },
+        { header: 'Lý Do Hủy', key: 'reason', width: 140, type: 'string' },
+        { header: 'Nhân Viên Báo Hủy', key: 'staff', width: 130, type: 'string' },
+        { header: 'Thiệt Hại Giá Vốn (VNĐ)', key: 'cost', width: 140, type: 'currency' },
+      ],
+      data: periodSpoilage.map((s, idx) => ({
+        stt: idx + 1,
+        time: s.loggedAt ? new Date(s.loggedAt).toLocaleString('vi-VN') : '',
+        product: s.productName || 'Bánh',
+        qty: s.quantity || 1,
+        reason: s.reason === 'damaged' ? 'Lỗi/hỏng' : s.reason === 'expired' ? 'Cận date / Hết hạn' : (s.reason || 'Hao hụt'),
+        staff: s.loggedBy || 'Nhân viên',
+        cost: Number(s.totalCostLoss || 0),
+      })),
+    };
+
+    exportMultiSheetExcel(`Bao_Cao_Ket_Qua_Kinh_Doanh_PL_${safeLabel}_${Date.now()}`, [
+      sheetPL,
+      sheetExpenses,
+      sheetSpoilage,
+    ]);
+  };
+
+  // ── XUẤT NHẬT KÝ HÓA ĐƠN & DOANH THU TRONG KỲ (KHỚP DANH SÁCH HIỂN THỊ) ──
+  const handleExportSales_Direct = () => {
+    const safeLabel = (periodLabel || 'Ky_Ke_Toan').replace(/[/\\?%*:|"<> ()]/g, '_');
+    const listToExport = filteredOrders.length > 0 ? filteredOrders : periodOrders;
+
+    const sheetSales: ExcelSheet = {
+      name: 'Nhat_Ky_Hoa_Don',
+      title: 'NHẬT KÝ HÓA ĐƠN & DOANH THU BÁN HÀNG',
+      subtitles: [
+        `Kỳ báo cáo: ${periodLabel}`,
+        `Số lượng đơn hàng: ${listToExport.length} đơn`,
+        `Tổng doanh thu thuần: ${formatVND(listToExport.reduce((s, o) => s + getOrderNetRevenue(o), 0))}`,
+      ],
+      columns: [
+        { header: 'STT', key: 'stt', width: 50, type: 'number' },
+        { header: 'Mã Hóa Đơn', key: 'ma_don', width: 130, type: 'string' },
+        { header: 'Ngày Giờ', key: 'ngay', width: 130, type: 'string' },
+        { header: 'Phân Loại', key: 'loai_don', width: 110, type: 'string' },
+        { header: 'Hình Thức Nhận', key: 'hinh_thuc_nhan', width: 130, type: 'string' },
+        { header: 'Địa Chỉ Giao', key: 'dia_chi_ship', width: 200, type: 'string' },
+        { header: 'Thu Ngân', key: 'thu_ngan', width: 110, type: 'string' },
+        { header: 'Khách Hàng', key: 'khach_hang', width: 140, type: 'string' },
+        { header: 'Số Điện Thoại', key: 'sdt', width: 100, type: 'string' },
+        { header: 'Chi Tiết Sản Phẩm Bánh', key: 'san_pham', width: 240, type: 'string' },
+        { header: 'Doanh Thu Thuần', key: 'doanh_thu_thuan', width: 120, type: 'currency' },
+        { header: 'Tổng Tiền Đơn', key: 'tong_tien', width: 120, type: 'currency' },
+        { header: 'Tiền Cọc', key: 'da_coc', width: 110, type: 'currency' },
+        { header: 'Còn Thu Khi Giao', key: 'con_thu', width: 120, type: 'currency' },
+        { header: 'Hình Thức TT', key: 'hinh_thuc', width: 120, type: 'string' },
+        { header: 'Trạng Thái', key: 'trang_thai', width: 110, type: 'string' },
+      ],
+      data: listToExport.map((o: any, idx: number) => {
+        const isShip = (o.delivery_method || o.deliveryMethod) === 'shipping';
+        const total = Number(o.total_amount || o.totalPrice || 0);
+        const deposit = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
+        const remaining = Number(o.remaining_amount !== undefined ? o.remaining_amount : (o.remainingAmount || (total - deposit)));
+        const method = getOrderPaymentMethod(o);
+        const methodLabel =
+          method === 'cash' ? 'Tiền mặt' :
+          method === 'transfer' ? 'VietQR / CK' :
+          method === 'momo' ? 'Ví MoMo' :
+          method === 'split' ? 'Kết hợp (TM+CK)' :
+          method === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
+
+        return {
+          stt: idx + 1,
+          ma_don: o.order_number || o.orderNumber || `BK-${idx + 1}`,
+          ngay: o.created_at ? new Date(o.created_at).toLocaleString('vi-VN') : '',
+          loai_don: o.order_type === 'preorder' || o.pickupDateTime ? 'Đặt bánh' : 'Tại quầy',
+          hinh_thuc_nhan: isShip ? 'Giao tận nơi (Ship)' : (o.order_type === 'preorder' ? 'Lấy tại tiệm' : 'Tại quầy'),
+          dia_chi_ship: o.shipping_address || o.shippingAddress || '',
+          thu_ngan: o.cashier || 'Thu Ngân',
+          khach_hang: o.customer_name || o.customerName || 'Khách lẻ',
+          sdt: o.customer_phone || o.customerPhone || '',
+          san_pham: Array.isArray(o.items) ? o.items.map((i: any) => `${i.quantity}x ${i.product_name_snapshot || i.name}`).join('; ') : o.cakeName || '',
+          doanh_thu_thuan: getOrderNetRevenue(o),
+          tong_tien: total,
+          da_coc: deposit,
+          con_thu: remaining,
+          hinh_thuc: methodLabel,
+          trang_thai: o.status === 'completed' ? 'Hoàn tất' : o.status === 'ready' ? 'Sẵn sàng giao' : 'Đang xử lý',
+        };
+      }),
+    };
+
+    exportMultiSheetExcel(`Nhat_Ky_Hoa_Don_Doanh_Thu_${safeLabel}_${Date.now()}`, [sheetSales]);
+  };
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
@@ -697,9 +868,9 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                 Báo Cáo Kết Quả Kinh Doanh (P&L) Chi Tiết
               </h3>
               <button
-                onClick={onExportPL}
+                onClick={handleExportPL_Direct}
                 className="text-[11px] font-bold text-zinc-500 hover:text-emerald-700 flex items-center gap-1 transition cursor-pointer"
-                title="Xuất bảng P&L ra Excel"
+                title="Xuất bảng P&L ra Excel (Khớp 100% số liệu hiển thị)"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
                 <span>Xuất P&L</span>
@@ -1065,8 +1236,9 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
               </div>
 
               <button
-                onClick={onExportSales}
+                onClick={handleExportSales_Direct}
                 className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                title="Xuất bảng kê hóa đơn theo bộ lọc (Khớp 100% dữ liệu hiển thị)"
               >
                 <FileSpreadsheet className="w-3.5 h-3.5" />
                 <span>Xuất Excel</span>
