@@ -898,7 +898,19 @@ export function generateS2aLedger(
     const parts = rawDate.split('-');
     const voucherDate = parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : rawDate;
     const voucherNo = order.order_number || order.orderNumber || order.id || `HD-${String(orderIdx + 1).padStart(4, '0')}`;
-    const paymentMethod = order.payment_method || order.paymentMethod || 'Tiền mặt';
+    const rawMethod = String(order.payment_method || order.paymentMethod || '').toLowerCase().trim();
+    let paymentMethod = 'Tiền mặt';
+    if (rawMethod === 'transfer' || rawMethod === 'bank' || rawMethod === 'vietqr') {
+      paymentMethod = 'Chuyển khoản (VietQR)';
+    } else if (rawMethod === 'momo') {
+      paymentMethod = 'Ví MoMo';
+    } else if (rawMethod === 'split' || rawMethod === 'kết hợp') {
+      paymentMethod = 'Kết hợp (TM + CK)';
+    } else if (rawMethod === 'card') {
+      paymentMethod = 'Quẹt thẻ';
+    } else {
+      paymentMethod = 'Tiền mặt';
+    }
 
     // 1. Xác định tổng doanh thu của đơn hàng
     let orderRevenue = Number(order.total_amount ?? order.totalPrice ?? order.subtotal ?? 0);
@@ -1111,44 +1123,136 @@ export function generateS2eLedger(
   bankBalance: number;
   closingBalance: number;
 } {
-  let itemsToProcess = Array.isArray(cashflow) ? [...cashflow] : [];
+  const itemsToProcess: Array<{
+    originalId?: string;
+    rawDate: string;
+    isIncome: boolean;
+    amount: number;
+    desc: string;
+    fund_type: string;
+    source: 'cash' | 'bank';
+  }> = [];
 
-  // Nếu cashflow rỗng nhưng có orders hoặc expenses, tạo giao dịch tổng hợp từ orders và expenses
-  if (itemsToProcess.length === 0) {
-    if (Array.isArray(options?.orders) && options.orders.length > 0) {
-      options.orders.forEach((o: any) => {
-        const amt = Number(o.total_amount || o.totalPrice || 0);
-        if (amt <= 0) return;
-        const num = o.order_number || o.orderNumber || 'BK';
+  const processedOrderKeys = new Set<string>();
+  const processedExpKeys = new Set<string>();
+
+  // 1. Nạp các hóa đơn bán hàng POS (options.orders)
+  if (Array.isArray(options?.orders) && options.orders.length > 0) {
+    options.orders.forEach((o: any) => {
+      const amt = Number(o.total_amount || o.totalPrice || 0);
+      if (amt <= 0) return;
+      const num = o.order_number || o.orderNumber || 'BK';
+      const ordId = String(o.id || num);
+      processedOrderKeys.add(ordId);
+      processedOrderKeys.add(String(num));
+
+      const rawDate = (o.created_at || o.createdAt || new Date().toISOString()).slice(0, 10);
+      const customerName = o.customer_name || o.customerName || 'Khách lẻ';
+
+      // Xác định phương thức thanh toán chuẩn
+      const method = (
+        o.payment_method ||
+        o.paymentMethod ||
+        (Array.isArray(o.payments) && o.payments.length > 0 ? o.payments[0]?.method : 'cash') ||
+        'cash'
+      ).toString().toLowerCase().trim();
+
+      const isSplit = method === 'split' || (Array.isArray(o.payments) && o.payments.length > 1 && new Set(o.payments.map((p: any) => p.method)).size > 1);
+
+      if (isSplit) {
+        let cashAmt = Number(o.splitCashAmount || 0);
+        let transferAmt = Number(o.splitTransferAmount || 0);
+
+        if (!cashAmt && !transferAmt && Array.isArray(o.payments) && o.payments.length > 0) {
+          cashAmt = o.payments
+            .filter((p: any) => String(p.method).toLowerCase() === 'cash')
+            .reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+          transferAmt = o.payments
+            .filter((p: any) => String(p.method).toLowerCase() !== 'cash')
+            .reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+        }
+
+        if (cashAmt <= 0 && transferAmt <= 0) {
+          cashAmt = Math.round(amt / 2);
+          transferAmt = amt - cashAmt;
+        }
+
+        if (cashAmt > 0) {
+          itemsToProcess.push({
+            originalId: `ord-${ordId}-cash`,
+            rawDate,
+            isIncome: true,
+            amount: cashAmt,
+            desc: `Thu tiền mặt bán bánh đơn #${num} (${customerName})`,
+            fund_type: 'Quỹ tiền mặt (111)',
+            source: 'cash',
+          });
+        }
+        if (transferAmt > 0) {
+          itemsToProcess.push({
+            originalId: `ord-${ordId}-bank`,
+            rawDate,
+            isIncome: true,
+            amount: transferAmt,
+            desc: `Thu chuyển khoản VietQR đơn #${num} (${customerName})`,
+            fund_type: 'Ngân hàng VietQR (112)',
+            source: 'bank',
+          });
+        }
+      } else {
+        const isCash = method === 'cash' || method === 'tiền mặt' || method === 'tien mat';
         itemsToProcess.push({
-          id: 'ord-' + (o.id || num),
-          date: (o.created_at || o.createdAt || new Date().toISOString()).slice(0, 10),
-          type: 'income',
-          desc: `Thu tiền bán bánh đơn hàng #${num}`,
+          originalId: `ord-${ordId}`,
+          rawDate,
+          isIncome: true,
           amount: amt,
-          method: o.payment_method || o.paymentMethod || 'cash',
+          desc: isCash
+            ? `Thu tiền mặt bán bánh đơn #${num} (${customerName})`
+            : (method === 'momo' ? `Thu Ví MoMo đơn #${num} (${customerName})` : `Thu VietQR/CK đơn #${num} (${customerName})`),
+          fund_type: isCash ? 'Quỹ tiền mặt (111)' : 'Ngân hàng VietQR (112)',
+          source: isCash ? 'cash' : 'bank',
         });
-      });
-    }
-    if (Array.isArray(options?.expenses) && options.expenses.length > 0) {
-      options.expenses.forEach((e: any) => {
-        const amt = Number(e.amount || 0);
-        if (amt <= 0) return;
-        itemsToProcess.push({
-          id: 'exp-' + (e.id || Math.random()),
-          date: (e.date || new Date().toISOString()).slice(0, 10),
-          type: 'expense',
-          desc: e.description || e.category || 'Chi phí hoạt động',
-          amount: amt,
-          method: e.payment_source || e.paymentMethod || 'cash',
-        });
-      });
-    }
+      }
+    });
   }
 
-  // 1. Chuẩn hóa từng bản ghi và lọc theo khoảng ngày (nếu có)
-  const normalized = itemsToProcess
-    .map((c: any, index: number) => {
+  // 2. Nạp chi phí vận hành (options.expenses)
+  if (Array.isArray(options?.expenses) && options.expenses.length > 0) {
+    options.expenses.forEach((e: any) => {
+      const amt = Number(e.amount || 0);
+      if (amt <= 0) return;
+      const expId = String(e.id || Math.random());
+      processedExpKeys.add(expId);
+
+      const rawDate = (e.date || new Date().toISOString()).slice(0, 10);
+      const isBank = e.payment_source === 'bank' || String(e.method || '').toLowerCase() === 'bank' || String(e.method || '').toLowerCase() === 'transfer';
+
+      itemsToProcess.push({
+        originalId: `exp-${expId}`,
+        rawDate,
+        isIncome: false,
+        amount: amt,
+        desc: e.description || e.category || 'Chi phí hoạt động',
+        fund_type: isBank ? 'Ngân hàng VietQR (112)' : 'Quỹ tiền mặt (111)',
+        source: isBank ? 'bank' : 'cash',
+      });
+    });
+  }
+
+  // 3. Nạp các nghiệp vụ quỹ khác từ mảng cashflow (nạp/rút quỹ, thanh toán PO...)
+  if (Array.isArray(cashflow) && cashflow.length > 0) {
+    cashflow.forEach((c: any) => {
+      const cId = String(c.id || '');
+      if (cId.startsWith('ord-') || cId.startsWith('exp-')) {
+        const rawKey = cId.replace(/^(ord-|exp-)/, '').replace(/-(cash|bank)$/, '');
+        if (processedOrderKeys.has(rawKey) || processedExpKeys.has(rawKey)) {
+          return;
+        }
+      }
+
+      const amt = Math.abs(Number(c.amount || c.total_amount || 0));
+      if (amt <= 0) return;
+
       let rawDate = (c.date || c.created_at || c.createdAt || '').slice(0, 10);
       if (!rawDate || !rawDate.includes('-')) {
         rawDate = new Date().toISOString().slice(0, 10);
@@ -1161,20 +1265,30 @@ export function generateS2eLedger(
         typeStr === 'thu' ||
         (!typeStr && Number(c.amount || 0) > 0);
 
-      const amount = Math.abs(Number(c.amount || c.total_amount || 0));
-
       const desc =
         c.desc ||
         c.description ||
         c.title ||
         c.notes ||
         c.note ||
-        (isIncome ? 'Thu tiền bán hàng quầy POS' : 'Chi phí hoạt động kinh doanh');
+        (isIncome ? 'Thu tiền nghiệp vụ quỹ' : 'Chi tiền nghiệp vụ quỹ');
 
       const methodStr = String(
         c.method || c.wallet || c.payment_method || c.source || c.paymentMethod || ''
       ).toLowerCase();
       const descLower = desc.toLowerCase();
+
+      const isExplicitBank =
+        methodStr.includes('bank') ||
+        methodStr.includes('vietqr') ||
+        methodStr.includes('transfer') ||
+        methodStr.includes('chuyển khoản') ||
+        methodStr.includes('ngân hàng') ||
+        methodStr.includes('momo') ||
+        methodStr.includes('card') ||
+        descLower.includes('vietqr') ||
+        descLower.includes('ngân hàng') ||
+        descLower.includes('chuyển khoản');
 
       const isExplicitCash =
         methodStr.includes('cash') ||
@@ -1184,43 +1298,26 @@ export function generateS2eLedger(
         descLower.includes('tiền mặt') ||
         descLower.includes('quầy pos');
 
-      const isExplicitBank =
-        methodStr.includes('bank') ||
-        methodStr.includes('vietqr') ||
-        methodStr.includes('chuyển khoản') ||
-        methodStr.includes('ngân hàng') ||
-        descLower.includes('vietqr') ||
-        descLower.includes('ngân hàng') ||
-        descLower.includes('chuyển khoản');
+      const isCash = isExplicitCash ? true : (isExplicitBank ? false : isIncome);
 
-      let finalIsCash = false;
-      if (isExplicitBank) {
-        finalIsCash = false;
-      } else if (isExplicitCash) {
-        finalIsCash = true;
-      } else {
-        finalIsCash = c.category === 'sales' || isIncome;
-      }
-
-      const fund_type = finalIsCash ? 'Quỹ tiền mặt (111)' : 'Ngân hàng VietQR (112)';
-      const source: 'cash' | 'bank' = finalIsCash ? 'cash' : 'bank';
-
-      return {
-        originalId: c.id,
+      itemsToProcess.push({
+        originalId: c.id || `cf-${Math.random()}`,
         rawDate,
         isIncome,
-        amount,
+        amount: amt,
         desc,
-        fund_type,
-        source,
-        originalIndex: index,
-      };
-    })
-    .filter((item) => {
-      if (options?.startDate && item.rawDate < options.startDate) return false;
-      if (options?.endDate && item.rawDate > options.endDate) return false;
-      return true;
+        fund_type: isCash ? 'Quỹ tiền mặt (111)' : 'Ngân hàng VietQR (112)',
+        source: isCash ? 'cash' : 'bank',
+      });
     });
+  }
+
+  // 1. Lọc theo khoảng ngày (nếu có)
+  const normalized = itemsToProcess.filter((item) => {
+    if (options?.startDate && item.rawDate < options.startDate) return false;
+    if (options?.endDate && item.rawDate > options.endDate) return false;
+    return true;
+  });
 
   // 2. Sắp xếp theo ngày tăng dần (cũ nhất -> mới nhất) để tính lũy kế tồn quỹ chuẩn xác
   normalized.sort((a, b) => a.rawDate.localeCompare(b.rawDate));

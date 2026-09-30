@@ -30,7 +30,14 @@ export function exportS2aExcel(
     vat_amount: r.vat_amount,
     pit_amount: r.pit_amount,
     total_tax: r.vat_amount + r.pit_amount,
-    payment_method: r.payment_method || 'Tiền mặt',
+    payment_method: (() => {
+      const pm = String(r.payment_method || '').toLowerCase().trim();
+      if (pm === 'transfer' || pm === 'bank' || pm === 'vietqr' || pm.includes('chuyển khoản')) return 'Chuyển khoản (VietQR)';
+      if (pm === 'momo' || pm.includes('momo')) return 'Ví MoMo';
+      if (pm === 'split' || pm.includes('kết hợp')) return 'Kết hợp (TM + CK)';
+      if (pm === 'card' || pm.includes('thẻ')) return 'Quẹt thẻ';
+      return 'Tiền mặt';
+    })(),
   }));
 
   // Sheet 2: Tổng hợp nghĩa vụ thuế theo 5 nhóm ngành nghề
