@@ -40,6 +40,65 @@ export const DEFAULT_EXPENSES: ExpenseItem[] = [];
 
 export const DEFAULT_CASHFLOW: CashflowTransaction[] = [];
 
+/**
+ * Lọc sạch các khoản chi phí bị trùng lặp (theo ID hoặc theo nội dung ngày-nhóm-số tiền-mô tả)
+ */
+export function deduplicateExpenses(items: ExpenseItem[]): ExpenseItem[] {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const result: ExpenseItem[] = [];
+
+  for (const item of items) {
+    if (!item) continue;
+    const cleanId = (item.id || '').trim();
+    if (cleanId && seenIds.has(cleanId)) continue;
+
+    const desc = (item.description || '').trim().toLowerCase();
+    const cat = (item.category || '').trim().toLowerCase();
+    const amount = Number(item.amount) || 0;
+    const date = (item.date || '').slice(0, 10);
+    const fingerprint = `${date}_${cat}_${amount}_${desc}`;
+
+    if (seenFingerprints.has(fingerprint)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    seenFingerprints.add(fingerprint);
+    result.push(item);
+  }
+  return result;
+}
+
+/**
+ * Lọc sạch các giao dịch sổ quỹ bị trùng lặp (theo ID hoặc theo nội dung)
+ */
+export function deduplicateCashflow(items: CashflowTransaction[]): CashflowTransaction[] {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+  const result: CashflowTransaction[] = [];
+
+  for (const item of items) {
+    if (!item) continue;
+    const cleanId = (item.id || '').trim();
+    if (cleanId && seenIds.has(cleanId)) continue;
+
+    const desc = (item.desc || (item as any).description || '').trim().toLowerCase();
+    const cat = (item.category || '').trim().toLowerCase();
+    const type = (item.type || '').trim().toLowerCase();
+    const amount = Number(item.amount) || 0;
+    const date = (item.date || (item as any).created_at || '').slice(0, 10);
+    const fingerprint = `${date}_${type}_${cat}_${amount}_${desc}`;
+
+    if (seenFingerprints.has(fingerprint)) continue;
+
+    if (cleanId) seenIds.add(cleanId);
+    seenFingerprints.add(fingerprint);
+    result.push(item);
+  }
+  return result;
+}
+
 // ── EXPENSES HELPERS ──
 export function getExpenses(): ExpenseItem[] {
   if (typeof window !== 'undefined') {
@@ -47,7 +106,7 @@ export function getExpenses(): ExpenseItem[] {
       const raw = localStorage.getItem(STORAGE_KEY_EXPENSES);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return deduplicateExpenses(parsed);
       }
     } catch {}
   }
@@ -57,8 +116,9 @@ export function getExpenses(): ExpenseItem[] {
 export function saveExpensesLocally(list: ExpenseItem[]): void {
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(list));
-      window.dispatchEvent(new CustomEvent(EXPENSES_UPDATED_EVENT, { detail: list }));
+      const deduped = deduplicateExpenses(list);
+      localStorage.setItem(STORAGE_KEY_EXPENSES, JSON.stringify(deduped));
+      window.dispatchEvent(new CustomEvent(EXPENSES_UPDATED_EVENT, { detail: deduped }));
     } catch {}
   }
 }
@@ -81,8 +141,13 @@ export async function fetchExpensesFromDb(): Promise<ExpenseItem[]> {
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        saveExpensesLocally(parsed);
-        return parsed;
+        const deduped = deduplicateExpenses(parsed);
+        saveExpensesLocally(deduped);
+        // Tự động chữa lành DB nếu trước đó có dữ liệu trùng
+        if (deduped.length !== parsed.length) {
+          saveExpensesToDb(deduped).catch(() => {});
+        }
+        return deduped;
       }
     }
   } catch (err) {
@@ -95,7 +160,8 @@ export async function saveExpensesToDb(
   list: ExpenseItem[],
   updatedBy: string = 'Admin'
 ): Promise<{ success: boolean; error?: string }> {
-  saveExpensesLocally(list);
+  const deduped = deduplicateExpenses(list);
+  saveExpensesLocally(deduped);
 
   if (isLocalMode()) {
     autoSyncToLocalSqlFolder().catch(() => {});
@@ -107,7 +173,7 @@ export async function saveExpensesToDb(
   }
 
   try {
-    const notesContent = JSON.stringify(list);
+    const notesContent = JSON.stringify(deduped);
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_EXPENSES_ID,
@@ -150,7 +216,7 @@ export function getCashflow(): CashflowTransaction[] {
       const raw = localStorage.getItem(STORAGE_KEY_CASHFLOW);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) return deduplicateCashflow(parsed);
       }
     } catch {}
   }
@@ -160,8 +226,9 @@ export function getCashflow(): CashflowTransaction[] {
 export function saveCashflowLocally(list: CashflowTransaction[]): void {
   if (typeof window !== 'undefined') {
     try {
-      localStorage.setItem(STORAGE_KEY_CASHFLOW, JSON.stringify(list));
-      window.dispatchEvent(new CustomEvent(CASHFLOW_UPDATED_EVENT, { detail: list }));
+      const deduped = deduplicateCashflow(list);
+      localStorage.setItem(STORAGE_KEY_CASHFLOW, JSON.stringify(deduped));
+      window.dispatchEvent(new CustomEvent(CASHFLOW_UPDATED_EVENT, { detail: deduped }));
     } catch {}
   }
 }
@@ -184,8 +251,12 @@ export async function fetchCashflowFromDb(): Promise<CashflowTransaction[]> {
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
       if (Array.isArray(parsed) && parsed.length > 0) {
-        saveCashflowLocally(parsed);
-        return parsed;
+        const deduped = deduplicateCashflow(parsed);
+        saveCashflowLocally(deduped);
+        if (deduped.length !== parsed.length) {
+          saveCashflowToDb(deduped).catch(() => {});
+        }
+        return deduped;
       }
     }
   } catch (err) {
@@ -198,7 +269,8 @@ export async function saveCashflowToDb(
   list: CashflowTransaction[],
   updatedBy: string = 'Admin'
 ): Promise<{ success: boolean; error?: string }> {
-  saveCashflowLocally(list);
+  const deduped = deduplicateCashflow(list);
+  saveCashflowLocally(deduped);
 
   if (isLocalMode()) {
     autoSyncToLocalSqlFolder().catch(() => {});
@@ -210,7 +282,7 @@ export async function saveCashflowToDb(
   }
 
   try {
-    const notesContent = JSON.stringify(list);
+    const notesContent = JSON.stringify(deduped);
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_CASHFLOW_ID,

@@ -11,7 +11,7 @@ import { supabase } from '@/lib/supabase/client';
 import { db } from '@/lib/db/dexie';
 import { getStockAdjustmentLogs, saveStockAdjustmentLogsToDb } from './stockAdjustmentManager';
 import { getSpoilageLogs, saveSpoilageLogs, saveSpoilageLogsToDb } from './spoilageManager';
-import { saveExpensesToDb, saveCashflowToDb } from './accountingSync';
+import { saveExpensesToDb, saveCashflowToDb, deduplicateExpenses, deduplicateCashflow } from './accountingSync';
 import { saveVietqrConfigToDb, saveEwalletConfigToDb, saveAutoBankConfigToDb, saveTransferVerificationConfigToDb } from './paymentSync';
 import { saveStoreBranding, saveStoreBrandingToDb } from './storeBranding';
 import { syncCakeBomConfigToDb } from './cakeBomManager';
@@ -1195,9 +1195,10 @@ export async function executePushToSQL(
       try {
         const rawE = localStorage.getItem('bakery_expenses');
         const currentE = rawE ? JSON.parse(rawE) : [];
-        const mergedE = [...newExpenses, ...currentE];
+        const sourceExpenses = mergeMode === 'full_overwrite' ? (backupData.expenses || []) : [...newExpenses, ...currentE];
+        const mergedE = deduplicateExpenses(sourceExpenses);
         localStorage.setItem('bakery_expenses', JSON.stringify(mergedE));
-        details.expensesPushed = newExpenses.length;
+        details.expensesPushed = mergedE.length;
         await saveExpensesToDb(mergedE).catch(console.error);
       } catch {}
     }
@@ -1219,8 +1220,12 @@ export async function executePushToSQL(
     // ── SỔ QUỸ DÒNG TIỀN (CASHFLOW) ──
     if (backupData.cashflow && Array.isArray(backupData.cashflow) && backupData.cashflow.length > 0) {
       try {
-        localStorage.setItem('bakery_cashflow', JSON.stringify(backupData.cashflow));
-        await saveCashflowToDb(backupData.cashflow as any).catch(console.error);
+        const rawCf = localStorage.getItem('bakery_cashflow');
+        const currentCf = rawCf ? JSON.parse(rawCf) : [];
+        const sourceCf = mergeMode === 'full_overwrite' ? backupData.cashflow : [...backupData.cashflow, ...currentCf];
+        const mergedCf = deduplicateCashflow(sourceCf);
+        localStorage.setItem('bakery_cashflow', JSON.stringify(mergedCf));
+        await saveCashflowToDb(mergedCf as any).catch(console.error);
       } catch {}
     }
 
