@@ -110,6 +110,9 @@ interface KDSOrder {
   deposit_amount?: number;
   remaining_amount?: number;
   payment_status?: string;
+  payment_method?: string;
+  paymentMethod?: string;
+  payments?: any[];
   final_payment_method?: string;
   reference_image_url?: string;
   remake_reason?: string;
@@ -2844,6 +2847,8 @@ export default function KitchenPage() {
     localStatusLocksRef.current.delete(orderNum);
     localStatusLocksRef.current.delete(linkedBakeOrderNum);
 
+    const normalizedMethod = paymentMethod === 'bank_transfer' ? 'transfer' : paymentMethod;
+
     // 1. Cập nhật state cục bộ ngay lập tức (xóa khỏi KDS cả đơn chính và đơn làm bổ sung nếu có)
     setOrders((prev) => prev.filter((o) => o.id !== orderId && o.order_number !== orderNum && o.order_number !== linkedBakeOrderNum));
 
@@ -2868,7 +2873,9 @@ export default function KitchenPage() {
                   remaining_amount: 0,
                   remainingAmount: 0,
                   payment_status: 'paid',
-                  final_payment_method: paymentMethod,
+                  payment_method: o.payment_method || normalizedMethod,
+                  paymentMethod: o.paymentMethod || normalizedMethod,
+                  final_payment_method: normalizedMethod,
                   transfer_proof_image: proofImageBase64 || o.transfer_proof_image,
                   paid_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
@@ -2899,7 +2906,9 @@ export default function KitchenPage() {
                   remaining_amount: 0,
                   remainingAmount: 0,
                   payment_status: 'paid',
-                  final_payment_method: paymentMethod,
+                  payment_method: po.payment_method || normalizedMethod,
+                  paymentMethod: po.paymentMethod || normalizedMethod,
+                  final_payment_method: normalizedMethod,
                   paid_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 };
@@ -2928,6 +2937,9 @@ export default function KitchenPage() {
       ...order,
       status: 'completed' as const,
       remaining_amount: 0,
+      payment_method: order.payment_method || (normalizedMethod as any),
+      paymentMethod: order.paymentMethod || (normalizedMethod as any),
+      final_payment_method: normalizedMethod,
     };
     await broadcastOrderStatusUpdate(orderNum, 'completed', updatedOrder);
     await broadcastOrderStatusUpdate(linkedBakeOrderNum, 'completed');

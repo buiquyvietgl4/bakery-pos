@@ -1240,9 +1240,21 @@ export default function AdminDashboard() {
       sdt: o.customer_phone || o.customerPhone || '',
       san_pham: Array.isArray(o.items) ? o.items.map((i: any) => `${i.quantity}x ${i.product_name_snapshot || i.name}`).join('; ') : o.cakeName || 'Bánh',
       tong_tien: o.total_amount || o.totalPrice || 0,
-      tien_coc: o.deposit_amount || o.depositAmount || 0,
-      hinh_thuc: o.payment_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / Ví',
-      trang_thai: o.status === 'completed' ? 'Hoàn thành' : 'Đang xử lý',
+      hinh_thuc: (() => {
+        const m = String(
+          o.payment_method ||
+          o.paymentMethod ||
+          o.final_payment_method ||
+          o.payments?.[0]?.method ||
+          ''
+        ).toLowerCase().trim();
+        if (m === 'cash' || m === 'tiền mặt') return 'Tiền mặt';
+        if (m === 'momo') return 'Ví MoMo';
+        if (m === 'split' || m === 'kết hợp') return 'Kết hợp (TM + CK)';
+        if (m === 'card') return 'Quẹt thẻ';
+        if (m === 'transfer' || m === 'bank' || m === 'vietqr') return 'VietQR / CK';
+        return 'Tiền mặt';
+      })(),
     }));
 
     exportToCSV(

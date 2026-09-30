@@ -286,10 +286,26 @@ export function calculateClosingMetrics(
           bankRevenue += pAmt;
         }
       });
-    } else if (o.payment_method && o.payment_method !== 'cash') {
-      bankRevenue += amt;
     } else {
-      cashRevenue += amt;
+      const pm = String(o.payment_method || o.paymentMethod || o.final_payment_method || '').toLowerCase().trim();
+      if (pm === 'split') {
+        const splitCash = Number(o.splitCashAmount ?? o.split_cash_amount ?? 0);
+        const splitTransfer = Number(o.splitTransferAmount ?? o.split_transfer_amount ?? 0);
+        if (splitCash > 0 || splitTransfer > 0) {
+          cashRevenue += splitCash;
+          bankRevenue += splitTransfer;
+        } else {
+          const halfCash = Math.round(amt / 2);
+          cashRevenue += halfCash;
+          bankRevenue += amt - halfCash;
+        }
+      } else if (pm === 'cash') {
+        cashRevenue += amt;
+      } else if (pm) {
+        bankRevenue += amt;
+      } else {
+        cashRevenue += amt;
+      }
     }
   });
 

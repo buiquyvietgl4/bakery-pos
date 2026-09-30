@@ -277,8 +277,23 @@ export async function sendTelegramOrderAlert(order: any): Promise<{ success: boo
   const cakeMsg = order.cake_message || order.cakeMessage || '';
   const total = (order.total_amount || order.totalPrice || 0).toLocaleString('vi-VN');
   const deposit = (order.deposit_amount || order.depositAmount || 0).toLocaleString('vi-VN');
-  const method = order.payment_method || order.paymentMethod || 'cash';
-  const methodText = method === 'cash' ? '💵 Tiền mặt' : method === 'transfer' ? '🏦 Chuyển khoản' : '📱 Ví MoMo';
+  const method = String(
+    order.payment_method ||
+    order.paymentMethod ||
+    order.final_payment_method ||
+    order.payments?.[0]?.method ||
+    'cash'
+  ).toLowerCase().trim();
+  const methodText =
+    method === 'cash'
+      ? '💵 Tiền mặt'
+      : method === 'momo'
+      ? '📱 Ví MoMo'
+      : method === 'split'
+      ? '💳 + 💵 Kết hợp (TM + CK)'
+      : method === 'card'
+      ? '💳 Thẻ ngân hàng'
+      : '🏦 Chuyển khoản VietQR';
 
   const fromNotes = parsePreorderFromNotes(order.notes);
   const isShip =
@@ -523,7 +538,7 @@ export async function sendTelegramDischargedAlert(batch: {
 /**
  * Tự động đăng ký lắng nghe cập nhật Realtime đa thiết bị và nạp từ SQL khi chạy trên Client
  */
-if (typeof window !== 'undefined' && !isInitStarted) {
+if (typeof window !== 'undefined' && !isInitStarted && process.env.NODE_ENV !== 'test') {
   isInitStarted = true;
 
   setTimeout(() => {

@@ -734,11 +734,14 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                           <div>
                             Khách bù bằng:{' '}
                             <b>
-                              {completedReturnRecord.exchange_payment_detail?.method === 'cash'
-                                ? '💵 Tiền mặt'
-                                : completedReturnRecord.exchange_payment_detail?.method === 'transfer'
-                                ? '🏦 Chuyển khoản VietQR'
-                                : '💳 Kết hợp (Tiền mặt + Chuyển khoản)'}
+                              {(() => {
+                                const m = (completedReturnRecord.exchange_payment_detail?.method || '').toLowerCase();
+                                if (m === 'cash') return '💵 Tiền mặt';
+                                if (m === 'momo') return '📱 Ví MoMo';
+                                if (m === 'split') return '💳 Kết hợp (Tiền mặt + Chuyển khoản)';
+                                if (m === 'card') return '💳 Quẹt thẻ';
+                                return '🏦 Chuyển khoản VietQR';
+                              })()}
                             </b>
                           </div>
                           {completedReturnRecord.exchange_payment_detail?.method === 'cash' && (
@@ -877,11 +880,21 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
                           </b>{' '}
                           • PT thanh toán:{' '}
                           <b>
-                            {selectedOrder.payment_method === 'cash'
-                              ? 'Tiền mặt'
-                              : selectedOrder.payment_method === 'split'
-                              ? 'Kết hợp TM+CK'
-                              : 'Chuyển khoản'}
+                            {(() => {
+                              const m = String(
+                                selectedOrder.payment_method ||
+                                selectedOrder.paymentMethod ||
+                                selectedOrder.final_payment_method ||
+                                selectedOrder.payments?.[0]?.method ||
+                                ''
+                              ).toLowerCase().trim();
+                              if (m === 'cash') return 'Tiền mặt';
+                              if (m === 'momo') return 'Ví MoMo';
+                              if (m === 'split') return 'Kết hợp TM+CK';
+                              if (m === 'card') return 'Quẹt thẻ';
+                              if (m === 'transfer' || m === 'bank' || m === 'vietqr') return 'Chuyển khoản VietQR';
+                              return 'Chuyển khoản';
+                            })()}
                           </b>
                         </div>
                       </div>

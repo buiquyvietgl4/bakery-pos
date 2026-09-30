@@ -163,7 +163,8 @@ function notifyNewOrderToListeners(order: any) {
   });
 }
 
-let syncChannelInstance: any = null;
+// Khai báo var để an toàn trước Temporal Dead Zone khi có circular dependency
+var syncChannelInstance: any = null;
 
 /**
  * Khởi tạo hoặc kết nối lại kênh Realtime singleton
@@ -598,12 +599,31 @@ export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord)
         .maybeSingle();
 
       if (orderRow?.id) {
-        await supabase.from('payments').insert({
-          order_id: orderRow.id,
-          method: refund_method || 'cash',
-          amount: -refund_amount,
-          reference_code: `Hoàn tiền phiếu #${returnRecord.id} (${return_type === 'refund' ? 'Trả hàng' : 'Đổi món'})`,
-        });
+        if (refund_method === 'split') {
+          const halfCash = Math.round(refund_amount / 2);
+          const halfTransfer = refund_amount - halfCash;
+          await supabase.from('payments').insert([
+            {
+              order_id: orderRow.id,
+              method: 'cash',
+              amount: -halfCash,
+              reference_code: `Hoàn tiền TM phiếu #${returnRecord.id}`,
+            },
+            {
+              order_id: orderRow.id,
+              method: 'transfer',
+              amount: -halfTransfer,
+              reference_code: `Hoàn tiền CK phiếu #${returnRecord.id}`,
+            },
+          ]);
+        } else {
+          await supabase.from('payments').insert({
+            order_id: orderRow.id,
+            method: refund_method || 'cash',
+            amount: -refund_amount,
+            reference_code: `Hoàn tiền phiếu #${returnRecord.id} (${return_type === 'refund' ? 'Trả hàng' : 'Đổi món'})`,
+          });
+        }
       }
     } else if (returnRecord.exchange_difference && returnRecord.exchange_difference > 0) {
       const { data: orderRow } = await supabase
@@ -613,12 +633,33 @@ export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord)
         .maybeSingle();
 
       if (orderRow?.id) {
-        await supabase.from('payments').insert({
-          order_id: orderRow.id,
-          method: returnRecord.refund_method || 'cash',
-          amount: returnRecord.exchange_difference,
-          reference_code: `Thu thêm đổi bánh phiếu #${returnRecord.id} (${returnRecord.refund_method})`,
-        });
+        const exDetail = returnRecord.exchange_payment_detail;
+        if (exDetail?.method === 'split') {
+          const cashAmt = Number(exDetail.cashAmount || 0);
+          const transferAmt = Number(exDetail.transferAmount || 0);
+          await supabase.from('payments').insert([
+            {
+              order_id: orderRow.id,
+              method: 'cash',
+              amount: cashAmt,
+              reference_code: `Thu thêm TM đổi bánh #${returnRecord.id}`,
+            },
+            {
+              order_id: orderRow.id,
+              method: 'transfer',
+              amount: transferAmt,
+              reference_code: `Thu thêm CK đổi bánh #${returnRecord.id}`,
+            },
+          ]);
+        } else {
+          const m = exDetail?.method || returnRecord.refund_method || 'cash';
+          await supabase.from('payments').insert({
+            order_id: orderRow.id,
+            method: m,
+            amount: returnRecord.exchange_difference,
+            reference_code: `Thu thêm đổi bánh phiếu #${returnRecord.id} (${m})`,
+          });
+        }
       }
     }
 
@@ -1925,15 +1966,39 @@ export async function syncOrderToSupabase(
           }));
 
           await supabase.from('payments').insert(paymentsToInsert);
-        } else if (order.deposit_amount || order.depositAmount) {
-          const depAmt = Number(order.deposit_amount || order.depositAmount || 0);
-          if (depAmt > 0) {
-            await supabase.from('payments').insert({
-              order_id: insertedOrder.id,
-              method: order.payment_method || order.paymentMethod || 'cash',
-              amount: depAmt,
-              reference_code: `Cọc đơn đặt bánh ${orderNum}`,
-            });
+        } else {
+          const depAmt = Number(order.deposit_amount ?? order.depositAmount ?? 0);
+          const fullAmt = Number(order.final_amount ?? order.total_amount ?? order.totalPrice ?? order.subtotal ?? 0);
+          const payAmt = depAmt > 0 ? depAmt : (order.payment_status === 'paid' || order.status === 'completed' || !order.status || order.status === 'ready' ? fullAmt : 0);
+          if (payAmt > 0) {
+            const rawMethod = String(order.payment_method || order.paymentMethod || order.final_payment_method || 'cash').toLowerCase().trim();
+            if (rawMethod === 'split') {
+              const splitCash = Number(order.splitCashAmount ?? order.split_cash_amount ?? 0);
+              const splitTransfer = Number(order.splitTransferAmount ?? order.split_transfer_amount ?? 0);
+              const halfCash = (splitCash > 0 || splitTransfer > 0) ? splitCash : Math.round(payAmt / 2);
+              const halfTransfer = (splitCash > 0 || splitTransfer > 0) ? splitTransfer : payAmt - halfCash;
+              await supabase.from('payments').insert([
+                {
+                  order_id: insertedOrder.id,
+                  method: 'cash',
+                  amount: halfCash,
+                  reference_code: `Tiền mặt đơn ${orderNum}`,
+                },
+                {
+                  order_id: insertedOrder.id,
+                  method: 'transfer',
+                  amount: halfTransfer,
+                  reference_code: `Chuyển khoản đơn ${orderNum}`,
+                },
+              ]);
+            } else {
+              await supabase.from('payments').insert({
+                order_id: insertedOrder.id,
+                method: rawMethod || 'cash',
+                amount: payAmt,
+                reference_code: depAmt > 0 ? `Cọc đơn đặt bánh ${orderNum}` : `Thanh toán đơn ${orderNum}`,
+              });
+            }
           }
         }
       }

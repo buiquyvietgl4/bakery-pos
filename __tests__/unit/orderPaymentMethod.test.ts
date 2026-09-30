@@ -74,3 +74,73 @@ describe('getOrderPaymentMethod & isOrderCash', () => {
     expect(isOrderCash(plainOrder)).toBe(true);
   });
 });
+
+import { calculateClosingMetrics } from '@/lib/utils/closingManager';
+
+describe('calculateClosingMetrics - Phân loại doanh thu Tiền mặt & Chuyển khoản', () => {
+  it('tính chính xác cashRevenue và bankRevenue cho đơn Split có splitCashAmount & splitTransferAmount', () => {
+    const testDate = '2026-09-30T10:00:00';
+    const orders = [
+      {
+        order_number: 'BK-SPLIT-01',
+        created_at: '2026-09-30T10:15:00',
+        total_amount: 200000,
+        payment_method: 'split',
+        splitCashAmount: 120000,
+        splitTransferAmount: 80000,
+      },
+    ];
+
+    const result = calculateClosingMetrics('day', testDate, orders, [], []);
+    expect(result.totalRevenue).toBe(200000);
+    expect(result.cashRevenue).toBe(120000);
+    expect(result.bankRevenue).toBe(80000);
+  });
+
+  it('nhận diện chính xác đơn chuyển khoản sử dụng camelCase paymentMethod', () => {
+    const testDate = '2026-09-30T10:00:00';
+    const orders = [
+      {
+        order_number: 'BK-CK-01',
+        created_at: '2026-09-30T10:30:00',
+        total_amount: 150000,
+        paymentMethod: 'transfer', // camelCase không có payment_method
+      },
+      {
+        order_number: 'BK-MOMO-01',
+        created_at: '2026-09-30T11:00:00',
+        total_amount: 50000,
+        paymentMethod: 'momo',
+      },
+      {
+        order_number: 'BK-CASH-01',
+        created_at: '2026-09-30T11:30:00',
+        total_amount: 100000,
+        paymentMethod: 'cash',
+      },
+    ];
+
+    const result = calculateClosingMetrics('day', testDate, orders, [], []);
+    expect(result.totalRevenue).toBe(300000);
+    expect(result.cashRevenue).toBe(100000);
+    expect(result.bankRevenue).toBe(200000); // 150k transfer + 50k momo
+  });
+
+  it('chia đều 50/50 cho đơn Split nếu không có trường số tiền cụ thể', () => {
+    const testDate = '2026-09-30T10:00:00';
+    const orders = [
+      {
+        order_number: 'BK-SPLIT-FALLBACK',
+        created_at: '2026-09-30T12:00:00',
+        total_amount: 100000,
+        payment_method: 'split',
+      },
+    ];
+
+    const result = calculateClosingMetrics('day', testDate, orders, [], []);
+    expect(result.totalRevenue).toBe(100000);
+    expect(result.cashRevenue).toBe(50000);
+    expect(result.bankRevenue).toBe(50000);
+  });
+});
+

@@ -2960,12 +2960,18 @@ export default function POSPage() {
       // Xử lý biến động quỹ tiền mặt & chuyển khoản ca bán (Shift State):
       // - Hoàn tiền cho khách -> Tăng refundCash (hoặc refundTransfer), từ đó tự động trừ tiền két quầy (expectedCashInRegister)
       // - Khách bù chênh lệch đổi bánh -> Tăng doanh thu ca bán (cashSales / transferSales)
-      const refundCashAdd = (returnRecord.refund_method === 'cash' && returnRecord.refund_amount > 0)
-        ? Number(returnRecord.refund_amount)
-        : 0;
-      const refundTransferAdd = (returnRecord.refund_method !== 'cash' && returnRecord.refund_amount > 0)
-        ? Number(returnRecord.refund_amount)
-        : 0;
+      let refundCashAdd = 0;
+      let refundTransferAdd = 0;
+      if (returnRecord.refund_amount > 0) {
+        if (returnRecord.refund_method === 'split') {
+          refundCashAdd = Math.round(Number(returnRecord.refund_amount) / 2);
+          refundTransferAdd = Number(returnRecord.refund_amount) - refundCashAdd;
+        } else if (returnRecord.refund_method === 'cash') {
+          refundCashAdd = Number(returnRecord.refund_amount);
+        } else {
+          refundTransferAdd = Number(returnRecord.refund_amount);
+        }
+      }
 
       let exchangeCashIn = 0;
       let exchangeTransferIn = 0;
@@ -2973,7 +2979,7 @@ export default function POSPage() {
         if (returnRecord.exchange_payment_detail?.method === 'split') {
           exchangeCashIn = Number(returnRecord.exchange_payment_detail.cashAmount || 0);
           exchangeTransferIn = Number(returnRecord.exchange_payment_detail.transferAmount || 0);
-        } else if (returnRecord.refund_method === 'cash') {
+        } else if (returnRecord.exchange_payment_detail?.method === 'cash' || returnRecord.refund_method === 'cash') {
           exchangeCashIn = Number(returnRecord.exchange_difference || 0);
         } else {
           exchangeTransferIn = Number(returnRecord.exchange_difference || 0);
@@ -3000,16 +3006,37 @@ export default function POSPage() {
         const nowIso = new Date().toISOString();
 
         if (returnRecord.refund_amount > 0) {
-          const isCash = returnRecord.refund_method === 'cash';
-          newTransactions.push({
-            id: `ret-${returnRecord.id}`,
-            type: 'expense',
-            category: returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi hàng' : 'Chi hoàn tiền trả hàng',
-            amount: Number(returnRecord.refund_amount),
-            desc: `${returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi món' : 'Hoàn tiền trả hàng'} đơn #${orderNum} (${returnRecord.customer_name || 'Khách lẻ'}) - ${isCash ? 'Tiền mặt' : 'Chuyển khoản'}`,
-            date: nowIso,
-            method: isCash ? 'cash' : 'bank',
-          });
+          if (returnRecord.refund_method === 'split') {
+            newTransactions.push({
+              id: `ret-cash-${returnRecord.id}`,
+              type: 'expense',
+              category: returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi hàng' : 'Chi hoàn tiền trả hàng',
+              amount: refundCashAdd,
+              desc: `${returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi món' : 'Hoàn tiền trả hàng'} đơn #${orderNum} (${returnRecord.customer_name || 'Khách lẻ'}) - Tiền mặt`,
+              date: nowIso,
+              method: 'cash',
+            });
+            newTransactions.push({
+              id: `ret-bank-${returnRecord.id}`,
+              type: 'expense',
+              category: returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi hàng' : 'Chi hoàn tiền trả hàng',
+              amount: refundTransferAdd,
+              desc: `${returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi món' : 'Hoàn tiền trả hàng'} đơn #${orderNum} (${returnRecord.customer_name || 'Khách lẻ'}) - Chuyển khoản`,
+              date: nowIso,
+              method: 'bank',
+            });
+          } else {
+            const isCash = returnRecord.refund_method === 'cash';
+            newTransactions.push({
+              id: `ret-${returnRecord.id}`,
+              type: 'expense',
+              category: returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi hàng' : 'Chi hoàn tiền trả hàng',
+              amount: Number(returnRecord.refund_amount),
+              desc: `${returnRecord.return_type === 'exchange' ? 'Hoàn chênh lệch đổi món' : 'Hoàn tiền trả hàng'} đơn #${orderNum} (${returnRecord.customer_name || 'Khách lẻ'}) - ${isCash ? 'Tiền mặt' : 'Chuyển khoản'}`,
+              date: nowIso,
+              method: isCash ? 'cash' : 'bank',
+            });
+          }
         }
 
         if (exchangeCashIn > 0) {
@@ -7038,7 +7065,14 @@ export default function POSPage() {
                                 totalAmount: total,
                                 depositAmount: deposit > 0 ? deposit : undefined,
                                 remainingAmount: remaining,
-                                paymentMethod: po.payment_method || po.paymentMethod || 'cash',
+                                paymentMethod: (() => {
+                                  const pm = String(po.payment_method || po.paymentMethod || po.final_payment_method || po.payments?.[0]?.method || 'cash').toLowerCase().trim();
+                                  return pm;
+                                })(),
+                                payment_method: po.payment_method || po.paymentMethod || po.final_payment_method || 'cash',
+                                splitCashAmount: po.splitCashAmount ?? po.split_cash_amount ?? (po.payments?.find((p: any) => p.method === 'cash')?.amount),
+                                splitTransferAmount: po.splitTransferAmount ?? po.split_transfer_amount ?? (po.payments?.find((p: any) => p.method !== 'cash')?.amount),
+                                splitCashGiven: po.splitCashGiven ?? po.split_cash_given,
                                 cashGiven: po.cash_given || (deposit > 0 ? deposit : total),
                                 changeAmount: po.change_amount || 0,
                                 cakeMessage: msg,
@@ -7237,9 +7271,21 @@ export default function POSPage() {
                       khach_hang: inv.customer_name || inv.customerName || 'Khách vãng lai',
                       sdt: inv.customer_phone || inv.customerPhone || '',
                       tong_tien: inv.total_amount || inv.totalPrice || 0,
-                      tien_coc: inv.deposit_amount || inv.depositAmount || 0,
-                      hinh_thuc: inv.payment_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / MoMo',
-                      trang_thai: inv.status === 'completed' ? 'Đã hoàn thành' : 'Đang xử lý',
+                      hinh_thuc: (() => {
+                        const m = String(
+                          inv.payment_method ||
+                          inv.paymentMethod ||
+                          inv.final_payment_method ||
+                          inv.payments?.[0]?.method ||
+                          ''
+                        ).toLowerCase().trim();
+                        if (m === 'cash' || m === 'tiền mặt') return 'Tiền mặt';
+                        if (m === 'momo') return 'Ví MoMo';
+                        if (m === 'split' || m === 'kết hợp') return 'Kết hợp (TM + CK)';
+                        if (m === 'card') return 'Quẹt thẻ';
+                        if (m === 'transfer' || m === 'bank' || m === 'vietqr') return 'Chuyển khoản VietQR';
+                        return 'Tiền mặt';
+                      })(),
                     }));
                     exportToCSV('lich_su_hoa_don_tiem_banh', [
                       { header: 'STT', key: 'stt' },
@@ -7384,9 +7430,48 @@ export default function POSPage() {
                               ? 'Sẵn sàng giao'
                               : 'Đang xử lý'}
                           </span>
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-zinc-200 text-zinc-700">
-                            {inv.payment_method === 'cash' || inv.paymentMethod === 'cash' ? 'Tiền mặt' : 'Chuyển khoản / Ví'}
-                          </span>
+                          {(() => {
+                            const m = String(
+                              inv.payment_method ||
+                              inv.paymentMethod ||
+                              inv.final_payment_method ||
+                              inv.payments?.[0]?.method ||
+                              ''
+                            ).toLowerCase().trim();
+                            if (m === 'cash' || m === 'tiền mặt') {
+                              return (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">
+                                  💵 Tiền mặt
+                                </span>
+                              );
+                            }
+                            if (m === 'momo') {
+                              return (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-pink-100 text-pink-800 border border-pink-200">
+                                  📱 Ví MoMo
+                                </span>
+                              );
+                            }
+                            if (m === 'split' || m === 'kết hợp') {
+                              return (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 border border-purple-200">
+                                  💳+💵 Kết hợp
+                                </span>
+                              );
+                            }
+                            if (m === 'card') {
+                              return (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800 border border-indigo-200">
+                                  💳 Quẹt thẻ
+                                </span>
+                              );
+                            }
+                            return (
+                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 border border-blue-200">
+                                🏦 Chuyển khoản
+                              </span>
+                            );
+                          })()}
                           {inv.transfer_proof_image && (
                             <button
                               type="button"
@@ -7552,7 +7637,7 @@ export default function POSPage() {
                                 </div>
                                 <div className="space-y-2">
                                   {invReturnRecords.map((r, rIdx) => {
-                                    const rMethodStr = r.refund_method === 'cash' ? 'Tiền mặt' : 'Chuyển khoản';
+                                    const rMethodStr = r.refund_method === 'cash' ? 'Tiền mặt' : r.refund_method === 'split' ? 'Kết hợp (TM+CK)' : 'Chuyển khoản VietQR';
                                     return (
                                       <div key={r.id || rIdx} className="bg-stone-50/70 p-2 rounded-lg border border-stone-200/80 space-y-1">
                                         <div className="flex items-center justify-between text-[11px] font-bold">
@@ -7679,8 +7764,14 @@ export default function POSPage() {
                                 discountAmount: inv.discount_amount || 0,
                                 totalAmount: total,
                                 depositAmount: deposit > 0 ? deposit : undefined,
-                                remainingAmount: remaining,
-                                paymentMethod: inv.payment_method || inv.paymentMethod || 'cash',
+                                paymentMethod: (() => {
+                                  const pm = String(inv.payment_method || inv.paymentMethod || inv.final_payment_method || inv.payments?.[0]?.method || 'cash').toLowerCase().trim();
+                                  return pm;
+                                })(),
+                                payment_method: inv.payment_method || inv.paymentMethod || inv.final_payment_method || 'cash',
+                                splitCashAmount: inv.splitCashAmount ?? inv.split_cash_amount ?? (inv.payments?.find((p: any) => p.method === 'cash')?.amount),
+                                splitTransferAmount: inv.splitTransferAmount ?? inv.split_transfer_amount ?? (inv.payments?.find((p: any) => p.method !== 'cash')?.amount),
+                                splitCashGiven: inv.splitCashGiven ?? inv.split_cash_given,
                                 cashGiven: inv.cash_given || (deposit > 0 ? deposit : total),
                                 changeAmount: inv.change_amount || 0,
                                 cakeMessage: inv.cake_message || inv.cakeMessage,
@@ -9760,22 +9851,41 @@ export default function POSPage() {
                       displayChange = Math.max(0, displayCashGiven - targetDue);
                     }
 
+                    const effMethod = String(
+                      completedOrder.paymentMethod ||
+                      completedOrder.payment_method ||
+                      completedOrder.final_payment_method ||
+                      completedOrder.payments?.[0]?.method ||
+                      'cash'
+                    ).toLowerCase().trim();
+
+                    const isCash = effMethod === 'cash' || effMethod === 'tiền mặt';
+                    const isMomo = effMethod === 'momo';
+                    const isSplit = effMethod === 'split' || effMethod === 'kết hợp';
+                    const isCard = effMethod === 'card';
+                    const isTransfer = !isCash && !isMomo && !isSplit && !isCard;
+
+                    const splitCashVal = completedOrder.splitCashAmount ?? completedOrder.split_cash_amount ?? (isSplit ? completedOrder.payments?.find((p: any) => p.method === 'cash')?.amount : 0) ?? 0;
+                    const splitTransferVal = completedOrder.splitTransferAmount ?? completedOrder.split_transfer_amount ?? (isSplit ? completedOrder.payments?.find((p: any) => p.method !== 'cash')?.amount : 0) ?? 0;
+
                     return (
                       <div key={block.id} className="border-t border-dashed border-zinc-300 pt-2 space-y-1">
                         <div className="flex justify-between items-center text-zinc-700">
                           <span>Hình thức thanh toán:</span>
                           <span className="font-bold text-zinc-900">
-                            {completedOrder.paymentMethod === 'cash'
+                            {isCash
                               ? '💵 Tiền mặt'
-                              : completedOrder.paymentMethod === 'momo'
+                              : isMomo
                               ? '📱 Ví MoMo'
-                              : completedOrder.paymentMethod === 'split'
+                              : isSplit
                               ? '💳 + 💵 Kết hợp (TM + CK)'
+                              : isCard
+                              ? '💳 Quẹt thẻ'
                               : '🏦 Chuyển khoản VietQR'}
                           </span>
                         </div>
 
-                        {completedOrder.paymentMethod === 'cash' && (
+                        {isCash && (
                           <>
                             <div className="flex justify-between text-zinc-600">
                               <span>{isDepositOrder ? 'Tiền khách đưa (Cọc):' : 'Tiền khách đưa:'}</span>
@@ -9799,7 +9909,7 @@ export default function POSPage() {
                           </>
                         )}
 
-                        {completedOrder.paymentMethod === 'momo' && (
+                        {isMomo && (
                           <div className="text-center py-1.5 mt-2 bg-pink-50 text-pink-800 font-black text-[11px] rounded-xl border border-pink-200/80">
                             {isDepositOrder
                               ? `✓ ĐÃ CỌC QUA VÍ MOMO (${targetDue.toLocaleString('vi-VN')}₫)`
@@ -9807,7 +9917,15 @@ export default function POSPage() {
                           </div>
                         )}
 
-                        {completedOrder.paymentMethod === 'transfer' && (
+                        {isCard && (
+                          <div className="text-center py-1.5 mt-2 bg-indigo-50 text-indigo-800 font-black text-[11px] rounded-xl border border-indigo-200/80">
+                            {isDepositOrder
+                              ? `✓ ĐÃ CỌC BẰNG THẺ (${targetDue.toLocaleString('vi-VN')}₫)`
+                              : '✓ ĐÃ THANH TOÁN QUẸT THẺ'}
+                          </div>
+                        )}
+
+                        {isTransfer && (
                           <div className="text-center py-1.5 mt-2 bg-blue-50 text-blue-800 font-black text-[11px] rounded-xl border border-blue-200/80">
                             {isDepositOrder
                               ? `✓ ĐÃ CỌC CHUYỂN KHOẢN (${targetDue.toLocaleString('vi-VN')}₫)`
@@ -9815,18 +9933,18 @@ export default function POSPage() {
                           </div>
                         )}
 
-                        {completedOrder.paymentMethod === 'split' && (
+                        {isSplit && (
                           <>
                             <div className="space-y-1 py-1 text-zinc-700 border-t border-dashed border-zinc-200 text-xs">
                               <div className="flex justify-between">
                                 <span>💵 Tiền mặt:</span>
-                                <span className="font-bold text-zinc-900">{(completedOrder.splitCashAmount || 0).toLocaleString('vi-VN')}₫</span>
+                                <span className="font-bold text-zinc-900">{splitCashVal.toLocaleString('vi-VN')}₫</span>
                               </div>
                               <div className="flex justify-between">
                                 <span>🏦 Chuyển khoản:</span>
-                                <span className="font-bold text-zinc-900">{(completedOrder.splitTransferAmount || 0).toLocaleString('vi-VN')}₫</span>
+                                <span className="font-bold text-zinc-900">{splitTransferVal.toLocaleString('vi-VN')}₫</span>
                               </div>
-                              {completedOrder.splitCashGiven !== undefined && Number(completedOrder.splitCashGiven) > Number(completedOrder.splitCashAmount || 0) && (
+                              {completedOrder.splitCashGiven !== undefined && Number(completedOrder.splitCashGiven) > splitCashVal && (
                                 <>
                                   <div className="flex justify-between text-zinc-500 text-[10px]">
                                     <span>Khách đưa tiền mặt:</span>
@@ -9834,7 +9952,7 @@ export default function POSPage() {
                                   </div>
                                   <div className="flex justify-between text-emerald-700 font-bold">
                                     <span>Tiền thừa trả khách:</span>
-                                    <span>{(Number(completedOrder.splitCashGiven) - Number(completedOrder.splitCashAmount || 0)).toLocaleString('vi-VN')}₫</span>
+                                    <span>{(Number(completedOrder.splitCashGiven) - splitCashVal).toLocaleString('vi-VN')}₫</span>
                                   </div>
                                 </>
                               )}
