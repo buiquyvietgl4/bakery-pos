@@ -1138,9 +1138,11 @@ export function generateS2eLedger(
     rawDate: string;
     isIncome: boolean;
     amount: number;
+    cashAmt?: number;
+    transferAmt?: number;
     desc: string;
     fund_type: string;
-    source: 'cash' | 'bank';
+    source: 'cash' | 'bank' | 'split';
   }> = [];
 
   const processedOrderKeys = new Set<string>();
@@ -1187,28 +1189,17 @@ export function generateS2eLedger(
           transferAmt = amt - cashAmt;
         }
 
-        if (cashAmt > 0) {
-          itemsToProcess.push({
-            originalId: `ord-${ordId}-cash`,
-            rawDate,
-            isIncome: true,
-            amount: cashAmt,
-            desc: `Thu tiền mặt bán bánh đơn #${num} (${customerName})`,
-            fund_type: 'Quỹ tiền mặt (111)',
-            source: 'cash',
-          });
-        }
-        if (transferAmt > 0) {
-          itemsToProcess.push({
-            originalId: `ord-${ordId}-bank`,
-            rawDate,
-            isIncome: true,
-            amount: transferAmt,
-            desc: `Thu chuyển khoản VietQR đơn #${num} (${customerName})`,
-            fund_type: 'Ngân hàng VietQR (112)',
-            source: 'bank',
-          });
-        }
+        itemsToProcess.push({
+          originalId: `ord-${ordId}`,
+          rawDate,
+          isIncome: true,
+          amount: amt,
+          cashAmt,
+          transferAmt,
+          desc: `Thu tiền bán bánh đơn #${num} (${customerName}) [Tiền mặt: ${cashAmt.toLocaleString('vi-VN')}₫ | Chuyển khoản: ${transferAmt.toLocaleString('vi-VN')}₫]`,
+          fund_type: `Kết hợp (TM: ${cashAmt.toLocaleString('vi-VN')}₫ + CK: ${transferAmt.toLocaleString('vi-VN')}₫)`,
+          source: 'split',
+        });
       } else {
         const isCash = method === 'cash' || method === 'tiền mặt' || method === 'tien mat';
         itemsToProcess.push({
@@ -1377,10 +1368,17 @@ export function generateS2eLedger(
       cashIncome += incAmt;
       cashExpense += expAmt;
       cashBalance += (incAmt - expAmt);
-    } else {
+    } else if (item.source === 'bank') {
       bankIncome += incAmt;
       bankExpense += expAmt;
       bankBalance += (incAmt - expAmt);
+    } else if (item.source === 'split') {
+      const c = Number(item.cashAmt || 0);
+      const b = Number(item.transferAmt || 0);
+      cashIncome += c;
+      cashBalance += c;
+      bankIncome += b;
+      bankBalance += b;
     }
 
     const parts = item.rawDate.split('-');
@@ -1398,6 +1396,8 @@ export function generateS2eLedger(
       income: incAmt,
       expense: expAmt,
       balance: runningBalance,
+      cashAmt: item.cashAmt,
+      transferAmt: item.transferAmt,
     };
   });
 

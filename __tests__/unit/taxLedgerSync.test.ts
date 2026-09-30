@@ -38,7 +38,7 @@ describe('generateS2eLedger', () => {
     expect(res.bankIncome).toBe(0);
   });
 
-  it('tách chính xác đơn thanh toán kết hợp Split thành 2 dòng chứng từ riêng biệt', () => {
+  it('giữ nguyên đơn thanh toán kết hợp Split thành 1 dòng chứng từ duy nhất với đầy đủ thông tin tiền mặt và chuyển khoản', () => {
     const orders = [
       {
         id: 'ord-03',
@@ -51,18 +51,19 @@ describe('generateS2eLedger', () => {
       },
     ];
     const res = generateS2eLedger([], { orders });
-    expect(res.rows).toHaveLength(2);
+    expect(res.rows).toHaveLength(1);
     
-    const cashRow = res.rows.find((r) => r.source === 'cash');
-    const bankRow = res.rows.find((r) => r.source === 'bank');
-    
-    expect(cashRow).toBeDefined();
-    expect(cashRow?.fund_type).toBe('Quỹ tiền mặt (111)');
-    expect(cashRow?.income).toBe(40000);
-
-    expect(bankRow).toBeDefined();
-    expect(bankRow?.fund_type).toBe('Ngân hàng VietQR (112)');
-    expect(bankRow?.income).toBe(50000);
+    const row = res.rows[0];
+    expect(row).toBeDefined();
+    expect(row.source).toBe('split');
+    expect(row.fund_type).toContain('Kết hợp');
+    expect(row.fund_type).toContain('40.000');
+    expect(row.fund_type).toContain('50.000');
+    expect(row.income).toBe(90000);
+    expect(row.cashAmt).toBe(40000);
+    expect(row.transferAmt).toBe(50000);
+    expect(row.description).toContain('40.000');
+    expect(row.description).toContain('50.000');
 
     expect(res.cashIncome).toBe(40000);
     expect(res.bankIncome).toBe(50000);

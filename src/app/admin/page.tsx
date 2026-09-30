@@ -99,6 +99,7 @@ import { gatherFullBakeryData } from '@/lib/utils/backupManager';
 import { StoreBrandingSettings } from '@/components/admin/StoreBrandingSettings';
 import { CustomCakeCostingSettings } from '@/components/admin/CustomCakeCostingSettings';
 import { AccountingDashboard } from '@/components/admin/accounting/AccountingDashboard';
+import { getOrderCashAndBank } from '@/components/admin/accounting/AccountingOverview';
 import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSection';
 import CustomSqlConfigSection from '@/components/admin/CustomSqlConfigSection';
 import LocalSqlConfigSection from '@/components/admin/LocalSqlConfigSection';
@@ -1341,13 +1342,14 @@ export default function AdminDashboard() {
         const deposit = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
         const remaining = Number(o.remaining_amount !== undefined ? o.remaining_amount : (o.remainingAmount || (total - deposit)));
         const m = String(o.payment_method || o.paymentMethod || '').toLowerCase().trim();
+        const { cash, bank } = getOrderCashAndBank(o);
         const methodLabel =
           m === 'cash' || m === 'tiền mặt' ? 'Tiền mặt' :
           m === 'transfer' || m === 'bank' || m === 'vietqr' ? 'VietQR / CK' :
           m === 'momo' ? 'Ví MoMo' :
           m === 'zalopay' ? 'Ví ZaloPay' :
           m === 'viettelmoney' || m === 'viettel' ? 'Viettel Money' :
-          m === 'split' || m === 'kết hợp' ? 'Kết hợp (TM+CK)' :
+          m === 'split' || m === 'kết hợp' ? `Kết hợp (TM: ${cash.toLocaleString('vi-VN')}₫ + CK: ${bank.toLocaleString('vi-VN')}₫)` :
           m === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
 
         return {
@@ -1383,14 +1385,27 @@ export default function AdminDashboard() {
     periodOrders.forEach((o: any) => {
       const amt = Number(o.total_amount || o.totalPrice || 0);
       if (amt <= 0) return;
-      const m = String(o.payment_method || o.paymentMethod || '').toLowerCase();
+      const m = String(o.payment_method || o.paymentMethod || '').toLowerCase().trim();
       const isBank = m === 'transfer' || m === 'bank' || m === 'vietqr' || m === 'momo' || m === 'zalopay' || m === 'viettelmoney' || m === 'viettel';
+      const isSplit = m === 'split' || m === 'kết hợp';
+      const { cash, bank } = getOrderCashAndBank(o);
+
+      const nguonLabel = isSplit
+        ? `Kết hợp (TM: ${cash.toLocaleString('vi-VN')}₫ + CK: ${bank.toLocaleString('vi-VN')}₫)`
+        : isBank
+        ? 'VietQR / Ngân Hàng'
+        : 'Tiền mặt tại két';
+
+      const dienGiai = isSplit
+        ? `Thu đơn hàng #${o.order_number || o.id} (${o.customer_name || 'Khách lẻ'}) [Tiền mặt: ${cash.toLocaleString('vi-VN')}₫ | Chuyển khoản: ${bank.toLocaleString('vi-VN')}₫]`
+        : `Thu đơn hàng #${o.order_number || o.id} (${o.customer_name || 'Khách lẻ'})`;
+
       list.push({
         ngay: o.created_at ? new Date(o.created_at).toLocaleString('vi-VN') : '',
-        nguon: isBank ? 'VietQR / Ngân Hàng' : 'Tiền mặt tại két',
+        nguon: nguonLabel,
         loai: 'Thu vào',
-        hang_muc: 'Doanh thu bán bánh',
-        dien_giai: `Thu đơn hàng #${o.order_number || o.id} (${o.customer_name || 'Khách lẻ'})`,
+        hang_muc: isSplit ? 'Doanh thu bán bánh (Kết hợp TM + CK)' : 'Doanh thu bán bánh',
+        dien_giai: dienGiai,
         thu: amt,
         chi: 0,
       });
@@ -1505,13 +1520,14 @@ export default function AdminDashboard() {
         const deposit = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
         const remaining = Number(o.remaining_amount !== undefined ? o.remaining_amount : (o.remainingAmount || (total - deposit)));
         const m = String(o.payment_method || o.paymentMethod || '').toLowerCase().trim();
+        const { cash, bank } = getOrderCashAndBank(o);
         const methodLabel =
           m === 'cash' || m === 'tiền mặt' ? 'Tiền mặt' :
           m === 'transfer' || m === 'bank' || m === 'vietqr' ? 'VietQR / CK' :
           m === 'momo' ? 'Ví MoMo' :
           m === 'zalopay' ? 'Ví ZaloPay' :
           m === 'viettelmoney' || m === 'viettel' ? 'Viettel Money' :
-          m === 'split' || m === 'kết hợp' ? 'Kết hợp (TM+CK)' :
+          m === 'split' || m === 'kết hợp' ? `Kết hợp (TM: ${cash.toLocaleString('vi-VN')}₫ + CK: ${bank.toLocaleString('vi-VN')}₫)` :
           m === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
 
         return {

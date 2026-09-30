@@ -207,28 +207,17 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
       const { cash, bank } = getOrderCashAndBank(o);
 
       if (method === 'split') {
-        if (cash > 0) {
-          list.push({
-            id: 'ord-' + (o.id || num) + '-cash',
-            date,
-            type: 'income' as const,
-            source: 'cash',
-            category: 'Doanh thu bán bánh (Tiền mặt)',
-            desc: `Thu tiền mặt đơn hàng #${num} (${o.customer_name || 'Khách lẻ'})`,
-            amount: cash,
-          });
-        }
-        if (bank > 0) {
-          list.push({
-            id: 'ord-' + (o.id || num) + '-bank',
-            date,
-            type: 'income' as const,
-            source: 'bank',
-            category: 'Doanh thu bán bánh (VietQR/CK)',
-            desc: `Thu VietQR/CK đơn hàng #${num} (${o.customer_name || 'Khách lẻ'})`,
-            amount: bank,
-          });
-        }
+        list.push({
+          id: 'ord-' + (o.id || num),
+          date,
+          type: 'income' as const,
+          source: 'split',
+          cashAmount: cash,
+          bankAmount: bank,
+          category: 'Doanh thu bán bánh (Kết hợp TM + CK)',
+          desc: `Thu tiền đơn hàng #${num} (${o.customer_name || 'Khách lẻ'}) [Tiền mặt: ${cash.toLocaleString('vi-VN')}₫ | Chuyển khoản: ${bank.toLocaleString('vi-VN')}₫]`,
+          amount: amt,
+        });
       } else {
         const isCash = method === 'cash';
         list.push({
@@ -293,7 +282,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
         return false;
       }
 
-      if (filterSource !== 'all' && tx.source !== filterSource) return false;
+      if (filterSource !== 'all' && tx.source !== filterSource && tx.source !== 'split') return false;
       if (filterType !== 'all' && tx.type !== filterType) return false;
 
       if (searchTerm.trim()) {
@@ -340,7 +329,11 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
 
     const totalIncome = listToExport
       .filter((t) => t.type === 'income')
-      .reduce((s, t) => s + Number(t.amount || 0), 0);
+      .reduce((s, t) => {
+        if (filterSource === 'cash' && t.source === 'split') return s + Number(t.cashAmount || 0);
+        if (filterSource === 'bank' && t.source === 'split') return s + Number(t.bankAmount || 0);
+        return s + Number(t.amount || 0);
+      }, 0);
 
     const totalExpense = listToExport
       .filter((t) => t.type === 'expense')
@@ -367,7 +360,7 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
       columns: [
         { header: 'STT', key: 'stt', width: 50, type: 'number' },
         { header: 'Thời Gian', key: 'ngay', width: 140, type: 'string' },
-        { header: 'Nguồn Quỹ', key: 'nguon_quy', width: 130, type: 'string' },
+        { header: 'Nguồn Quỹ', key: 'nguon_quy', width: 150, type: 'string' },
         { header: 'Phân Loại', key: 'loai_gd', width: 100, type: 'string' },
         { header: 'Hạng Mục', key: 'hang_muc', width: 180, type: 'string' },
         { header: 'Diễn Giải Chi Tiết', key: 'dien_giai', width: 280, type: 'string' },
@@ -377,11 +370,22 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
       data: listToExport.map((t, idx) => ({
         stt: idx + 1,
         ngay: t.date ? new Date(t.date).toLocaleString('vi-VN') : '',
-        nguon_quy: t.source === 'cash' ? 'Tiền mặt' : 'VietQR / Bank',
+        nguon_quy:
+          t.source === 'cash'
+            ? 'Tiền mặt'
+            : t.source === 'bank'
+            ? 'VietQR / Bank'
+            : `Kết hợp (TM: ${(t.cashAmount || 0).toLocaleString('vi-VN')}₫ + CK: ${(t.bankAmount || 0).toLocaleString('vi-VN')}₫)`,
         loai_gd: t.type === 'income' ? 'Thu vào' : 'Chi ra',
         hang_muc: t.category || '',
         dien_giai: t.desc || '',
-        thu_vao: t.type === 'income' ? Number(t.amount || 0) : 0,
+        thu_vao: t.type === 'income' 
+          ? (filterSource === 'cash' && t.source === 'split' 
+              ? Number(t.cashAmount || 0) 
+              : filterSource === 'bank' && t.source === 'split' 
+              ? Number(t.bankAmount || 0) 
+              : Number(t.amount || 0))
+          : 0,
         chi_ra: t.type === 'expense' ? Number(t.amount || 0) : 0,
       })),
     };
@@ -638,12 +642,19 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
                   <tr key={tx.id} className="hover:bg-zinc-50/80 transition">
                     <td className="p-3 text-zinc-500 font-mono">{dStr}</td>
                     <td className="p-3">
-                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 w-fit ${
-                        isCash ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
-                      }`}>
-                        {isCash ? <Banknote className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
-                        {isCash ? 'Két tiền mặt' : 'VietQR Ngân hàng'}
-                      </span>
+                      {tx.source === 'split' ? (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 w-fit bg-purple-100 text-purple-800">
+                          <Banknote className="w-3 h-3" />
+                          Kết hợp (TM: {(tx.cashAmount || 0).toLocaleString('vi-VN')}₫ + CK: {(tx.bankAmount || 0).toLocaleString('vi-VN')}₫)
+                        </span>
+                      ) : (
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold flex items-center gap-1 w-fit ${
+                          isCash ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800'
+                        }`}>
+                          {isCash ? <Banknote className="w-3 h-3" /> : <QrCode className="w-3 h-3" />}
+                          {isCash ? 'Két tiền mặt' : 'VietQR Ngân hàng'}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 font-semibold text-zinc-800">{tx.category}</td>
                     <td className="p-3 text-zinc-600 max-w-[280px] truncate" title={tx.desc}>
@@ -659,7 +670,12 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
                     <td className={`p-3 text-right font-black text-sm ${
                       isIncome ? 'text-emerald-600' : 'text-rose-600'
                     }`}>
-                      {isIncome ? '+' : '-'}{Number(tx.amount || 0).toLocaleString('vi-VN')}₫
+                      {isIncome ? '+' : '-'}{Number((filterSource === 'cash' && tx.source === 'split' ? tx.cashAmount : filterSource === 'bank' && tx.source === 'split' ? tx.bankAmount : tx.amount) || 0).toLocaleString('vi-VN')}₫
+                      {filterSource !== 'all' && tx.source === 'split' && (
+                        <div className="text-[10px] text-zinc-400 font-normal">
+                          Tổng đơn: {Number(tx.amount || 0).toLocaleString('vi-VN')}₫
+                        </div>
+                      )}
                     </td>
                   </tr>
                 );

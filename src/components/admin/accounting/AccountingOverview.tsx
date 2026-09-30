@@ -86,6 +86,30 @@ export const isOrderCash = (o: any): boolean => {
   return getOrderPaymentMethod(o) === 'cash';
 };
 
+export const getOrderCashAndBank = (o: any): { cash: number; bank: number } => {
+  const total = Number(o?.total_amount || o?.totalPrice || 0);
+  if (total <= 0) return { cash: 0, bank: 0 };
+  const method = getOrderPaymentMethod(o);
+  if (method === 'cash') return { cash: total, bank: 0 };
+  if (method === 'transfer' || method === 'momo' || method === 'zalopay' || method === 'viettelmoney' || method === 'card') return { cash: 0, bank: total };
+  if (method === 'split') {
+    if (Array.isArray(o?.payments) && o.payments.length > 0) {
+      const cashAmt = o.payments
+        .filter((p: any) => String(p.method).toLowerCase() === 'cash')
+        .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+      const bankAmt = o.payments
+        .filter((p: any) => String(p.method).toLowerCase() !== 'cash')
+        .reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
+      return { cash: cashAmt, bank: bankAmt || Math.max(0, total - cashAmt) };
+    }
+    const c = Number(o?.splitCashAmount || o?.split_cash_amount || 0);
+    const b = Number(o?.splitTransferAmount || o?.split_transfer_amount || 0);
+    if (c > 0 || b > 0) return { cash: c, bank: b || Math.max(0, total - c) };
+    return { cash: Math.round(total / 2), bank: total - Math.round(total / 2) };
+  }
+  return { cash: total, bank: 0 };
+};
+
 export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
   orders,
   expenses,
@@ -494,9 +518,11 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
         { header: 'Chi Tiết Sản Phẩm Bánh', key: 'san_pham', width: 240, type: 'string' },
         { header: 'Doanh Thu Thuần', key: 'doanh_thu_thuan', width: 120, type: 'currency' },
         { header: 'Tổng Tiền Đơn', key: 'tong_tien', width: 120, type: 'currency' },
+        { header: 'Thu Tiền Mặt', key: 'tien_mat', width: 120, type: 'currency' },
+        { header: 'Thu Chuyển Khoản / Ví', key: 'chuyen_khoan', width: 140, type: 'currency' },
         { header: 'Tiền Cọc', key: 'da_coc', width: 110, type: 'currency' },
         { header: 'Còn Thu Khi Giao', key: 'con_thu', width: 120, type: 'currency' },
-        { header: 'Hình Thức TT', key: 'hinh_thuc', width: 120, type: 'string' },
+        { header: 'Hình Thức TT', key: 'hinh_thuc', width: 160, type: 'string' },
         { header: 'Trạng Thái', key: 'trang_thai', width: 110, type: 'string' },
       ],
       data: listToExport.map((o: any, idx: number) => {
@@ -505,13 +531,14 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
         const deposit = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
         const remaining = Number(o.remaining_amount !== undefined ? o.remaining_amount : (o.remainingAmount || (total - deposit)));
         const method = getOrderPaymentMethod(o);
+        const { cash, bank } = getOrderCashAndBank(o);
         const methodLabel =
           method === 'cash' ? 'Tiền mặt' :
           method === 'transfer' ? 'VietQR / CK' :
           method === 'momo' ? 'Ví MoMo' :
           method === 'zalopay' ? 'Ví ZaloPay' :
           method === 'viettelmoney' ? 'Viettel Money' :
-          method === 'split' ? 'Kết hợp (TM+CK)' :
+          method === 'split' ? `Kết hợp (TM: ${cash.toLocaleString('vi-VN')}₫ + CK: ${bank.toLocaleString('vi-VN')}₫)` :
           method === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
 
         return {
@@ -527,6 +554,8 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
           san_pham: Array.isArray(o.items) ? o.items.map((i: any) => `${i.quantity}x ${i.product_name_snapshot || i.name}`).join('; ') : o.cakeName || '',
           doanh_thu_thuan: getOrderNetRevenue(o),
           tong_tien: total,
+          tien_mat: cash,
+          chuyen_khoan: bank,
           da_coc: deposit,
           con_thu: remaining,
           hinh_thuc: methodLabel,
@@ -1319,9 +1348,10 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
                           );
                         }
                         if (m === 'split') {
+                          const { cash, bank } = getOrderCashAndBank(o);
                           return (
-                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/60" title={o.splitCashAmount ? `TM: ${formatVND(o.splitCashAmount)} | CK: ${formatVND(o.splitTransferAmount)}` : 'Kết hợp TM + CK'}>
-                              Kết hợp (TM+CK)
+                            <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200/60" title={`Tiền mặt: ${formatVND(cash)} | Chuyển khoản: ${formatVND(bank)}`}>
+                              Kết hợp (TM: {formatVND(cash)} + CK: {formatVND(bank)})
                             </span>
                           );
                         }

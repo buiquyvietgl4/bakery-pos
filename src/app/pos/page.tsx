@@ -7339,8 +7339,13 @@ export default function POSPage() {
                         if (m === 'cash' || m === 'tiền mặt') return 'Tiền mặt';
                         if (m === 'momo') return 'Ví MoMo';
                         if (m === 'zalopay') return 'Ví ZaloPay';
-                        if (m === 'viettelmoney' || m === 'viettel') return 'Viettel Money';
-                        if (m === 'split' || m === 'kết hợp') return 'Kết hợp (TM + CK)';
+                        if (m === 'split' || m === 'kết hợp') {
+                          const cashVal = Number(inv.splitCashAmount ?? inv.split_cash_amount ?? (inv.payments?.find((p: any) => p.method === 'cash')?.amount) ?? 0);
+                          const bankVal = Number(inv.splitTransferAmount ?? inv.split_transfer_amount ?? (inv.payments?.find((p: any) => p.method !== 'cash')?.amount) ?? 0);
+                          return (cashVal > 0 || bankVal > 0)
+                            ? `Kết hợp (TM: ${cashVal.toLocaleString('vi-VN')}₫ + CK: ${bankVal.toLocaleString('vi-VN')}₫)`
+                            : 'Kết hợp (TM + CK)';
+                        }
                         if (m === 'card') return 'Quẹt thẻ';
                         if (m === 'transfer' || m === 'bank' || m === 'vietqr') return 'Chuyển khoản VietQR';
                         return 'Tiền mặt';

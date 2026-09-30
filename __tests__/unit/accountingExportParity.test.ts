@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getOrderPaymentMethod } from '@/components/admin/accounting/AccountingOverview';
+import { getOrderPaymentMethod, getOrderCashAndBank } from '@/components/admin/accounting/AccountingOverview';
 
 describe('Accounting Export & UI Calculation Parity', () => {
   const mockOrders = [
@@ -127,4 +127,25 @@ describe('Accounting Export & UI Calculation Parity', () => {
     expect(getOrderPaymentMethod(cashOrder)).toBe('cash');
     expect(getOrderPaymentMethod(bankOrder)).toBe('transfer');
   });
+
+  it('không tách đơn thanh toán kết hợp Split thành 2 đơn khi xuất báo cáo kế toán và sổ quỹ', () => {
+    const splitOrder = {
+      id: 'ord-split-1',
+      order_number: 'BK-SPLIT-99',
+      total_amount: 150000,
+      payment_method: 'split',
+      splitCashAmount: 50000,
+      splitTransferAmount: 100000,
+      created_at: '2026-09-30T14:00:00.000Z',
+    };
+
+    const method = getOrderPaymentMethod(splitOrder);
+    expect(method).toBe('split');
+
+    const { cash, bank } = getOrderCashAndBank(splitOrder);
+    expect(cash).toBe(50000);
+    expect(bank).toBe(100000);
+    expect(cash + bank).toBe(150000);
+  });
 });
+

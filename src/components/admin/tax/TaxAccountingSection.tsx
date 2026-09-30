@@ -351,8 +351,8 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
         r.fund_type.toLowerCase().includes(s2eSearchQuery.toLowerCase());
 
       let matchFund = true;
-      if (s2eFilterFund === 'cash') matchFund = r.source === 'cash';
-      else if (s2eFilterFund === 'bank') matchFund = r.source === 'bank';
+      if (s2eFilterFund === 'cash') matchFund = r.source === 'cash' || r.source === 'split';
+      else if (s2eFilterFund === 'bank') matchFund = r.source === 'bank' || r.source === 'split';
       else if (s2eFilterFund === 'income') matchFund = r.type === 'income';
       else if (s2eFilterFund === 'expense') matchFund = r.type === 'expense';
 
@@ -1323,7 +1323,9 @@ export const TaxAccountingSection: React.FC<TaxAccountingSectionProps> = ({
                         <td className="p-2.5 text-center">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                              r.source === 'cash'
+                              r.source === 'split'
+                                ? 'bg-purple-50 text-purple-800 border border-purple-200'
+                                : r.source === 'cash'
                                 ? 'bg-amber-50 text-amber-800 border border-amber-200'
                                 : 'bg-blue-50 text-blue-800 border border-blue-200'
                             }`}

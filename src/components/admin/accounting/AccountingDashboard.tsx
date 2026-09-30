@@ -6,7 +6,7 @@ import {
   Download, Printer, FileSpreadsheet, Sparkles, ChevronDown, CheckCircle2, ShieldCheck, RefreshCw,
   Building2, Store
 } from 'lucide-react';
-import { AccountingOverview } from './AccountingOverview';
+import { AccountingOverview, getOrderCashAndBank } from './AccountingOverview';
 import { DualCashflowLedger } from './DualCashflowLedger';
 import { OpexManager } from './OpexManager';
 import { AccountingClosingSection } from '../AccountingClosingSection';
@@ -256,13 +256,14 @@ export const AccountingDashboard: React.FC<AccountingDashboardProps> = ({
         const deposit = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
         const net = isCompleted ? total : (deposit > 0 ? deposit : total);
         const m = String(o.payment_method || o.paymentMethod || '').toLowerCase().trim();
+        const { cash, bank } = getOrderCashAndBank(o);
         const methodLabel =
           m === 'cash' || m === 'tiền mặt' ? 'Tiền mặt' :
           m === 'transfer' || m === 'bank' || m === 'vietqr' ? 'VietQR / CK' :
           m === 'momo' ? 'Ví MoMo' :
           m === 'zalopay' ? 'Ví ZaloPay' :
           m === 'viettelmoney' || m === 'viettel' ? 'Viettel Money' :
-          m === 'split' || m === 'kết hợp' ? 'Kết hợp (TM+CK)' :
+          m === 'split' || m === 'kết hợp' ? `Kết hợp (TM: ${cash.toLocaleString('vi-VN')}₫ + CK: ${bank.toLocaleString('vi-VN')}₫)` :
           m === 'card' ? 'Quẹt thẻ' : 'Tiền mặt';
 
         return {
