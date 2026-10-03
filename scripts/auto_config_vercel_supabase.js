@@ -21,6 +21,7 @@ const colors = {
   green: '\x1b[32m',
   yellow: '\x1b[33m',
   blue: '\x1b[34m',
+  magenta: '\x1b[35m',
   cyan: '\x1b[36m',
   white: '\x1b[37m',
 };
@@ -521,6 +522,18 @@ async function showMenu() {
     output: process.stdout,
   });
 
+  async function pauseAndReturn() {
+    const rlPause = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    await new Promise((resolve) => {
+      rlPause.question('\n👉 Nhấn phím [ Enter ] để quay lại Menu chính...', resolve);
+    });
+    rlPause.close();
+    await showMenu();
+  }
+
   rl.question('Nhập lựa chọn của bạn (0 - 7): ', async (answer) => {
     rl.close();
     const choice = answer.trim();
@@ -528,24 +541,31 @@ async function showMenu() {
     switch (choice) {
       case '1':
         await syncEnvToVercel();
+        await pauseAndReturn();
         break;
       case '2':
         await testSupabase();
+        await pauseAndReturn();
         break;
       case '3':
         deployToVercel();
+        await pauseAndReturn();
         break;
       case '4':
         await runAll();
+        await pauseAndReturn();
         break;
       case '5':
         openDashboards();
+        await pauseAndReturn();
         break;
       case '6':
         showSqlInstructions();
+        await pauseAndReturn();
         break;
       case '7':
         await runSetupWizard();
+        await pauseAndReturn();
         break;
       case '0':
         log('\n👋 Đã thoát chương trình. Chúc bạn một ngày làm việc hiệu quả!\n', colors.green);
@@ -553,6 +573,7 @@ async function showMenu() {
         break;
       default:
         log('\n⚠️ Lựa chọn không hợp lệ. Vui lòng thử lại!', colors.red);
+        await pauseAndReturn();
         break;
     }
   });
