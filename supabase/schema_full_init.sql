@@ -62,9 +62,13 @@ CREATE TABLE IF NOT EXISTS stores (
 );
 
 -- Khởi tạo 1 store mặc định
-INSERT INTO stores (name, address) VALUES ('Tiệm chính', 'Tại quầy');
+-- Khởi tạo 1 store mặc định
+INSERT INTO stores (name, address) 
+SELECT 'Tiệm chính', 'Tại quầy'
+WHERE NOT EXISTS (SELECT 1 FROM stores WHERE name = 'Tiệm chính');
 
 -- Ràng buộc khóa ngoại store_id vào profiles
+ALTER TABLE profiles DROP CONSTRAINT IF EXISTS fk_profiles_store;
 ALTER TABLE profiles ADD CONSTRAINT fk_profiles_store
     FOREIGN KEY (store_id) REFERENCES stores(id);
 
@@ -203,6 +207,7 @@ CREATE TABLE IF NOT EXISTS products (
 );
 
 -- Khóa ngoại ngược từ recipes về products
+ALTER TABLE recipes DROP CONSTRAINT IF EXISTS fk_recipes_product;
 ALTER TABLE recipes ADD CONSTRAINT fk_recipes_product
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL;
 
