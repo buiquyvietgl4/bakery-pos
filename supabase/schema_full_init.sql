@@ -1176,7 +1176,7 @@ END $$;
 -- >>> BẮT ĐẦU MIGRATION: 00015_enable_rls_secure_policies.sql <<<
 -- 00015_enable_rls_secure_policies.sql
 -- 1. Giải quyết triệt để 2 Lỗi (Errors - rls_disabled_in_public): Kích hoạt RLS cho toàn bộ các bảng trong schema public
-DO 
+DO $$
 DECLARE
     r RECORD;
 BEGIN
@@ -1194,10 +1194,10 @@ BEGIN
             r.tablename
         );
     END LOOP;
-END ;
+END $$;
 
 -- 2. Giải quyết triệt để 55 Cảnh báo (Warnings - Function Search Path Mutable): Gán cố định search_path = public cho tất cả các function
-DO 
+DO $$
 DECLARE
     f RECORD;
 BEGIN
@@ -1215,7 +1215,7 @@ BEGIN
             NULL;
         END;
     END LOOP;
-END ;
+END $$;
 
 -- 3. Giải quyết triệt để 2 Lỗi (Errors - Security Definer View): Chuyển Views sang Security Invoker
 ALTER VIEW IF EXISTS public.ingredients_safe SET (security_invoker = true);
