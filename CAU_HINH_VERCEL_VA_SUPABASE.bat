@@ -19,11 +19,12 @@ echo  [2] 🔍 Kiểm tra Kết nối & Kiểm định Bảng Dữ Liệu Supaba
 echo  [3] 🚀 Triển khai (Deploy) Bản Mới Lên Vercel Production
 echo  [4] ⭐ TỰ ĐỘNG HÓA TẤT CẢ (Kiểm tra Supabase -^> Đồng bộ Vercel -^> Deploy)
 echo  [5] 🌐 Mở Bảng Điều Khiển Vercel & Supabase trên Trình Duyệt
-echo  [6] 📋 Xem Hướng dẫn & Đường dẫn File SQL Khởi tạo Schema Supabase
+echo  [6] 📋 Tự Động Sao Chép (Copy) SQL Schema ^& Mở Supabase SQL Editor
+echo  [7] 🪄 Cài Đặt Dự Án Mới Từ Đầu Đến Đuôi (Setup Wizard A-Z)
 echo  [0] ❌ Thoát
 echo.
 echo ================================================================================
-set /p choice="Nhập lựa chọn của bạn (0 - 6): "
+set /p choice="Nhập lựa chọn của bạn (0 - 7): "
 
 if "%choice%"=="1" (
     cls
@@ -73,6 +74,14 @@ if "%choice%"=="6" (
     goto MENU
 )
 
+if "%choice%"=="7" (
+    cls
+    node scripts\auto_config_vercel_supabase.js --wizard
+    echo.
+    pause
+    goto MENU
+)
+
 if "%choice%"=="0" (
     echo.
     echo Tam biet! Chuc ban mot ngay lam viec hieu qua!
@@ -81,6 +90,6 @@ if "%choice%"=="0" (
 )
 
 echo.
-echo [!] Lựa chọn không hợp lệ, vui lòng nhập số từ 0 đến 6.
+echo [!] Lựa chọn không hợp lệ, vui lòng nhập số từ 0 đến 7.
 timeout /t 2 >nul
 goto MENU

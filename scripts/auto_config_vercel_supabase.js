@@ -364,7 +364,7 @@ function openDashboards() {
   }
 }
 
-// 7. XEM HƯỚNG DẪN SQL SCHEMA
+// 7. XEM HƯỚNG DẪN SQL SCHEMA & TỰ ĐỘNG COPY VÀO BỘ NHỚ ĐỆM
 function showSqlInstructions() {
   printBanner();
   const env = loadEnv();
@@ -373,24 +373,116 @@ function showSqlInstructions() {
   const projectId = match ? match[1] : '';
 
   log('================================================================================', colors.cyan);
-  log(' 📋 HƯỚNG DẪN KHỞI TẠO BẢNG SUPABASE (SQL SCHEMA MASTER)', colors.bright + colors.cyan);
+  log(' 📋 TỰ ĐỘNG SAO CHÉP SQL SCHEMA & MỞ SUPABASE SQL EDITOR', colors.bright + colors.cyan);
   log('================================================================================\n', colors.cyan);
 
-  log('Dự án đã có sẵn file SQL tổng thể chứa 100% bảng, hàm, view và kho ảnh:');
-  log(`📄 File SQL: ${colors.bright}${SCHEMA_FILE_PATH}${colors.reset}\n`, colors.yellow);
+  const sqlUrl = projectId
+    ? `https://supabase.com/dashboard/project/${projectId}/sql/new`
+    : 'https://supabase.com/dashboard';
 
-  log('👉 Các bước thực hiện:');
-  log('   Bước 1: Mở Supabase Dashboard SQL Editor theo đường link sau:');
-  if (projectId) {
-    log(`           https://supabase.com/dashboard/project/${projectId}/sql/new`, colors.bright + colors.green);
-  } else {
-    log('           https://supabase.com/dashboard', colors.bright + colors.green);
+  // Tự động copy toàn bộ nội dung file SQL vào Clipboard của Windows
+  try {
+    process.stdout.write('  ⏳ Đang sao chép toàn bộ 1500+ dòng mã SQL vào Bộ nhớ đệm (Clipboard) ... ');
+    const { spawnSync } = require('child_process');
+    const clipRes = spawnSync('clip', { input: fs.readFileSync(SCHEMA_FILE_PATH) });
+    if (clipRes.status === 0) {
+      console.log(`${colors.green}✓ ĐÃ SAO CHÉP XONG!${colors.reset}`);
+    } else {
+      console.log(`${colors.yellow}⚠️ Không thể tự copy (Mã ${clipRes.status})${colors.reset}`);
+    }
+  } catch (err) {
+    console.log(`${colors.yellow}⚠️ Không thể tự copy, vui lòng mở file thủ công: ${err.message}${colors.reset}`);
   }
-  log('   Bước 2: Mở file `supabase/schema_full_init.sql` và sao chép (Copy) toàn bộ nội dung.');
-  log('   Bước 3: Dán (Paste) vào ô nhập mã của Supabase SQL Editor.');
-  log('   Bước 4: Nhấn nút [ RUN ] (màu xanh lá) để hệ thống tự động khởi tạo mọi thứ.\n');
 
+  // Tự động mở trình duyệt đến trang SQL Editor của Supabase
+  try {
+    process.stdout.write('  ⏳ Đang mở trang Supabase SQL Editor trên trình duyệt ... ');
+    execSync(`start "" "${sqlUrl}"`, { shell: true });
+    console.log(`${colors.green}✓ ĐÃ MỞ TRÌNH DUYỆT!${colors.reset}\n`);
+  } catch {
+    console.log('\n');
+  }
+
+  log('👉 BẠN CHỈ CẦN LÀM 2 THAO TÁC CỰC KỲ ĐƠN GIẢN:', colors.bright + colors.yellow);
+  log('   1. Trên tab trình duyệt vừa mở, nhấp chuột vào ô nhập và bấm [ Ctrl + V ] (để dán mã vừa copy).', colors.white);
+  log('   2. Nhấn nút màu xanh lá [ RUN ] ở góc dưới bên phải.', colors.bright + colors.green);
+  log('   ➔ Toàn bộ bảng, hàm, phân quyền và kho ảnh sẽ được tạo tự động 100% trong 5 giây!\n', colors.cyan);
   log('================================================================================\n', colors.cyan);
+}
+
+// 8. SETUP WIZARD: CÀI ĐẶT DỰ ÁN MỚI TỪ SỐ 0
+async function runSetupWizard() {
+  printBanner();
+  log('================================================================================', colors.magenta);
+  log(' 🪄 TRÌNH HƯỚNG DẪN THIẾT LẬP DỰ ÁN MỚI TỪ A ĐẾN Z (SETUP WIZARD)', colors.bright + colors.magenta);
+  log('================================================================================\n', colors.magenta);
+
+  log('Trình hướng dẫn này giúp bạn cấu hình một dự án Tiệm Bánh mới hoàn toàn mà không cần sửa file!\n', colors.dim);
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  const question = (query) => new Promise((resolve) => rl.question(query, resolve));
+
+  try {
+    log('Bước 1: Nhập thông tin kết nối Supabase của bạn (Lấy trên Supabase.com -> Settings -> API):', colors.yellow);
+    const inputUrl = (await question('👉 Nhập Supabase Project URL (vd: https://abcdef.supabase.co): ')).trim();
+    if (!inputUrl.startsWith('http')) {
+      log('❌ URL không hợp lệ! Vui lòng thử lại.', colors.red);
+      rl.close();
+      return;
+    }
+
+    const inputKey = (await question('👉 Nhập Supabase Public Anon Key: ')).trim();
+    if (!inputKey) {
+      log('❌ Anon Key không được để trống!', colors.red);
+      rl.close();
+      return;
+    }
+
+    const inputAdminKey = (await question('👉 Nhập Mật khẩu Cứu hộ Root Admin (Nhấn Enter để dùng mặc định "Quyviet97@"): ')).trim() || 'Quyviet97@';
+
+    rl.close();
+
+    // 1. Tự động ghi vào file .env.local và .env
+    log('\n⏳ Đang lưu cấu hình vào file .env.local và .env...', colors.cyan);
+    const envContent = `# Cloud Supabase credentials for Bakery ERP
+NEXT_PUBLIC_SUPABASE_URL=${inputUrl}
+NEXT_PUBLIC_SUPABASE_ANON_KEY=${inputKey}
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${inputKey}
+ROOT_ADMIN_KEY=${inputAdminKey}
+ADMIN_ROOT_KEY=${inputAdminKey}
+
+# Push Notifications (Web Push VAPID)
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=BBRxBu4Wou9gEIrPivlSVhGHcdjEF-8RF5phrRvIxyp6sfQJNCdYOpxc3Uu9qcgE9tao7zRDH1ZvEWL1zyDKU84
+VAPID_PRIVATE_KEY=xix0rTLV9hqExYqk0InzRAMbhMrYWh-RIPO0mm3ApCw
+VAPID_SUBJECT=mailto:admin@tiembanh.com
+`;
+    fs.writeFileSync(ENV_LOCAL_PATH, envContent, 'utf8');
+    fs.writeFileSync(ENV_PATH, envContent, 'utf8');
+    log('  ✅ Đã lưu cấu hình dự án mới thành công!', colors.green);
+
+    // 2. Tự động copy SQL và mở trình duyệt
+    showSqlInstructions();
+
+    // 3. Tạm dừng để người dùng bấm RUN trên Supabase
+    const rlWait = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+    await new Promise((resolve) => {
+      rlWait.question('Sau khi đã bấm nút [ RUN ] trên Supabase, nhấn [ Enter ] để tool tự động deploy Vercel...', resolve);
+    });
+    rlWait.close();
+
+    // 4. Chạy kiểm tra & deploy
+    await runAll();
+  } catch (err) {
+    rl.close();
+    log(`\n❌ Đã xảy ra lỗi: ${err.message}`, colors.red);
+  }
 }
 
 // 8. TỰ ĐỘNG CHẠY TẤT CẢ (ALL-IN-ONE)
@@ -420,7 +512,8 @@ async function showMenu() {
   log('  [3] 🚀 Triển khai (Deploy) Bản Mới Lên Vercel Production', colors.bright + colors.yellow);
   log('  [4] ⭐ TỰ ĐỘNG HÓA TẤT CẢ (Kiểm tra Supabase -> Đồng bộ -> Deploy)', colors.bright + colors.magenta);
   log('  [5] 🌐 Mở Bảng Điều Khiển Vercel & Supabase trên Trình Duyệt', colors.white);
-  log('  [6] 📋 Hướng dẫn Khởi tạo Bảng Supabase (Copy Script SQL Schema)', colors.dim);
+  log('  [6] 📋 Tự Động Sao Chép (Copy) SQL Schema & Mở Supabase SQL Editor', colors.cyan);
+  log('  [7] 🪄 Cài Đặt Dự Án Mới Từ Đầu Đến Đuôi (Setup Wizard A-Z)', colors.bright + colors.magenta);
   log('  [0] ❌ Thoát\n', colors.red);
 
   const rl = readline.createInterface({
@@ -428,7 +521,7 @@ async function showMenu() {
     output: process.stdout,
   });
 
-  rl.question('Nhập lựa chọn của bạn (0 - 6): ', async (answer) => {
+  rl.question('Nhập lựa chọn của bạn (0 - 7): ', async (answer) => {
     rl.close();
     const choice = answer.trim();
 
@@ -450,6 +543,9 @@ async function showMenu() {
         break;
       case '6':
         showSqlInstructions();
+        break;
+      case '7':
+        await runSetupWizard();
         break;
       case '0':
         log('\n👋 Đã thoát chương trình. Chúc bạn một ngày làm việc hiệu quả!\n', colors.green);
@@ -477,6 +573,8 @@ const args = process.argv.slice(2);
     openDashboards();
   } else if (args.includes('--schema')) {
     showSqlInstructions();
+  } else if (args.includes('--wizard')) {
+    await runSetupWizard();
   } else {
     await showMenu();
   }
