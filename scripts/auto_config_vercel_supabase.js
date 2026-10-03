@@ -505,6 +505,49 @@ async function runAll() {
   deployToVercel();
 }
 
+// 8. ĐỔI / ĐĂNG XUẤT TÀI KHOẢN VERCEL
+function switchVercelAccount() {
+  printBanner();
+  log('================================================================================', colors.yellow);
+  log(' 🔄 ĐỔI / ĐĂNG XUẤT TÀI KHOẢN VERCEL CLI', colors.bright + colors.yellow);
+  log('================================================================================\n', colors.yellow);
+
+  const vercelCmd = getVercelCmd();
+
+  // 1. Đăng xuất tài khoản hiện tại
+  try {
+    log('⏳ Đang đăng xuất tài khoản Vercel hiện tại...', colors.cyan);
+    execSync(`${vercelCmd} logout`, { stdio: 'inherit', shell: true });
+    log('  ✅ Đã đăng xuất thành công khỏi Vercel!', colors.green);
+  } catch (err) {
+    log(`  ⚠️ Lỗi khi đăng xuất: ${err.message}`, colors.yellow);
+  }
+
+  // 2. Xóa liên kết dự án cũ
+  const projectJsonPath = path.join(ROOT_DIR, '.vercel', 'project.json');
+  if (fs.existsSync(projectJsonPath)) {
+    try {
+      fs.unlinkSync(projectJsonPath);
+      log('  ✅ Đã hủy liên kết dự án cũ (.vercel/project.json).', colors.green);
+    } catch {
+      // ignore
+    }
+  }
+
+  // 3. Tiến hành đăng nhập tài khoản mới
+  log('\n👉 Đang mở trang xác thực để đăng nhập tài khoản Vercel mới...', colors.bright + colors.cyan);
+  try {
+    execSync(`${vercelCmd} login`, { stdio: 'inherit', shell: true });
+    log('\n🎉 Đăng nhập tài khoản Vercel mới thành công!', colors.bright + colors.green);
+
+    log('\n🔗 Đang liên kết dự án với tài khoản mới...', colors.cyan);
+    execSync(`${vercelCmd} link`, { stdio: 'inherit', shell: true });
+    log('🎉 Hoàn tất chuyển đổi tài khoản!', colors.green);
+  } catch (err) {
+    log(`\n⚠️ Quá trình đăng nhập/liên kết dừng lại: ${err.message}`, colors.yellow);
+  }
+}
+
 // 9. MENU ĐIỀU KHIỂN CHÍNH
 async function showMenu() {
   printBanner();
@@ -516,6 +559,7 @@ async function showMenu() {
   log('  [5] 🌐 Mở Bảng Điều Khiển Vercel & Supabase trên Trình Duyệt', colors.white);
   log('  [6] 📋 Tự Động Sao Chép (Copy) SQL Schema & Mở Supabase SQL Editor', colors.cyan);
   log('  [7] 🪄 Cài Đặt Dự Án Mới Từ Đầu Đến Đuôi (Setup Wizard A-Z)', colors.bright + colors.magenta);
+  log('  [8] 🔄 Đổi / Đăng Xuất Tài Khoản Vercel (Chuyển sang tài khoản khác)', colors.bright + colors.yellow);
   log('  [0] ❌ Thoát\n', colors.red);
 
   const rl = readline.createInterface({
@@ -535,7 +579,7 @@ async function showMenu() {
     await showMenu();
   }
 
-  rl.question('Nhập lựa chọn của bạn (0 - 7): ', async (answer) => {
+  rl.question('Nhập lựa chọn của bạn (0 - 8): ', async (answer) => {
     rl.close();
     const choice = answer.trim();
 
@@ -566,6 +610,10 @@ async function showMenu() {
         break;
       case '7':
         await runSetupWizard();
+        await pauseAndReturn();
+        break;
+      case '8':
+        switchVercelAccount();
         await pauseAndReturn();
         break;
       case '0':
