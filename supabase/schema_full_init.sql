@@ -43,6 +43,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE OR REPLACE TRIGGER on_auth_user_created
     AFTER INSERT ON auth.users
     FOR EACH ROW EXECUTE FUNCTION handle_new_user();
@@ -122,7 +123,8 @@ INSERT INTO app_settings (key, value, category, label, description, input_type, 
 ('accounting.shift_cash_warning_threshold', '50000', 'accounting', 'Ngưỡng cảnh báo lệch quỹ (VND)', 'Lệch két vượt số này sẽ đánh dấu vàng', 'number', NULL),
 ('accounting.shift_cash_block_threshold', '200000', 'accounting', 'Ngưỡng chặn đóng ca (VND)', 'Lệch két vượt số này cần Admin xác nhận', 'number', NULL),
 ('accounting.target_food_cost_pct', '35', 'accounting', 'Tỷ lệ Food Cost mục tiêu (%)', 'Dùng để gợi ý giá bán tối ưu cho bánh', 'number', NULL),
-('accounting.auto_purge_months', '6', 'accounting', 'Thời hạn đề xuất lưu trữ (tháng)', 'Đề xuất backup & dọn dẹp khi dữ liệu cũ hơn N tháng', 'number', NULL);
+('accounting.auto_purge_months', '6', 'accounting', 'Thời hạn đề xuất lưu trữ (tháng)', 'Đề xuất backup & dọn dẹp khi dữ liệu cũ hơn N tháng', 'number', NULL)
+ON CONFLICT (key) DO NOTHING;
 -- >>> KẾT THÚC MIGRATION: 00002_create_stores_settings.sql <<<
 
 -- >>> BẮT ĐẦU MIGRATION: 00003_create_ingredients.sql <<<
@@ -347,7 +349,8 @@ INSERT INTO expense_categories (name, cost_type, description) VALUES
 ('Khấu hao thiết bị', 'fixed', 'Lò nướng đối lưu, máy đánh trứng, tủ mát'),
 ('Quảng cáo & Marketing', 'variable', 'Facebook ads, tờ rơi, biển hiệu'),
 ('Văn phòng phẩm & Bao bì', 'variable', 'Túi nilong, giấy in bill, bút viết'),
-('Chi phí khác', 'variable', 'Sửa chữa đột xuất, tiếp khách');
+('Chi phí khác', 'variable', 'Sửa chữa đột xuất, tiếp khách')
+ON CONFLICT (name) DO NOTHING;
 
 CREATE TABLE IF NOT EXISTS operating_expenses (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -518,6 +521,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_ingredient_cost_changed ON ingredients;
 CREATE OR REPLACE TRIGGER trg_ingredient_cost_changed
     AFTER UPDATE ON ingredients
     FOR EACH ROW
@@ -644,6 +648,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS trg_order_completed ON orders;
 CREATE OR REPLACE TRIGGER trg_order_completed
     AFTER UPDATE ON orders
     FOR EACH ROW
@@ -677,6 +682,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS trg_po_received ON purchase_orders;
 CREATE OR REPLACE TRIGGER trg_po_received
     AFTER UPDATE ON purchase_orders
     FOR EACH ROW
@@ -703,6 +709,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+DROP TRIGGER IF EXISTS trg_opex_created ON operating_expenses;
 CREATE OR REPLACE TRIGGER trg_opex_created
     AFTER INSERT ON operating_expenses
     FOR EACH ROW
@@ -841,10 +848,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_no_delete_cashflow ON cashflow_transactions;
 CREATE OR REPLACE TRIGGER trg_no_delete_cashflow
     BEFORE DELETE ON cashflow_transactions
     FOR EACH ROW EXECUTE FUNCTION prevent_accounting_delete();
 
+DROP TRIGGER IF EXISTS trg_no_delete_accounting_summary ON monthly_accounting_summary;
 CREATE OR REPLACE TRIGGER trg_no_delete_accounting_summary
     BEFORE DELETE ON monthly_accounting_summary
     FOR EACH ROW EXECUTE FUNCTION prevent_accounting_delete();
