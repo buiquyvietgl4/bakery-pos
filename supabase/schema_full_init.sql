@@ -10,9 +10,14 @@
 -- 00001_create_profiles_roles.sql
 -- Phân quyền 2 Roles: staff (nhân viên bán hàng + bếp) & admin (chủ tiệm)
 
-CREATE TYPE user_role AS ENUM ('staff', 'admin');
+DO $
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
+        CREATE TYPE user_role AS ENUM ('staff', 'admin');
+    END IF;
+END $;
 
-CREATE TABLE profiles (
+CREATE TABLE IF NOT EXISTS profiles (
     id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     full_name   TEXT NOT NULL,
     role        user_role NOT NULL DEFAULT 'staff',
@@ -47,7 +52,7 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 -- 00002_create_stores_settings.sql
 -- Quản lý chi nhánh (Multi-Store) & Bảng cấu hình động (App Settings)
 
-CREATE TABLE stores (
+CREATE TABLE IF NOT EXISTS stores (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        TEXT NOT NULL,
     address     TEXT,
@@ -64,7 +69,7 @@ ALTER TABLE profiles ADD CONSTRAINT fk_profiles_store
     FOREIGN KEY (store_id) REFERENCES stores(id);
 
 -- BẢNG CẤU HÌNH ĐỘNG HỆ THỐNG (Không hard-code bất kỳ tham số nào)
-CREATE TABLE app_settings (
+CREATE TABLE IF NOT EXISTS app_settings (
     key         TEXT PRIMARY KEY,
     value       JSONB NOT NULL,
     category    TEXT NOT NULL DEFAULT 'general',
@@ -120,7 +125,7 @@ INSERT INTO app_settings (key, value, category, label, description, input_type, 
 -- 00003_create_ingredients.sql
 -- Quản lý kho Nguyên vật liệu (Ingredients) & Giá vốn trung bình WAC
 
-CREATE TABLE ingredients (
+CREATE TABLE IF NOT EXISTS ingredients (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name            TEXT NOT NULL,
     unit            TEXT NOT NULL,              -- g, ml, quả, cái, hộp... (đơn vị kho cơ sở)
@@ -136,8 +141,8 @@ CREATE TABLE ingredients (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_ingredients_category ON ingredients(category);
-CREATE INDEX idx_ingredients_low_stock ON ingredients(stock_qty, reorder_level)
+CREATE INDEX IF NOT EXISTS idx_ingredients_category ON ingredients(category);
+CREATE INDEX IF NOT EXISTS idx_ingredients_low_stock ON ingredients(stock_qty, reorder_level)
     WHERE is_active = true;
 -- >>> KẾT THÚC MIGRATION: 00003_create_ingredients.sql <<<
 
@@ -145,7 +150,7 @@ CREATE INDEX idx_ingredients_low_stock ON ingredients(stock_qty, reorder_level)
 -- 00004_create_recipes.sql
 -- Quản lý Công thức Bánh (Recipe / Bill of Materials - BOM)
 
-CREATE TABLE recipes (
+CREATE TABLE IF NOT EXISTS recipes (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name                TEXT NOT NULL,
     product_id          UUID,                          -- Sẽ add constraint sau khi tạo bảng products
@@ -159,7 +164,7 @@ CREATE TABLE recipes (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE recipe_items (
+CREATE TABLE IF NOT EXISTS recipe_items (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     recipe_id       UUID NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
     ingredient_id   UUID NOT NULL REFERENCES ingredients(id) ON DELETE RESTRICT,
@@ -169,15 +174,15 @@ CREATE TABLE recipe_items (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_recipe_items_recipe ON recipe_items(recipe_id);
-CREATE INDEX idx_recipe_items_ingredient ON recipe_items(ingredient_id);
+CREATE INDEX IF NOT EXISTS idx_recipe_items_recipe ON recipe_items(recipe_id);
+CREATE INDEX IF NOT EXISTS idx_recipe_items_ingredient ON recipe_items(ingredient_id);
 -- >>> KẾT THÚC MIGRATION: 00004_create_recipes.sql <<<
 
 -- >>> BẮT ĐẦU MIGRATION: 00005_create_products.sql <<<
 -- 00005_create_products.sql
 -- Quản lý Sản phẩm, Biến thể (Size) & Liên kết Recipe
 
-CREATE TABLE products (
+CREATE TABLE IF NOT EXISTS products (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name             TEXT NOT NULL,
     category         TEXT NOT NULL DEFAULT 'other',
@@ -201,7 +206,7 @@ CREATE TABLE products (
 ALTER TABLE recipes ADD CONSTRAINT fk_recipes_product
     FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL;
 
-CREATE TABLE product_variants (
+CREATE TABLE IF NOT EXISTS product_variants (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     product_id      UUID NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     variant_name    TEXT NOT NULL,                  -- Ví dụ: 'Size Nhỏ (16cm)', 'Size Lớn (20cm)'
@@ -212,15 +217,15 @@ CREATE TABLE product_variants (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_products_category ON products(category) WHERE is_active = true;
-CREATE INDEX idx_variants_product ON product_variants(product_id);
+CREATE INDEX IF NOT EXISTS idx_products_category ON products(category) WHERE is_active = true;
+CREATE INDEX IF NOT EXISTS idx_variants_product ON product_variants(product_id);
 -- >>> KẾT THÚC MIGRATION: 00005_create_products.sql <<<
 
 -- >>> BẮT ĐẦU MIGRATION: 00006_create_shifts_orders.sql <<<
 -- 00006_create_shifts_orders.sql
 -- Quản lý Ca bán hàng, Đơn hàng, Chi tiết đơn hàng & Thanh toán
 
-CREATE TABLE shifts (
+CREATE TABLE IF NOT EXISTS shifts (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     staff_id        UUID NOT NULL REFERENCES profiles(id),
     store_id        UUID REFERENCES stores(id),    -- Chi nhánh
@@ -237,7 +242,7 @@ CREATE TABLE shifts (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE orders (
+CREATE TABLE IF NOT EXISTS orders (
     id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     local_id           TEXT UNIQUE,                   -- UUID sinh ra tại Client khi offline
     order_number       TEXT,                          -- Mã đơn hiển thị (BK-YYYYMMDD-XXX)
@@ -261,7 +266,7 @@ CREATE TABLE orders (
     updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE order_items (
+CREATE TABLE IF NOT EXISTS order_items (
     id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id              UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     product_id            UUID NOT NULL REFERENCES products(id),
@@ -275,7 +280,7 @@ CREATE TABLE order_items (
     notes                 TEXT
 );
 
-CREATE TABLE payments (
+CREATE TABLE IF NOT EXISTS payments (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     order_id        UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
     method          TEXT NOT NULL CHECK (method IN ('cash','transfer','momo','card')),
@@ -284,19 +289,19 @@ CREATE TABLE payments (
     paid_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_orders_created_by ON orders(created_by);
-CREATE INDEX idx_orders_status ON orders(status);
-CREATE INDEX idx_orders_created_at ON orders(created_at DESC);
-CREATE INDEX idx_orders_shift ON orders(shift_id);
-CREATE INDEX idx_orders_local_id ON orders(local_id);
-CREATE INDEX idx_order_items_order ON order_items(order_id);
+CREATE INDEX IF NOT EXISTS idx_orders_created_by ON orders(created_by);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_orders_shift ON orders(shift_id);
+CREATE INDEX IF NOT EXISTS idx_orders_local_id ON orders(local_id);
+CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 -- >>> KẾT THÚC MIGRATION: 00006_create_shifts_orders.sql <<<
 
 -- >>> BẮT ĐẦU MIGRATION: 00007_create_expenses_cashflow.sql <<<
 -- 00007_create_expenses_cashflow.sql
 -- Nhập kho (Purchase Orders), Chi phí vận hành (OPEX) & Sổ quỹ thu chi (Cashflow Ledger)
 
-CREATE TABLE purchase_orders (
+CREATE TABLE IF NOT EXISTS purchase_orders (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     po_number       TEXT NOT NULL,                 -- Số phiếu nhập: PO-YYYYMMDD-XXX
     supplier_name   TEXT,                          -- Nhà cung cấp
@@ -309,7 +314,7 @@ CREATE TABLE purchase_orders (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE purchase_order_items (
+CREATE TABLE IF NOT EXISTS purchase_order_items (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     po_id           UUID NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
     ingredient_id   UUID NOT NULL REFERENCES ingredients(id),
@@ -319,7 +324,7 @@ CREATE TABLE purchase_order_items (
     line_total      NUMERIC(12,2) GENERATED ALWAYS AS (quantity * unit_price) STORED
 );
 
-CREATE TABLE expense_categories (
+CREATE TABLE IF NOT EXISTS expense_categories (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name        TEXT NOT NULL UNIQUE,              -- Mặt bằng, Điện nước, Gas, Lương, Khấu hao...
     cost_type   TEXT NOT NULL CHECK (cost_type IN ('fixed', 'variable')),
@@ -339,7 +344,7 @@ INSERT INTO expense_categories (name, cost_type, description) VALUES
 ('Văn phòng phẩm & Bao bì', 'variable', 'Túi nilong, giấy in bill, bút viết'),
 ('Chi phí khác', 'variable', 'Sửa chữa đột xuất, tiếp khách');
 
-CREATE TABLE operating_expenses (
+CREATE TABLE IF NOT EXISTS operating_expenses (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     category_id     UUID NOT NULL REFERENCES expense_categories(id),
     amount          NUMERIC(12,2) NOT NULL,
@@ -351,7 +356,7 @@ CREATE TABLE operating_expenses (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE cashflow_transactions (
+CREATE TABLE IF NOT EXISTS cashflow_transactions (
     id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     txn_type         TEXT NOT NULL CHECK (txn_type IN ('income', 'expense')),
     category         TEXT NOT NULL,                -- sales, deposit, ingredient_purchase, opex, adjustment
@@ -368,18 +373,18 @@ CREATE TABLE cashflow_transactions (
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_po_status ON purchase_orders(status);
-CREATE INDEX idx_opex_period ON operating_expenses(period_month);
-CREATE INDEX idx_cashflow_period ON cashflow_transactions(period_month);
-CREATE INDEX idx_cashflow_type ON cashflow_transactions(txn_type);
-CREATE INDEX idx_cashflow_ref ON cashflow_transactions(reference_id, reference_type);
+CREATE INDEX IF NOT EXISTS idx_po_status ON purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_opex_period ON operating_expenses(period_month);
+CREATE INDEX IF NOT EXISTS idx_cashflow_period ON cashflow_transactions(period_month);
+CREATE INDEX IF NOT EXISTS idx_cashflow_type ON cashflow_transactions(txn_type);
+CREATE INDEX IF NOT EXISTS idx_cashflow_ref ON cashflow_transactions(reference_id, reference_type);
 -- >>> KẾT THÚC MIGRATION: 00007_create_expenses_cashflow.sql <<<
 
 -- >>> BẮT ĐẦU MIGRATION: 00008_create_accounting_summary.sql <<<
 -- 00008_create_accounting_summary.sql
 -- Báo cáo P&L Chốt sổ tháng & Nhật ký kiểm toán (Audit Logs)
 
-CREATE TABLE monthly_accounting_summary (
+CREATE TABLE IF NOT EXISTS monthly_accounting_summary (
     id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     period_month        TEXT NOT NULL UNIQUE,     -- 'YYYY-MM' duy nhất cho mỗi tháng
     total_revenue       NUMERIC(14,2) NOT NULL DEFAULT 0,
@@ -414,7 +419,7 @@ CREATE TABLE monthly_accounting_summary (
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE TABLE audit_logs (
+CREATE TABLE IF NOT EXISTS audit_logs (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     table_name  TEXT NOT NULL,
     record_id   UUID NOT NULL,
@@ -425,8 +430,8 @@ CREATE TABLE audit_logs (
     changed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_audit_table ON audit_logs(table_name, record_id);
-CREATE INDEX idx_audit_date ON audit_logs(changed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_table ON audit_logs(table_name, record_id);
+CREATE INDEX IF NOT EXISTS idx_audit_date ON audit_logs(changed_at DESC);
 -- >>> KẾT THÚC MIGRATION: 00008_create_accounting_summary.sql <<<
 
 -- >>> BẮT ĐẦU MIGRATION: 00009_create_functions_triggers.sql <<<
@@ -917,27 +922,33 @@ GRANT SELECT ON public.products_pos TO authenticated;
 -- 1. Profiles
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "profiles_select" ON profiles;
 CREATE POLICY "profiles_select" ON profiles
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "profiles_update_self_or_admin" ON profiles;
 CREATE POLICY "profiles_update_self_or_admin" ON profiles
     FOR UPDATE USING (auth.uid() = id OR get_user_role() = 'admin');
 
 -- 2. Stores
 ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "stores_select" ON stores;
 CREATE POLICY "stores_select" ON stores
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "stores_admin_manage" ON stores;
 CREATE POLICY "stores_admin_manage" ON stores
     FOR ALL USING (get_user_role() = 'admin');
 
 -- 3. Ingredients (Bảng gốc chứa avg_cost -> Chỉ Admin thấy trực tiếp, Staff dùng view ingredients_safe)
 ALTER TABLE ingredients ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "admin_view_ingredients" ON ingredients;
 CREATE POLICY "admin_view_ingredients" ON ingredients
     FOR SELECT USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "admin_manage_ingredients" ON ingredients;
 CREATE POLICY "admin_manage_ingredients" ON ingredients
     FOR ALL USING (get_user_role() = 'admin');
 
@@ -945,15 +956,19 @@ CREATE POLICY "admin_manage_ingredients" ON ingredients
 ALTER TABLE recipes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recipe_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "staff_admin_view_recipes" ON recipes;
 CREATE POLICY "staff_admin_view_recipes" ON recipes
     FOR SELECT USING (get_user_role() IN ('staff', 'admin'));
 
+DROP POLICY IF EXISTS "admin_manage_recipes" ON recipes;
 CREATE POLICY "admin_manage_recipes" ON recipes
     FOR ALL USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "staff_admin_view_recipe_items" ON recipe_items;
 CREATE POLICY "staff_admin_view_recipe_items" ON recipe_items
     FOR SELECT USING (get_user_role() IN ('staff', 'admin'));
 
+DROP POLICY IF EXISTS "admin_manage_recipe_items" ON recipe_items;
 CREATE POLICY "admin_manage_recipe_items" ON recipe_items
     FOR ALL USING (get_user_role() = 'admin');
 
@@ -961,27 +976,34 @@ CREATE POLICY "admin_manage_recipe_items" ON recipe_items
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_variants ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "admin_view_products" ON products;
 CREATE POLICY "admin_view_products" ON products
     FOR SELECT USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "admin_manage_products" ON products;
 CREATE POLICY "admin_manage_products" ON products
     FOR ALL USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "staff_admin_view_variants" ON product_variants;
 CREATE POLICY "staff_admin_view_variants" ON product_variants
     FOR SELECT USING (get_user_role() IN ('staff', 'admin'));
 
+DROP POLICY IF EXISTS "admin_manage_variants" ON product_variants;
 CREATE POLICY "admin_manage_variants" ON product_variants
     FOR ALL USING (get_user_role() = 'admin');
 
 -- 6. Shifts
 ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "staff_view_own_shifts" ON shifts;
 CREATE POLICY "staff_view_own_shifts" ON shifts
     FOR SELECT USING (staff_id = auth.uid() OR get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "staff_insert_shifts" ON shifts;
 CREATE POLICY "staff_insert_shifts" ON shifts
     FOR INSERT WITH CHECK (staff_id = auth.uid() OR get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "staff_update_own_open_shift" ON shifts;
 CREATE POLICY "staff_update_own_open_shift" ON shifts
     FOR UPDATE USING (
         (staff_id = auth.uid() AND status = 'open') OR get_user_role() = 'admin'
@@ -992,27 +1014,35 @@ ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "staff_admin_select_orders" ON orders;
 CREATE POLICY "staff_admin_select_orders" ON orders
     FOR SELECT USING (true); -- Staff cần xem đơn tại quầy và đơn trên màn hình KDS
 
+DROP POLICY IF EXISTS "staff_admin_insert_orders" ON orders;
 CREATE POLICY "staff_admin_insert_orders" ON orders
     FOR INSERT WITH CHECK (get_user_role() IN ('staff', 'admin'));
 
+DROP POLICY IF EXISTS "staff_admin_update_orders" ON orders;
 CREATE POLICY "staff_admin_update_orders" ON orders
     FOR UPDATE USING (get_user_role() IN ('staff', 'admin'));
 
+DROP POLICY IF EXISTS "admin_delete_orders" ON orders;
 CREATE POLICY "admin_delete_orders" ON orders
     FOR DELETE USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "staff_admin_select_order_items" ON order_items;
 CREATE POLICY "staff_admin_select_order_items" ON order_items
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "staff_admin_insert_order_items" ON order_items;
 CREATE POLICY "staff_admin_insert_order_items" ON order_items
     FOR INSERT WITH CHECK (get_user_role() IN ('staff', 'admin'));
 
+DROP POLICY IF EXISTS "staff_admin_select_payments" ON payments;
 CREATE POLICY "staff_admin_select_payments" ON payments
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "staff_admin_insert_payments" ON payments;
 CREATE POLICY "staff_admin_insert_payments" ON payments
     FOR INSERT WITH CHECK (get_user_role() IN ('staff', 'admin'));
 
@@ -1020,9 +1050,11 @@ CREATE POLICY "staff_admin_insert_payments" ON payments
 ALTER TABLE purchase_orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE purchase_order_items ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "admin_all_purchase_orders" ON purchase_orders;
 CREATE POLICY "admin_all_purchase_orders" ON purchase_orders
     FOR ALL USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "admin_all_purchase_order_items" ON purchase_order_items;
 CREATE POLICY "admin_all_purchase_order_items" ON purchase_order_items
     FOR ALL USING (get_user_role() = 'admin');
 
@@ -1033,27 +1065,35 @@ ALTER TABLE cashflow_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE monthly_accounting_summary ENABLE ROW LEVEL SECURITY;
 ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "staff_admin_view_expense_categories" ON expense_categories;
 CREATE POLICY "staff_admin_view_expense_categories" ON expense_categories
     FOR SELECT USING (get_user_role() IN ('staff', 'admin'));
 
+DROP POLICY IF EXISTS "admin_manage_expense_categories" ON expense_categories;
 CREATE POLICY "admin_manage_expense_categories" ON expense_categories
     FOR ALL USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "admin_all_operating_expenses" ON operating_expenses;
 CREATE POLICY "admin_all_operating_expenses" ON operating_expenses
     FOR ALL USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "admin_select_cashflow" ON cashflow_transactions;
 CREATE POLICY "admin_select_cashflow" ON cashflow_transactions
     FOR SELECT USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "admin_insert_cashflow" ON cashflow_transactions;
 CREATE POLICY "admin_insert_cashflow" ON cashflow_transactions
     FOR INSERT WITH CHECK (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "admin_update_cashflow" ON cashflow_transactions;
 CREATE POLICY "admin_update_cashflow" ON cashflow_transactions
     FOR UPDATE USING (get_user_role() = 'admin' AND is_locked = false);
 
+DROP POLICY IF EXISTS "admin_all_accounting_summary" ON monthly_accounting_summary;
 CREATE POLICY "admin_all_accounting_summary" ON monthly_accounting_summary
     FOR ALL USING (get_user_role() = 'admin');
 
+DROP POLICY IF EXISTS "admin_all_audit_logs" ON audit_logs;
 CREATE POLICY "admin_all_audit_logs" ON audit_logs
     FOR ALL USING (get_user_role() = 'admin');
 -- >>> KẾT THÚC MIGRATION: 00011_create_rls_policies.sql <<<
