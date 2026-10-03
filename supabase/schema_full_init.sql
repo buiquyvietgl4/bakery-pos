@@ -10,12 +10,12 @@
 -- 00001_create_profiles_roles.sql
 -- Phân quyền 2 Roles: staff (nhân viên bán hàng + bếp) & admin (chủ tiệm)
 
-DO $
+DO $$
 BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role') THEN
         CREATE TYPE user_role AS ENUM ('staff', 'admin');
     END IF;
-END $;
+END $$;
 
 CREATE TABLE IF NOT EXISTS profiles (
     id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
