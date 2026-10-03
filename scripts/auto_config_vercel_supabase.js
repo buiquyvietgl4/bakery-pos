@@ -384,15 +384,16 @@ function showSqlInstructions() {
   // Tự động copy toàn bộ nội dung file SQL vào Clipboard của Windows
   try {
     process.stdout.write('  ⏳ Đang sao chép toàn bộ 1500+ dòng mã SQL vào Bộ nhớ đệm (Clipboard) ... ');
-    const { spawnSync } = require('child_process');
-    const clipRes = spawnSync('clip', { input: fs.readFileSync(SCHEMA_FILE_PATH) });
-    if (clipRes.status === 0) {
-      console.log(`${colors.green}✓ ĐÃ SAO CHÉP XONG!${colors.reset}`);
-    } else {
-      console.log(`${colors.yellow}⚠️ Không thể tự copy (Mã ${clipRes.status})${colors.reset}`);
-    }
+    execSync(`powershell -NoProfile -Command "Get-Content -Path '${SCHEMA_FILE_PATH}' -Raw -Encoding UTF8 | Set-Clipboard"`, { shell: true, stdio: 'pipe' });
+    console.log(`${colors.green}✓ ĐÃ SAO CHÉP XONG!${colors.reset}`);
   } catch (err) {
-    console.log(`${colors.yellow}⚠️ Không thể tự copy, vui lòng mở file thủ công: ${err.message}${colors.reset}`);
+    try {
+      const { spawnSync } = require('child_process');
+      spawnSync('clip', { input: fs.readFileSync(SCHEMA_FILE_PATH) });
+      console.log(`${colors.green}✓ ĐÃ SAO CHÉP XONG (clip)!${colors.reset}`);
+    } catch {
+      console.log(`${colors.yellow}⚠️ Không thể tự copy: ${err.message}${colors.reset}`);
+    }
   }
 
   // Tự động mở trình duyệt đến trang SQL Editor của Supabase
