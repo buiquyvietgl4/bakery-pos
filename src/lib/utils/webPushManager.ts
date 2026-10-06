@@ -23,6 +23,7 @@ export interface ClientPushPayload {
   type?: 'new_order' | 'urgent_alert' | 'bake_done' | 'bake_start' | 'bake_discharge' | 'test';
   isUrgent?: boolean;
   orderNumber?: string;
+  tag?: string;
 }
 
 /**
@@ -236,26 +237,16 @@ export async function unsubscribeCurrentDeviceFromPush(): Promise<{ success: boo
  */
 export async function triggerServerPush(payload: ClientPushPayload): Promise<{ success: boolean; stats?: any }> {
   try {
+    const pushTag = payload.tag || (payload.orderNumber ? `bakery-order-${payload.orderNumber}` : undefined);
     const res = await fetch('/api/push/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        ...payload,
+        tag: pushTag,
+      }),
     });
     const data = await res.json();
-
-    // Ghi vào lịch sử thông báo
-    try {
-      addNotificationLog({
-        type: (payload.type as any) || (payload.isUrgent ? 'urgent_alert' : 'new_order'),
-        title: payload.title,
-        message: payload.body,
-        orderNumber: payload.orderNumber,
-        url: payload.url,
-        channel: 'pwa',
-        sender: 'PWA Web Push Server',
-      });
-    } catch {}
-
     return { success: res.ok, stats: data.stats };
   } catch (err) {
     console.warn('triggerServerPush warning:', err);

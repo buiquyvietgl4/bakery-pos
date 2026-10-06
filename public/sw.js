@@ -62,7 +62,7 @@ self.addEventListener('push', (event) => {
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/icon-192.png',
     vibrate: vibratePattern,
-    tag: data.tag || ('bakery-push-' + (data.orderNumber || type || Date.now())),
+    tag: data.tag || (data.orderNumber ? ('bakery-order-' + data.orderNumber) : ('bakery-event-' + (data.id || type || Date.now()))),
     renotify: true,
     requireInteraction: isUrgent,
     data: {

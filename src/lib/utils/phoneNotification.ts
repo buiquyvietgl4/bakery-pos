@@ -173,10 +173,16 @@ class PhoneNotificationService {
     // 2. Gửi thông báo hệ thống ngoài màn hình điện thoại (nếu đã cấp quyền)
     if (this.isGranted()) {
       const senderText = payload.sender ? payload.sender + ': ' : '';
+      const orderTag = payload.orderNumber
+        ? `bakery-order-${payload.orderNumber}`
+        : payload.id?.startsWith('bakery-')
+        ? payload.id
+        : `bakery-event-${payload.id || Date.now()}`;
+
       this.sendNativeNotification({
         title: payload.title,
         body: `${senderText}${payload.message}`,
-        tag: 'order-' + (payload.orderNumber || payload.id),
+        tag: orderTag,
         url: payload.url || (payload.orderNumber ? `/pos?order=${payload.orderNumber}` : '/pos')
       });
     }

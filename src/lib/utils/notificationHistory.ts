@@ -111,22 +111,87 @@ function dispatchChange() {
   }
 }
 
+function normalizeNotifText(text: string): string {
+  return (text || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Kiểm tra xem 2 thông báo có phải là bản sao trùng lặp của cùng 1 sự kiện hay không
+ * (Ví dụ: 1 thông báo từ ứng dụng in_app và 1 thông báo từ PWA Web Push cho cùng đơn hàng)
+ */
+export function isDuplicateNotification(a: NotificationLogItem, b: NotificationLogItem): boolean {
+  if (!a || !b) return false;
+
+  // 1. Cùng id
+  if (a.id && b.id && a.id.trim() === b.id.trim()) return true;
+
+  const timeDiff = Math.abs(a.timestamp - b.timestamp);
+
+  // 2. Nếu cùng orderNumber
+  if (a.orderNumber && b.orderNumber && a.orderNumber.trim() === b.orderNumber.trim()) {
+    // Nếu một bên là 'in_app' và một bên là 'pwa' cho cùng 1 đơn hàng -> 100% TRÙNG LẶP!
+    if ((a.channel === 'pwa' && b.channel !== 'pwa') || (b.channel === 'pwa' && a.channel !== 'pwa')) {
+      return true;
+    }
+
+    // Nếu xảy ra trong vòng 10 phút:
+    if (timeDiff < 10 * 60 * 1000) {
+      // Cùng loại sự kiện (cùng new_order hoặc cùng urgent_alert)
+      if (a.type === b.type) return true;
+
+      // Hoặc tiêu đề chuẩn hóa tương đồng
+      const normA = normalizeNotifText(a.title);
+      const normB = normalizeNotifText(b.title);
+      if (normA && normB && (normA === normB || normA.includes(normB) || normB.includes(normA))) {
+        return true;
+      }
+    }
+  }
+
+  // 3. Nếu không có orderNumber (ví dụ sự kiện lò nướng: bake_done, bake_start, bake_discharge, hoặc thông báo test)
+  if (timeDiff < 60 * 1000) {
+    // Một bên là pwa và một bên là in_app trong vòng 60 giây và cùng loại sự kiện
+    if (((a.channel === 'pwa' && b.channel !== 'pwa') || (b.channel === 'pwa' && a.channel !== 'pwa')) && a.type === b.type) {
+      return true;
+    }
+
+    const normA = normalizeNotifText(a.title);
+    const normB = normalizeNotifText(b.title);
+    if (normA && normB && (normA === normB || normA.includes(normB) || normB.includes(normA))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function deduplicateNotifications(list: NotificationLogItem[]): NotificationLogItem[] {
   if (!Array.isArray(list) || list.length === 0) return [];
-  const seenIds = new Set<string>();
-  const seenFingerprints = new Set<string>();
   const result: NotificationLogItem[] = [];
 
   for (const item of list) {
     if (!item) continue;
-    const cleanId = (item.id || '').trim();
-    const fp = `${item.title}_${item.message}_${item.timestamp}`;
 
-    if (cleanId && seenIds.has(cleanId)) continue;
-    if (fp && seenFingerprints.has(fp)) continue;
+    // Tìm xem đã có thông báo trùng lặp nào trong result chưa
+    const existingIdx = result.findIndex((existing) => isDuplicateNotification(existing, item));
+    if (existingIdx >= 0) {
+      const existing = result[existingIdx];
+      // Ưu tiên giữ bản ghi in_app vì có thông tin chi tiết đầy đủ hơn bản ghi pwa
+      if (item.channel !== 'pwa' && existing.channel === 'pwa') {
+        result[existingIdx] = {
+          ...item,
+          id: existing.id || item.id,
+          isRead: existing.isRead || item.isRead,
+        };
+      }
+      // Đã có bản ghi đại diện, loại bỏ bản ghi trùng
+      continue;
+    }
 
-    if (cleanId) seenIds.add(cleanId);
-    if (fp) seenFingerprints.add(fp);
     result.push(item);
   }
   return result;
@@ -142,7 +207,13 @@ export function getNotificationHistory(): NotificationLogItem[] {
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return deduplicateNotifications(parsed);
+        const deduped = deduplicateNotifications(parsed);
+        if (deduped.length !== parsed.length) {
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(deduped));
+          } catch {}
+        }
+        return deduped;
       }
       return [];
     }
@@ -269,7 +340,7 @@ function saveNotificationHistory(list: NotificationLogItem[]) {
 }
 
 /**
- * Thêm một thông báo mới vào lịch sử
+ * Thêm một thông báo mới vào lịch sử (tự động loại trừ trùng lặp giữa Ứng dụng và PWA)
  */
 export function addNotificationLog(
   item: Omit<NotificationLogItem, 'id' | 'timestamp' | 'createdAtFormatted' | 'isRead'> & {
@@ -280,10 +351,9 @@ export function addNotificationLog(
 ): NotificationLogItem {
   const current = getNotificationHistory();
 
-  const targetId = item.id || `notif-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-  const existingIdx = current.findIndex((n) => n.id === targetId);
-
   const now = item.timestamp || Date.now();
+  const targetId = item.id || `notif-${now}-${Math.random().toString(36).substring(2, 7)}`;
+
   const newLog: NotificationLogItem = {
     id: targetId,
     type: item.type,
@@ -299,9 +369,31 @@ export function addNotificationLog(
     channel: item.channel || 'in_app',
   };
 
+  // 1. Kiểm tra xem đã có thông báo trùng lặp với newLog trong lịch sử chưa
+  const dupIdx = current.findIndex((n) => isDuplicateNotification(n, newLog));
+
   let updated: NotificationLogItem[];
-  if (existingIdx >= 0) {
-    updated = [newLog, ...current.filter((_, idx) => idx !== existingIdx)];
+  if (dupIdx >= 0) {
+    const existing = current[dupIdx];
+    // Nếu item mới là in_app và item cũ là pwa -> nâng cấp nội dung in_app giàu thông tin hơn
+    if (newLog.channel !== 'pwa' && existing.channel === 'pwa') {
+      const merged: NotificationLogItem = {
+        ...newLog,
+        id: existing.id,
+        isRead: existing.isRead,
+      };
+      updated = [merged, ...current.filter((_, idx) => idx !== dupIdx)];
+      saveNotificationHistory(updated);
+      return merged;
+    }
+    // Nếu bản ghi hiện tại đã là in_app (chất lượng cao) hoặc đã tồn tại -> không tạo thêm bản sao
+    return existing;
+  }
+
+  // 2. Kiểm tra nếu có cùng ID chính xác
+  const existingIdIdx = current.findIndex((n) => n.id === targetId);
+  if (existingIdIdx >= 0) {
+    updated = [newLog, ...current.filter((_, idx) => idx !== existingIdIdx)];
   } else {
     updated = [newLog, ...current];
   }
