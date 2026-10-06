@@ -25,8 +25,8 @@ export interface PushMessagePayload {
   orderNumber?: string;
 }
 
-const DB_ROW_NAME = 'SYS_PUSH_SUBSCRIPTIONS';
-const DB_ROW_ID = '00000000-0000-0000-0000-000000000002';
+export const DB_ROW_PUSH_SUBSCRIPTIONS_NAME = 'SYS_PUSH_SUBSCRIPTIONS';
+export const DB_ROW_PUSH_SUBSCRIPTIONS_ID = '00000000-0000-0000-0000-000000000040';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || 'BBRxBu4Wou9gEIrPivlSVhGHcdjEF-8RF5phrRvIxyp6sfQJNCdYOpxc3Uu9qcgE9tao7zRDH1ZvEWL1zyDKU84';
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || 'xix0rTLV9hqExYqk0InzRAMbhMrYWh-RIPO0mm3ApCw';
@@ -50,7 +50,7 @@ export async function getAllPushSubscriptions(): Promise<StoredSubscription[]> {
     const { data, error } = await supabase
       .from('recipes')
       .select('notes')
-      .eq('name', DB_ROW_NAME)
+      .or(`id.eq.${DB_ROW_PUSH_SUBSCRIPTIONS_ID},name.eq.${DB_ROW_PUSH_SUBSCRIPTIONS_NAME}`)
       .maybeSingle();
 
     if (!error && data && data.notes) {
@@ -63,6 +63,54 @@ export async function getAllPushSubscriptions(): Promise<StoredSubscription[]> {
   return [];
 }
 
+async function persistPushSubscriptions(updated: StoredSubscription[]): Promise<{ success: boolean; total: number; error?: string }> {
+  try {
+    // 1. Thử upsert nguyên tử theo ID duy nhất 0000...0040
+    const { error: upsertErr } = await supabase.from('recipes').upsert({
+      id: DB_ROW_PUSH_SUBSCRIPTIONS_ID,
+      name: DB_ROW_PUSH_SUBSCRIPTIONS_NAME,
+      notes: JSON.stringify(updated),
+      is_active: false,
+      category: 'Bánh tươi',
+      yield_qty: 1,
+      yield_unit: 'thiết bị',
+      bake_time_minutes: 0,
+      bake_temp_celsius: 0,
+      suggested_price: 0,
+      cost_per_unit: 0,
+      total_material_cost: 0,
+      target_food_cost_pct: 0,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+
+    if (upsertErr) {
+      console.warn('Upsert SYS_PUSH_SUBSCRIPTIONS gặp lỗi, chuyển sang cơ chế xóa và chèn lại:', upsertErr);
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_PUSH_SUBSCRIPTIONS_ID},name.eq.${DB_ROW_PUSH_SUBSCRIPTIONS_NAME}`);
+      const { error: insertErr } = await supabase.from('recipes').insert({
+        id: DB_ROW_PUSH_SUBSCRIPTIONS_ID,
+        name: DB_ROW_PUSH_SUBSCRIPTIONS_NAME,
+        notes: JSON.stringify(updated),
+        is_active: false,
+        category: 'Bánh tươi',
+        yield_qty: 1,
+        yield_unit: 'thiết bị',
+        bake_time_minutes: 0,
+        bake_temp_celsius: 0,
+        suggested_price: 0,
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        target_food_cost_pct: 0,
+      });
+      if (insertErr) throw insertErr;
+    }
+
+    return { success: true, total: updated.length };
+  } catch (err: any) {
+    console.error('Lỗi persistPushSubscriptions:', err);
+    return { success: false, total: 0, error: err?.message || 'Lỗi lưu thông tin thiết bị' };
+  }
+}
+
 export async function savePushSubscription(sub: Omit<StoredSubscription, 'id' | 'created_at'>): Promise<{ success: boolean; total: number; error?: string }> {
   try {
     const existing = await getAllPushSubscriptions();
@@ -73,19 +121,9 @@ export async function savePushSubscription(sub: Omit<StoredSubscription, 'id' | 
       created_at: new Date().toISOString(),
     };
     const updated = [newRecord, ...filtered];
-
-    await supabase.from('recipes').delete().eq('name', DB_ROW_NAME);
-    const { error } = await supabase.from('recipes').insert({
-      id: DB_ROW_ID,
-      name: DB_ROW_NAME,
-      notes: JSON.stringify(updated),
-      is_active: false,
-    });
-
-    if (error) throw error;
-    return { success: true, total: updated.length };
+    return await persistPushSubscriptions(updated);
   } catch (err: any) {
-    console.error('Lỗi lưu push subscription:', err);
+    console.error('Lỗi savePushSubscription:', err);
     return { success: false, total: 0, error: err?.message || 'Lỗi lưu dữ liệu' };
   }
 }
@@ -94,19 +132,9 @@ export async function removePushSubscription(endpoint: string): Promise<{ succes
   try {
     const existing = await getAllPushSubscriptions();
     const updated = existing.filter((item) => item.endpoint !== endpoint);
-
-    await supabase.from('recipes').delete().eq('name', DB_ROW_NAME);
-    const { error } = await supabase.from('recipes').insert({
-      id: DB_ROW_ID,
-      name: DB_ROW_NAME,
-      notes: JSON.stringify(updated),
-      is_active: false,
-    });
-
-    if (error) throw error;
-    return { success: true, total: updated.length };
+    return await persistPushSubscriptions(updated);
   } catch (err: any) {
-    console.error('Lỗi xóa push subscription:', err);
+    console.error('Lỗi removePushSubscription:', err);
     return { success: false, total: 0, error: err?.message || 'Lỗi xóa thiết bị' };
   }
 }
@@ -170,13 +198,7 @@ export async function sendWebPushToAll(payload: PushMessagePayload): Promise<{
   if (expiredEndpoints.length > 0) {
     try {
       const active = subscriptions.filter((s) => !expiredEndpoints.includes(s.endpoint));
-      await supabase.from('recipes').delete().eq('name', DB_ROW_NAME);
-      await supabase.from('recipes').insert({
-        id: DB_ROW_ID,
-        name: DB_ROW_NAME,
-        notes: JSON.stringify(active),
-        is_active: false,
-      });
+      await persistPushSubscriptions(active);
     } catch (cleanErr) {
       console.error('Lỗi dọn dẹp subscription hết hạn:', cleanErr);
     }
