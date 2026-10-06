@@ -9,7 +9,7 @@ import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 const STORAGE_KEY = 'bakery_order_returns';
 export const ORDER_RETURNS_UPDATED_EVENT = 'bakery_order_returns_updated';
 
-export const DB_ROW_ORDER_RETURNS_ID = '00000000-0000-0000-0000-000000000028';
+export const DB_ROW_ORDER_RETURNS_ID = '00000000-0000-0000-0000-000000000027';
 export const DB_ROW_ORDER_RETURNS_NAME = 'SYS_CONFIG_ORDER_RETURNS';
 
 export function deduplicateOrderReturns(records: OrderReturnRecord[]): OrderReturnRecord[] {
@@ -135,8 +135,23 @@ export async function saveOrderReturnsToDb(
     );
 
     if (upsertErr) {
-      console.warn('Lỗi upsert SYS_CONFIG_ORDER_RETURNS:', upsertErr);
-      return { success: false, error: upsertErr.message };
+      console.warn('Lỗi upsert SYS_CONFIG_ORDER_RETURNS, chuyển sang xóa và tạo mới:', upsertErr);
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_ORDER_RETURNS_ID},name.eq.${DB_ROW_ORDER_RETURNS_NAME}`);
+      const { error: insertErr } = await supabase.from('recipes').insert({
+        id: DB_ROW_ORDER_RETURNS_ID,
+        name: DB_ROW_ORDER_RETURNS_NAME,
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: notesContent,
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      });
+      if (insertErr) {
+        console.error('Lỗi insert fallback SYS_CONFIG_ORDER_RETURNS:', insertErr);
+        return { success: false, error: insertErr.message };
+      }
     }
     return { success: true };
   } catch (err: any) {

@@ -140,20 +140,27 @@ export async function saveTelegramConfigToDb(
     // 1. Cập nhật bộ nhớ cục bộ ngay lập tức
     updateLocalTelegramConfig(fullConfig);
 
-    // 2. Xóa bản ghi cũ trên SQL để xóa sạch mã token cũ
-    await supabase.from('recipes').delete().eq('name', DB_ROW_NAME);
-
-    // 3. Chèn bản ghi cấu hình mới vào SQL
-    const { error: insertErr } = await supabase.from('recipes').insert({
+    // 2. Lưu cấu hình vào SQL bằng upsert nguyên tử
+    const { error: upsertErr } = await supabase.from('recipes').upsert({
       id: DB_ROW_ID,
       name: DB_ROW_NAME,
       notes: JSON.stringify(fullConfig),
       is_active: false,
-    });
+    }, { onConflict: 'id' });
 
-    if (insertErr) {
-      console.error('Lỗi khi lưu cấu hình Telegram vào Supabase SQL:', insertErr);
-      return { success: false, error: 'Lỗi lưu vào CSDL: ' + insertErr.message };
+    if (upsertErr) {
+      console.warn('Upsert Telegram config thất bại, chuyển sang xóa và tạo mới:', upsertErr);
+      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_ID},name.eq.${DB_ROW_NAME}`);
+      const { error: insertErr } = await supabase.from('recipes').insert({
+        id: DB_ROW_ID,
+        name: DB_ROW_NAME,
+        notes: JSON.stringify(fullConfig),
+        is_active: false,
+      });
+      if (insertErr) {
+        console.error('Lỗi khi lưu cấu hình Telegram vào Supabase SQL:', insertErr);
+        return { success: false, error: 'Lỗi lưu vào CSDL: ' + insertErr.message };
+      }
     }
 
     // 4. Phát sóng Realtime cho toàn bộ các thiết bị (POS, KDS, ĐT, Laptop) đang mở
@@ -178,7 +185,7 @@ export async function deleteTelegramConfigFromDb(
   updatedBy: string = 'admin'
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await supabase.from('recipes').delete().eq('name', DB_ROW_NAME);
+    await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_ID},name.eq.${DB_ROW_NAME}`);
     const emptyConfig: TelegramConfig = {
       enabled: false,
       botToken: '',

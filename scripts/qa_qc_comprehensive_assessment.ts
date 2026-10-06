@@ -210,7 +210,7 @@ async function runQaAssessment() {
 
   const updatedReturns = [returnRecord, ...existingReturns];
   const { error: retErr } = await supabase.from('recipes').upsert({
-    id: '00000000-0000-0000-0000-000000000028',
+    id: '00000000-0000-0000-0000-000000000027',
     name: 'SYS_CONFIG_ORDER_RETURNS',
     yield_qty: 1,
     yield_unit: 'config',

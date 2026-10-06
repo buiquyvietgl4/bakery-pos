@@ -1217,7 +1217,7 @@ export async function broadcastBakeApprovalResolved(payload: BakeApprovalResolve
  * Phát sóng yêu cầu thu ngân gửi duyệt thanh toán chuyển khoản tới Chủ Tiệm (Admin)
  */
 // ── ĐỒNG BỘ YÊU CẦU DUYỆT CHUYỂN KHOẢN VÀO SUPABASE (PHÒNG ĐIỆN THOẠI KHÓA MÀN HÌNH) ──
-const DB_ROW_PENDING_TRANSFERS_ID = '00000000-0000-0000-0000-00000000000d';
+const DB_ROW_PENDING_TRANSFERS_ID = '00000000-0000-0000-0000-000000000017';
 const DB_ROW_PENDING_TRANSFERS_NAME = 'SYS_CONFIG_PENDING_TRANSFERS';
 
 export async function fetchPendingTransfersFromDb(): Promise<TransferApprovalPayload[]> {
@@ -1227,7 +1227,7 @@ export async function fetchPendingTransfersFromDb(): Promise<TransferApprovalPay
     const { data, error } = await supabase
       .from('recipes')
       .select('notes')
-      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
+      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},id.eq.00000000-0000-0000-0000-00000000000d,name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
       .limit(1)
       .maybeSingle();
 
@@ -1284,7 +1284,7 @@ export async function savePendingTransferToDb(payload: TransferApprovalPayload):
     const { data } = await supabase
       .from('recipes')
       .select('notes')
-      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
+      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},id.eq.00000000-0000-0000-0000-00000000000d,name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
       .limit(1)
       .maybeSingle();
 
@@ -1348,7 +1348,7 @@ export async function removePendingTransferFromDb(orderNumber: string): Promise<
     const { data } = await supabase
       .from('recipes')
       .select('notes')
-      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
+      .or(`id.eq.${DB_ROW_PENDING_TRANSFERS_ID},id.eq.00000000-0000-0000-0000-00000000000d,name.eq.${DB_ROW_PENDING_TRANSFERS_NAME}`)
       .limit(1)
       .maybeSingle();
 

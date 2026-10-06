@@ -406,10 +406,10 @@ async function main() {
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000011', name: 'SYS_CONFIG_CASHFLOW', notes: JSON.stringify(fullBackupData.cashflow || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000030', name: 'SYS_CONFIG_SHIFT_HISTORY', notes: JSON.stringify(fullBackupData.shifts || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000012', name: 'SYS_CONFIG_CURRENT_SHIFT', notes: JSON.stringify(fullBackupData.current_shift || {}), is_active: false });
-  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000002', name: 'SYS_CONFIG_CLOSINGS', notes: JSON.stringify(fullBackupData.accounting_closings || []), is_active: false });
+  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-00000000000a', name: 'SYS_CONFIG_CLOSINGS', notes: JSON.stringify(fullBackupData.accounting_closings || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000031', name: 'SYS_CONFIG_MATERIAL_TRANSACTIONS', notes: JSON.stringify(fullBackupData.material_transactions || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000015', name: 'SYS_CONFIG_MATERIAL_STOCK_ADJUSTMENTS', notes: JSON.stringify(fullBackupData.material_stock_adjustments || []), is_active: false });
-  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000028', name: 'SYS_CONFIG_ORDER_RETURNS', notes: JSON.stringify(fullBackupData.order_returns || []), is_active: false });
+  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000027', name: 'SYS_CONFIG_ORDER_RETURNS', notes: JSON.stringify(fullBackupData.order_returns || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000029', name: 'SYS_CONFIG_HELD_ORDERS', notes: JSON.stringify(fullBackupData.held_orders || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000022', name: 'SYS_CONFIG_OVEN_BATCHES', notes: JSON.stringify(fullBackupData.oven_batches || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000013', name: 'SYS_CONFIG_NOTIFICATION_HISTORY', notes: JSON.stringify(fullBackupData.notification_history || []), is_active: false });

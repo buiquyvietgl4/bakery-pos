@@ -347,7 +347,7 @@ async function main() {
   }
   returnList = [REAL_DATA.orderReturn, ...returnList.filter((r: any) => r.id !== REAL_DATA.orderReturn.id)];
   await supabase.from('recipes').upsert({
-    id: '00000000-0000-0000-0000-000000000028',
+    id: '00000000-0000-0000-0000-000000000027',
     name: 'SYS_CONFIG_ORDER_RETURNS',
     yield_qty: 1,
     yield_unit: 'config',
@@ -729,10 +729,10 @@ async function main() {
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000011', name: 'SYS_CONFIG_CASHFLOW', notes: JSON.stringify(fullBackupPayload.cashflow || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000030', name: 'SYS_CONFIG_SHIFTS', notes: JSON.stringify(fullBackupPayload.shifts || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000012', name: 'SYS_CONFIG_CURRENT_SHIFT', notes: JSON.stringify(fullBackupPayload.current_shift || {}), is_active: false });
-  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000002', name: 'SYS_CONFIG_CLOSINGS', notes: JSON.stringify(fullBackupPayload.accounting_closings || []), is_active: false });
+  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-00000000000a', name: 'SYS_CONFIG_CLOSINGS', notes: JSON.stringify(fullBackupPayload.accounting_closings || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000031', name: 'SYS_CONFIG_MATERIAL_TRANSACTIONS', notes: JSON.stringify(fullBackupPayload.material_transactions || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000015', name: 'SYS_CONFIG_MATERIAL_STOCK_ADJUSTMENTS', notes: JSON.stringify(fullBackupPayload.material_stock_adjustments || []), is_active: false });
-  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000028', name: 'SYS_CONFIG_ORDER_RETURNS', notes: JSON.stringify(fullBackupPayload.order_returns || []), is_active: false });
+  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000027', name: 'SYS_CONFIG_ORDER_RETURNS', notes: JSON.stringify(fullBackupPayload.order_returns || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000029', name: 'SYS_CONFIG_HELD_ORDERS', notes: JSON.stringify(fullBackupPayload.held_orders || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000022', name: 'SYS_CONFIG_OVEN_BATCHES', notes: JSON.stringify(fullBackupPayload.oven_batches || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000013', name: 'SYS_CONFIG_NOTIFICATION_HISTORY', notes: JSON.stringify(fullBackupPayload.notification_history || []), is_active: false });
