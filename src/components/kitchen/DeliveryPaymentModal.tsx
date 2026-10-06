@@ -6,7 +6,7 @@ import {
   MapPin, Phone, User, Cake, AlertCircle, Sparkles,
   Camera, RefreshCw, ShieldCheck, ArrowRight, Clock
 } from 'lucide-react';
-import { parsePreorderFromNotes, broadcastTransferApprovalRequest, subscribeCrossDeviceSync, TransferApprovalPayload, TransferApprovalResolvedPayload, parseOrderBakeShortage } from '@/lib/supabase/realtimeSync';
+import { parsePreorderFromNotes, broadcastTransferApprovalRequest, subscribeCrossDeviceSync, TransferApprovalPayload, TransferApprovalResolvedPayload, parseOrderBakeShortage, checkTransferResolvedStatus } from '@/lib/supabase/realtimeSync';
 import { getTransferVerificationConfig, TransferVerificationConfig, TRANSFER_VERIFY_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 import { TransferProofCameraModal } from '@/components/pos/TransferProofCameraModal';
 import { useAuth } from '@/lib/auth/AuthContext';
@@ -74,7 +74,10 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
 
     const handleApprovalResolved = (payload: TransferApprovalResolvedPayload) => {
       if (!payload || !payload.order_number) return;
-      if (payload.order_number === order.order_number) {
+      const targetPayload = (payload.order_number || '').trim().toUpperCase();
+      const targetOrder = (order.order_number || '').trim().toUpperCase();
+
+      if (targetPayload === targetOrder) {
         if (payload.action === 'approved') {
           setAdminApproved(true);
           setIsWaitingAdminApproval(false);
@@ -96,12 +99,60 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
     };
 
     window.addEventListener('transfer_approval_resolved', handleCustomResolved);
+
+    // 1. Lắng nghe storage event liên tab (0ms)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'bakery_last_resolved_transfer' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed) handleApprovalResolved(parsed);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 2. Lắng nghe BroadcastChannel liên tab (0ms)
+    let approvalChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        approvalChannel = new BroadcastChannel('bakery_approval_sync');
+        approvalChannel.onmessage = (event) => {
+          if (event.data?.type === 'transfer_resolved' && event.data.payload) {
+            handleApprovalResolved(event.data.payload);
+          }
+        };
+      }
+    } catch {}
+
+    // 3. Supabase Realtime WebSocket
     const unsub = subscribeCrossDeviceSync({
       onTransferApprovalResolved: handleApprovalResolved,
     });
 
+    // 4. Active Polling Fallback (1.5s): Tự động phát hiện khi admin duyệt
+    let isCancelled = false;
+    const pollCheck = async () => {
+      if (isCancelled) return;
+      try {
+        const resolved = await checkTransferResolvedStatus(order.order_number);
+        if (resolved && !isCancelled) {
+          handleApprovalResolved(resolved);
+        }
+      } catch (err) {
+        console.warn('Lỗi kiểm tra trạng thái duyệt đơn ship định kỳ:', err);
+      }
+    };
+    pollCheck();
+    const pollInterval = setInterval(pollCheck, 1500);
+
     return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
       window.removeEventListener('transfer_approval_resolved', handleCustomResolved);
+      window.removeEventListener('storage', handleStorage);
+      if (approvalChannel) {
+        try { approvalChannel.close(); } catch {}
+      }
       unsub();
     };
   }, [isOpen, order, onConfirmPaymentAndComplete, onClose]);

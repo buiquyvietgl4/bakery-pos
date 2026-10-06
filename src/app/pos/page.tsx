@@ -117,6 +117,7 @@ import {
   broadcastTransferApprovalRequest,
   TransferApprovalPayload,
   TransferApprovalResolvedPayload,
+  checkTransferResolvedStatus,
 } from '@/lib/supabase/realtimeSync';
 import { TransferProofCameraModal } from '@/components/pos/TransferProofCameraModal';
 import {
@@ -2109,6 +2110,12 @@ export default function POSPage() {
           setTransferVerifyConfig(getTransferVerificationConfig());
         }
       }
+      if (e.key === 'bakery_last_resolved_transfer' && e.newValue) {
+        try {
+          const payload = JSON.parse(e.newValue);
+          if (payload) incomingTransferApprovalResolvedRef.current(payload);
+        } catch {}
+      }
     };
     const handleOnline = () => syncOrdersFromSupabase();
     const handleVisibility = () => {
@@ -2438,6 +2445,18 @@ export default function POSPage() {
     };
     window.addEventListener('transfer_approval_resolved', handleLocalTransferResolved);
 
+    let approvalChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        approvalChannel = new BroadcastChannel('bakery_approval_sync');
+        approvalChannel.onmessage = (event) => {
+          if (event.data?.type === 'transfer_resolved' && event.data.payload) {
+            incomingTransferApprovalResolvedRef.current(event.data.payload);
+          }
+        };
+      }
+    } catch {}
+
     const handleTransferVerifyUpdated = (e: any) => {
       if (e.detail) setTransferVerifyConfig(e.detail);
       else setTransferVerifyConfig(getTransferVerificationConfig());
@@ -2483,6 +2502,9 @@ export default function POSPage() {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('bakery_payment_received', handleLocalPayment);
       window.removeEventListener('transfer_approval_resolved', handleLocalTransferResolved);
+      if (approvalChannel) {
+        try { approvalChannel.close(); } catch {}
+      }
       window.removeEventListener(TRANSFER_VERIFY_UPDATED_EVENT, handleTransferVerifyUpdated);
       window.removeEventListener('bakery_system_wiped', handleSystemWiped);
       unsubscribeSync();
@@ -3458,6 +3480,7 @@ export default function POSPage() {
         orderNumToUse = getNextOrderNumber(prefixTemp);
         setActiveCheckoutOrderNumber(orderNumToUse);
       }
+      activeCheckoutOrderNumberRef.current = orderNumToUse;
 
       setIsWaitingAdminTransferApproval(true);
       setProcessingOrder(false);
@@ -3984,7 +4007,10 @@ export default function POSPage() {
 
       if (!isCheckout || !currentOrderNum) return;
 
-      if (payload.order_number === currentOrderNum) {
+      const targetPayload = (payload.order_number || '').trim().toUpperCase();
+      const targetCurrent = (currentOrderNum || '').trim().toUpperCase();
+
+      if (targetPayload === targetCurrent) {
         if (payload.action === 'approved') {
           setAdminApprovedTransfer(true);
           setIsWaitingAdminTransferApproval(false);
@@ -4009,6 +4035,38 @@ export default function POSPage() {
   useEffect(() => {
     incomingTransferApprovalResolvedRef.current = handleIncomingTransferApprovalResolved;
   }, [handleIncomingTransferApprovalResolved]);
+
+  // Active Polling Fallback: Khi POS đang ở trạng thái chờ Admin duyệt chuyển khoản
+  // Liên tục kiểm tra trạng thái mỗi 1.5s để đảm bảo KHÔNG BAO GIỜ bị treo nếu mất gói tin WebSocket
+  useEffect(() => {
+    if (!isWaitingAdminTransferApproval || !activeCheckoutOrderNumber) return;
+
+    let isCancelled = false;
+    const pollOrderNum = activeCheckoutOrderNumber;
+
+    const checkStatus = async () => {
+      if (isCancelled) return;
+      try {
+        const resolved = await checkTransferResolvedStatus(pollOrderNum);
+        if (resolved && !isCancelled) {
+          incomingTransferApprovalResolvedRef.current(resolved);
+        }
+      } catch (err) {
+        console.warn('Lỗi kiểm tra trạng thái duyệt chuyển khoản định kỳ:', err);
+      }
+    };
+
+    // Kiểm tra ngay lập tức
+    checkStatus();
+
+    // Và lặp lại mỗi 1.5 giây
+    const interval = setInterval(checkStatus, 1500);
+
+    return () => {
+      isCancelled = true;
+      clearInterval(interval);
+    };
+  }, [isWaitingAdminTransferApproval, activeCheckoutOrderNumber]);
 
   // Gửi lại yêu cầu xác thực 2 bước tới Admin
   const handleResendTransferApproval = async () => {
@@ -5723,6 +5781,7 @@ export default function POSPage() {
               const prefixTemp = fulfillmentType === 'takeaway' ? 'BK' : fulfillmentType === 'shipping' ? 'BK-SHIP' : 'BK-PRE';
               const newOrderNum = getNextOrderNumber(prefixTemp);
               setActiveCheckoutOrderNumber(newOrderNum);
+              activeCheckoutOrderNumberRef.current = newOrderNum;
               setCheckoutTransferCode(`${syntax}${randSuffix}`);
               setPaymentReceivedInfo(null);
               setIsWaitingAdminTransferApproval(false);

@@ -49,6 +49,7 @@ import {
   broadcastReturnApprovalRequest,
   subscribeCrossDeviceSync,
   ReturnApprovalPayload,
+  checkReturnResolvedStatus,
 } from '@/lib/supabase/realtimeSync';
 
 interface ReturnExchangeModalProps {
@@ -351,7 +352,16 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
     const orderNo = currentApprovalPayload.order_number;
 
     const handleResolved = (payload: any) => {
-      if (!payload || payload.order_number !== orderNo) return;
+      if (!payload) return;
+      const payloadOrder = (payload.order_number || '').trim().toUpperCase();
+      const currentOrder = (orderNo || '').trim().toUpperCase();
+      const payloadId = (payload.id || '').trim().toUpperCase();
+      const currentId = (currentApprovalPayload.id || '').trim().toUpperCase();
+
+      const isMatch = (payloadOrder && currentOrder && payloadOrder === currentOrder) ||
+                      (payloadId && currentId && payloadId === currentId);
+
+      if (!isMatch) return;
 
       if (payload.action === 'approved') {
         try {
@@ -372,14 +382,61 @@ export const ReturnExchangeModal: React.FC<ReturnExchangeModalProps> = ({
 
     window.addEventListener('return_approval_resolved', handleCustomEvt as EventListener);
 
+    // 1. Lắng nghe storage event liên tab (0ms)
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'bakery_last_resolved_return' && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed) handleResolved(parsed);
+        } catch {}
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 2. Lắng nghe BroadcastChannel liên tab (0ms)
+    let approvalChannel: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        approvalChannel = new BroadcastChannel('bakery_approval_sync');
+        approvalChannel.onmessage = (event) => {
+          if (event.data?.type === 'return_resolved' && event.data.payload) {
+            handleResolved(event.data.payload);
+          }
+        };
+      }
+    } catch {}
+
+    // 3. Supabase Realtime WebSocket
     const unsubscribe = subscribeCrossDeviceSync({
       onReturnApprovalResolved: (payload) => {
         handleResolved(payload);
       },
     });
 
+    // 4. Active Polling Fallback (Heartbeat 1.5s): Đảm bảo không bao giờ bị treo
+    let isCancelled = false;
+    const pollCheck = async () => {
+      if (isCancelled) return;
+      try {
+        const resolved = await checkReturnResolvedStatus(orderNo, currentApprovalPayload.id);
+        if (resolved && !isCancelled) {
+          handleResolved(resolved);
+        }
+      } catch (err) {
+        console.warn('Lỗi kiểm tra trạng thái duyệt đổi trả định kỳ:', err);
+      }
+    };
+    pollCheck();
+    const pollInterval = setInterval(pollCheck, 1500);
+
     return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
       window.removeEventListener('return_approval_resolved', handleCustomEvt as EventListener);
+      window.removeEventListener('storage', handleStorage);
+      if (approvalChannel) {
+        try { approvalChannel.close(); } catch {}
+      }
       unsubscribe();
     };
   }, [isOpen, isWaitingAdminModalOpen, currentApprovalPayload]);

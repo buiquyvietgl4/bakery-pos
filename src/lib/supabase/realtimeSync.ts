@@ -197,7 +197,7 @@ function ensureSyncChannel() {
     syncChannelInstance = supabase.channel('bakery_cross_device_sync', {
       config: {
         broadcast: {
-          self: false,
+          self: true,
         },
       },
     });
@@ -1428,15 +1428,36 @@ export async function broadcastTransferApprovalRequest(payload: TransferApproval
 
 /**
  * Phát sóng khi Chủ Tiệm (Admin) đã Xác Nhận Đã Nhận Tiền hoặc Từ Chối giao dịch chuyển khoản
+ * Hỗ trợ đa kênh đồng thời: Database Cloud SQL + BroadcastChannel + LocalStorage storage + Realtime WebSocket + Web Push
  */
 export async function broadcastTransferApprovalResolved(payload: TransferApprovalResolvedPayload) {
   try {
-    // 1. Xóa yêu cầu khỏi Database
+    // 1. Lưu bản ghi kết quả duyệt vào Database & LocalStorage vĩnh viễn
+    saveResolvedTransferRecordToDb(payload).catch(console.error);
+
+    // 2. Xóa yêu cầu khỏi Database
     if (payload.order_number) {
       removePendingTransferFromDb(payload.order_number).catch(console.error);
     }
 
-    // 2. Phát sóng Realtime
+    // 3. Đồng bộ liên tab cùng trình duyệt tức thì (0ms) qua LocalStorage & CustomEvent
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('bakery_last_resolved_transfer', JSON.stringify({ ...payload, _t: Date.now() }));
+        window.dispatchEvent(new CustomEvent('transfer_approval_resolved', { detail: payload }));
+      } catch {}
+    }
+
+    // 4. Phát sóng qua BroadcastChannel HTML5 (Cross-Tab Instant 0ms)
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bakery_approval_sync');
+        bc.postMessage({ type: 'transfer_resolved', payload });
+        bc.close();
+      }
+    } catch {}
+
+    // 5. Phát sóng Realtime qua Supabase WebSocket (Đa thiết bị)
     const channel = ensureSyncChannel();
     if (channel) {
       await channel.send({
@@ -1448,11 +1469,8 @@ export async function broadcastTransferApprovalResolved(payload: TransferApprova
         },
       });
     }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('transfer_approval_resolved', { detail: payload }));
-    }
 
-    // 3. Bắn Web Push Notification thông báo kết quả duyệt về máy thu ngân
+    // 6. Bắn Web Push Notification thông báo kết quả duyệt về máy thu ngân
     try {
       fetch('/api/push/send', {
         method: 'POST',
@@ -1664,12 +1682,32 @@ export async function broadcastReturnApprovalRequest(payload: ReturnApprovalPayl
 
 export async function broadcastReturnApprovalResolved(payload: ReturnApprovalResolvedPayload) {
   try {
-    // 1. Xóa yêu cầu khỏi Database
+    // 1. Lưu bản ghi kết quả duyệt vào Database & LocalStorage vĩnh viễn
+    saveResolvedReturnRecordToDb(payload).catch(console.error);
+
+    // 2. Xóa yêu cầu khỏi Database
     if (payload.order_number) {
       removePendingReturnFromDb(payload.order_number).catch(console.error);
     }
 
-    // 2. Phát sóng Realtime
+    // 3. Đồng bộ liên tab cùng trình duyệt tức thì (0ms) qua LocalStorage & CustomEvent
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('bakery_last_resolved_return', JSON.stringify({ ...payload, _t: Date.now() }));
+        window.dispatchEvent(new CustomEvent('return_approval_resolved', { detail: payload }));
+      } catch {}
+    }
+
+    // 4. Phát sóng qua BroadcastChannel HTML5 (Cross-Tab Instant 0ms)
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        const bc = new BroadcastChannel('bakery_approval_sync');
+        bc.postMessage({ type: 'return_resolved', payload });
+        bc.close();
+      }
+    } catch {}
+
+    // 5. Phát sóng Realtime qua Supabase WebSocket (Đa thiết bị)
     const channel = ensureSyncChannel();
     if (channel) {
       await channel.send({
@@ -1681,11 +1719,8 @@ export async function broadcastReturnApprovalResolved(payload: ReturnApprovalRes
         },
       });
     }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('return_approval_resolved', { detail: payload }));
-    }
 
-    // 3. Web Push
+    // 6. Web Push
     try {
       fetch('/api/push/send', {
         method: 'POST',
@@ -2443,14 +2478,304 @@ export async function fetchResolvedTransfersFromDb(): Promise<string[]> {
         if (typeof window !== 'undefined') {
           const raw = localStorage.getItem('bakery_resolved_transfers');
           const localList: string[] = raw ? JSON.parse(raw) : [];
-          const merged = Array.from(new Set([...localList, ...parsed])).slice(-150);
+          const normalized = parsed.map((item: any) => (typeof item === 'string' ? item : item?.order_number)).filter(Boolean);
+          const merged = Array.from(new Set([...localList, ...normalized])).slice(-150);
           localStorage.setItem('bakery_resolved_transfers', JSON.stringify(merged));
         }
-        return parsed;
+        return parsed.map((item: any) => (typeof item === 'string' ? item : item?.order_number)).filter(Boolean);
       }
     }
   } catch (err) {
     console.warn('Lỗi fetchResolvedTransfersFromDb:', err);
   }
   return [];
+}
+
+export async function saveResolvedTransferRecordToDb(payload: TransferApprovalResolvedPayload): Promise<void> {
+  if (!payload || !payload.order_number) return;
+  const orderNum = payload.order_number.trim().toUpperCase();
+
+  if (typeof window !== 'undefined') {
+    try {
+      const resRaw = localStorage.getItem('bakery_resolved_transfers');
+      const resList: string[] = resRaw ? JSON.parse(resRaw) : [];
+      if (!resList.some((n) => n.trim().toUpperCase() === orderNum)) {
+        resList.push(payload.order_number);
+        localStorage.setItem('bakery_resolved_transfers', JSON.stringify(resList.slice(-150)));
+      }
+      const recRaw = localStorage.getItem('bakery_resolved_transfer_records');
+      const recMap: Record<string, TransferApprovalResolvedPayload> = recRaw ? JSON.parse(recRaw) : {};
+      recMap[orderNum] = payload;
+      localStorage.setItem('bakery_resolved_transfer_records', JSON.stringify(recMap));
+    } catch {}
+  }
+
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+  try {
+    const { data } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_RESOLVED_TRANSFERS_ID},name.eq.${DB_ROW_RESOLVED_TRANSFERS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    let list: any[] = [];
+    if (data?.notes) {
+      try {
+        const parsed = JSON.parse(data.notes);
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {}
+    }
+
+    const exists = list.some((item) => {
+      const code = typeof item === 'string' ? item : item?.order_number;
+      return code && code.trim().toUpperCase() === orderNum;
+    });
+
+    if (!exists) {
+      list.push({
+        order_number: payload.order_number,
+        action: payload.action,
+        amount: payload.amount,
+        reason: payload.reason,
+        resolved_by: payload.resolved_by,
+        resolved_at: payload.resolved_at || new Date().toISOString(),
+      });
+      list = list.slice(-150);
+
+      await supabase.from('recipes').upsert(
+        {
+          id: DB_ROW_RESOLVED_TRANSFERS_ID,
+          name: DB_ROW_RESOLVED_TRANSFERS_NAME,
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          total_material_cost: 0,
+          notes: JSON.stringify(list),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    }
+  } catch (err) {
+    console.warn('Lỗi saveResolvedTransferRecordToDb:', err);
+  }
+}
+
+export async function checkTransferResolvedStatus(orderNumber: string): Promise<TransferApprovalResolvedPayload | null> {
+  if (!orderNumber) return null;
+  const target = orderNumber.trim().toUpperCase();
+
+  // 1. Kiểm tra LocalStorage nhanh tức thì (0ms)
+  if (typeof window !== 'undefined') {
+    try {
+      const lastRaw = localStorage.getItem('bakery_last_resolved_transfer');
+      if (lastRaw) {
+        const last = JSON.parse(lastRaw);
+        if (last?.order_number && last.order_number.trim().toUpperCase() === target) {
+          return last;
+        }
+      }
+
+      const recRaw = localStorage.getItem('bakery_resolved_transfer_records');
+      if (recRaw) {
+        const recMap = JSON.parse(recRaw);
+        if (recMap[target]) return recMap[target];
+      }
+
+      const listRaw = localStorage.getItem('bakery_resolved_transfers');
+      if (listRaw) {
+        const list: string[] = JSON.parse(listRaw);
+        if (list.some((n) => n.trim().toUpperCase() === target)) {
+          return { order_number: orderNumber, action: 'approved' };
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Kiểm tra từ Supabase DB
+  if (isLocalMode()) return null;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
+
+  try {
+    const { data } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_RESOLVED_TRANSFERS_ID},name.eq.${DB_ROW_RESOLVED_TRANSFERS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (typeof item === 'string') {
+            if (item.trim().toUpperCase() === target) {
+              return { order_number: orderNumber, action: 'approved' };
+            }
+          } else if (item?.order_number && item.order_number.trim().toUpperCase() === target) {
+            return item;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi checkTransferResolvedStatus:', err);
+  }
+
+  return null;
+}
+
+// ── ĐỒNG BỘ DANH SÁCH ĐƠN ĐÃ DUYỆT ĐỔI TRẢ (RESOLVED RETURNS) ──
+export const DB_ROW_RESOLVED_RETURNS_ID = '00000000-0000-0000-0000-000000000029';
+export const DB_ROW_RESOLVED_RETURNS_NAME = 'SYS_CONFIG_RESOLVED_RETURNS';
+
+export async function saveResolvedReturnRecordToDb(payload: ReturnApprovalResolvedPayload): Promise<void> {
+  if (!payload || !payload.order_number) return;
+  const orderNum = payload.order_number.trim().toUpperCase();
+
+  if (typeof window !== 'undefined') {
+    try {
+      const resRaw = localStorage.getItem('bakery_resolved_returns');
+      const resList: string[] = resRaw ? JSON.parse(resRaw) : [];
+      if (!resList.some((n) => n.trim().toUpperCase() === orderNum)) {
+        resList.push(payload.order_number);
+        localStorage.setItem('bakery_resolved_returns', JSON.stringify(resList.slice(-150)));
+      }
+      const recRaw = localStorage.getItem('bakery_resolved_return_records');
+      const recMap: Record<string, ReturnApprovalResolvedPayload> = recRaw ? JSON.parse(recRaw) : {};
+      recMap[orderNum] = payload;
+      localStorage.setItem('bakery_resolved_return_records', JSON.stringify(recMap));
+    } catch {}
+  }
+
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+  try {
+    const { data } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_RESOLVED_RETURNS_ID},name.eq.${DB_ROW_RESOLVED_RETURNS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    let list: any[] = [];
+    if (data?.notes) {
+      try {
+        const parsed = JSON.parse(data.notes);
+        if (Array.isArray(parsed)) list = parsed;
+      } catch {}
+    }
+
+    const exists = list.some((item) => {
+      const code = typeof item === 'string' ? item : item?.order_number;
+      return code && code.trim().toUpperCase() === orderNum;
+    });
+
+    if (!exists) {
+      list.push({
+        id: payload.id,
+        order_number: payload.order_number,
+        action: payload.action,
+        reason: payload.reason,
+        resolved_by: payload.resolved_by,
+        resolved_at: payload.resolved_at || new Date().toISOString(),
+        return_record: payload.return_record,
+      });
+      list = list.slice(-150);
+
+      await supabase.from('recipes').upsert(
+        {
+          id: DB_ROW_RESOLVED_RETURNS_ID,
+          name: DB_ROW_RESOLVED_RETURNS_NAME,
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          total_material_cost: 0,
+          notes: JSON.stringify(list),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'id' }
+      );
+    }
+  } catch (err) {
+    console.warn('Lỗi saveResolvedReturnRecordToDb:', err);
+  }
+}
+
+export async function checkReturnResolvedStatus(orderNumber: string, requestId?: string): Promise<ReturnApprovalResolvedPayload | null> {
+  if (!orderNumber && !requestId) return null;
+  const targetOrder = orderNumber ? orderNumber.trim().toUpperCase() : '';
+  const targetReqId = requestId ? requestId.trim().toUpperCase() : '';
+
+  // 1. Kiểm tra LocalStorage nhanh tức thì (0ms)
+  if (typeof window !== 'undefined') {
+    try {
+      const lastRaw = localStorage.getItem('bakery_last_resolved_return');
+      if (lastRaw) {
+        const last = JSON.parse(lastRaw);
+        if (
+          (targetOrder && last?.order_number && last.order_number.trim().toUpperCase() === targetOrder) ||
+          (targetReqId && last?.id && last.id.trim().toUpperCase() === targetReqId)
+        ) {
+          return last;
+        }
+      }
+
+      const recRaw = localStorage.getItem('bakery_resolved_return_records');
+      if (recRaw) {
+        const recMap = JSON.parse(recRaw);
+        if (targetOrder && recMap[targetOrder]) return recMap[targetOrder];
+      }
+
+      const listRaw = localStorage.getItem('bakery_resolved_returns');
+      if (listRaw && targetOrder) {
+        const list: string[] = JSON.parse(listRaw);
+        if (list.some((n) => n.trim().toUpperCase() === targetOrder)) {
+          return { order_number: orderNumber, action: 'approved' };
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Kiểm tra từ Supabase DB
+  if (isLocalMode()) return null;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return null;
+
+  try {
+    const { data } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_RESOLVED_RETURNS_ID},name.eq.${DB_ROW_RESOLVED_RETURNS_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed)) {
+        for (const item of parsed) {
+          if (typeof item === 'string') {
+            if (targetOrder && item.trim().toUpperCase() === targetOrder) {
+              return { order_number: orderNumber, action: 'approved' };
+            }
+          } else if (item) {
+            const itemOrder = item.order_number ? item.order_number.trim().toUpperCase() : '';
+            const itemId = item.id ? item.id.trim().toUpperCase() : '';
+            if ((targetOrder && itemOrder === targetOrder) || (targetReqId && itemId === targetReqId)) {
+              return item;
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi checkReturnResolvedStatus:', err);
+  }
+
+  return null;
 }
