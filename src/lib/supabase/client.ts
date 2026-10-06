@@ -6,18 +6,29 @@ import {
   DEFAULT_PRODUCTION_KEY,
 } from './databaseProfileManager';
 
+export function cleanSupabaseUrl(rawUrl: string): string {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  let clean = rawUrl.trim();
+  clean = clean.replace(/\/+$/, '');
+  clean = clean.replace(/\/rest\/v1\/?$/i, '');
+  clean = clean.replace(/\/rest\/?$/i, '');
+  clean = clean.replace(/\/+$/, '');
+  return clean;
+}
+
 /**
  * Khởi tạo client dựa trên cấu hình môi trường Active (Production vs Testing)
  */
 function initSupabaseClient(): SupabaseClient {
   try {
     const active = getActiveProfile();
-    const url = active?.url || DEFAULT_PRODUCTION_URL;
-    const key = active?.anonKey || DEFAULT_PRODUCTION_KEY;
+    const rawUrl = active?.url || DEFAULT_PRODUCTION_URL;
+    const url = cleanSupabaseUrl(rawUrl);
+    const key = (active?.anonKey || DEFAULT_PRODUCTION_KEY || '').trim();
     return createClient(url, key);
   } catch (err) {
     console.warn('Lỗi khởi tạo Supabase client từ Profile, fallback về mặc định:', err);
-    return createClient(DEFAULT_PRODUCTION_URL, DEFAULT_PRODUCTION_KEY);
+    return createClient(cleanSupabaseUrl(DEFAULT_PRODUCTION_URL), (DEFAULT_PRODUCTION_KEY || '').trim());
   }
 }
 

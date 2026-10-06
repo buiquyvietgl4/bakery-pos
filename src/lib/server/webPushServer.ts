@@ -71,16 +71,6 @@ async function persistPushSubscriptions(updated: StoredSubscription[]): Promise<
       name: DB_ROW_PUSH_SUBSCRIPTIONS_NAME,
       notes: JSON.stringify(updated),
       is_active: false,
-      category: 'Bánh tươi',
-      yield_qty: 1,
-      yield_unit: 'thiết bị',
-      bake_time_minutes: 0,
-      bake_temp_celsius: 0,
-      suggested_price: 0,
-      cost_per_unit: 0,
-      total_material_cost: 0,
-      target_food_cost_pct: 0,
-      updated_at: new Date().toISOString(),
     }, { onConflict: 'id' });
 
     if (upsertErr) {
@@ -91,15 +81,6 @@ async function persistPushSubscriptions(updated: StoredSubscription[]): Promise<
         name: DB_ROW_PUSH_SUBSCRIPTIONS_NAME,
         notes: JSON.stringify(updated),
         is_active: false,
-        category: 'Bánh tươi',
-        yield_qty: 1,
-        yield_unit: 'thiết bị',
-        bake_time_minutes: 0,
-        bake_temp_celsius: 0,
-        suggested_price: 0,
-        cost_per_unit: 0,
-        total_material_cost: 0,
-        target_food_cost_pct: 0,
       });
       if (insertErr) throw insertErr;
     }

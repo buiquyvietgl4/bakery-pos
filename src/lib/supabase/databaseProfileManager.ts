@@ -61,12 +61,24 @@ export const BAKERY_DATA_KEYS = [
   'bakery_notification_history',
 ];
 
-export const DEFAULT_PRODUCTION_URL =
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://azgjnahbibrcbjooepef.supabase.co';
-export const DEFAULT_PRODUCTION_KEY =
+export function cleanSupabaseUrl(rawUrl: string): string {
+  if (!rawUrl || typeof rawUrl !== 'string') return '';
+  let clean = rawUrl.trim();
+  clean = clean.replace(/\/+$/, '');
+  clean = clean.replace(/\/rest\/v1\/?$/i, '');
+  clean = clean.replace(/\/rest\/?$/i, '');
+  clean = clean.replace(/\/+$/, '');
+  return clean;
+}
+
+export const DEFAULT_PRODUCTION_URL = cleanSupabaseUrl(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://azgjnahbibrcbjooepef.supabase.co'
+);
+export const DEFAULT_PRODUCTION_KEY = (
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  'sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn';
+  'sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn'
+).trim();
 
 export const DEFAULT_PROFILES: DatabaseProfile[] = [
   {
@@ -236,7 +248,7 @@ export function saveDatabaseProfile(
 
   const newProfile = {
     ...updatedProfile,
-    url: updatedProfile.url.trim().replace(/\/+$/, ''),
+    url: cleanSupabaseUrl(updatedProfile.url),
     anonKey: updatedProfile.anonKey.trim(),
     updatedAt: new Date().toISOString(),
   };

@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { url, anonKey, activeProfileId, name } = body;
 
-    const cleanUrl = (url || '').trim().replace(/\/+$/, '');
+    const cleanUrl = (url || '').trim().replace(/\/+$/, '').replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
     const cleanKey = (anonKey || '').trim();
 
     const profileData = {
