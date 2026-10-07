@@ -19,18 +19,34 @@ export default function GlobalSqlSyncWatcher() {
     try {
       const res = await fetchAndApplyGlobalSqlProfile();
       if (res.changed && res.updatedProfile) {
-        setToastMessage(
-          `🔄 CSDL Chính đã được Quản trị viên cập nhật (${res.updatedProfile.url.replace(/^https?:\/\//, '').split('.')[0]}). Đang tải lại dữ liệu mới...`
-        );
-        window.dispatchEvent(new CustomEvent(EVENT_UNIFIED_SQL_ENV_CHANGED));
-        window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED));
-
-        // Tự động tải lại trang sau 1.5s để làm mới toàn bộ bộ nhớ cache
-        setTimeout(() => {
-          if (typeof window !== 'undefined') {
-            window.location.reload();
+        // Kiểm tra chống lặp reload vô tận: Chỉ reload tối đa 1 lần trong 30 giây
+        let canReload = false;
+        try {
+          const lastReload = sessionStorage.getItem('bakery_last_sync_reload');
+          const now = Date.now();
+          if (!lastReload || now - Number(lastReload) > 30000) {
+            sessionStorage.setItem('bakery_last_sync_reload', String(now));
+            canReload = true;
           }
-        }, 1500);
+        } catch {}
+
+        if (canReload) {
+          setToastMessage(
+            `🔄 CSDL Chính đã được Quản trị viên cập nhật (${res.updatedProfile.url.replace(/^https?:\/\//, '').split('.')[0]}). Đang làm mới dữ liệu...`
+          );
+          window.dispatchEvent(new CustomEvent(EVENT_UNIFIED_SQL_ENV_CHANGED));
+          window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED));
+
+          setTimeout(() => {
+            if (typeof window !== 'undefined') {
+              window.location.reload();
+            }
+          }, 1200);
+        } else {
+          // Nếu đã reload rồi thì chỉ cập nhật client ngầm, tuyệt đối không reload nữa
+          window.dispatchEvent(new CustomEvent(EVENT_UNIFIED_SQL_ENV_CHANGED));
+          window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED));
+        }
       }
     } catch (err) {
       // Bỏ qua lỗi kết nối nền

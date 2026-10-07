@@ -429,10 +429,16 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
 
         const config = getMultiSqlConfig();
         const currentProd = config.profiles.find((p) => p.id === 'production');
+        const testingUrl = cleanSupabaseUrl(DEFAULT_TESTING_URL);
 
         if (currentProd) {
           const currentUrl = cleanSupabaseUrl(currentProd.url);
           const currentKey = (currentProd.anonKey || '').trim();
+
+          // Chặn tuyệt đối: Không cho phép CSDL Test (azgjnahbibrcbjooepef) được gán làm CSDL Chính
+          if (serverUrl === testingUrl) {
+            return { changed: false };
+          }
 
           // Nếu URL hoặc Key từ máy chủ khác với máy này
           if (serverUrl && serverKey && (serverUrl !== currentUrl || serverKey !== currentKey)) {
@@ -466,6 +472,7 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
     const currentProd = config.profiles.find((p) => p.id === 'production');
     const queryUrl = cleanSupabaseUrl(currentProd?.url || DEFAULT_PRODUCTION_URL);
     const queryKey = (currentProd?.anonKey || DEFAULT_PRODUCTION_KEY || '').trim();
+    const testingUrl = cleanSupabaseUrl(DEFAULT_TESTING_URL);
 
     if (queryUrl && queryKey) {
       const probeClient = createClient(queryUrl, queryKey, { auth: { persistSession: false } });
@@ -482,6 +489,11 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
           const cloudUrl = cleanSupabaseUrl(parsed.url);
           const cloudKey = (parsed.anonKey || '').trim();
           const cloudUpdatedAt = parsed.updatedAt || '';
+
+          // Chặn tuyệt đối: Không nhận CSDL Test làm CSDL Chính
+          if (cloudUrl === testingUrl) {
+            return { changed: false };
+          }
 
           if (currentProd) {
             const currentUrl = cleanSupabaseUrl(currentProd.url);
