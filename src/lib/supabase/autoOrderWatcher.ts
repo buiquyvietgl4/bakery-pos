@@ -7,6 +7,7 @@ import { getDeliveryUrgency, isOrderCompletedOrCancelled, pruneOrdersCache, prun
 import { sendTelegramOrderAlert, sendTelegramUrgentAlert } from '@/lib/utils/telegramNotify';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { offlineSyncWorker } from './offlineSyncWorker';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 class AutoOrderWatcher {
   private knownOrders: Set<string> = new Set();
@@ -124,7 +125,7 @@ class AutoOrderWatcher {
     } catch {}
 
     // Lấy nhanh danh sách ID hiện có trên Supabase
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
       supabase
         .from('orders')
         .select('id, order_number')
@@ -235,6 +236,7 @@ class AutoOrderWatcher {
    * Tự động kiểm tra đơn mới và cập nhật trạng thái từ Supabase
    */
   public async checkNewOrdersFromSupabase() {
+    if (isLocalMode()) return;
     if (typeof navigator === 'undefined' || !navigator.onLine) return;
     if (typeof document !== 'undefined' && document.hidden) return;
 
@@ -401,7 +403,7 @@ class AutoOrderWatcher {
           // Báo động lại sau mỗi 3 phút nếu đơn thực sự vẫn chưa được giao
           if (Date.now() - lastAlert > 180000) {
             // Kiểm tra bảo vệ thời gian thực trên Supabase: nếu đơn đã được giao từ máy khác, lập tức hủy báo động!
-            if (typeof navigator !== 'undefined' && navigator.onLine && order.order_number) {
+            if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode() && order.order_number) {
               try {
                 const { data: sbCheck } = await supabase
                   .from('orders')

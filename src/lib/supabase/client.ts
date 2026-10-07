@@ -6,6 +6,8 @@ import {
   DEFAULT_PRODUCTION_KEY,
 } from './databaseProfileManager';
 
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
+
 export function cleanSupabaseUrl(rawUrl: string): string {
   if (!rawUrl || typeof rawUrl !== 'string') return '';
   let clean = rawUrl.trim();
@@ -41,12 +43,50 @@ if (typeof window !== 'undefined') {
   });
 }
 
+function createSafeDummyMutation(table: string, methodName: string) {
+  console.warn(`🛡️ [SQL Firewall] Đã chặn lệnh ${methodName.toUpperCase()} vào bảng '${table}' trên Cloud Supabase vì đang chạy ở Chế độ Local SQL!`);
+  const dummy: any = new Proxy({}, {
+    get(_t, prop) {
+      if (prop === 'then') {
+        return (resolve?: any) => Promise.resolve({ data: null, error: null }).then(resolve);
+      }
+      if (prop === 'catch') {
+        return (reject?: any) => Promise.resolve({ data: null, error: null }).catch(reject);
+      }
+      if (prop === 'finally') {
+        return (callback?: any) => Promise.resolve({ data: null, error: null }).finally(callback);
+      }
+      return () => dummy;
+    },
+  });
+  return dummy;
+}
+
 /**
  * Proxy Supabase Client: Mọi lệnh gọi supabase.from, supabase.channel, supabase.auth...
  * sẽ tự động chuyển tiếp tới instance client của môi trường CSDL đang hoạt động.
+ * 🛡️ SQL FIREWALL: Khi hệ thống đang ở Chế độ Local SQL (isLocalMode = true),
+ * mọi thao tác Ghi/Xóa/Cập nhật (insert, upsert, update, delete) xuống Cloud Supabase
+ * đều bị chặn tuyệt đối để bảo vệ 100% tính độc lập dữ liệu giữa Local và Cloud!
  */
 export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
+    if (prop === 'from') {
+      return (table: string) => {
+        const originalBuilder = (currentClient as any).from(table);
+        if (!isLocalMode()) {
+          return originalBuilder;
+        }
+        return new Proxy(originalBuilder, {
+          get(target, methodProp, receiver) {
+            if (methodProp === 'insert' || methodProp === 'upsert' || methodProp === 'update' || methodProp === 'delete') {
+              return () => createSafeDummyMutation(table, String(methodProp));
+            }
+            return Reflect.get(target, methodProp, receiver);
+          },
+        });
+      };
+    }
     return (currentClient as any)[prop];
   },
 });

@@ -317,8 +317,8 @@ export async function deductOrderIngredients(order: any): Promise<DeductionResul
           inventory_deducted: true,
         } as any).catch(() => {});
 
-        // Đồng bộ Supabase nếu online
-        if (typeof navigator !== 'undefined' && navigator.onLine) {
+        // Đồng bộ Supabase nếu online và không ở chế độ Local SQL
+        if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
           syncOrderToSupabase(order, order.status || 'ready').catch(() => {});
         }
       } catch (err) {

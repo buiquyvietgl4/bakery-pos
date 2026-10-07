@@ -3,6 +3,7 @@
 // Đảm bảo cô lập dữ liệu 100% giữa CSDL Chính và CSDL Thử Nghiệm, chống trộn lẫn dữ liệu.
 
 import { createClient } from '@supabase/supabase-js';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export type DatabaseEnvironmentId = 'production' | 'testing' | string;
 
@@ -461,6 +462,7 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
   updatedProfile?: DatabaseProfile;
 }> {
   if (typeof window === 'undefined') return { changed: false };
+  if (isLocalMode()) return { changed: false };
 
   // 1. Kiểm tra qua API máy chủ (/api/system/database-profile)
   try {
@@ -497,7 +499,7 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
             localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
 
             // Nếu thiết bị này đang chạy môi trường production (Cloud SQL Chính)
-            if (config.activeProfileId === 'production') {
+            if (config.activeProfileId === 'production' && !isLocalMode()) {
               clearProfileLocalData(); // Xóa cache cũ để nạp mới từ CSDL mới
               window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED, { detail: config }));
             }
@@ -554,7 +556,7 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
 
               localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
 
-              if (config.activeProfileId === 'production') {
+              if (config.activeProfileId === 'production' && !isLocalMode()) {
                 clearProfileLocalData();
                 window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED, { detail: config }));
               }

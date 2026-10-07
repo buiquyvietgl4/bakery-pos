@@ -113,11 +113,12 @@ export async function saveMaterialStockAdjustmentLogsToDb(
   }
 
   // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
-  try {
-    if (isLocalMode()) {
+  if (isLocalMode()) {
+    try {
       autoSyncToLocalSqlFolder().catch(console.warn);
-    }
-  } catch {}
+    } catch {}
+    return { success: true };
+  }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { success: true };

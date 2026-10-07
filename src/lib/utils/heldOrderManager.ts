@@ -165,11 +165,12 @@ export async function saveHeldOrdersToDb(
   const cleaned = normalizeHeldOrders(orders);
   saveHeldOrdersLocally(cleaned);
 
-  try {
-    if (isLocalMode()) {
+  if (isLocalMode()) {
+    try {
       autoSyncToLocalSqlFolder().catch(console.warn);
-    }
-  } catch {}
+    } catch {}
+    return { success: true };
+  }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { success: true };

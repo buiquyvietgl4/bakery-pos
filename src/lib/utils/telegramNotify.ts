@@ -9,6 +9,7 @@ import {
 import { addNotificationLog } from './notificationHistory';
 import { isOrderCompletedOrCancelled } from './deliveryAlerts';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export interface TelegramConfig {
   enabled: boolean;
@@ -85,6 +86,9 @@ export async function getOrFetchTelegramConfig(): Promise<TelegramConfig> {
  * Tự động cập nhật cache cục bộ khi tải xong
  */
 export async function fetchTelegramConfigFromDb(): Promise<TelegramConfig> {
+  if (isLocalMode() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    return getTelegramConfig();
+  }
   try {
     const { data, error } = await supabase
       .from('recipes')
@@ -140,6 +144,14 @@ export async function saveTelegramConfigToDb(
     // 1. Cập nhật bộ nhớ cục bộ ngay lập tức
     updateLocalTelegramConfig(fullConfig);
 
+    // Nếu đang ở chế độ Local SQL, chỉ lưu đĩa cục bộ và kết thúc, tuyệt đối không đẩy lên Cloud Supabase!
+    if (isLocalMode()) {
+      try {
+        autoSyncToLocalSqlFolder().catch(() => {});
+      } catch {}
+      return { success: true };
+    }
+
     // 2. Lưu cấu hình vào SQL bằng upsert nguyên tử
     const { error: upsertErr } = await supabase.from('recipes').upsert({
       id: DB_ROW_ID,
@@ -166,11 +178,6 @@ export async function saveTelegramConfigToDb(
     // 4. Phát sóng Realtime cho toàn bộ các thiết bị (POS, KDS, ĐT, Laptop) đang mở
     await broadcastTelegramConfig(fullConfig);
 
-    // 5. Tự động ghi vào Local SQL nếu đang chạy Local Mode
-    try {
-      autoSyncToLocalSqlFolder().catch(() => {});
-    } catch {}
-
     return { success: true };
   } catch (err: any) {
     console.error('Lỗi ngoại lệ saveTelegramConfigToDb:', err);
@@ -185,7 +192,6 @@ export async function deleteTelegramConfigFromDb(
   updatedBy: string = 'admin'
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_ID},name.eq.${DB_ROW_NAME}`);
     const emptyConfig: TelegramConfig = {
       enabled: false,
       botToken: '',
@@ -194,6 +200,15 @@ export async function deleteTelegramConfigFromDb(
       updated_by: updatedBy,
     };
     updateLocalTelegramConfig(emptyConfig);
+
+    if (isLocalMode()) {
+      try {
+        autoSyncToLocalSqlFolder().catch(() => {});
+      } catch {}
+      return { success: true };
+    }
+
+    await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_ID},name.eq.${DB_ROW_NAME}`);
     await broadcastTelegramConfig(emptyConfig);
     return { success: true };
   } catch (err: any) {

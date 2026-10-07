@@ -109,9 +109,12 @@ export async function saveStockAdjustmentLogsToDb(
   }
 
   // Tự động ghi ra tệp Local SQL nếu đang ở Local Mode
-  try {
-    autoSyncToLocalSqlFolder().catch(() => {});
-  } catch {}
+  if (isLocalMode()) {
+    try {
+      autoSyncToLocalSqlFolder().catch(() => {});
+    } catch {}
+    return { success: true };
+  }
 
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { success: true };

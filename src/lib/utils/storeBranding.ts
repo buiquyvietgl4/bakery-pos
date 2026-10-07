@@ -3,6 +3,7 @@
 import { supabase } from '@/lib/supabase/client';
 import { broadcastStoreBranding } from '@/lib/supabase/realtimeSync';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export interface StoreBrandingConfig {
   storeName: string;
@@ -93,7 +94,7 @@ export function saveStoreBranding(config: Partial<StoreBrandingConfig>): StoreBr
  * Tải cấu hình thương hiệu từ Supabase SQL (Đồng bộ đa thiết bị)
  */
 export async function fetchStoreBrandingFromDb(): Promise<StoreBrandingConfig> {
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (isLocalMode() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
     return getStoreBranding();
   }
 
@@ -157,9 +158,12 @@ export async function saveStoreBrandingToDb(
     saveStoreBranding(fullConfig);
 
     // Tự động đồng bộ file SQL nếu ở chế độ Local SQL
-    try {
-      autoSyncToLocalSqlFolder().catch(() => {});
-    } catch {}
+    if (isLocalMode()) {
+      try {
+        autoSyncToLocalSqlFolder().catch(() => {});
+      } catch {}
+      return { success: true };
+    }
 
     // 2. Dùng upsert với onConflict: 'id' để không bao giờ bị lỗi duplicate key
     const { error: upsertErr } = await supabase.from('recipes').upsert(

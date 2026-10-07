@@ -16,6 +16,7 @@ import {
 import { INITIAL_FULL_CAKE_BOM_CONFIG } from '@/lib/constants/defaultCakeBomData';
 import { supabase } from '@/lib/supabase/client';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export const CAKE_BOM_CONFIG_KEY = 'bakery_full_bom_config';
 export const CAKE_BOM_UPDATED_EVENT = 'bakery_bom_updated';
@@ -55,6 +56,12 @@ export function saveFullCakeBomConfig(config: FullCakeBomConfig): void {
 
 // ── ĐỒNG BỘ LÊN SUPABASE CLOUD & LOCAL SQL ──
 export async function syncCakeBomConfigToDb(config: FullCakeBomConfig): Promise<void> {
+  if (isLocalMode()) {
+    try {
+      autoSyncToLocalSqlFolder().catch(console.warn);
+    } catch {}
+    return;
+  }
   const defPkg = config.packagings.find((p) => p.isDefault) || config.packagings[0];
 
   // 1. Supabase Cloud SQL: Bảng bakery_bom_settings

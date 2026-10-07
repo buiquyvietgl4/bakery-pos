@@ -551,6 +551,7 @@ export async function broadcastOrderStatusUpdate(
   status: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled' | 'refunded' | 'partially_refunded',
   orderData?: any
 ) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -574,7 +575,8 @@ export async function broadcastOrderStatusUpdate(
  * Đồng bộ nghiệp vụ Đổi Trả / Hoàn Tiền lên CSDL Supabase Cloud SQL và phát sóng Realtime
  */
 export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord): Promise<void> {
-  if (typeof navigator === 'undefined' || !navigator.onLine) return;
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   try {
     const { order_number, refund_amount, refund_method, return_type, items } = returnRecord;
     const clientStatus = return_type === 'refund' ? 'refunded' : 'partially_refunded';
@@ -724,6 +726,7 @@ export async function syncOrderRefundToSupabase(returnRecord: OrderReturnRecord)
  * Phát sóng khi POS tạo đơn hàng mới (bán trực tiếp hoặc đặt bánh sinh nhật)
  */
 export async function broadcastNewOrder(order: any) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -759,6 +762,7 @@ export async function broadcastNewOrder(order: any) {
  * Phát sóng khi người dùng bấm "Xóa Đơn Mẫu" trên bất kỳ thiết bị nào
  */
 export async function broadcastClearDemoOrders() {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -780,6 +784,7 @@ export async function broadcastClearDemoOrders() {
  * Để tất cả máy tính và điện thoại đồng bộ tức thì menu và ảnh trong ~50ms
  */
 export async function broadcastProductChange(payload: ProductChangePayload) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -798,6 +803,7 @@ export async function broadcastProductChange(payload: ProductChangePayload) {
  * Phát sóng cập nhật cấu hình Telegram tới tất cả thiết bị
  */
 export async function broadcastTelegramConfig(config: any) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -819,6 +825,7 @@ export async function broadcastTelegramConfig(config: any) {
  * Phát sóng cập nhật nhận diện thương hiệu (Tên tiệm, Logo, SĐT, Địa chỉ) tới tất cả thiết bị
  */
 export async function broadcastStoreBranding(branding: any) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -840,6 +847,7 @@ export async function broadcastStoreBranding(branding: any) {
  * Phát sóng cập nhật cấu hình VietQR tới tất cả thiết bị (POS, Kitchen, Admin trên mọi máy khác)
  */
 export async function broadcastVietqrConfig(config: any) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -861,6 +869,7 @@ export async function broadcastVietqrConfig(config: any) {
  * Phát sóng cập nhật cấu hình Ví điện tử (Momo, ZaloPay, ViettelMoney) tới tất cả thiết bị
  */
 export async function broadcastEwalletConfig(config: any) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -882,6 +891,7 @@ export async function broadcastEwalletConfig(config: any) {
  * Phát sóng cập nhật cấu hình bảo mật & ma trận phân quyền tài khoản (Admin, Bếp, Thu Ngân) tới tất cả thiết bị
  */
 export async function broadcastSecurityConfig(config: any) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -993,6 +1003,7 @@ export async function broadcastDeliveryAlertConfig(config: any) {
  * Phát sóng khẩn cấp lệnh Reset Toàn Bộ Dữ Liệu tới tất cả thiết bị
  */
 export async function broadcastSystemGlobalWipe(payload: SystemGlobalWipePayload) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -1015,6 +1026,7 @@ export async function broadcastSystemBackupRestored(payload: {
   products_count?: number;
   orders_count?: number;
 }) {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -1145,6 +1157,10 @@ export function subscribeToPaymentReceived(callback: PaymentReceivedCallback): (
  * Phát sóng sự kiện nhận tiền chuyển khoản thành công từ Webhook tới toàn bộ màn hình POS / Kitchen
  */
 export async function broadcastPaymentReceived(payload: PaymentReceivedPayload) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('bakery_payment_received', { detail: payload }));
+  }
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -1157,9 +1173,6 @@ export async function broadcastPaymentReceived(payload: PaymentReceivedPayload) 
         },
       });
     }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('bakery_payment_received', { detail: payload }));
-    }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastPaymentReceived:', err);
   }
@@ -1169,6 +1182,10 @@ export async function broadcastPaymentReceived(payload: PaymentReceivedPayload) 
  * Phát sóng yêu cầu thợ bếp/nhân viên gửi duyệt nướng xong tới Chủ Tiệm (Admin)
  */
 export async function broadcastBakeApprovalRequest(payload: BakeApprovalPayload) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('bake_approval_requested', { detail: payload }));
+  }
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -1181,9 +1198,6 @@ export async function broadcastBakeApprovalRequest(payload: BakeApprovalPayload)
         },
       });
     }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('bake_approval_requested', { detail: payload }));
-    }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastBakeApprovalRequest:', err);
   }
@@ -1193,6 +1207,10 @@ export async function broadcastBakeApprovalRequest(payload: BakeApprovalPayload)
  * Phát sóng khi Chủ Tiệm (Admin) đã Chấp Nhận hoặc Từ Chối duyệt nướng xong
  */
 export async function broadcastBakeApprovalResolved(payload: BakeApprovalResolvedPayload) {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('bake_approval_resolved', { detail: payload }));
+  }
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {
@@ -1204,9 +1222,6 @@ export async function broadcastBakeApprovalResolved(payload: BakeApprovalResolve
           resolved_at: payload.resolved_at || new Date().toISOString(),
         },
       });
-    }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('bake_approval_resolved', { detail: payload }));
     }
   } catch (err) {
     console.warn('Lỗi phát sóng broadcastBakeApprovalResolved:', err);
@@ -1388,6 +1403,12 @@ export async function broadcastTransferApprovalRequest(payload: TransferApproval
     // 1. Lưu vĩnh viễn vào Database trước để khi Admin mở điện thoại sau khi tắt màn hình vẫn đọc được ngay
     savePendingTransferToDb(payload).catch(console.error);
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('transfer_approval_requested', { detail: payload }));
+    }
+
+    if (isLocalMode()) return;
+
     // 2. Phát sóng Realtime
     const channel = ensureSyncChannel();
     if (channel) {
@@ -1399,9 +1420,6 @@ export async function broadcastTransferApprovalRequest(payload: TransferApproval
           requested_at: payload.requested_at || new Date().toISOString(),
         },
       });
-    }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('transfer_approval_requested', { detail: payload }));
     }
 
     // 3. Bắn Web Push Notification tới máy chủ kèm đầy đủ thông tin trên URL query
@@ -1456,6 +1474,8 @@ export async function broadcastTransferApprovalResolved(payload: TransferApprova
         bc.close();
       }
     } catch {}
+
+    if (isLocalMode()) return;
 
     // 5. Phát sóng Realtime qua Supabase WebSocket (Đa thiết bị)
     const channel = ensureSyncChannel();
@@ -1642,6 +1662,12 @@ export async function broadcastReturnApprovalRequest(payload: ReturnApprovalPayl
     // 1. Lưu Database & LocalStorage
     savePendingReturnToDb(payload).catch(console.error);
 
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('return_approval_requested', { detail: payload }));
+    }
+
+    if (isLocalMode()) return;
+
     // 2. Phát sóng Realtime
     const channel = ensureSyncChannel();
     if (channel) {
@@ -1653,9 +1679,6 @@ export async function broadcastReturnApprovalRequest(payload: ReturnApprovalPayl
           requested_at: payload.requested_at || new Date().toISOString(),
         },
       });
-    }
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('return_approval_requested', { detail: payload }));
     }
 
     // 3. Web Push Notification
@@ -1680,6 +1703,9 @@ export async function broadcastReturnApprovalRequest(payload: ReturnApprovalPayl
   }
 }
 
+/**
+ * Phát sóng khi Chủ Tiệm (Admin) đã Xác Nhận hoặc Từ Chối duyệt Đổi Trả / Hoàn Tiền
+ */
 export async function broadcastReturnApprovalResolved(payload: ReturnApprovalResolvedPayload) {
   try {
     // 1. Lưu bản ghi kết quả duyệt vào Database & LocalStorage vĩnh viễn
@@ -1706,6 +1732,8 @@ export async function broadcastReturnApprovalResolved(payload: ReturnApprovalRes
         bc.close();
       }
     } catch {}
+
+    if (isLocalMode()) return;
 
     // 5. Phát sóng Realtime qua Supabase WebSocket (Đa thiết bị)
     const channel = ensureSyncChannel();
@@ -1833,6 +1861,7 @@ export async function syncOrderToSupabase(
   order: any,
   nextStatus: 'pending' | 'preparing' | 'ready' | 'completed' | 'cancelled'
 ) {
+  if (isLocalMode()) return;
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
   if (typeof window !== 'undefined' && (window as any).__IS_SYSTEM_WIPING__) return;
 
@@ -2409,6 +2438,7 @@ export async function fetchOvenBatchesFromDb(): Promise<any[]> {
 }
 
 export async function broadcastOvenBatches(batches: any[]): Promise<void> {
+  if (isLocalMode()) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {

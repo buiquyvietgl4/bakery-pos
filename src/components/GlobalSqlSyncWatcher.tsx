@@ -8,12 +8,14 @@ import {
   EVENT_DB_PROFILE_CHANGED,
 } from '@/lib/supabase/databaseProfileManager';
 import { EVENT_UNIFIED_SQL_ENV_CHANGED } from '@/lib/utils/unifiedSqlManager';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export default function GlobalSqlSyncWatcher() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const isCheckingRef = useRef(false);
 
   const performCheck = async (isInitial = false) => {
+    if (isLocalMode()) return;
     if (isCheckingRef.current) return;
     isCheckingRef.current = true;
     try {

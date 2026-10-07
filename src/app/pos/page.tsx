@@ -484,10 +484,11 @@ export default function POSPage() {
 
     // Đồng bộ tức thì lên Supabase SQL và phát sóng Realtime Sync (<50ms)
     if (updatedTarget) {
-      persistProductToSupabase(updatedTarget).catch(console.error);
-      supabase.from('products').update({ stock_qty: safeNewQty }).eq('id', productId).then(() => {}, console.error);
-      broadcastProductChange({ action: 'update', product: updatedTarget }).catch(console.error);
-      if (isLocalMode()) {
+      if (!isLocalMode()) {
+        persistProductToSupabase(updatedTarget).catch(console.error);
+        supabase.from('products').update({ stock_qty: safeNewQty }).eq('id', productId).then(() => {}, console.error);
+        broadcastProductChange({ action: 'update', product: updatedTarget }).catch(console.error);
+      } else {
         autoSyncToLocalSqlFolder().catch(console.warn);
       }
     }
@@ -530,10 +531,11 @@ export default function POSPage() {
     });
 
     if (updatedTarget) {
-      persistProductToSupabase(updatedTarget).catch(console.error);
-      supabase.from('products').update({ stock_qty: updatedTarget.stock_qty }).eq('id', productId).then(() => {}, console.error);
-      broadcastProductChange({ action: 'update', product: updatedTarget }).catch(console.error);
-      if (isLocalMode()) {
+      if (!isLocalMode()) {
+        persistProductToSupabase(updatedTarget).catch(console.error);
+        supabase.from('products').update({ stock_qty: updatedTarget.stock_qty }).eq('id', productId).then(() => {}, console.error);
+        broadcastProductChange({ action: 'update', product: updatedTarget }).catch(console.error);
+      } else {
         autoSyncToLocalSqlFolder().catch(console.warn);
       }
     }
@@ -800,7 +802,7 @@ export default function POSPage() {
 
       // 6. Xóa khỏi Supabase Cloud DB (xóa order_items trước, sau đó xóa orders)
       try {
-        if (supabase) {
+        if (!isLocalMode() && supabase) {
           let sbId = order.id;
           if (!sbId && rawNum) {
             const { data: found } = await supabase
@@ -1646,35 +1648,39 @@ export default function POSPage() {
     );
 
     // Cập nhật trực tiếp lên Supabase SQL với các cột hợp lệ
-    if (orderId || orderNum) {
-      const matchFilter = orderNum ? { order_number: orderNum } : { id: orderId };
-      supabase
-        .from('orders')
-        .update({
-          status: 'completed',
-          notes: updatedOrder.notes,
-          updated_at: new Date().toISOString(),
-        })
-        .match(matchFilter)
-        .then(({ error }) => {
-          if (error) {
-            console.warn('Lỗi update status completed trên Supabase:', error);
-          }
-        });
-      if (linkedBakeOrderNum) {
+    if (!isLocalMode()) {
+      if (orderId || orderNum) {
+        const matchFilter = orderNum ? { order_number: orderNum } : { id: orderId };
         supabase
           .from('orders')
           .update({
             status: 'completed',
+            notes: updatedOrder.notes,
             updated_at: new Date().toISOString(),
           })
-          .match({ order_number: linkedBakeOrderNum })
-          .then(() => {});
+          .match(matchFilter)
+          .then(({ error }) => {
+            if (error) {
+              console.warn('Lỗi update status completed trên Supabase:', error);
+            }
+          });
+        if (linkedBakeOrderNum) {
+          supabase
+            .from('orders')
+            .update({
+              status: 'completed',
+              updated_at: new Date().toISOString(),
+            })
+            .match({ order_number: linkedBakeOrderNum })
+            .then(() => {});
+        }
       }
-    }
 
-    syncOrderToSupabase(updatedOrder, 'completed');
-    broadcastOrderStatusUpdate(orderNum, 'completed', updatedOrder);
+      syncOrderToSupabase(updatedOrder, 'completed');
+      broadcastOrderStatusUpdate(orderNum, 'completed', updatedOrder);
+    } else {
+      autoSyncToLocalSqlFolder().catch(console.warn);
+    }
     sendTelegramDeliveredSuccessAlert(updatedOrder).catch(() => {});
     soundManager.playPaymentSuccessChime();
     reloadOrdersData();
@@ -3276,6 +3282,9 @@ export default function POSPage() {
         ready_stock_qty: isPartialStock ? stockAvailable : (cakeStock >= orderQuantity ? orderQuantity : 0),
         need_bake_qty: isPartialStock ? needToMake : (cakeStock <= 0 ? orderQuantity : 0),
         bake_status: isPartialStock || cakeStock < orderQuantity ? 'pending' : (cakeStock >= orderQuantity ? 'done' : 'pending'),
+        sync_status: isLocalMode() ? ('local_only' as const) : ('synced' as const),
+        is_local: isLocalMode(),
+        sql_mode: isLocalMode() ? 'local' : 'online',
         created_at: now.toISOString(),
         items: [
           {
@@ -3373,7 +3382,7 @@ export default function POSPage() {
       }
 
       // Sync Supabase & Broadcast
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           await syncOrderToSupabase(unifiedOrder, mainInitialStatus);
         } catch (sErr) {
@@ -3384,6 +3393,8 @@ export default function POSPage() {
         } catch (bErr) {
           console.warn('Lỗi broadcastNewOrder birthday order:', bErr);
         }
+      } else if (isLocalMode()) {
+        autoSyncToLocalSqlFolder().catch(console.warn);
       }
 
       // Mở modal hóa đơn/phiếu hẹn
@@ -3644,7 +3655,9 @@ export default function POSPage() {
         ready_stock_qty: hasPartialStock ? totalStockAvailable : undefined,
         need_bake_qty: hasPartialStock ? totalNeedToBake : undefined,
         bake_status: hasPartialStock || !allItemsInStock ? 'pending' : 'done',
-        sync_status: 'synced' as const,
+        sync_status: isLocalMode() ? ('local_only' as const) : ('synced' as const),
+        is_local: isLocalMode(),
+        sql_mode: isLocalMode() ? 'local' : 'online',
         created_at: now.toISOString(),
         items: [
           ...itemsWithCost,
@@ -3830,7 +3843,7 @@ export default function POSPage() {
       setMobileTab('menu');
 
       // 4. Đồng bộ tức thì lên CSDL Supabase SQL (chân lý đa thiết bị)
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           await syncOrderToSupabase(orderData, initialStatus);
         } catch (syncErr) {
@@ -3841,9 +3854,7 @@ export default function POSPage() {
         } catch (bErr) {
           console.warn('Lỗi broadcastNewOrder POS:', bErr);
         }
-      }
-
-      if (isLocalMode()) {
+      } else if (isLocalMode()) {
         autoSyncToLocalSqlFolder().catch(console.warn);
       }
 
@@ -4157,6 +4168,9 @@ export default function POSPage() {
         orderNumber,
         order_type: 'preorder' as const,
         status: preorderForm.isReadyStock ? ('ready' as const) : ('pending' as const),
+        sync_status: isLocalMode() ? ('local_only' as const) : ('synced' as const),
+        is_local: isLocalMode(),
+        sql_mode: isLocalMode() ? 'local' : 'online',
         created_at: now.toISOString(),
         preorder_pickup_at: pickupIsoSafe,
         pickupDateTime: pickupDateTimeStr,
@@ -4395,7 +4409,7 @@ export default function POSPage() {
       setIsCustomCake(false);
 
       // 4. Đồng bộ tức thì lên CSDL Supabase SQL (chân lý đa thiết bị)
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         const initialStatus = preorderForm.isReadyStock ? 'ready' : 'pending';
         try {
           await syncOrderToSupabase(unifiedPreorder, initialStatus);
@@ -4407,6 +4421,8 @@ export default function POSPage() {
         } catch (bErr) {
           console.warn('Lỗi broadcastNewOrder Preorder:', bErr);
         }
+      } else if (isLocalMode()) {
+        autoSyncToLocalSqlFolder().catch(console.warn);
       }
     } catch (err) {
       console.error('Lỗi tạo đơn đặt bánh:', err);
@@ -7299,14 +7315,20 @@ export default function POSPage() {
                                     );
                                   } catch {}
                                 }
-                                await syncOrderToSupabase(completedPo, 'completed');
-                                broadcastOrderStatusUpdate(orderNum, 'completed', completedPo);
-                                if (linkedBakeOrderNum) {
-                                  broadcastOrderStatusUpdate(linkedBakeOrderNum, 'completed');
+                                if (!isLocalMode()) {
+                                  await syncOrderToSupabase(completedPo, 'completed');
+                                  broadcastOrderStatusUpdate(orderNum, 'completed', completedPo);
+                                  if (linkedBakeOrderNum) {
+                                    broadcastOrderStatusUpdate(linkedBakeOrderNum, 'completed');
+                                  }
+                                } else {
+                                  autoSyncToLocalSqlFolder().catch(console.warn);
                                 }
                                 sendTelegramDeliveredSuccessAlert(completedPo).catch(() => {});
                                 soundManager.playPaymentSuccessChime();
-                                syncOrdersFromSupabase();
+                                if (!isLocalMode()) {
+                                  syncOrdersFromSupabase();
+                                }
                               }}
                               className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center gap-1 transition cursor-pointer shadow-xs"
                             >

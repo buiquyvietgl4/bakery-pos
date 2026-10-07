@@ -58,7 +58,7 @@ class OfflineSyncWorker {
       let dexieCount = 0;
       try {
         dexieCount = await db.orders
-          .filter((o: any) => o.sync_status === 'pending' || o.is_offline === true)
+          .filter((o: any) => (o.sync_status === 'pending' || o.is_offline === true) && !o.is_local && o.sync_status !== 'local_only' && o.sql_mode !== 'local')
           .count();
       } catch {}
 
@@ -68,7 +68,7 @@ class OfflineSyncWorker {
         if (raw) {
           const arr = JSON.parse(raw);
           if (Array.isArray(arr)) {
-            localCount = arr.filter((o: any) => o.sync_status === 'pending' || o.is_offline === true).length;
+            localCount = arr.filter((o: any) => (o.sync_status === 'pending' || o.is_offline === true) && !o.is_local && o.sync_status !== 'local_only' && o.sql_mode !== 'local').length;
           }
         }
       } catch {}
@@ -157,7 +157,12 @@ class OfflineSyncWorker {
         }
       } catch {}
 
-      let ordersToSync = Array.from(pendingMap.values());
+      let ordersToSync = Array.from(pendingMap.values()).filter((o: any) => {
+        // Tuyệt đối không đẩy các đơn tạo trong chế độ Local SQL lên Cloud Supabase!
+        if (o.is_local === true || o.sync_status === 'local_only' || o.sql_mode === 'local') return false;
+        return true;
+      });
+
       if (deletedKeys.size > 0) {
         ordersToSync = ordersToSync.filter((o) => {
           const k1 = o.order_number ? String(o.order_number) : '';

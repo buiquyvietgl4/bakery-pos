@@ -23,6 +23,7 @@ import {
 } from '@/lib/supabase/realtimeSync';
 import { persistProductToSupabase } from '@/lib/utils/productManager';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { 
   ChefHat, Clock, CheckCircle2, ArrowRight, Flame, Sparkles, 
   Cake, AlertCircle, MessageSquare, RefreshCw, Trash2, Check,
@@ -2134,7 +2135,7 @@ export default function KitchenPage() {
       syncOrderToSupabase(orderToSync, nextStatus);
     }
     if (isSupplementFinishing && parentOrderNum) {
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           supabase.from('orders').update({
             notes: updatedParentNotes,
@@ -2165,7 +2166,7 @@ export default function KitchenPage() {
     }
 
     if (isCompletingToReadyOrDone) {
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           supabase.from('orders').update({
             status: nextStatus,
@@ -2613,7 +2614,7 @@ export default function KitchenPage() {
     });
     syncOrderToSupabase(updatedOrder, 'ready');
 
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
       try {
         await supabase.from('orders').update({
           notes: updatedNotes,
@@ -2703,7 +2704,7 @@ export default function KitchenPage() {
     }
 
     // Cập nhật Supabase & Dexie
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
       try {
         supabase.from('orders').update({
           notes,
@@ -2946,7 +2947,7 @@ export default function KitchenPage() {
 
     // 4. Đồng bộ CSDL Supabase
     syncOrderToSupabase(updatedOrder, 'completed');
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
       supabase.from('orders').update({
         status: 'completed',
         updated_at: new Date().toISOString(),

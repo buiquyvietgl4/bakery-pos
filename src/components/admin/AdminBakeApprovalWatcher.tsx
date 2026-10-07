@@ -13,6 +13,7 @@ import {
   parseOrderBakeShortage
 } from '@/lib/supabase/realtimeSync';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { 
   Bell, Shield, CheckCircle2, XCircle, X, Clock, Cake, 
   AlertTriangle, ChefHat, Sparkles 
@@ -269,7 +270,7 @@ export default function AdminBakeApprovalWatcher() {
       } catch {}
 
       // 3. Cập nhật Supabase Cloud Database
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           await supabase.from('orders').update({
             status: 'ready',
@@ -384,7 +385,7 @@ export default function AdminBakeApprovalWatcher() {
       } catch {}
 
       // Cập nhật Supabase
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
         try {
           await supabase.from('orders').update({
             notes: rejectedNotes,
