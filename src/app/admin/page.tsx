@@ -103,6 +103,7 @@ import { getOrderCashAndBank } from '@/components/admin/accounting/AccountingOve
 import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSection';
 import CustomSqlConfigSection from '@/components/admin/CustomSqlConfigSection';
 import LocalSqlConfigSection from '@/components/admin/LocalSqlConfigSection';
+import UnifiedSqlSelector from '@/components/admin/UnifiedSqlSelector';
 import { ShiftManagementSection } from '@/components/admin/ShiftManagementSection';
 import AccountManagementSection from '@/components/admin/AccountManagementSection';
 import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
@@ -7482,6 +7483,9 @@ export default function AdminDashboard() {
               </div>
             </div>
           </div>
+
+          {/* BỘ CHỌN 4 MÔI TRƯỜNG CSDL SQL (ĐỘC LẬP 100% - CHỌN LÀ LÀM VIỆC NGAY) */}
+          <UnifiedSqlSelector />
 
           {/* THANH ĐIỀU HƯỚNG PHÂN NHÁNH 3 PHÂN KHU (SUB-TABS SEGMENTED PILL BAR) */}
           <div className="bg-zinc-100 p-1.5 rounded-2xl border border-zinc-200/80 flex items-center gap-2 overflow-x-auto scrollbar-none">
