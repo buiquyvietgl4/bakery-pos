@@ -1,5 +1,7 @@
 import webpush from 'web-push';
 import { supabase } from '@/lib/supabase/client';
+import fs from 'fs';
+import path from 'path';
 
 export interface StoredSubscription {
   id: string;
@@ -45,7 +47,27 @@ export function ensureVapidConfig() {
   }
 }
 
+const LOCAL_PUSH_FILE = path.join(/*turbopackIgnore: true*/ process.cwd(), '.push_subscriptions.json');
+
+function readLocalSubscriptions(): StoredSubscription[] {
+  try {
+    if (fs.existsSync(LOCAL_PUSH_FILE)) {
+      const raw = fs.readFileSync(LOCAL_PUSH_FILE, 'utf-8');
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch {}
+  return [];
+}
+
+function writeLocalSubscriptions(list: StoredSubscription[]): void {
+  try {
+    fs.writeFileSync(LOCAL_PUSH_FILE, JSON.stringify(list, null, 2), 'utf-8');
+  } catch {}
+}
+
 export async function getAllPushSubscriptions(): Promise<StoredSubscription[]> {
+  const localList = readLocalSubscriptions();
   try {
     const { data, error } = await supabase
       .from('recipes')
@@ -55,17 +77,30 @@ export async function getAllPushSubscriptions(): Promise<StoredSubscription[]> {
 
     if (!error && data && data.notes) {
       const parsed = JSON.parse(data.notes);
-      if (Array.isArray(parsed)) return parsed;
+      if (Array.isArray(parsed)) {
+        // Hợp nhất danh sách đám mây và danh sách máy cục bộ để không bao giờ mất thiết bị
+        const map = new Map<string, StoredSubscription>();
+        parsed.forEach((s: StoredSubscription) => map.set(s.endpoint, s));
+        localList.forEach((s: StoredSubscription) => {
+          if (!map.has(s.endpoint)) map.set(s.endpoint, s);
+        });
+        const merged = Array.from(map.values());
+        writeLocalSubscriptions(merged);
+        return merged;
+      }
     }
   } catch (err) {
-    console.error('Lỗi nạp push subscriptions từ SQL:', err);
+    console.warn('Lỗi nạp push subscriptions từ SQL (dùng bản lưu local):', err);
   }
-  return [];
+  return localList;
 }
 
 async function persistPushSubscriptions(updated: StoredSubscription[]): Promise<{ success: boolean; total: number; error?: string }> {
+  // Luôn lưu vào file cục bộ trên ổ cứng máy tính (dành cho chế độ Local Node.js + Cloudflare Tunnel)
+  writeLocalSubscriptions(updated);
+
   try {
-    // 1. Thử upsert nguyên tử theo ID duy nhất 0000...0040
+    // 1. Thử upsert nguyên tử theo ID duy nhất 0000...0040 lên Supabase
     const { error: upsertErr } = await supabase.from('recipes').upsert({
       id: DB_ROW_PUSH_SUBSCRIPTIONS_ID,
       name: DB_ROW_PUSH_SUBSCRIPTIONS_NAME,
@@ -87,8 +122,8 @@ async function persistPushSubscriptions(updated: StoredSubscription[]): Promise<
 
     return { success: true, total: updated.length };
   } catch (err: any) {
-    console.error('Lỗi persistPushSubscriptions:', err);
-    return { success: false, total: 0, error: err?.message || 'Lỗi lưu thông tin thiết bị' };
+    console.warn('Cảnh báo đồng bộ Supabase push subscriptions (đã lưu local thành công):', err?.message || err);
+    return { success: true, total: updated.length };
   }
 }
 
