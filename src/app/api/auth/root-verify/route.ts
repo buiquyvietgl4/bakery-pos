@@ -11,9 +11,9 @@ import path from 'path';
 const DB_ROW_SECURITY_ID = '00000000-0000-0000-0000-00000000000b';
 const DB_ROW_SECURITY_NAME = 'SYS_CONFIG_SECURITY';
 
-// Thông tin Cloud Supabase mặc định
-const DEFAULT_SUPABASE_URL = 'https://azgjnahbibrcbjooepef.supabase.co';
-const DEFAULT_SUPABASE_KEY = 'sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn';
+// Thông tin Cloud Supabase mặc định (CSDL Chính)
+const DEFAULT_SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://fhiuojcvsouwugatnmve.supabase.co';
+const DEFAULT_SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_ZH4xsT4R5cWZ3P9uW76IZg_-k3mRtED';
 
 const PROFILE_FILE = path.join(process.cwd(), '.active_database_profile.json');
 const SERVER_STATE_FILE = path.join(process.cwd(), '.local_sql_server_state.json');

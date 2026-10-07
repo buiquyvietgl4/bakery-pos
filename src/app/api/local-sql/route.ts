@@ -12,8 +12,8 @@ import { generateMasterSqlDump, generateSchemaSql } from '@/lib/utils/localSqlMa
 export const dynamic = 'force-dynamic';
 
 function getServerSupabaseClient() {
-  let url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://azgjnahbibrcbjooepef.supabase.co';
-  let anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn';
+  let url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://fhiuojcvsouwugatnmve.supabase.co';
+  let anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || 'sb_publishable_ZH4xsT4R5cWZ3P9uW76IZg_-k3mRtED';
   try {
     const profFile = path.join(process.cwd(), '.active_database_profile.json');
     if (fs.existsSync(profFile)) {
