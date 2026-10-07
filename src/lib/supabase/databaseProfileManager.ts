@@ -137,7 +137,9 @@ export function getMultiSqlConfig(): MultiSqlConfig {
         });
 
         // Tự động kiểm tra và sửa lỗi chống chồng chéo CSDL:
-        // Nếu profile 'production' (Chính) lại trỏ nhầm vào URL CSDL Test (azgjnahbibrcbjooepef)
+        let hasFixedConfig = false;
+
+        // 1. Nếu profile 'production' (Chính) lại trỏ nhầm vào URL CSDL Test (azgjnahbibrcbjooepef)
         const prod = profileMap.get('production');
         if (prod) {
           const prodUrl = cleanSupabaseUrl(prod.url);
@@ -145,16 +147,33 @@ export function getMultiSqlConfig(): MultiSqlConfig {
           if (prodUrl && prodUrl === testingUrl) {
             prod.url = DEFAULT_PRODUCTION_URL;
             prod.anonKey = DEFAULT_PRODUCTION_KEY;
-            try {
-              localStorage.setItem(
-                STORAGE_KEY_MULTI_SQL_CONFIG,
-                JSON.stringify({
-                  activeProfileId: parsed.activeProfileId || 'production',
-                  profiles: Array.from(profileMap.values()),
-                })
-              );
-            } catch {}
+            hasFixedConfig = true;
           }
+        }
+
+        // 2. NGUYÊN TẮC TÁCH BIỆT: CSDL Test tuyệt đối KHÔNG ĐƯỢC dùng chung Project với CSDL Chính
+        const test = profileMap.get('testing');
+        if (prod && test && test.url) {
+          const prodUrl = cleanSupabaseUrl(prod.url);
+          const testUrl = cleanSupabaseUrl(test.url);
+          if (prodUrl && testUrl && prodUrl === testUrl) {
+            // Tách biệt hoàn toàn: Tự động xóa URL của test để tránh trộn lẫn vào CSDL Chính
+            test.url = '';
+            test.anonKey = '';
+            hasFixedConfig = true;
+          }
+        }
+
+        if (hasFixedConfig) {
+          try {
+            localStorage.setItem(
+              STORAGE_KEY_MULTI_SQL_CONFIG,
+              JSON.stringify({
+                activeProfileId: parsed.activeProfileId || 'production',
+                profiles: Array.from(profileMap.values()),
+              })
+            );
+          } catch {}
         }
 
         return {
@@ -175,6 +194,9 @@ export function getMultiSqlConfig(): MultiSqlConfig {
 export function getActiveProfile(): DatabaseProfile {
   const config = getMultiSqlConfig();
   const active = config.profiles.find((p) => p.id === config.activeProfileId);
+  if (active && active.id === 'testing' && (!active.url || !cleanSupabaseUrl(active.url))) {
+    return config.profiles.find((p) => p.id === 'production') || DEFAULT_PROFILES[0];
+  }
   return (
     active ||
     config.profiles.find((p) => p.id === 'production') ||
@@ -279,15 +301,28 @@ export function saveDatabaseProfile(
 ): MultiSqlConfig {
   if (typeof window === 'undefined') return DEFAULT_MULTI_SQL_CONFIG;
   const config = getMultiSqlConfig();
-  const index = config.profiles.findIndex((p) => p.id === updatedProfile.id);
+  // TÁCH BIỆT: Tuyệt đối không dùng chung 1 project giữa testing và production
+  const cleanUpdatedUrl = cleanSupabaseUrl(updatedProfile.url);
+  if (updatedProfile.id === 'testing' && cleanUpdatedUrl) {
+    const prod = config.profiles.find((p) => p.id === 'production');
+    if (prod?.url && cleanUpdatedUrl === cleanSupabaseUrl(prod.url)) {
+      throw new Error('CSDL Thử Nghiệm không được dùng chung Project với CSDL Chính!');
+    }
+  } else if (updatedProfile.id === 'production' && cleanUpdatedUrl) {
+    const test = config.profiles.find((p) => p.id === 'testing');
+    if (test?.url && cleanUpdatedUrl === cleanSupabaseUrl(test.url)) {
+      throw new Error('CSDL Chính không được dùng chung Project với CSDL Thử Nghiệm!');
+    }
+  }
 
   const newProfile = {
     ...updatedProfile,
-    url: cleanSupabaseUrl(updatedProfile.url),
-    anonKey: updatedProfile.anonKey.trim(),
+    url: cleanUpdatedUrl,
+    anonKey: updatedProfile.anonKey ? updatedProfile.anonKey.trim() : '',
     updatedAt: new Date().toISOString(),
   };
 
+  const index = config.profiles.findIndex((p) => p.id === updatedProfile.id);
   if (index >= 0) {
     config.profiles[index] = newProfile;
   } else {
@@ -318,6 +353,16 @@ export async function saveGlobalProductionSql(
 
   if (!cleanUrl || !cleanKey) {
     return { success: false, error: 'URL hoặc API Key không hợp lệ', config: getMultiSqlConfig() };
+  }
+
+  const currentCfg = getMultiSqlConfig();
+  const testProf = currentCfg.profiles.find((p) => p.id === 'testing');
+  if (testProf?.url && cleanUrl === cleanSupabaseUrl(testProf.url)) {
+    return {
+      success: false,
+      error: 'CSDL Chính không được dùng chung Project với CSDL Thử Nghiệm! Hai môi trường phải tách biệt 100%.',
+      config: currentCfg,
+    };
   }
 
   const nowIso = new Date().toISOString();
@@ -540,6 +585,14 @@ export function switchActiveEnvironment(
 
   if (currentId === targetId) {
     return config;
+  }
+
+  // Không cho phép kích hoạt môi trường testing nếu URL để trống
+  if (targetId === 'testing') {
+    const testProf = config.profiles.find((p) => p.id === 'testing');
+    if (!testProf?.url || !cleanSupabaseUrl(testProf.url)) {
+      throw new Error('CSDL Thử Nghiệm đang để trống URL! Không thể kích hoạt môi trường thử nghiệm khi chưa cấu hình.');
+    }
   }
 
   // 1. Đóng gói dữ liệu môi trường hiện tại vào Vault riêng

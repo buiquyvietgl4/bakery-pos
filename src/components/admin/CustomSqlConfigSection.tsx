@@ -25,6 +25,7 @@ import {
   FileText,
   Wheat,
   Sliders,
+  Trash2,
 } from 'lucide-react';
 import {
   getMultiSqlConfig,
@@ -33,6 +34,7 @@ import {
   switchActiveEnvironment,
   resetProfileToDefault,
   testSupabaseConnection,
+  cleanSupabaseUrl,
   fetchDatabaseLiveStats,
   EVENT_DB_PROFILE_CHANGED,
   DatabaseProfile,
@@ -125,23 +127,59 @@ export default function CustomSqlConfigSection() {
     }
   };
 
+  // Xóa trắng CSDL Thử Nghiệm (để trống hoàn toàn)
+  const handleClearTestProfile = () => {
+    if (confirm('Bạn có chắc chắn muốn XÓA TRẮNG (để trống) cấu hình CSDL Thử Nghiệm không?')) {
+      setEditUrl('');
+      setEditKey('');
+      setTestResult(null);
+      setLiveStats(null);
+      saveDatabaseProfile(
+        {
+          ...currentSelectedProfile,
+          url: '',
+          anonKey: '',
+        },
+        'fetch_from_new'
+      );
+      setNotice({
+        type: 'info',
+        text: 'Đã xóa trắng và lưu CSDL Thử Nghiệm ở trạng thái để trống.',
+      });
+      setTimeout(() => setNotice(null), 4000);
+    }
+  };
+
   // Xử lý lưu cấu hình (vẫn ở môi trường hiện tại hoặc cập nhật profile)
   const handleSaveProfile = async () => {
-    if (!editUrl.trim()) {
-      alert('Vui lòng nhập Supabase Project URL');
-      return;
-    }
-    if (!editKey.trim()) {
-      alert('Vui lòng nhập Khóa API (Anon / Publishable Key)');
-      return;
-    }
+    const cleanInputUrl = cleanSupabaseUrl(editUrl);
+    const cleanInputKey = editKey.trim();
 
     if (selectedProfileId === 'production') {
+      if (!cleanInputUrl) {
+        alert('Vui lòng nhập Supabase Project URL cho CSDL Chính');
+        return;
+      }
+      if (!cleanInputKey) {
+        alert('Vui lòng nhập Khóa API (Anon / Publishable Key) cho CSDL Chính');
+        return;
+      }
+
+      // NGUYÊN TẮC TÁCH BIỆT: CSDL Chính không được dùng chung Project với CSDL Test
+      const testProfile = config.profiles.find((p) => p.id === 'testing');
+      if (testProfile?.url && cleanInputUrl === cleanSupabaseUrl(testProfile.url)) {
+        alert(
+          '❌ LỖI TRÙNG PROJECT: CSDL Chính không được dùng chung Project với CSDL Thử Nghiệm!\n\n' +
+          'Hai môi trường phải sử dụng 2 Project Supabase hoàn toàn riêng biệt để bảo vệ dữ liệu bán hàng thật của tiệm.'
+        );
+        return;
+      }
+
       setIsSavingGlobal(true);
       try {
         const res = await saveGlobalProductionSql(
-          editUrl,
-          editKey,
+          cleanInputUrl,
+          cleanInputKey,
           currentSelectedProfile.name
         );
         if (res.success) {
@@ -165,19 +203,50 @@ export default function CustomSqlConfigSection() {
         setTimeout(() => setNotice(null), 6000);
       }
     } else {
+      // CSDL THỬ NGHIỆM: ĐƯỢC PHÉP ĐỂ TRỐNG HOÀN TOÀN
+      const prodProfile = config.profiles.find((p) => p.id === 'production');
+
+      if (cleanInputUrl) {
+        // Nếu có nhập URL thì bắt buộc phải có Key
+        if (!cleanInputKey) {
+          alert('Nếu cấu hình CSDL Thử Nghiệm, vui lòng nhập cả Khóa API (Anon Key) hoặc xóa trống cả hai ô để bỏ qua!');
+          return;
+        }
+
+        // NGUYÊN TẮC TÁCH BIỆT: Tuyệt đối KHÔNG ĐƯỢC trùng Project với CSDL Chính
+        if (prodProfile?.url && cleanInputUrl === cleanSupabaseUrl(prodProfile.url)) {
+          alert(
+            '❌ LỖI TRÙNG PROJECT: CSDL Thử Nghiệm không được dùng chung Project với CSDL Chính!\n\n' +
+            'Để bảo vệ dữ liệu bán hàng thật không bị ghi đè, bạn vui lòng:\n' +
+            '• Nhập một Supabase Project riêng biệt cho thử nghiệm, HOẶC\n' +
+            '• Xóa trống cả 2 ô để không dùng Cloud Test (có thể dùng Local SQL trên máy để thử nghiệm).'
+          );
+          return;
+        }
+      }
+
       saveDatabaseProfile(
         {
           ...currentSelectedProfile,
-          url: editUrl,
-          anonKey: editKey,
+          url: cleanInputUrl,
+          anonKey: cleanInputKey,
         },
         'fetch_from_new'
       );
 
-      setNotice({
-        type: 'success',
-        text: `Đã lưu thành công cấu hình cho "${currentSelectedProfile.name}"!`,
-      });
+      if (!cleanInputUrl) {
+        setLiveStats(null);
+        setTestResult(null);
+        setNotice({
+          type: 'info',
+          text: `Đã lưu CSDL Thử Nghiệm ở trạng thái ĐỂ TRỐNG (Chưa thiết lập).`,
+        });
+      } else {
+        setNotice({
+          type: 'success',
+          text: `Đã lưu thành công cấu hình CSDL Thử Nghiệm độc lập!`,
+        });
+      }
       setTimeout(() => setNotice(null), 4000);
     }
   };
@@ -225,6 +294,22 @@ export default function CustomSqlConfigSection() {
 
   // Mở modal kích hoạt
   const handleOpenActivateModal = () => {
+    if (selectedProfileId === 'testing') {
+      if (!editUrl.trim()) {
+        alert(
+          '⚠️ CSDL Thử Nghiệm hiện đang để trống URL!\n\n' +
+          'Bạn chưa thể kích hoạt môi trường này. Vui lòng nhập URL & Key của Project Test riêng, hoặc chuyển sang chế độ "Local SQL (Máy Tính)" trong Cài Đặt Chung để thử nghiệm an toàn.'
+        );
+        return;
+      }
+
+      const prodProfile = config.profiles.find((p) => p.id === 'production');
+      if (prodProfile?.url && cleanSupabaseUrl(editUrl) === cleanSupabaseUrl(prodProfile.url)) {
+        alert('❌ LỖI TRÙNG PROJECT: Không thể kích hoạt vì CSDL Thử Nghiệm đang trùng Project với CSDL Chính!');
+        return;
+      }
+    }
+
     if (!editUrl.trim() || !editKey.trim()) {
       alert('Vui lòng điền đầy đủ URL và API Key trước khi kích hoạt!');
       return;
@@ -233,8 +318,8 @@ export default function CustomSqlConfigSection() {
     saveDatabaseProfile(
       {
         ...currentSelectedProfile,
-        url: editUrl,
-        anonKey: editKey,
+        url: cleanSupabaseUrl(editUrl),
+        anonKey: editKey.trim(),
       },
       'fetch_from_new'
     );
@@ -348,7 +433,7 @@ export default function CustomSqlConfigSection() {
 
               <div className="mt-2.5 pt-2 border-t border-zinc-200/60 flex items-center justify-between text-[11px]">
                 <span className="text-zinc-500 font-medium truncate max-w-[220px]">
-                  {prof.url ? prof.url.replace(/^https?:\/\//, '') : 'Chưa cấu hình URL'}
+                  {prof.url ? prof.url.replace(/^https?:\/\//, '') : 'Chưa cấu hình (Để trống)'}
                 </span>
                 <span className="font-bold text-zinc-600">
                   {isSelected ? 'Đang chỉnh sửa ⚙️' : 'Bấm để xem'}
@@ -370,7 +455,9 @@ export default function CustomSqlConfigSection() {
               </span>
             </h4>
             <p className="text-xs text-zinc-500">
-              Nhập Supabase Project URL và Public Anon Key tương ứng với môi trường này.
+              {selectedProfileId === 'testing'
+                ? 'Nhập Project Supabase thử nghiệm riêng biệt, hoặc để trống cả 2 ô nếu chỉ dùng CSDL Chính.'
+                : 'Nhập Supabase Project URL và Public Anon Key dùng cho vận hành bán hàng thật.'}
             </p>
           </div>
 
@@ -392,123 +479,166 @@ export default function CustomSqlConfigSection() {
           </div>
         </div>
 
-        {/* CARD THỐNG KÊ DỮ LIỆU THỰC TẾ TRÊN CLOUD */}
-        <div className="p-4 rounded-2xl bg-white border border-zinc-200/90 shadow-2xs space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-zinc-100">
-            <div className="flex items-center gap-2">
-              <Server className="w-4 h-4 text-emerald-600" />
-              <span className="font-bold text-xs text-zinc-900">
-                Định Danh &amp; Thống Kê Dữ Liệu Thực Tế (Cloud Live Counter)
-              </span>
-              {liveStats?.projectRef && (
-                <span className="px-2 py-0.5 rounded-md bg-zinc-100 border border-zinc-200 font-mono text-[11px] font-bold text-zinc-800">
-                  Ref: {liveStats.projectRef}
-                </span>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              {liveStats && (
-                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 border ${
-                  liveStats.isConnected
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                    : 'bg-rose-50 border-rose-200 text-rose-800'
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${liveStats.isConnected ? 'bg-emerald-600' : 'bg-rose-600'} animate-pulse`} />
-                  {liveStats.isConnected ? `Online (${liveStats.latencyMs}ms)` : 'Lỗi kết nối'}
-                </span>
-              )}
-
-              <button
-                type="button"
-                onClick={() => handleFetchStats(editUrl, editKey)}
-                disabled={isLoadingStats || !editUrl}
-                className="px-2.5 py-1 rounded-lg bg-zinc-50 border border-zinc-300 hover:bg-zinc-100 text-[11px] font-bold text-zinc-700 flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                title="Làm mới thống kê số lượng bản ghi"
-              >
-                <RefreshCw className={`w-3 h-3 ${isLoadingStats ? 'animate-spin text-emerald-600' : ''}`} />
-                <span>Làm Mới Số Liệu</span>
-              </button>
-            </div>
+        {/* BANNER THÔNG BÁO VỀ TÁCH BIỆT & ĐỂ TRỐNG KHI CHỌN TESTING */}
+        {selectedProfileId === 'testing' && (
+          <div>
+            {!editUrl.trim() ? (
+              <div className="p-3.5 rounded-2xl bg-blue-50/80 border border-blue-200 text-xs text-blue-900 flex items-start gap-2.5">
+                <HelpCircle className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold">CSDL Thử Nghiệm đang để trống:</span>
+                  <p className="text-[11px] text-blue-800 leading-relaxed">
+                    Bạn hoàn toàn có thể để trống 2 ô bên dưới nếu không dùng Cloud Test. Toàn bộ hoạt động bán hàng sẽ chạy trên CSDL Chính. Nếu cần test món hoặc đơn ảo mà không cần tạo Supabase mới, hãy dùng chế độ <b>3. Cài Đặt Cho Local (Máy Tính)</b>.
+                  </p>
+                </div>
+              </div>
+            ) : cleanSupabaseUrl(editUrl) === cleanSupabaseUrl(config.profiles.find((p) => p.id === 'production')?.url || '') ? (
+              <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-300 text-xs text-rose-900 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <span className="font-bold">❌ Cảnh báo trùng Project với CSDL Chính:</span>
+                  <p className="text-[11px] text-rose-800 leading-relaxed">
+                    CSDL Thử Nghiệm tuyệt đối không được dùng chung Project với CSDL Chính vì sẽ làm trộn lẫn đơn hàng và doanh thu thật của quán. Vui lòng nhập Project Supabase riêng hoặc để trống cả 2 ô.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Project Thử Nghiệm đã được tách biệt độc lập với CSDL Chính (An toàn tuyệt đối).</span>
+              </div>
+            )}
           </div>
+        )}
 
-          {/* 4 THẺ SỐ LIỆU */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
-              <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
-                <Package className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Sản Phẩm (Bánh)</span>
+        {/* CARD THỐNG KÊ DỮ LIỆU THỰC TẾ TRÊN CLOUD (CHỈ HIỂN THỊ KHI CÓ ĐỦ URL & KEY) */}
+        {editUrl && editKey ? (
+          <div className="p-4 rounded-2xl bg-white border border-zinc-200/90 shadow-2xs space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-zinc-100">
+              <div className="flex items-center gap-2">
+                <Server className="w-4 h-4 text-emerald-600" />
+                <span className="font-bold text-xs text-zinc-900">
+                  Định Danh &amp; Thống Kê Dữ Liệu Thực Tế (Cloud Live Counter)
+                </span>
+                {liveStats?.projectRef && (
+                  <span className="px-2 py-0.5 rounded-md bg-zinc-100 border border-zinc-200 font-mono text-[11px] font-bold text-zinc-800">
+                    Ref: {liveStats.projectRef}
+                  </span>
+                )}
               </div>
-              <div className="mt-1 font-black text-lg text-zinc-900">
-                {isLoadingStats ? '...' : (liveStats?.productsCount ?? 0)}
-                <span className="text-[11px] font-normal text-zinc-500 ml-1">món</span>
+
+              <div className="flex items-center gap-2">
+                {liveStats && (
+                  <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 border ${
+                    liveStats.isConnected
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                      : 'bg-rose-50 border-rose-200 text-rose-800'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${liveStats.isConnected ? 'bg-emerald-600' : 'bg-rose-600'} animate-pulse`} />
+                    {liveStats.isConnected ? `Online (${liveStats.latencyMs}ms)` : 'Lỗi kết nối'}
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleFetchStats(editUrl, editKey)}
+                  disabled={isLoadingStats || !editUrl}
+                  className="px-2.5 py-1 rounded-lg bg-zinc-50 border border-zinc-300 hover:bg-zinc-100 text-[11px] font-bold text-zinc-700 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  title="Làm mới thống kê số lượng bản ghi"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isLoadingStats ? 'animate-spin text-emerald-600' : ''}`} />
+                  <span>Làm Mới Số Liệu</span>
+                </button>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
-              <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
-                <FileText className="w-3.5 h-3.5 text-blue-600" />
-                <span>Đơn Hàng (Orders)</span>
+            {/* 4 THẺ SỐ LIỆU */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
+                <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
+                  <Package className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Sản Phẩm (Bánh)</span>
+                </div>
+                <div className="mt-1 font-black text-lg text-zinc-900">
+                  {isLoadingStats ? '...' : (liveStats?.productsCount ?? 0)}
+                  <span className="text-[11px] font-normal text-zinc-500 ml-1">món</span>
+                </div>
               </div>
-              <div className="mt-1 font-black text-lg text-zinc-900">
-                {isLoadingStats ? '...' : (liveStats?.ordersCount ?? 0)}
-                <span className="text-[11px] font-normal text-zinc-500 ml-1">đơn ({liveStats?.orderItemsCount ?? 0} dòng)</span>
+
+              <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
+                <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Đơn Hàng (Orders)</span>
+                </div>
+                <div className="mt-1 font-black text-lg text-zinc-900">
+                  {isLoadingStats ? '...' : (liveStats?.ordersCount ?? 0)}
+                  <span className="text-[11px] font-normal text-zinc-500 ml-1">đơn ({liveStats?.orderItemsCount ?? 0} dòng)</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
+                <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Công Thức &amp; Config</span>
+                </div>
+                <div className="mt-1 font-black text-lg text-zinc-900">
+                  {isLoadingStats ? '...' : (liveStats?.recipesCount ?? 0)}
+                  <span className="text-[11px] font-normal text-zinc-500 ml-1">công thức ({liveStats?.recipeItemsCount ?? 0} BOM)</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
+                <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
+                  <Wheat className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Nguyên Liệu (Kho)</span>
+                </div>
+                <div className="mt-1 font-black text-lg text-zinc-900">
+                  {isLoadingStats ? '...' : (liveStats?.ingredientsCount ?? 0)}
+                  <span className="text-[11px] font-normal text-zinc-500 ml-1">loại</span>
+                </div>
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
-              <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
-                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                <span>Công Thức &amp; Config</span>
+            {/* CẢNH BÁO CSDL RỖNG NẾU = 0 BẢN GHI */}
+            {liveStats && liveStats.isEmpty && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">⚠️ CSDL này hiện đang RỖNG (0 đơn hàng, 0 sản phẩm trên Cloud):</span>
+                  <p className="text-[11px] text-rose-800 mt-0.5">
+                    Đây là CSDL mới chưa có dữ liệu. Bạn có thể nạp dữ liệu từ file sao lưu hoặc thêm sản phẩm mới trong Menu bánh.
+                  </p>
+                </div>
               </div>
-              <div className="mt-1 font-black text-lg text-zinc-900">
-                {isLoadingStats ? '...' : (liveStats?.recipesCount ?? 0)}
-                <span className="text-[11px] font-normal text-zinc-500 ml-1">công thức ({liveStats?.recipeItemsCount ?? 0} BOM)</span>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
-              <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
-                <Wheat className="w-3.5 h-3.5 text-amber-600" />
-                <span>Nguyên Liệu (Kho)</span>
-              </div>
-              <div className="mt-1 font-black text-lg text-zinc-900">
-                {isLoadingStats ? '...' : (liveStats?.ingredientsCount ?? 0)}
-                <span className="text-[11px] font-normal text-zinc-500 ml-1">loại</span>
-              </div>
-            </div>
+            )}
           </div>
-
-          {/* CẢNH BÁO CSDL RỖNG NẾU = 0 BẢN GHI */}
-          {liveStats && liveStats.isEmpty && (
-            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-              <div>
-                <span className="font-bold">⚠️ CSDL này hiện đang RỖNG (0 đơn hàng, 0 sản phẩm trên Cloud):</span>
-                <p className="text-[11px] text-rose-800 mt-0.5">
-                  Đây là nguyên nhân gây ra hiện tượng thiếu toàn bộ đơn hàng và doanh thu khi chạy app! Hãy sử dụng <b>Bộ Đồng Bộ &amp; Sao Chép CSDL Đám Mây</b> ở bên dưới để bơm dữ liệu từ CSDL cũ sang ngay lập tức.
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
+        ) : null}
 
         {/* TRƯỜNG 1: SUPABASE URL */}
         <div className="space-y-1.5">
           <label className="block text-xs font-bold text-zinc-700">
             1. Supabase Project URL (Địa chỉ máy chủ SQL)
+            {selectedProfileId === 'testing' && (
+              <span className="ml-1 text-[11px] font-normal text-zinc-500">(Tùy chọn - có thể để trống)</span>
+            )}
           </label>
           <div className="relative">
             <input
               type="text"
               value={editUrl}
               onChange={(e) => setEditUrl(e.target.value)}
-              placeholder="https://xyzproject.supabase.co"
+              placeholder={
+                selectedProfileId === 'testing'
+                  ? 'Để trống nếu không dùng Cloud Test (hoặc https://xyz-test.supabase.co)'
+                  : 'https://xyzproject.supabase.co'
+              }
               className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-zinc-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-xs font-mono text-zinc-900"
             />
           </div>
           <p className="text-[11px] text-zinc-500">
-            Ví dụ: <code className="text-zinc-700 bg-zinc-200/60 px-1 py-0.5 rounded">https://azgjnahbibrcbjooepef.supabase.co</code> hoặc domain server riêng.
+            {selectedProfileId === 'testing'
+              ? 'Để trống nếu không dùng Cloud Test. Nếu nhập, bắt buộc phải là Project riêng biệt (khác CSDL Chính).'
+              : 'Địa chỉ máy chủ Supabase dùng cho bán hàng thật và đồng bộ toàn bộ app.'}
           </p>
         </div>
 
@@ -517,6 +647,9 @@ export default function CustomSqlConfigSection() {
           <div className="flex items-center justify-between">
             <label className="block text-xs font-bold text-zinc-700">
               2. Supabase Anon / Public API Key
+              {selectedProfileId === 'testing' && (
+                <span className="ml-1 text-[11px] font-normal text-zinc-500">(Tùy chọn - có thể để trống)</span>
+              )}
             </label>
             <button
               type="button"
@@ -532,7 +665,11 @@ export default function CustomSqlConfigSection() {
               type={showKey ? 'text' : 'password'}
               value={editKey}
               onChange={(e) => setEditKey(e.target.value)}
-              placeholder="sb_publishable_... hoặc eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+              placeholder={
+                selectedProfileId === 'testing'
+                  ? 'Để trống nếu không dùng Cloud Test (hoặc sb_publishable_...)'
+                  : 'sb_publishable_... hoặc eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...'
+              }
               className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-zinc-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-xs font-mono text-zinc-900"
             />
           </div>
@@ -578,14 +715,15 @@ export default function CustomSqlConfigSection() {
             <button
               type="button"
               onClick={handleTestConnection}
-              disabled={isTesting}
+              disabled={isTesting || !editUrl.trim()}
               className="px-3.5 py-2 rounded-xl bg-white hover:bg-zinc-100 text-zinc-700 font-bold text-xs border border-zinc-300 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-50"
+              title={!editUrl.trim() ? 'Chưa nhập URL để kiểm tra' : 'Kiểm tra độ trễ mạng tới Supabase'}
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isTesting ? 'animate-spin text-emerald-600' : ''}`} />
               <span>{isTesting ? 'Đang đo ping...' : '🔍 Kiểm Tra Kết Nối (Ping)'}</span>
             </button>
 
-            {/* Nút Khôi phục mặc định */}
+            {/* Nút Khôi phục mặc định cho production */}
             {selectedProfileId === 'production' && (
               <button
                 type="button"
@@ -595,6 +733,19 @@ export default function CustomSqlConfigSection() {
               >
                 <RotateCcw className="w-3.5 h-3.5" />
                 <span>Khôi Phục Mặc Định</span>
+              </button>
+            )}
+
+            {/* Nút Xóa trắng (để trống) cho testing */}
+            {selectedProfileId === 'testing' && editUrl && (
+              <button
+                type="button"
+                onClick={handleClearTestProfile}
+                className="px-3 py-2 rounded-xl text-rose-600 hover:text-rose-800 hover:bg-rose-50 font-bold text-xs transition cursor-pointer flex items-center gap-1 border border-rose-200"
+                title="Xóa trống để không dùng Cloud Test"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Xóa Trắng (Để Trống)</span>
               </button>
             )}
           </div>

@@ -7,6 +7,8 @@ import {
   isProfileOutOfSyncWithEnv,
   fetchDatabaseLiveStats,
   cloneCloudDatabaseTables,
+  saveDatabaseProfile,
+  switchActiveEnvironment,
   DEFAULT_PRODUCTION_URL,
   DEFAULT_TESTING_URL,
 } from '@/lib/supabase/databaseProfileManager';
@@ -73,6 +75,48 @@ describe('Database Profile Manager & Cloud DB Utilities', () => {
       expect(syncInfo).toHaveProperty('isOutOfSync');
       expect(syncInfo).toHaveProperty('envUrl');
       expect(syncInfo).toHaveProperty('activeUrl');
+    });
+
+    it('cho phép lưu CSDL Thử Nghiệm ở trạng thái để trống (url và key rỗng)', () => {
+      const cfg = saveDatabaseProfile({
+        id: 'testing',
+        name: 'CSDL Thử Nghiệm',
+        description: 'Test blank',
+        url: '',
+        anonKey: '',
+        isDefault: false,
+      });
+      const testProf = cfg.profiles.find((p) => p.id === 'testing');
+      expect(testProf?.url).toBe('');
+      expect(testProf?.anonKey).toBe('');
+    });
+
+    it('bảo vệ tách biệt: từ chối lưu CSDL Thử Nghiệm nếu có URL trùng với CSDL Chính', () => {
+      expect(() => {
+        saveDatabaseProfile({
+          id: 'testing',
+          name: 'CSDL Thử Nghiệm',
+          description: 'Trùng CSDL Chính',
+          url: DEFAULT_PRODUCTION_URL,
+          anonKey: 'any-key',
+          isDefault: false,
+        });
+      }).toThrowError(/không được dùng chung Project/);
+    });
+
+    it('chặn kích hoạt CSDL Thử Nghiệm nếu URL đang để trống', () => {
+      saveDatabaseProfile({
+        id: 'testing',
+        name: 'CSDL Thử Nghiệm',
+        description: 'Test blank',
+        url: '',
+        anonKey: '',
+        isDefault: false,
+      });
+
+      expect(() => {
+        switchActiveEnvironment('testing');
+      }).toThrowError(/đang để trống URL/);
     });
   });
 
