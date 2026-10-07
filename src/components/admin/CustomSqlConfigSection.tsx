@@ -46,6 +46,8 @@ import {
   MultiSqlConfig,
   DatabaseLiveStats,
   DEFAULT_PRODUCTION_URL,
+  DEFAULT_PRODUCTION_KEY,
+  saveGlobalProductionSql,
 } from '@/lib/supabase/databaseProfileManager';
 
 export default function CustomSqlConfigSection() {
@@ -63,6 +65,7 @@ export default function CustomSqlConfigSection() {
   // Trạng thái Thống kê Dữ liệu Thực tế (Live Cloud Stats)
   const [liveStats, setLiveStats] = useState<DatabaseLiveStats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(false);
+  const [isSavingGlobal, setIsSavingGlobal] = useState(false);
 
   // Kiểm tra lệch CSDL so với file .env.local
   const [envSyncInfo, setEnvSyncInfo] = useState<{ isOutOfSync: boolean; envUrl: string; activeUrl: string }>({
@@ -264,7 +267,7 @@ export default function CustomSqlConfigSection() {
   };
 
   // Xử lý lưu cấu hình (vẫn ở môi trường hiện tại hoặc cập nhật profile)
-  const handleSaveProfile = () => {
+  const handleSaveProfile = async () => {
     if (!editUrl.trim()) {
       alert('Vui lòng nhập Supabase Project URL');
       return;
@@ -274,35 +277,90 @@ export default function CustomSqlConfigSection() {
       return;
     }
 
-    saveDatabaseProfile(
-      {
-        ...currentSelectedProfile,
-        url: editUrl,
-        anonKey: editKey,
-      },
-      'fetch_from_new'
-    );
+    if (selectedProfileId === 'production') {
+      setIsSavingGlobal(true);
+      try {
+        const res = await saveGlobalProductionSql(
+          editUrl,
+          editKey,
+          currentSelectedProfile.name
+        );
+        if (res.success) {
+          setNotice({
+            type: 'success',
+            text: `✅ ĐÃ LƯU & ĐỒNG BỘ TOÀN BỘ APP: CSDL Chính mới đã được đồng bộ lên toàn hệ thống! Mọi thiết bị khác vào chung link web sẽ tự động nhận CSDL mới này.`,
+          });
+        } else {
+          setNotice({
+            type: 'error',
+            text: `Lỗi đồng bộ: ${res.error}`,
+          });
+        }
+      } catch (e: any) {
+        setNotice({
+          type: 'error',
+          text: `Lỗi đồng bộ: ${e?.message || 'Không thể lưu'}`,
+        });
+      } finally {
+        setIsSavingGlobal(false);
+        setTimeout(() => setNotice(null), 6000);
+      }
+    } else {
+      saveDatabaseProfile(
+        {
+          ...currentSelectedProfile,
+          url: editUrl,
+          anonKey: editKey,
+        },
+        'fetch_from_new'
+      );
 
-    setNotice({
-      type: 'success',
-      text: `Đã lưu thành công cấu hình cho "${currentSelectedProfile.name}"!`,
-    });
-    setTimeout(() => setNotice(null), 4000);
+      setNotice({
+        type: 'success',
+        text: `Đã lưu thành công cấu hình cho "${currentSelectedProfile.name}"!`,
+      });
+      setTimeout(() => setNotice(null), 4000);
+    }
   };
 
   // Khôi phục về mặc định
-  const handleResetToDefault = () => {
+  const handleResetToDefault = async () => {
     if (
       confirm(
-        `Bạn có chắc chắn muốn khôi phục cấu hình của "${currentSelectedProfile.name}" về mặc định ban đầu không?`
+        `Bạn có chắc chắn muốn khôi phục cấu hình của "${currentSelectedProfile.name}" về mặc định ban đầu không?\nCấu hình mặc định sẽ được đồng bộ cho toàn bộ các máy khác vào chung link app.`
       )
     ) {
-      resetProfileToDefault(selectedProfileId);
-      setNotice({
-        type: 'info',
-        text: `Đã khôi phục "${currentSelectedProfile.name}" về mặc định hệ thống.`,
-      });
-      setTimeout(() => setNotice(null), 4000);
+      if (selectedProfileId === 'production') {
+        setIsSavingGlobal(true);
+        try {
+          await saveGlobalProductionSql(
+            DEFAULT_PRODUCTION_URL,
+            DEFAULT_PRODUCTION_KEY,
+            'CSDL Chính (Vận Hành)'
+          );
+          setEditUrl(DEFAULT_PRODUCTION_URL);
+          setEditKey(DEFAULT_PRODUCTION_KEY);
+          setNotice({
+            type: 'info',
+            text: `Đã khôi phục "${currentSelectedProfile.name}" về mặc định hệ thống và đồng bộ toàn bộ app.`,
+          });
+        } catch (e: any) {
+          setNotice({
+            type: 'error',
+            text: `Lỗi khôi phục: ${e?.message || 'Không thể hoàn tác'}`,
+          });
+        } finally {
+          setIsSavingGlobal(false);
+          setTimeout(() => setNotice(null), 5000);
+        }
+      } else {
+        resetProfileToDefault(selectedProfileId);
+        setNotice({
+          type: 'info',
+          text: `Đã khôi phục "${currentSelectedProfile.name}" về mặc định hệ thống.`,
+        });
+        setTimeout(() => setNotice(null), 4000);
+      }
     }
   };
 
@@ -742,9 +800,26 @@ export default function CustomSqlConfigSection() {
             <button
               type="button"
               onClick={handleSaveProfile}
-              className="px-4 py-2 rounded-xl bg-zinc-200 hover:bg-zinc-300 text-zinc-900 font-bold text-xs transition cursor-pointer"
+              disabled={isSavingGlobal}
+              className={`px-4 py-2 rounded-xl font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-xs ${
+                selectedProfileId === 'production'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-zinc-200 hover:bg-zinc-300 text-zinc-900'
+              } disabled:opacity-50`}
             >
-              Lưu Thông Tin
+              {isSavingGlobal ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>Đang Đồng Bộ Toàn Bộ App...</span>
+                </>
+              ) : selectedProfileId === 'production' ? (
+                <>
+                  <Globe className="w-3.5 h-3.5" />
+                  <span>Lưu & Đồng Bộ Cho Toàn Bộ Máy</span>
+                </>
+              ) : (
+                <span>Lưu Thông Tin</span>
+              )}
             </button>
 
             {/* Nút Kích hoạt chuyển đổi nếu profile chưa active */}

@@ -5,6 +5,7 @@ import PhoneNotificationBanner from '@/components/PhoneNotificationBanner';
 import TestModeGlobalBanner from '@/components/TestModeGlobalBanner';
 import AdminBakeApprovalWatcher from '@/components/admin/AdminBakeApprovalWatcher';
 import AdminTransferApprovalWatcher from '@/components/admin/AdminTransferApprovalWatcher';
+import GlobalSqlSyncWatcher from '@/components/GlobalSqlSyncWatcher';
 import { AuthProvider } from '@/lib/auth/AuthContext';
 
 export const metadata: Metadata = {
@@ -52,6 +53,7 @@ export default function RootLayout({
           <PhoneNotificationBanner />
           <AdminBakeApprovalWatcher />
           <AdminTransferApprovalWatcher />
+          <GlobalSqlSyncWatcher />
           <main className="flex-1 flex flex-col">{children}</main>
         </AuthProvider>
       </body>
