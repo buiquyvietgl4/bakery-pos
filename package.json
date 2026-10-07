@@ -16,6 +16,7 @@
     "config:sync": "node scripts/auto_config_vercel_supabase.js --sync-env",
     "config:test": "node scripts/auto_config_vercel_supabase.js --test-supabase",
     "config:all": "node scripts/auto_config_vercel_supabase.js --all",
+    "verify:env": "npx tsx scripts/verify_env_integrity.ts",
     "deploy:prod": "node scripts/auto_config_vercel_supabase.js --deploy"
   },
   "dependencies": {

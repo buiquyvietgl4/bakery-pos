@@ -72,29 +72,32 @@ export function cleanSupabaseUrl(rawUrl: string): string {
 }
 
 export const DEFAULT_PRODUCTION_URL = cleanSupabaseUrl(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://azgjnahbibrcbjooepef.supabase.co'
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://fhiuojcvsouwugatnmve.supabase.co'
 );
 export const DEFAULT_PRODUCTION_KEY = (
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
   process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-  'sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn'
+  'sb_publishable_ZH4xsT4R5cWZ3P9uW76IZg_-k3mRtED'
 ).trim();
+
+export const DEFAULT_TESTING_URL = 'https://azgjnahbibrcbjooepef.supabase.co';
+export const DEFAULT_TESTING_KEY = 'sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn';
 
 export const DEFAULT_PROFILES: DatabaseProfile[] = [
   {
     id: 'production',
     name: 'CSDL Chính (Vận Hành)',
-    description: 'Cơ sở dữ liệu đám mây chính thức của cửa hàng bánh. Dùng cho bán hàng thật, tính tiền và sổ sách kế toán.',
+    description: 'Cơ sở dữ liệu đám mây chính thức của cửa hàng bánh (fhiuojcvsouwugatnmve). Dùng cho bán hàng thật, tính tiền và sổ sách kế toán.',
     url: DEFAULT_PRODUCTION_URL,
     anonKey: DEFAULT_PRODUCTION_KEY,
     isDefault: true,
   },
   {
     id: 'testing',
-    name: 'CSDL Thử Nghiệm (Test & Fix Lỗi)',
-    description: 'Môi trường Sandbox độc lập. Dùng để thử tính năng mới, tạo đơn ảo, thử công thức hoặc tái hiện lỗi mà không ảnh hưởng CSDL Chính.',
-    url: '',
-    anonKey: '',
+    name: 'CSDL Dự Phòng / Thử Nghiệm',
+    description: 'Môi trường Sandbox hoặc CSDL dự phòng (azgjnahbibrcbjooepef). Dùng để thử tính năng mới, tạo đơn ảo, thử công thức hoặc đối chiếu dữ liệu.',
+    url: DEFAULT_TESTING_URL,
+    anonKey: DEFAULT_TESTING_KEY,
     isDefault: false,
   },
 ];
@@ -453,3 +456,384 @@ export async function testSupabaseConnection(
     };
   }
 }
+
+/**
+ * Trích xuất Project ID / Project Ref từ URL Supabase (VD: fhiuojcvsouwugatnmve)
+ */
+export function extractProjectRef(url: string): string {
+  if (!url || typeof url !== 'string') return '';
+  try {
+    const clean = cleanSupabaseUrl(url);
+    const parsed = new URL(clean.startsWith('http') ? clean : `https://${clean}`);
+    const host = parsed.hostname;
+    const parts = host.split('.');
+    if (parts.length > 0 && parts[0]) return parts[0];
+  } catch {
+    const match = url.match(/https?:\/\/([a-zA-Z0-9_-]+)\.supabase\.co/i);
+    if (match) return match[1];
+  }
+  return url;
+}
+
+/**
+ * Kiểm tra xem Profile Vận Hành hiện tại có bị lệch so với Biến Môi Trường (.env.local) không
+ */
+export function isProfileOutOfSyncWithEnv(): {
+  isOutOfSync: boolean;
+  envUrl: string;
+  activeUrl: string;
+} {
+  const envUrl = cleanSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_PRODUCTION_URL);
+  const activeProfile = getActiveProfile();
+  const activeUrl = cleanSupabaseUrl(activeProfile?.url || '');
+  return {
+    isOutOfSync: Boolean(envUrl && activeUrl && envUrl !== activeUrl),
+    envUrl,
+    activeUrl,
+  };
+}
+
+/**
+ * Đồng bộ ngay Profile Chính về theo đúng Biến Môi Trường (.env.local)
+ */
+export function syncProductionProfileWithEnv(): MultiSqlConfig {
+  const envUrl = cleanSupabaseUrl(process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_PRODUCTION_URL);
+  const envKey = (
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    DEFAULT_PRODUCTION_KEY
+  ).trim();
+
+  return saveDatabaseProfile(
+    {
+      id: 'production',
+      name: 'CSDL Chính (Vận Hành)',
+      description: 'Cơ sở dữ liệu đám mây chính thức của cửa hàng bánh (fhiuojcvsouwugatnmve). Dùng cho bán hàng thật, tính tiền và sổ sách kế toán.',
+      url: envUrl,
+      anonKey: envKey,
+      isDefault: true,
+    },
+    'fetch_from_new'
+  );
+}
+
+export interface DatabaseLiveStats {
+  productsCount: number;
+  ordersCount: number;
+  recipesCount: number;
+  ingredientsCount: number;
+  recipeItemsCount: number;
+  orderItemsCount: number;
+  latencyMs: number;
+  projectRef: string;
+  isEmpty: boolean;
+  isConnected: boolean;
+  error?: string;
+}
+
+/**
+ * Đo kiểm tra trạng thái và đếm số lượng bản ghi thực tế từ CSDL Supabase
+ */
+export async function fetchDatabaseLiveStats(
+  url: string,
+  anonKey: string
+): Promise<DatabaseLiveStats> {
+  const cleanUrl = cleanSupabaseUrl(url);
+  const cleanKey = (anonKey || '').trim();
+  const projectRef = extractProjectRef(cleanUrl);
+
+  if (!cleanUrl || !cleanKey) {
+    return {
+      productsCount: 0,
+      ordersCount: 0,
+      recipesCount: 0,
+      ingredientsCount: 0,
+      recipeItemsCount: 0,
+      orderItemsCount: 0,
+      latencyMs: 0,
+      projectRef: projectRef || 'Chưa cấu hình',
+      isEmpty: true,
+      isConnected: false,
+      error: 'Chưa nhập URL hoặc Khóa API Supabase',
+    };
+  }
+
+  const startTime = performance.now();
+  try {
+    const testClient = createClient(cleanUrl, cleanKey, {
+      auth: { persistSession: false },
+    });
+
+    const [prodRes, orderRes, recRes, ingRes, rItemRes, oItemRes] = await Promise.all([
+      testClient.from('products').select('*', { count: 'exact', head: true }),
+      testClient.from('orders').select('*', { count: 'exact', head: true }),
+      testClient.from('recipes').select('*', { count: 'exact', head: true }),
+      testClient.from('ingredients').select('*', { count: 'exact', head: true }),
+      testClient.from('recipe_items').select('*', { count: 'exact', head: true }),
+      testClient.from('order_items').select('*', { count: 'exact', head: true }),
+    ]);
+
+    const latencyMs = Math.round(performance.now() - startTime);
+
+    const hasAnyError = Boolean(
+      prodRes.error || orderRes.error || recRes.error || ingRes.error
+    );
+    const errorMsg =
+      prodRes.error?.message ||
+      orderRes.error?.message ||
+      recRes.error?.message ||
+      ingRes.error?.message;
+
+    const productsCount = prodRes.count ?? 0;
+    const ordersCount = orderRes.count ?? 0;
+    const recipesCount = recRes.count ?? 0;
+    const ingredientsCount = ingRes.count ?? 0;
+    const recipeItemsCount = rItemRes.count ?? 0;
+    const orderItemsCount = oItemRes.count ?? 0;
+
+    const isEmpty =
+      productsCount === 0 && ordersCount === 0 && recipesCount === 0 && ingredientsCount === 0;
+
+    return {
+      productsCount,
+      ordersCount,
+      recipesCount,
+      ingredientsCount,
+      recipeItemsCount,
+      orderItemsCount,
+      latencyMs,
+      projectRef,
+      isEmpty,
+      isConnected: !hasAnyError,
+      error: errorMsg,
+    };
+  } catch (err: any) {
+    const latencyMs = Math.round(performance.now() - startTime);
+    return {
+      productsCount: 0,
+      ordersCount: 0,
+      recipesCount: 0,
+      ingredientsCount: 0,
+      recipeItemsCount: 0,
+      orderItemsCount: 0,
+      latencyMs,
+      projectRef,
+      isEmpty: true,
+      isConnected: false,
+      error: err?.message || 'Không thể kết nối đến máy chủ Supabase',
+    };
+  }
+}
+
+export interface CloneCloudProgressCallback {
+  (step: string, percentage: number): void;
+}
+
+/**
+ * 1-Click Sao chép toàn bộ CSDL đám mây giữa 2 Supabase Project bất kỳ
+ * Tự động loại bỏ các Generated Columns (food_cost_pct, line_total, line_cost) để chống lỗi Postgres 428C9.
+ */
+export async function cloneCloudDatabaseTables(params: {
+  sourceUrl: string;
+  sourceKey: string;
+  targetUrl: string;
+  targetKey: string;
+  onProgress?: CloneCloudProgressCallback;
+}): Promise<{
+  success: boolean;
+  stats: {
+    ingredients: number;
+    recipes: number;
+    recipe_items: number;
+    products: number;
+    orders: number;
+    order_items: number;
+  };
+  error?: string;
+}> {
+  const { sourceUrl, sourceKey, targetUrl, targetKey, onProgress } = params;
+  const cleanSourceUrl = cleanSupabaseUrl(sourceUrl);
+  const cleanSourceKey = sourceKey.trim();
+  const cleanTargetUrl = cleanSupabaseUrl(targetUrl);
+  const cleanTargetKey = targetKey.trim();
+
+  const emptyStats = {
+    ingredients: 0,
+    recipes: 0,
+    recipe_items: 0,
+    products: 0,
+    orders: 0,
+    order_items: 0,
+  };
+
+  if (!cleanSourceUrl || !cleanSourceKey) {
+    return { success: false, stats: emptyStats, error: 'Thiếu thông tin CSDL Nguồn (Source)' };
+  }
+  if (!cleanTargetUrl || !cleanTargetKey) {
+    return { success: false, stats: emptyStats, error: 'Thiếu thông tin CSDL Đích (Target)' };
+  }
+  if (cleanSourceUrl === cleanTargetUrl) {
+    return { success: false, stats: emptyStats, error: 'CSDL Nguồn và CSDL Đích không được trùng nhau' };
+  }
+
+  const stats = { ...emptyStats };
+
+  try {
+    const s1 = createClient(cleanSourceUrl, cleanSourceKey, { auth: { persistSession: false } });
+    const s2 = createClient(cleanTargetUrl, cleanTargetKey, { auth: { persistSession: false } });
+
+    // 1. INGREDIENTS
+    onProgress?.('Đang sao chép Nguyên liệu (Ingredients)...', 10);
+    const { data: ings, error: errIngs } = await s1.from('ingredients').select('*');
+    if (errIngs) throw new Error(`Lỗi đọc nguyên liệu từ CSDL nguồn: ${errIngs.message}`);
+    if (ings && ings.length > 0) {
+      const cleanIngs = ings.map((i: any) => ({
+        id: i.id,
+        name: i.name,
+        unit: i.unit,
+        category: i.category,
+        stock_qty: i.stock_qty,
+        reorder_level: i.reorder_level,
+        avg_cost: i.avg_cost,
+        wastage_pct: i.wastage_pct,
+        is_active: i.is_active,
+        created_at: i.created_at,
+        updated_at: i.updated_at,
+      }));
+      const { error: errI2 } = await s2.from('ingredients').upsert(cleanIngs, { onConflict: 'id' });
+      if (errI2) throw new Error(`Lỗi ghi nguyên liệu sang CSDL đích: ${errI2.message}`);
+      stats.ingredients = cleanIngs.length;
+    }
+
+    // 2. RECIPES
+    onProgress?.('Đang sao chép Công thức BOM & Cấu hình (Recipes)...', 25);
+    const { data: recs, error: errRecs } = await s1.from('recipes').select('*');
+    if (errRecs) throw new Error(`Lỗi đọc công thức từ CSDL nguồn: ${errRecs.message}`);
+    if (recs && recs.length > 0) {
+      const cleanRecs = recs.map((r: any) => ({
+        id: r.id,
+        name: r.name,
+        product_id: r.product_id,
+        yield_qty: r.yield_qty,
+        yield_unit: r.yield_unit,
+        total_material_cost: r.total_material_cost,
+        cost_per_unit: r.cost_per_unit,
+        notes: r.notes,
+        is_active: r.is_active,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+      }));
+      const { error: errR2 } = await s2.from('recipes').upsert(cleanRecs, { onConflict: 'id' });
+      if (errR2) throw new Error(`Lỗi ghi công thức sang CSDL đích: ${errR2.message}`);
+      stats.recipes = cleanRecs.length;
+    }
+
+    // 3. RECIPE_ITEMS
+    onProgress?.('Đang sao chép Định mức chi tiết BOM (Recipe Items)...', 40);
+    const { data: rItems, error: errRItems } = await s1.from('recipe_items').select('*');
+    if (errRItems) throw new Error(`Lỗi đọc định mức BOM từ CSDL nguồn: ${errRItems.message}`);
+    if (rItems && rItems.length > 0) {
+      const cleanRItems = rItems.map((ri: any) => ({
+        id: ri.id,
+        recipe_id: ri.recipe_id,
+        ingredient_id: ri.ingredient_id,
+        quantity: ri.quantity,
+        unit: ri.unit,
+        line_cost: ri.line_cost,
+        created_at: ri.created_at,
+      }));
+      const { error: errRI2 } = await s2.from('recipe_items').upsert(cleanRItems, { onConflict: 'id' });
+      if (errRI2) throw new Error(`Lỗi ghi định mức BOM sang CSDL đích: ${errRI2.message}`);
+      stats.recipe_items = cleanRItems.length;
+    }
+
+    // 4. PRODUCTS (Omit food_cost_pct generated column)
+    onProgress?.('Đang sao chép Danh mục sản phẩm bánh (Products)...', 60);
+    const { data: prods, error: errProds } = await s1.from('products').select('*');
+    if (errProds) throw new Error(`Lỗi đọc sản phẩm từ CSDL nguồn: ${errProds.message}`);
+    if (prods && prods.length > 0) {
+      const cleanProds = prods.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        image_url: p.image_url,
+        base_cost_price: p.base_cost_price,
+        selling_price: p.selling_price,
+        is_active: p.is_active,
+        is_preorder_only: p.is_preorder_only,
+        recipe_id: p.recipe_id,
+        created_at: p.created_at,
+        updated_at: p.updated_at,
+      }));
+      const { error: errP2 } = await s2.from('products').upsert(cleanProds, { onConflict: 'id' });
+      if (errP2) throw new Error(`Lỗi ghi sản phẩm sang CSDL đích: ${errP2.message}`);
+      stats.products = cleanProds.length;
+    }
+
+    // 5. ORDERS (Batch 50)
+    onProgress?.('Đang sao chép Lịch sử đơn hàng (Orders)...', 75);
+    const { data: orders, error: errOrders } = await s1.from('orders').select('*');
+    if (errOrders) throw new Error(`Lỗi đọc đơn hàng từ CSDL nguồn: ${errOrders.message}`);
+    if (orders && orders.length > 0) {
+      const cleanOrders = orders.map((o: any) => ({
+        id: o.id,
+        local_id: o.local_id,
+        order_number: o.order_number,
+        created_by: o.created_by,
+        store_id: o.store_id,
+        order_type: o.order_type,
+        status: o.status,
+        preorder_pickup_at: o.preorder_pickup_at,
+        subtotal: o.subtotal,
+        discount_amount: o.discount_amount,
+        discount_pct: o.discount_pct,
+        total_amount: o.total_amount,
+        total_cogs: o.total_cogs,
+        notes: o.notes,
+        shift_id: o.shift_id,
+        sync_status: o.sync_status,
+        created_at: o.created_at,
+        updated_at: o.updated_at,
+        customer_name: o.customer_name,
+        customer_phone: o.customer_phone,
+        cake_message: o.cake_message,
+      }));
+      for (let i = 0; i < cleanOrders.length; i += 50) {
+        const chunk = cleanOrders.slice(i, i + 50);
+        const { error: errO2 } = await s2.from('orders').upsert(chunk, { onConflict: 'id' });
+        if (errO2) throw new Error(`Lỗi ghi đơn hàng (lô ${i + 1}-${i + chunk.length}): ${errO2.message}`);
+      }
+      stats.orders = cleanOrders.length;
+    }
+
+    // 6. ORDER_ITEMS (Batch 50, Omit line_total and line_cost)
+    onProgress?.('Đang sao chép Chi tiết món ăn đơn hàng (Order Items)...', 90);
+    const { data: oItems, error: errOItems } = await s1.from('order_items').select('*');
+    if (errOItems) throw new Error(`Lỗi đọc chi tiết đơn hàng từ CSDL nguồn: ${errOItems.message}`);
+    if (oItems && oItems.length > 0) {
+      const cleanOItems = oItems.map((oi: any) => ({
+        id: oi.id,
+        order_id: oi.order_id,
+        product_id: oi.product_id,
+        variant_id: oi.variant_id,
+        product_name_snapshot: oi.product_name_snapshot,
+        quantity: oi.quantity,
+        unit_price: oi.unit_price,
+        unit_cost: oi.unit_cost,
+        notes: oi.notes,
+      }));
+      for (let i = 0; i < cleanOItems.length; i += 50) {
+        const chunk = cleanOItems.slice(i, i + 50);
+        const { error: errOI2 } = await s2.from('order_items').upsert(chunk, { onConflict: 'id' });
+        if (errOI2) throw new Error(`Lỗi ghi chi tiết món (lô ${i + 1}-${i + chunk.length}): ${errOI2.message}`);
+      }
+      stats.order_items = cleanOItems.length;
+    }
+
+    onProgress?.('Hoàn tất sao chép 100% dữ liệu sang CSDL đích!', 100);
+    return { success: true, stats };
+  } catch (err: any) {
+    return { success: false, stats, error: err?.message || 'Có lỗi xảy ra trong quá trình đồng bộ CSDL' };
+  }
+}
+

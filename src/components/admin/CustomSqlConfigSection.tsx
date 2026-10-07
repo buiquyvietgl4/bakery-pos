@@ -20,6 +20,12 @@ import {
   Layers,
   Sparkles,
   ExternalLink,
+  Server,
+  ArrowLeftRight,
+  Package,
+  FileText,
+  Wheat,
+  Sliders,
 } from 'lucide-react';
 import {
   getMultiSqlConfig,
@@ -29,9 +35,16 @@ import {
   resetProfileToDefault,
   cloneDataBetweenProfiles,
   testSupabaseConnection,
+  cleanSupabaseUrl,
+  extractProjectRef,
+  fetchDatabaseLiveStats,
+  cloneCloudDatabaseTables,
+  isProfileOutOfSyncWithEnv,
+  syncProductionProfileWithEnv,
   EVENT_DB_PROFILE_CHANGED,
   DatabaseProfile,
   MultiSqlConfig,
+  DatabaseLiveStats,
   DEFAULT_PRODUCTION_URL,
 } from '@/lib/supabase/databaseProfileManager';
 
@@ -46,6 +59,39 @@ export default function CustomSqlConfigSection() {
   // Trạng thái Test Ping
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; latencyMs?: number; error?: string } | null>(null);
+
+  // Trạng thái Thống kê Dữ liệu Thực tế (Live Cloud Stats)
+  const [liveStats, setLiveStats] = useState<DatabaseLiveStats | null>(null);
+  const [isLoadingStats, setIsLoadingStats] = useState(false);
+
+  // Kiểm tra lệch CSDL so với file .env.local
+  const [envSyncInfo, setEnvSyncInfo] = useState<{ isOutOfSync: boolean; envUrl: string; activeUrl: string }>({
+    isOutOfSync: false,
+    envUrl: '',
+    activeUrl: '',
+  });
+
+  // Trạng thái Bộ Đồng Bộ Đám Mây (Cloud-to-Cloud DB Synchronizer)
+  const [cloneSourceUrl, setCloneSourceUrl] = useState('');
+  const [cloneSourceKey, setCloneSourceKey] = useState('');
+  const [cloneTargetUrl, setCloneTargetUrl] = useState('');
+  const [cloneTargetKey, setCloneTargetKey] = useState('');
+  const [isCloning, setIsCloning] = useState(false);
+  const [cloneProgress, setCloneProgress] = useState<{ step: string; pct: number } | null>(null);
+  const [cloneResult, setCloneResult] = useState<{
+    success: boolean;
+    stats?: {
+      ingredients: number;
+      recipes: number;
+      recipe_items: number;
+      products: number;
+      orders: number;
+      order_items: number;
+    };
+    error?: string;
+  } | null>(null);
+  const [isComparing, setIsComparing] = useState(false);
+  const [compareStats, setCompareStats] = useState<{ source?: DatabaseLiveStats; target?: DatabaseLiveStats } | null>(null);
 
   // Modal xác nhận chuyển đổi môi trường & chống trộn dữ liệu
   const [showSwitchModal, setShowSwitchModal] = useState(false);
@@ -65,13 +111,56 @@ export default function CustomSqlConfigSection() {
     return () => window.removeEventListener(EVENT_DB_PROFILE_CHANGED, handleUpdate);
   }, []);
 
-  // Đồng bộ form khi chọn profile khác
+  // Kiểm tra lệch môi trường .env.local
+  useEffect(() => {
+    setEnvSyncInfo(isProfileOutOfSyncWithEnv());
+  }, [config, selectedProfileId]);
+
+  // Hàm tải thống kê thời gian thực từ Cloud
+  const handleFetchStats = async (url: string, key: string) => {
+    if (!url || !key) return;
+    setIsLoadingStats(true);
+    try {
+      const stats = await fetchDatabaseLiveStats(url, key);
+      setLiveStats(stats);
+    } catch {
+      // ignore
+    } finally {
+      setIsLoadingStats(false);
+    }
+  };
+
+  // Đồng bộ form khi chọn profile khác và nạp stats
   useEffect(() => {
     const prof = config.profiles.find((p) => p.id === selectedProfileId);
     if (prof) {
       setEditUrl(prof.url || '');
       setEditKey(prof.anonKey || '');
       setTestResult(null);
+      if (prof.url && prof.anonKey) {
+        handleFetchStats(prof.url, prof.anonKey);
+      } else {
+        setLiveStats(null);
+      }
+    }
+  }, [selectedProfileId, config]);
+
+  // Gợi ý CSDL Nguồn / Đích cho bộ đồng bộ
+  useEffect(() => {
+    const prodProfile = config.profiles.find((p) => p.id === 'production');
+    const testProfile = config.profiles.find((p) => p.id === 'testing');
+    if (prodProfile && testProfile) {
+      if (selectedProfileId === 'production') {
+        setCloneSourceUrl(testProfile.url || '');
+        setCloneSourceKey(testProfile.anonKey || '');
+        setCloneTargetUrl(prodProfile.url || '');
+        setCloneTargetKey(prodProfile.anonKey || '');
+      } else {
+        setCloneSourceUrl(prodProfile.url || '');
+        setCloneSourceKey(prodProfile.anonKey || '');
+        setCloneTargetUrl(testProfile.url || '');
+        setCloneTargetKey(testProfile.anonKey || '');
+      }
     }
   }, [selectedProfileId, config]);
 
@@ -87,6 +176,91 @@ export default function CustomSqlConfigSection() {
     const res = await testSupabaseConnection(editUrl, editKey);
     setIsTesting(false);
     setTestResult(res);
+    if (res.success && editUrl && editKey) {
+      handleFetchStats(editUrl, editKey);
+    }
+  };
+
+  // Đổi chiều Nguồn <-> Đích
+  const handleSwapCloneDirection = () => {
+    const tempUrl = cloneSourceUrl;
+    const tempKey = cloneSourceKey;
+    setCloneSourceUrl(cloneTargetUrl);
+    setCloneSourceKey(cloneTargetKey);
+    setCloneTargetUrl(tempUrl);
+    setCloneTargetKey(tempKey);
+    setCompareStats(null);
+  };
+
+  // So sánh dữ liệu giữa 2 CSDL
+  const handleCompareDatabases = async () => {
+    if (!cloneSourceUrl || !cloneSourceKey || !cloneTargetUrl || !cloneTargetKey) {
+      alert('Vui lòng điền đủ thông tin CSDL Nguồn và Đích để so sánh!');
+      return;
+    }
+    setIsComparing(true);
+    try {
+      const [srcStats, tgtStats] = await Promise.all([
+        fetchDatabaseLiveStats(cloneSourceUrl, cloneSourceKey),
+        fetchDatabaseLiveStats(cloneTargetUrl, cloneTargetKey),
+      ]);
+      setCompareStats({ source: srcStats, target: tgtStats });
+    } catch (e: any) {
+      alert('Lỗi so sánh CSDL: ' + e.message);
+    } finally {
+      setIsComparing(false);
+    }
+  };
+
+  // Tiến hành sao chép toàn bộ CSDL
+  const handleStartClone = async () => {
+    if (!cloneSourceUrl || !cloneSourceKey || !cloneTargetUrl || !cloneTargetKey) {
+      alert('Vui lòng chọn đầy đủ CSDL Nguồn và CSDL Đích trước khi sao chép!');
+      return;
+    }
+    if (cloneSourceUrl.trim() === cloneTargetUrl.trim()) {
+      alert('CSDL Nguồn và CSDL Đích không được trùng nhau!');
+      return;
+    }
+
+    const confirmMsg = `XÁC NHẬN SAO CHÉP TOÀN BỘ CSDL ĐÁM MÂY:\n\n` +
+      `• NGUỒN: ${extractProjectRef(cloneSourceUrl)} (${cloneSourceUrl})\n` +
+      `• ĐÍCH: ${extractProjectRef(cloneTargetUrl)} (${cloneTargetUrl})\n\n` +
+      `Hệ thống sẽ sao chép toàn bộ:\n` +
+      `- Nguyên liệu & Tồn kho\n` +
+      `- Công thức BOM & Cấu hình\n` +
+      `- Danh mục Sản phẩm Bánh\n` +
+      `- Toàn bộ Lịch sử Đơn hàng & Chi tiết món\n\n` +
+      `Bạn có chắc chắn muốn tiến hành?`;
+
+    if (!confirm(confirmMsg)) return;
+
+    setIsCloning(true);
+    setCloneProgress({ step: 'Đang kết nối tới 2 CSDL đám mây...', pct: 5 });
+    setCloneResult(null);
+
+    const res = await cloneCloudDatabaseTables({
+      sourceUrl: cloneSourceUrl,
+      sourceKey: cloneSourceKey,
+      targetUrl: cloneTargetUrl,
+      targetKey: cloneTargetKey,
+      onProgress: (step, pct) => {
+        setCloneProgress({ step, pct });
+      },
+    });
+
+    setIsCloning(false);
+    setCloneResult(res);
+
+    if (res.success) {
+      setNotice({
+        type: 'success',
+        text: `Sao chép CSDL thành công! Đã sao chép ${res.stats.products} sản phẩm, ${res.stats.orders} đơn hàng, ${res.stats.recipes} công thức.`,
+      });
+      if (editUrl && editKey) {
+        handleFetchStats(editUrl, editKey);
+      }
+    }
   };
 
   // Xử lý lưu cấu hình (vẫn ở môi trường hiện tại hoặc cập nhật profile)
@@ -238,6 +412,39 @@ export default function CustomSqlConfigSection() {
         </div>
       )}
 
+      {/* CẢNH BÁO LỆCH BIẾN MÔI TRƯỜNG .ENV.LOCAL NẾU CÓ */}
+      {envSyncInfo.isOutOfSync && (
+        <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+          <div className="flex items-start gap-2.5">
+            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-black text-sm text-amber-900">
+                ⚠️ Phát hiện CSDL trên trình duyệt khác với file môi trường (.env.local)
+              </div>
+              <p className="mt-0.5 text-amber-800 leading-relaxed">
+                • CSDL Đang nạp trên máy: <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">{extractProjectRef(envSyncInfo.activeUrl)}</code> ({envSyncInfo.activeUrl})<br />
+                • CSDL Khai báo hệ thống (.env.local): <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">{extractProjectRef(envSyncInfo.envUrl)}</code> ({envSyncInfo.envUrl})
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              syncProductionProfileWithEnv();
+              setNotice({
+                type: 'success',
+                text: 'Đã đồng bộ CSDL Chính về đúng cấu hình .env.local! Đang tải lại trang...',
+              });
+              setTimeout(() => window.location.reload(), 600);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs shrink-0 cursor-pointer shadow-sm flex items-center gap-1.5"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>Đồng Bộ Theo .env.local</span>
+          </button>
+        </div>
+      )}
+
       {/* CHỌN MÔI TRƯỜNG (TABS) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {config.profiles.map((prof) => {
@@ -321,6 +528,107 @@ export default function CustomSqlConfigSection() {
               </button>
             )}
           </div>
+        </div>
+
+        {/* CARD THỐNG KÊ DỮ LIỆU THỰC TẾ TRÊN CLOUD */}
+        <div className="p-4 rounded-2xl bg-white border border-zinc-200/90 shadow-2xs space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-zinc-100">
+            <div className="flex items-center gap-2">
+              <Server className="w-4 h-4 text-emerald-600" />
+              <span className="font-bold text-xs text-zinc-900">
+                Định Danh &amp; Thống Kê Dữ Liệu Thực Tế (Cloud Live Counter)
+              </span>
+              {liveStats?.projectRef && (
+                <span className="px-2 py-0.5 rounded-md bg-zinc-100 border border-zinc-200 font-mono text-[11px] font-bold text-zinc-800">
+                  Ref: {liveStats.projectRef}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              {liveStats && (
+                <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 border ${
+                  liveStats.isConnected
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                    : 'bg-rose-50 border-rose-200 text-rose-800'
+                }`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${liveStats.isConnected ? 'bg-emerald-600' : 'bg-rose-600'} animate-pulse`} />
+                  {liveStats.isConnected ? `Online (${liveStats.latencyMs}ms)` : 'Lỗi kết nối'}
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={() => handleFetchStats(editUrl, editKey)}
+                disabled={isLoadingStats || !editUrl}
+                className="px-2.5 py-1 rounded-lg bg-zinc-50 border border-zinc-300 hover:bg-zinc-100 text-[11px] font-bold text-zinc-700 flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                title="Làm mới thống kê số lượng bản ghi"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingStats ? 'animate-spin text-emerald-600' : ''}`} />
+                <span>Làm Mới Số Liệu</span>
+              </button>
+            </div>
+          </div>
+
+          {/* 4 THẺ SỐ LIỆU */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
+              <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
+                <Package className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Sản Phẩm (Bánh)</span>
+              </div>
+              <div className="mt-1 font-black text-lg text-zinc-900">
+                {isLoadingStats ? '...' : (liveStats?.productsCount ?? 0)}
+                <span className="text-[11px] font-normal text-zinc-500 ml-1">món</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
+              <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
+                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                <span>Đơn Hàng (Orders)</span>
+              </div>
+              <div className="mt-1 font-black text-lg text-zinc-900">
+                {isLoadingStats ? '...' : (liveStats?.ordersCount ?? 0)}
+                <span className="text-[11px] font-normal text-zinc-500 ml-1">đơn ({liveStats?.orderItemsCount ?? 0} dòng)</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
+              <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
+                <span>Công Thức &amp; Config</span>
+              </div>
+              <div className="mt-1 font-black text-lg text-zinc-900">
+                {isLoadingStats ? '...' : (liveStats?.recipesCount ?? 0)}
+                <span className="text-[11px] font-normal text-zinc-500 ml-1">công thức ({liveStats?.recipeItemsCount ?? 0} BOM)</span>
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
+              <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
+                <Wheat className="w-3.5 h-3.5 text-amber-600" />
+                <span>Nguyên Liệu (Kho)</span>
+              </div>
+              <div className="mt-1 font-black text-lg text-zinc-900">
+                {isLoadingStats ? '...' : (liveStats?.ingredientsCount ?? 0)}
+                <span className="text-[11px] font-normal text-zinc-500 ml-1">loại</span>
+              </div>
+            </div>
+          </div>
+
+          {/* CẢNH BÁO CSDL RỖNG NẾU = 0 BẢN GHI */}
+          {liveStats && liveStats.isEmpty && (
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-bold">⚠️ CSDL này hiện đang RỖNG (0 đơn hàng, 0 sản phẩm trên Cloud):</span>
+                <p className="text-[11px] text-rose-800 mt-0.5">
+                  Đây là nguyên nhân gây ra hiện tượng thiếu toàn bộ đơn hàng và doanh thu khi chạy app! Hãy sử dụng <b>Bộ Đồng Bộ &amp; Sao Chép CSDL Đám Mây</b> ở bên dưới để bơm dữ liệu từ CSDL cũ sang ngay lập tức.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* TRƯỜNG 1: SUPABASE URL */}
@@ -454,28 +762,281 @@ export default function CustomSqlConfigSection() {
         </div>
       </div>
 
-      {/* TIỆN ÍCH DÀNH RIÊNG CHO MÔI TRƯỜNG TEST: CLONE TỪ PROD SANG TEST */}
-      {selectedProfileId === 'testing' && (
-        <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs space-y-2.5">
-          <div className="flex items-center justify-between">
-            <div className="font-bold text-amber-950 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-amber-600" />
-              <span>Tiện Ích: Sao Chép Danh Mục &amp; Công Thức Sang CSDL Test</span>
-            </div>
+      {/* BỘ ĐỒNG BỘ & SAO CHÉP CSDL ĐÁM MÂY (CLOUD-TO-CLOUD DB SYNCHRONIZER) */}
+      <div className="p-5 rounded-3xl bg-zinc-900 text-white border border-zinc-800 space-y-4 shadow-xl">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-800">
+          <div>
+            <h4 className="font-black text-sm text-white flex items-center gap-2">
+              <ArrowLeftRight className="w-4 h-4 text-emerald-400" />
+              <span>Bộ Đồng Bộ &amp; Sao Chép CSDL Đám Mây Trực Tiếp (Cloud-to-Cloud Cloner)</span>
+            </h4>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Sao chép 100% Nguyên liệu, Công thức BOM, Sản phẩm bánh &amp; Đơn hàng giữa 2 Supabase Project bất kỳ. Chống mất dữ liệu triệt để khi đổi sang Supabase mới.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={handleCloneProdToTest}
-              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+              onClick={handleSwapCloneDirection}
+              disabled={isCloning}
+              className="px-3 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer border border-zinc-700 disabled:opacity-50"
+              title="Đổi chiều Nguồn và Đích"
             >
-              <Copy className="w-3.5 h-3.5" />
-              <span>1-Click Sao Chép Sang Test</span>
+              <ArrowLeftRight className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Đổi Chiều Nguồn ⇄ Đích</span>
             </button>
           </div>
-          <p className="text-amber-800 text-[11px] leading-relaxed">
-            Giúp bạn tự động lấy toàn bộ menu bánh, công thức BOM và danh sách nguyên liệu hiện có ở CSDL Chính nạp sang môi trường Thử Nghiệm. Bạn có thể thoải mái tạo đơn hàng ảo, giả lập đơn lỗi để sửa mà <b>không tốn công nhập lại danh mục</b> và <b>tuyệt đối không ảnh hưởng đến CSDL Chính</b>.
-          </p>
         </div>
-      )}
+
+        {/* 2 CỘT NGUỒN VÀ ĐÍCH */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* CỘT 1: NGUỒN (SOURCE) */}
+          <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400" />
+                1. CSDL NGUỒN (Lấy dữ liệu từ đây)
+              </span>
+              <span className="text-[11px] font-mono text-zinc-400">
+                {extractProjectRef(cloneSourceUrl) || 'Chưa chọn'}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {config.profiles.map((p) => (
+                <button
+                  key={`src-${p.id}`}
+                  type="button"
+                  onClick={() => {
+                    setCloneSourceUrl(p.url);
+                    setCloneSourceKey(p.anonKey);
+                    setCompareStats(null);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer transition ${
+                    cleanSupabaseUrl(cloneSourceUrl) === cleanSupabaseUrl(p.url)
+                      ? 'bg-amber-400 text-zinc-950 border-amber-400'
+                      : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800'
+                  }`}
+                >
+                  {p.name.split('(')[0].trim()} ({extractProjectRef(p.url)})
+                </button>
+              ))}
+            </div>
+
+            <input
+              type="text"
+              value={cloneSourceUrl}
+              onChange={(e) => {
+                setCloneSourceUrl(e.target.value);
+                setCompareStats(null);
+              }}
+              placeholder="URL CSDL Nguồn (https://...)"
+              className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-mono text-zinc-200 focus:border-amber-400"
+            />
+            <input
+              type="password"
+              value={cloneSourceKey}
+              onChange={(e) => {
+                setCloneSourceKey(e.target.value);
+                setCompareStats(null);
+              }}
+              placeholder="API Key Nguồn (sb_publishable_...)"
+              className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-mono text-zinc-200 focus:border-amber-400"
+            />
+          </div>
+
+          {/* CỘT 2: ĐÍCH (TARGET) */}
+          <div className="p-4 rounded-2xl bg-zinc-950/80 border border-zinc-800 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-400 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                2. CSDL ĐÍCH (Bơm dữ liệu vào đây)
+              </span>
+              <span className="text-[11px] font-mono text-zinc-400">
+                {extractProjectRef(cloneTargetUrl) || 'Chưa chọn'}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5">
+              {config.profiles.map((p) => (
+                <button
+                  key={`tgt-${p.id}`}
+                  type="button"
+                  onClick={() => {
+                    setCloneTargetUrl(p.url);
+                    setCloneTargetKey(p.anonKey);
+                    setCompareStats(null);
+                  }}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border cursor-pointer transition ${
+                    cleanSupabaseUrl(cloneTargetUrl) === cleanSupabaseUrl(p.url)
+                      ? 'bg-emerald-400 text-zinc-950 border-emerald-400'
+                      : 'bg-zinc-900 text-zinc-300 border-zinc-700 hover:bg-zinc-800'
+                  }`}
+                >
+                  {p.name.split('(')[0].trim()} ({extractProjectRef(p.url)})
+                </button>
+              ))}
+            </div>
+
+            <input
+              type="text"
+              value={cloneTargetUrl}
+              onChange={(e) => {
+                setCloneTargetUrl(e.target.value);
+                setCompareStats(null);
+              }}
+              placeholder="URL CSDL Đích (https://...)"
+              className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-mono text-zinc-200 focus:border-emerald-400"
+            />
+            <input
+              type="password"
+              value={cloneTargetKey}
+              onChange={(e) => {
+                setCloneTargetKey(e.target.value);
+                setCompareStats(null);
+              }}
+              placeholder="API Key Đích (sb_publishable_...)"
+              className="w-full px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-mono text-zinc-200 focus:border-emerald-400"
+            />
+          </div>
+        </div>
+
+        {/* BẢNG SO SÁNH DỮ LIỆU NẾU ĐÃ BẤM SO SÁNH */}
+        {compareStats && (
+          <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-700 space-y-2.5 animate-in fade-in">
+            <div className="font-bold text-xs text-zinc-300 flex items-center justify-between">
+              <span>Bảng So Sánh Số Lượng Bản Ghi:</span>
+              <span className="text-[11px] text-zinc-400">
+                {compareStats.source?.projectRef} ➔ {compareStats.target?.projectRef}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+              <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-center">
+                <div className="text-[11px] text-zinc-400">Sản phẩm (Bánh)</div>
+                <div className="font-mono font-bold mt-1">
+                  <span className="text-amber-400">{compareStats.source?.productsCount ?? 0}</span>
+                  <span className="text-zinc-500 mx-1.5">vs</span>
+                  <span className="text-emerald-400">{compareStats.target?.productsCount ?? 0}</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-center">
+                <div className="text-[11px] text-zinc-400">Đơn hàng (Orders)</div>
+                <div className="font-mono font-bold mt-1">
+                  <span className="text-amber-400">{compareStats.source?.ordersCount ?? 0}</span>
+                  <span className="text-zinc-500 mx-1.5">vs</span>
+                  <span className="text-emerald-400">{compareStats.target?.ordersCount ?? 0}</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-center">
+                <div className="text-[11px] text-zinc-400">Công thức (Recipes)</div>
+                <div className="font-mono font-bold mt-1">
+                  <span className="text-amber-400">{compareStats.source?.recipesCount ?? 0}</span>
+                  <span className="text-zinc-500 mx-1.5">vs</span>
+                  <span className="text-emerald-400">{compareStats.target?.recipesCount ?? 0}</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-lg bg-zinc-900 border border-zinc-800 text-center">
+                <div className="text-[11px] text-zinc-400">Nguyên liệu (Kho)</div>
+                <div className="font-mono font-bold mt-1">
+                  <span className="text-amber-400">{compareStats.source?.ingredientsCount ?? 0}</span>
+                  <span className="text-zinc-500 mx-1.5">vs</span>
+                  <span className="text-emerald-400">{compareStats.target?.ingredientsCount ?? 0}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* THANH TIẾN TRÌNH CLONE */}
+        {isCloning && cloneProgress && (
+          <div className="p-4 rounded-xl bg-zinc-950 border border-emerald-500/50 space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-bold text-emerald-400 flex items-center gap-2">
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                {cloneProgress.step}
+              </span>
+              <span className="font-mono font-bold text-emerald-300">{cloneProgress.pct}%</span>
+            </div>
+            <div className="w-full h-2 rounded-full bg-zinc-800 overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 transition-all duration-300 ease-out"
+                style={{ width: `${cloneProgress.pct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* KẾT QUẢ CLONE */}
+        {cloneResult && (
+          <div
+            className={`p-3.5 rounded-xl text-xs border ${
+              cloneResult.success
+                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200'
+                : 'bg-rose-950/60 border-rose-500 text-rose-200'
+            }`}
+          >
+            {cloneResult.success ? (
+              <div className="flex items-start gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-sm text-emerald-300">
+                    🎉 Sao chép dữ liệu hoàn tất thành công!
+                  </div>
+                  <div className="mt-1 space-y-0.5 text-[11px] text-emerald-200/90 font-mono">
+                    ✓ {cloneResult.stats?.products} Sản phẩm (Products)<br />
+                    ✓ {cloneResult.stats?.orders} Đơn hàng &amp; {cloneResult.stats?.order_items} Chi tiết đơn hàng<br />
+                    ✓ {cloneResult.stats?.recipes} Công thức &amp; {cloneResult.stats?.recipe_items} Chi tiết BOM<br />
+                    ✓ {cloneResult.stats?.ingredients} Nguyên liệu (Ingredients)
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-sm text-rose-300">
+                    ❌ Lỗi sao chép CSDL:
+                  </div>
+                  <div className="mt-0.5 text-[11px] text-rose-200">{cloneResult.error}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* HÀNG NÚT THAO TÁC CỦA CLONER */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-zinc-800">
+          <button
+            type="button"
+            onClick={handleCompareDatabases}
+            disabled={isComparing || isCloning}
+            className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer border border-zinc-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isComparing ? 'animate-spin text-amber-400' : ''}`} />
+            <span>{isComparing ? 'Đang so sánh...' : '🔍 So Sánh Dữ Liệu 2 CSDL'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleStartClone}
+            disabled={isCloning}
+            className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-2 transition cursor-pointer shadow-lg disabled:opacity-50"
+          >
+            {isCloning ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>Đang Sao Chép CSDL...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 text-amber-300" />
+                <span>🚀 1-Click Sao Chép Sang CSDL Đích</span>
+              </>
+            )}
+          </button>
+        </div>
+      </div>
 
       {/* MODAL XÁC NHẬN CHUYỂN ĐỔI MÔI TRƯỜNG & CHỐNG TRỘN DỮ LIỆU */}
       {showSwitchModal && (
