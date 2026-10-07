@@ -353,12 +353,13 @@ export function switchLocalEnvironment(
       if (rawTarget) {
         const parsedTarget = JSON.parse(rawTarget);
         applyDataSnapshot(parsedTarget);
-      } else if (targetEnv === 'testing') {
-        // Lần đầu vào test mà chưa có gì: Tự động clone dữ liệu chính sang để có đồ test ngay
-        localStorage.setItem(targetVaultKey, JSON.stringify(currentSnapshot));
+      } else {
+        // Môi trường mới chưa có dữ liệu: Khởi tạo độc lập 100%, KHÔNG tự ý sao chép dữ liệu từ môi trường trước
+        applyDataSnapshot({});
       }
     } catch (e) {
       console.warn('Lỗi khi nạp vault target:', e);
+      applyDataSnapshot({});
     }
   }
 
@@ -451,9 +452,12 @@ export function switchDatabaseMode(targetMode: DatabaseMode): SqlModeConfig {
     if (rawTarget) {
       const parsedTarget = JSON.parse(rawTarget);
       applyDataSnapshot(parsedTarget);
+    } else {
+      applyDataSnapshot({});
     }
   } catch (e) {
     console.warn('Lỗi khi nạp snapshot chế độ đích:', e);
+    applyDataSnapshot({});
   }
 
   // 3. Cập nhật và lưu config chế độ mới

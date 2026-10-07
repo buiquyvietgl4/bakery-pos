@@ -108,16 +108,20 @@ export const DEFAULT_PROFILES: DatabaseProfile[] = [
   },
 ];
 
-export const DEFAULT_MULTI_SQL_CONFIG: MultiSqlConfig = {
-  activeProfileId: 'production',
-  profiles: DEFAULT_PROFILES,
-};
+export function getDefaultMultiSqlConfig(): MultiSqlConfig {
+  return {
+    activeProfileId: 'production',
+    profiles: DEFAULT_PROFILES.map((p) => ({ ...p })),
+  };
+}
+
+export const DEFAULT_MULTI_SQL_CONFIG: MultiSqlConfig = getDefaultMultiSqlConfig();
 
 /**
  * Lấy toàn bộ cấu hình Đa CSDL SQL
  */
 export function getMultiSqlConfig(): MultiSqlConfig {
-  if (typeof window === 'undefined') return DEFAULT_MULTI_SQL_CONFIG;
+  if (typeof window === 'undefined') return getDefaultMultiSqlConfig();
   try {
     const raw = localStorage.getItem(STORAGE_KEY_MULTI_SQL_CONFIG);
     if (raw) {
@@ -125,7 +129,7 @@ export function getMultiSqlConfig(): MultiSqlConfig {
       if (parsed && Array.isArray(parsed.profiles)) {
         // Đảm bảo luôn có ít nhất 2 profile production và testing
         const profileMap = new Map<string, DatabaseProfile>();
-        DEFAULT_PROFILES.forEach((p) => profileMap.set(p.id, p));
+        DEFAULT_PROFILES.forEach((p) => profileMap.set(p.id, { ...p }));
         parsed.profiles.forEach((p: DatabaseProfile) => {
           if (p && p.id) {
             profileMap.set(p.id, { ...profileMap.get(p.id), ...p });
@@ -140,7 +144,7 @@ export function getMultiSqlConfig(): MultiSqlConfig {
   } catch (err) {
     console.warn('Lỗi đọc cấu hình multiSql:', err);
   }
-  return DEFAULT_MULTI_SQL_CONFIG;
+  return getDefaultMultiSqlConfig();
 }
 
 /**
