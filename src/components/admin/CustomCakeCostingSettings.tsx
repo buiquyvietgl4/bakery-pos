@@ -23,6 +23,8 @@ import {
 } from '@/lib/utils/cakeBomManager';
 import { INITIAL_FULL_CAKE_BOM_CONFIG } from '@/lib/constants/defaultCakeBomData';
 import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { filterActiveIngredients } from '@/lib/utils/ingredientManager';
 import {
   Cake,
   Plus,
@@ -71,13 +73,15 @@ export function CustomCakeCostingSettings() {
 
     const loadIngredients = async () => {
       let loadedIngs: any[] = [];
-      try {
-        const { data: dbIngs } = await supabase.from('ingredients').select('id, name, unit, avg_cost, category');
-        if (dbIngs && dbIngs.length > 0) {
-          setAvailableIngredients(dbIngs);
-          loadedIngs = dbIngs;
-        }
-      } catch {}
+
+      if (!isLocalMode()) {
+        try {
+          const { data: dbIngs } = await supabase.from('ingredients').select('id, name, unit, avg_cost, category');
+          if (dbIngs && dbIngs.length > 0) {
+            loadedIngs = dbIngs;
+          }
+        } catch {}
+      }
 
       if (loadedIngs.length === 0) {
         try {
@@ -85,12 +89,14 @@ export function CustomCakeCostingSettings() {
           if (local) {
             const parsed = JSON.parse(local);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              setAvailableIngredients(parsed);
               loadedIngs = parsed;
             }
           }
         } catch {}
       }
+
+      loadedIngs = filterActiveIngredients(loadedIngs);
+      setAvailableIngredients(loadedIngs);
 
       if (loadedIngs.length > 0) {
         setConfig((prev) => {

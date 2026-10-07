@@ -34,6 +34,14 @@ import {
   persistProductToSupabase,
 } from '@/lib/utils/productManager';
 import {
+  filterActiveIngredients,
+  getDeletedIngredientIds,
+  markIngredientAsDeleted,
+  unmarkIngredientDeleted,
+  deleteIngredientEverywhere,
+  fetchDeletedIngredientIdsFromDb,
+} from '@/lib/utils/ingredientManager';
+import {
   getTelegramConfig,
   fetchTelegramConfigFromDb,
   saveTelegramConfigToDb,
@@ -1720,41 +1728,66 @@ export default function AdminDashboard() {
         await db.products.bulkPut(currentProds);
       } catch {}
 
-      // 2. Load Ingredients from Supabase (kèm packaging_unit & conversion_rate)
+      // 2. Load Ingredients (kèm packaging_unit & conversion_rate)
       let cleanIngs: Ingredient[] = [];
-      try {
-        const { data: ingData } = await supabase
-          .from('ingredients')
-          .select('*')
-          .order('name');
 
-        if (ingData && ingData.length > 0) {
-          cleanIngs = ingData.filter(
-            (i) => i.name !== 'SYS_CONFIG_TELEGRAM' && i.category !== 'system_config' && !String(i.id).startsWith('SYS_')
-          );
+      // A. Nếu ở Local Mode hoặc Offline: Đọc trực tiếp từ localStorage('bakery_ingredients')
+      if (isLocalMode() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+        if (typeof window !== 'undefined') {
+          try {
+            const localRaw = localStorage.getItem('bakery_ingredients');
+            if (localRaw) {
+              const parsed = JSON.parse(localRaw);
+              if (Array.isArray(parsed)) {
+                cleanIngs = parsed;
+              }
+            }
+          } catch {}
         }
-      } catch (e) {
-        console.warn('Không tải được ingredients từ Supabase, chuyển qua local:', e);
+      } else {
+        // B. Nếu ở chế độ Online (Cloud Supabase):
+        // 1. Kéo danh sách đen nguyên liệu đã xóa về thiết bị trước
+        try {
+          await fetchDeletedIngredientIdsFromDb();
+        } catch {}
+
+        // 2. Tải danh mục vật tư từ Supabase Cloud
+        try {
+          const { data: ingData, error: ingErr } = await supabase
+            .from('ingredients')
+            .select('*')
+            .order('name');
+
+          if (!ingErr && ingData && ingData.length > 0) {
+            cleanIngs = ingData;
+          }
+        } catch (e) {
+          console.warn('Không tải được ingredients từ Supabase, chuyển qua local:', e);
+        }
+
+        // Fallback local storage nếu Supabase rỗng hoặc lỗi mạng
+        if (cleanIngs.length === 0 && typeof window !== 'undefined') {
+          try {
+            const localRaw = localStorage.getItem('bakery_ingredients');
+            if (localRaw) {
+              const parsed = JSON.parse(localRaw);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                cleanIngs = parsed;
+              }
+            }
+          } catch {}
+        }
       }
 
-      // Fallback local storage nếu offline / local mode
-      if (cleanIngs.length === 0 && typeof window !== 'undefined') {
-        try {
-          const localRaw = localStorage.getItem('bakery_ingredients');
-          if (localRaw) {
-            const parsed = JSON.parse(localRaw);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              cleanIngs = parsed;
-            }
-          }
-        } catch {}
+      // Lọc bỏ triệt để các nguyên liệu đã bị xóa (Anti-resurrection filter)
+      cleanIngs = filterActiveIngredients(cleanIngs);
+
+      setIngredients(cleanIngs);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_ingredients', JSON.stringify(cleanIngs));
       }
 
       if (cleanIngs.length > 0) {
-        setIngredients(cleanIngs);
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('bakery_ingredients', JSON.stringify(cleanIngs));
-        }
         const defaultIngId = cleanIngs.some((i) => i.id === poIngredientId) ? poIngredientId : cleanIngs[0]?.id || '';
         setPoIngredientId(defaultIngId);
         setSoIngredientId((prev) => (cleanIngs.some((i) => i.id === prev) ? prev : cleanIngs[0]?.id || ''));
@@ -1770,6 +1803,9 @@ export default function AdminDashboard() {
           setPoConversionRate(rate);
           setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 35000));
         }
+      } else {
+        setPoIngredientId('');
+        setSoIngredientId('');
       }
     } catch (err) {
       console.error(err);
@@ -2494,6 +2530,8 @@ export default function AdminDashboard() {
       conversion_rate: Number(newIngConversionRate) || 1,
     };
 
+    unmarkIngredientDeleted(newId, newIngName);
+
     try {
       if (navigator.onLine && !isLocalMode()) {
         await supabase.from('ingredients').insert({
@@ -2630,16 +2668,24 @@ export default function AdminDashboard() {
   // ── XỬ LÝ XÓA VẬT TƯ (DELETE INGREDIENT) ──
   const handleDeleteIngredient = async (id: string, name: string) => {
     if (confirm(`Xác nhận xóa vật tư "${name}" khỏi kho? Lưu ý: Nếu công thức đang dùng vật tư này thì hãy cập nhật lại công thức trước.`)) {
-      const nextIngs = ingredients.filter((i) => i.id !== id);
+      const nextIngs = ingredients.filter((i) => i.id !== id && i.name !== name);
       setIngredients(nextIngs);
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_ingredients', JSON.stringify(nextIngs));
       }
-      autoSyncToLocalSqlFolder();
-      if (navigator.onLine && !isLocalMode()) {
-        await supabase.from('ingredients').delete().eq('id', id);
+
+      // Xóa triệt để đa tầng: Tombstone, Recipes items, Local SQL, và Supabase Cloud (xóa recipe_items trước để tránh lỗi FK)
+      await deleteIngredientEverywhere(id, name);
+
+      // Cập nhật lại dropdown vật tư nếu đang chọn vật tư vừa xóa
+      if (poIngredientId === id) {
+        setPoIngredientId(nextIngs[0]?.id || '');
       }
-      setPoSuccess(`Đã xóa vật tư "${name}" khỏi danh mục kho!`);
+      if (soIngredientId === id) {
+        setSoIngredientId(nextIngs[0]?.id || '');
+      }
+
+      setPoSuccess(`Đã xóa vật tư "${name}" khỏi danh mục kho vĩnh viễn!`);
       setTimeout(() => setPoSuccess(null), 4000);
     }
   };

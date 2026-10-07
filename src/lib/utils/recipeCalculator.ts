@@ -2,6 +2,7 @@
 
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { filterActiveIngredients, getDeletedIngredientIds } from '@/lib/utils/ingredientManager';
 import { DEFAULT_BAKERY_RECIPES, BakeryRecipe } from '@/lib/constants/bakeryData';
 
 export const RECIPES_UPDATED_EVENT = 'bakery_recipes_updated';
@@ -179,18 +180,23 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
       return fallback;
     }
 
-    const ings = ingsRes.data || [];
+    const ings = filterActiveIngredients(ingsRes.data || []);
     const ingMap = new Map(ings.map((i: any) => [i.id, i]));
+    const deletedIngSet = getDeletedIngredientIds();
 
     const items = itemsRes.data || [];
     const itemsByRecipe = new Map<string, any[]>();
     items.forEach((it: any) => {
+      if (it.ingredient_id && deletedIngSet.has(String(it.ingredient_id).toLowerCase().trim())) return;
       if (!itemsByRecipe.has(it.recipe_id)) itemsByRecipe.set(it.recipe_id, []);
       const ing = ingMap.get(it.ingredient_id);
+      const itemName = ing?.name || it.ingredient_name || 'Nguyên liệu';
+      if (deletedIngSet.has(itemName.toLowerCase().trim())) return;
+
       itemsByRecipe.get(it.recipe_id)!.push({
         id: it.id,
         ingredient_id: it.ingredient_id,
-        name: ing?.name || it.ingredient_name || 'Nguyên liệu',
+        name: itemName,
         quantity: Number(it.quantity) || 0,
         qty: Number(it.quantity) || 0,
         unit: it.unit || ing?.unit || 'g',

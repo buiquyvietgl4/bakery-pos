@@ -9,6 +9,8 @@ import {
 } from '@/lib/types/backup';
 import { DEFAULT_BAKERY_PRODUCTS, DEFAULT_BAKERY_RECIPES } from '@/lib/constants/bakeryData';
 import { filterActiveProducts, getDeletedProductIds } from '@/lib/utils/productManager';
+import { filterActiveIngredients } from '@/lib/utils/ingredientManager';
+import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { getStockAdjustmentLogs } from './stockAdjustmentManager';
 import { getSpoilageLogs } from './spoilageManager';
 import { getMaterialTransactions } from './materialTransactionManager';
@@ -698,12 +700,12 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   if (typeof window !== 'undefined') {
     try {
       const rawI = localStorage.getItem('bakery_ingredients');
-      if (rawI) ingredients = JSON.parse(rawI);
+      if (rawI) ingredients = filterActiveIngredients(JSON.parse(rawI));
     } catch {}
   }
 
   // Tự động kéo trực tiếp từ CSDL Supabase để đảm bảo đầy đủ định mức nguyên liệu (items)
-  if (typeof navigator !== 'undefined' && navigator.onLine) {
+  if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
     try {
       const [recsRes, itemsRes, ingsRes] = await Promise.all([
         supabase.from('recipes').select('*').eq('is_active', true),
@@ -712,7 +714,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       ]);
 
       if (ingsRes.data && ingsRes.data.length > 0) {
-        ingredients = ingsRes.data;
+        ingredients = filterActiveIngredients(ingsRes.data);
       }
 
       if (recsRes.data && recsRes.data.length > 0) {

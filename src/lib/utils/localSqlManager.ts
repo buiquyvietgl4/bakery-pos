@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase/client';
 import { db } from '@/lib/db/dexie';
 import { generateUUID } from '@/lib/utils/uuid';
 import { decodeProductWithMeta } from '@/lib/utils/productManager';
+import { filterActiveIngredients } from '@/lib/utils/ingredientManager';
 
 const LOCAL_SQL_DB_NAME = 'bakery_local_sql_handle_db';
 const LOCAL_SQL_STORE = 'local_sql_handles';
@@ -1460,7 +1461,7 @@ export async function restoreLocalFromBackupData(rawData: any): Promise<{ succes
     }
 
     if (Array.isArray(data.ingredients)) {
-      localSnapshot['bakery_ingredients'] = JSON.stringify(data.ingredients);
+      localSnapshot['bakery_ingredients'] = JSON.stringify(filterActiveIngredients(data.ingredients));
     }
 
     if (Array.isArray(data.orders)) {

@@ -73,6 +73,7 @@ export const BAKERY_DATA_KEYS = [
   'bakery_notification_history',
   'bakery_product_metadata',
   'bakery_deleted_product_ids',
+  'bakery_deleted_ingredient_ids',
   'bakery_resolved_transfers',
   'bakery_oven_batches',
 ];

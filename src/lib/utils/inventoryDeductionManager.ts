@@ -6,6 +6,7 @@ import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { db } from '@/lib/db/dexie';
 import { syncOrderToSupabase } from '@/lib/supabase/realtimeSync';
 import { CakeOrderSpec } from '@/lib/types/bakery-bom';
+import { filterActiveIngredients } from '@/lib/utils/ingredientManager';
 
 export const INGREDIENTS_STORAGE_KEY = 'bakery_ingredients';
 export const INGREDIENTS_UPDATED_EVENT = 'bakery_ingredients_updated';
@@ -36,7 +37,8 @@ export function getBakeryIngredients(): any[] {
     const raw = localStorage.getItem(INGREDIENTS_STORAGE_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    const arr = Array.isArray(parsed) ? parsed : [];
+    return filterActiveIngredients(arr);
   } catch (err) {
     console.warn('Lỗi đọc bakery_ingredients từ localStorage:', err);
     return [];
