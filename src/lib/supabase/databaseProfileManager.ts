@@ -135,6 +135,28 @@ export function getMultiSqlConfig(): MultiSqlConfig {
             profileMap.set(p.id, { ...profileMap.get(p.id), ...p });
           }
         });
+
+        // Tự động kiểm tra và sửa lỗi chống chồng chéo CSDL:
+        // Nếu profile 'production' (Chính) lại trỏ nhầm vào URL CSDL Test (azgjnahbibrcbjooepef)
+        const prod = profileMap.get('production');
+        if (prod) {
+          const prodUrl = cleanSupabaseUrl(prod.url);
+          const testingUrl = cleanSupabaseUrl(DEFAULT_TESTING_URL);
+          if (prodUrl && prodUrl === testingUrl) {
+            prod.url = DEFAULT_PRODUCTION_URL;
+            prod.anonKey = DEFAULT_PRODUCTION_KEY;
+            try {
+              localStorage.setItem(
+                STORAGE_KEY_MULTI_SQL_CONFIG,
+                JSON.stringify({
+                  activeProfileId: parsed.activeProfileId || 'production',
+                  profiles: Array.from(profileMap.values()),
+                })
+              );
+            } catch {}
+          }
+        }
+
         return {
           activeProfileId: parsed.activeProfileId || 'production',
           profiles: Array.from(profileMap.values()),

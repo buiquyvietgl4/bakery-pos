@@ -39,8 +39,6 @@ import {
   extractProjectRef,
   fetchDatabaseLiveStats,
   cloneCloudDatabaseTables,
-  isProfileOutOfSyncWithEnv,
-  syncProductionProfileWithEnv,
   EVENT_DB_PROFILE_CHANGED,
   DatabaseProfile,
   MultiSqlConfig,
@@ -67,12 +65,6 @@ export default function CustomSqlConfigSection() {
   const [isLoadingStats, setIsLoadingStats] = useState(false);
   const [isSavingGlobal, setIsSavingGlobal] = useState(false);
 
-  // Kiểm tra lệch CSDL so với file .env.local
-  const [envSyncInfo, setEnvSyncInfo] = useState<{ isOutOfSync: boolean; envUrl: string; activeUrl: string }>({
-    isOutOfSync: false,
-    envUrl: '',
-    activeUrl: '',
-  });
 
   // Trạng thái Bộ Đồng Bộ Đám Mây (Cloud-to-Cloud DB Synchronizer)
   const [cloneSourceUrl, setCloneSourceUrl] = useState('');
@@ -114,10 +106,6 @@ export default function CustomSqlConfigSection() {
     return () => window.removeEventListener(EVENT_DB_PROFILE_CHANGED, handleUpdate);
   }, []);
 
-  // Kiểm tra lệch môi trường .env.local
-  useEffect(() => {
-    setEnvSyncInfo(isProfileOutOfSyncWithEnv());
-  }, [config, selectedProfileId]);
 
   // Hàm tải thống kê thời gian thực từ Cloud
   const handleFetchStats = async (url: string, key: string) => {
@@ -470,38 +458,6 @@ export default function CustomSqlConfigSection() {
         </div>
       )}
 
-      {/* CẢNH BÁO LỆCH BIẾN MÔI TRƯỜNG .ENV.LOCAL NẾU CÓ */}
-      {envSyncInfo.isOutOfSync && (
-        <div className="p-4 rounded-2xl bg-amber-50 border-2 border-amber-300 text-amber-950 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <div className="font-black text-sm text-amber-900">
-                ⚠️ Phát hiện CSDL trên trình duyệt khác với file môi trường (.env.local)
-              </div>
-              <p className="mt-0.5 text-amber-800 leading-relaxed">
-                • CSDL Đang nạp trên máy: <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">{extractProjectRef(envSyncInfo.activeUrl)}</code> ({envSyncInfo.activeUrl})<br />
-                • CSDL Khai báo hệ thống (.env.local): <code className="bg-amber-100 px-1 py-0.5 rounded font-mono font-bold">{extractProjectRef(envSyncInfo.envUrl)}</code> ({envSyncInfo.envUrl})
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              syncProductionProfileWithEnv();
-              setNotice({
-                type: 'success',
-                text: 'Đã đồng bộ CSDL Chính về đúng cấu hình .env.local! Đang tải lại trang...',
-              });
-              setTimeout(() => window.location.reload(), 600);
-            }}
-            className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-black text-xs shrink-0 cursor-pointer shadow-sm flex items-center gap-1.5"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Đồng Bộ Theo .env.local</span>
-          </button>
-        </div>
-      )}
 
       {/* CHỌN MÔI TRƯỜNG (TABS) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
