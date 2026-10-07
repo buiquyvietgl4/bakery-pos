@@ -2630,7 +2630,7 @@ export async function checkTransferResolvedStatus(orderNumber: string): Promise<
 }
 
 // ── ĐỒNG BỘ DANH SÁCH ĐƠN ĐÃ DUYỆT ĐỔI TRẢ (RESOLVED RETURNS) ──
-export const DB_ROW_RESOLVED_RETURNS_ID = '00000000-0000-0000-0000-000000000029';
+export const DB_ROW_RESOLVED_RETURNS_ID = '00000000-0000-0000-0000-00000000002a';
 export const DB_ROW_RESOLVED_RETURNS_NAME = 'SYS_CONFIG_RESOLVED_RETURNS';
 
 export async function saveResolvedReturnRecordToDb(payload: ReturnApprovalResolvedPayload): Promise<void> {

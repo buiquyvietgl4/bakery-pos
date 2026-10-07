@@ -935,6 +935,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   let productMetadata: any = {};
   let deletedProductIds: any[] = [];
   let resolvedTransfers: any[] = [];
+  let resolvedReturns: any[] = [];
   let ovenBatches: any[] = [];
   let orderReturns: any[] = [];
   let heldOrders: any[] = [];
@@ -961,6 +962,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawDP) deletedProductIds = JSON.parse(rawDP);
       const rawRT = localStorage.getItem('bakery_resolved_transfers');
       if (rawRT) resolvedTransfers = JSON.parse(rawRT);
+      const rawRR = localStorage.getItem('bakery_resolved_returns');
+      if (rawRR) resolvedReturns = JSON.parse(rawRR);
       const rawOB = localStorage.getItem('bakery_oven_batches');
       if (rawOB) ovenBatches = JSON.parse(rawOB);
       const rawOR = localStorage.getItem('bakery_order_returns');
@@ -1112,6 +1115,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     product_metadata: productMetadata,
     deleted_product_ids: deletedProductIds,
     resolved_transfers: resolvedTransfers,
+    resolved_returns: resolvedReturns,
     oven_batches: ovenBatches,
     order_returns: orderReturns,
     held_orders: heldOrders,
@@ -1464,6 +1468,7 @@ export function normalizeBackupData(rawJson: any): BakeryBackupData {
   const order_returns = Array.isArray(ls.bakery_order_returns) ? ls.bakery_order_returns : [];
   const pending_transfers = Array.isArray(ls.bakery_pending_transfers) ? ls.bakery_pending_transfers : [];
   const resolved_transfers = Array.isArray(ls.bakery_resolved_transfers) ? ls.bakery_resolved_transfers : [];
+  const resolved_returns = Array.isArray(ls.bakery_resolved_returns) ? ls.bakery_resolved_returns : [];
   const oven_batches = Array.isArray(ls.bakery_oven_batches) ? ls.bakery_oven_batches : [];
   const notification_history = Array.isArray(ls.bakery_notification_history) ? ls.bakery_notification_history : [];
   const held_orders = Array.isArray(ls.bakery_held_orders) ? ls.bakery_held_orders : [];
@@ -1567,6 +1572,7 @@ export function normalizeBackupData(rawJson: any): BakeryBackupData {
     current_shift,
     pending_transfers,
     resolved_transfers,
+    resolved_returns,
     oven_batches,
     notification_history,
     settings,

@@ -704,6 +704,16 @@ CREATE TABLE IF NOT EXISTS resolved_transfers (
     resolved_by TEXT DEFAULT 'Admin'
 );
 
+CREATE TABLE IF NOT EXISTS resolved_returns (
+    id TEXT PRIMARY KEY,
+    order_number TEXT,
+    action TEXT DEFAULT 'approved',
+    reason TEXT,
+    resolved_by TEXT DEFAULT 'Admin',
+    resolved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    return_record TEXT
+);
+
 CREATE TABLE IF NOT EXISTS order_returns (
     id TEXT PRIMARY KEY,
     order_id TEXT NOT NULL,
@@ -1306,6 +1316,30 @@ INSERT INTO transfer_verify_config (id, mode, skip_for_admin, alert_sound, auto_
     }
   }
 
+  // ----------------------------------------------------------------------------
+  // 26. BẢNG DANH SÁCH ĐƠN ĐÃ DUYỆT ĐỔI TRẢ (RESOLVED_RETURNS)
+  // ----------------------------------------------------------------------------
+  const resolvedReturns = data?.resolved_returns || data?.bakery_resolved_returns || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_resolved_returns') || '[]') : []);
+  if (Array.isArray(resolvedReturns) && resolvedReturns.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 26. BẢNG DANH SÁCH ĐƠN ĐÃ DUYỆT ĐỔI TRẢ (RESOLVED_RETURNS)
+-- ----------------------------------------------------------------------------
+`;
+    for (const rr of resolvedReturns) {
+      const orderNum = typeof rr === 'string' ? rr : (rr.order_number || rr.orderNumber);
+      const action = typeof rr === 'object' ? (rr.action || 'approved') : 'approved';
+      const reason = typeof rr === 'object' ? (rr.reason || '') : '';
+      const resolvedBy = typeof rr === 'object' ? (rr.resolved_by || 'Admin') : 'Admin';
+      const resolvedAt = typeof rr === 'object' ? (rr.resolved_at || new Date().toISOString()) : new Date().toISOString();
+      const returnRec = typeof rr === 'object' && rr.return_record ? JSON.stringify(rr.return_record) : '';
+      const rrId = typeof rr === 'object' && rr.id ? rr.id : `rr_${orderNum || Date.now()}`;
+      if (orderNum) {
+        sql += `INSERT INTO resolved_returns (id, order_number, action, reason, resolved_by, resolved_at, return_record) VALUES (${sqlEscape(rrId)}, ${sqlEscape(orderNum)}, ${sqlEscape(action)}, ${sqlEscape(reason)}, ${sqlEscape(resolvedBy)}, ${sqlEscape(resolvedAt)}, ${sqlEscape(returnRec)});\n`;
+      }
+    }
+  }
+
   return sql;
 }
 
@@ -1592,6 +1626,11 @@ export async function restoreLocalFromBackupData(rawData: any): Promise<{ succes
       localSnapshot['bakery_resolved_transfers'] = typeof resTrans === 'string' ? resTrans : JSON.stringify(resTrans);
     }
 
+    const resReturns = data.resolved_returns || data.bakery_resolved_returns;
+    if (resReturns) {
+      localSnapshot['bakery_resolved_returns'] = typeof resReturns === 'string' ? resReturns : JSON.stringify(resReturns);
+    }
+
     const ovenBatches = data.oven_batches || data.bakery_oven_batches;
     if (ovenBatches) {
       localSnapshot['bakery_oven_batches'] = typeof ovenBatches === 'string' ? ovenBatches : JSON.stringify(ovenBatches);
@@ -1694,6 +1733,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let held_orders: any[] = [];
     let oven_batches: any[] = [];
     let resolved_transfers: any[] = [];
+    let resolved_returns: any[] = [];
     let deleted_product_ids: any[] = [];
     let cloud_stock_map: Record<string, number> = {};
 
@@ -1751,6 +1791,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_HELD_ORDERS' && Array.isArray(parsed)) held_orders = parsed;
           if (row.name === 'SYS_CONFIG_OVEN_BATCHES' && Array.isArray(parsed)) oven_batches = parsed;
           if (row.name === 'SYS_CONFIG_RESOLVED_TRANSFERS' && Array.isArray(parsed)) resolved_transfers = parsed;
+          if (row.name === 'SYS_CONFIG_RESOLVED_RETURNS' && Array.isArray(parsed)) resolved_returns = parsed;
           if (row.name === 'SYS_CONFIG_DELETED_PRODUCTS' && Array.isArray(parsed)) deleted_product_ids = parsed;
           if (row.name === 'SYS_CONFIG_STOCKS' && typeof parsed === 'object') cloud_stock_map = parsed;
         } catch {}
@@ -1826,6 +1867,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       bakery_bom_settings: full_cake_bom_config,
       pending_transfers: pendingTransfers,
       resolved_transfers,
+      resolved_returns,
       order_returns,
       held_orders,
       oven_batches,

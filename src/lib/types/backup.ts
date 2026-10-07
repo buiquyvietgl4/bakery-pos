@@ -135,6 +135,7 @@ export interface BakeryBackupData {
   product_metadata?: any;
   deleted_product_ids?: any[];
   resolved_transfers?: any[];
+  resolved_returns?: any[];
   oven_batches?: any[];
   settings: {
     vietqr?: any;

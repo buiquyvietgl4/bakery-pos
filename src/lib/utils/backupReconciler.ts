@@ -1356,6 +1356,22 @@ export async function executePushToSQL(
         }, { onConflict: 'id' });
       } catch {}
     }
+    if (backupData.resolved_returns && Array.isArray(backupData.resolved_returns)) {
+      try {
+        localStorage.setItem('bakery_resolved_returns', JSON.stringify(backupData.resolved_returns));
+        await supabase.from('recipes').upsert({
+          id: '00000000-0000-0000-0000-00000000002a',
+          name: 'SYS_CONFIG_RESOLVED_RETURNS',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          total_material_cost: 0,
+          notes: JSON.stringify(backupData.resolved_returns),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+      } catch {}
+    }
     const da = backupData.delivery_alert_config || (backupData.settings as any)?.delivery_alert_config;
     if (da) {
       try {

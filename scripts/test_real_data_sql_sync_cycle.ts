@@ -307,9 +307,9 @@ async function main() {
   }, { onConflict: 'id' });
   console.log(`     ✓ Tồn kho Croissant: ${currentStocks[REAL_DATA.products[0].id]} chiếc | Tart Trứng: ${currentStocks[REAL_DATA.products[1].id]} chiếc.`);
 
-  // 1.6 Cập nhật Ca làm việc thực tế vào SYS_CONFIG_SHIFTS & SYS_CONFIG_CURRENT_SHIFT
-  console.log('   • 1.6 Ghi nhận Ca làm việc vào `SYS_CONFIG_SHIFTS` & `SYS_CONFIG_CURRENT_SHIFT`...');
-  const { data: shiftRow } = await supabase.from('recipes').select('notes').eq('name', 'SYS_CONFIG_SHIFTS').maybeSingle();
+  // 1.6 Cập nhật Ca làm việc thực tế vào SYS_CONFIG_SHIFT_HISTORY & SYS_CONFIG_CURRENT_SHIFT
+  console.log('   • 1.6 Ghi nhận Ca làm việc vào `SYS_CONFIG_SHIFT_HISTORY` & `SYS_CONFIG_CURRENT_SHIFT`...');
+  const { data: shiftRow } = await supabase.from('recipes').select('notes').eq('name', 'SYS_CONFIG_SHIFT_HISTORY').maybeSingle();
   let shiftsList: any[] = [];
   if (shiftRow?.notes) {
     try { shiftsList = JSON.parse(shiftRow.notes); } catch {}
@@ -317,7 +317,7 @@ async function main() {
   shiftsList = [REAL_DATA.shift, ...shiftsList.filter((s: any) => s.id !== REAL_DATA.shift.id)];
   await supabase.from('recipes').upsert({
     id: '00000000-0000-0000-0000-000000000030',
-    name: 'SYS_CONFIG_SHIFTS',
+    name: 'SYS_CONFIG_SHIFT_HISTORY',
     yield_qty: 1,
     yield_unit: 'config',
     cost_per_unit: 0,
@@ -727,19 +727,22 @@ async function main() {
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000008', name: 'SYS_CONFIG_SPOILAGE', notes: JSON.stringify(fullBackupPayload.spoilage_logs || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000010', name: 'SYS_CONFIG_EXPENSES', notes: JSON.stringify(fullBackupPayload.expenses || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000011', name: 'SYS_CONFIG_CASHFLOW', notes: JSON.stringify(fullBackupPayload.cashflow || []), is_active: false });
-  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000030', name: 'SYS_CONFIG_SHIFTS', notes: JSON.stringify(fullBackupPayload.shifts || []), is_active: false });
+  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000030', name: 'SYS_CONFIG_SHIFT_HISTORY', notes: JSON.stringify(fullBackupPayload.shifts || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000012', name: 'SYS_CONFIG_CURRENT_SHIFT', notes: JSON.stringify(fullBackupPayload.current_shift || {}), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-00000000000a', name: 'SYS_CONFIG_CLOSINGS', notes: JSON.stringify(fullBackupPayload.accounting_closings || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000031', name: 'SYS_CONFIG_MATERIAL_TRANSACTIONS', notes: JSON.stringify(fullBackupPayload.material_transactions || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000015', name: 'SYS_CONFIG_MATERIAL_STOCK_ADJUSTMENTS', notes: JSON.stringify(fullBackupPayload.material_stock_adjustments || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000027', name: 'SYS_CONFIG_ORDER_RETURNS', notes: JSON.stringify(fullBackupPayload.order_returns || []), is_active: false });
+  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000028', name: 'SYS_CONFIG_PENDING_RETURNS', notes: JSON.stringify(fullBackupPayload.pending_returns || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000029', name: 'SYS_CONFIG_HELD_ORDERS', notes: JSON.stringify(fullBackupPayload.held_orders || []), is_active: false });
+  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-00000000002a', name: 'SYS_CONFIG_RESOLVED_RETURNS', notes: JSON.stringify(fullBackupPayload.resolved_returns || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000022', name: 'SYS_CONFIG_OVEN_BATCHES', notes: JSON.stringify(fullBackupPayload.oven_batches || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000013', name: 'SYS_CONFIG_NOTIFICATION_HISTORY', notes: JSON.stringify(fullBackupPayload.notification_history || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000017', name: 'SYS_CONFIG_PENDING_TRANSFERS', notes: JSON.stringify(fullBackupPayload.pending_transfers || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000023', name: 'SYS_CONFIG_RESOLVED_TRANSFERS', notes: JSON.stringify(fullBackupPayload.resolved_transfers || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000021', name: 'SYS_CONFIG_DELETED_PRODUCTS', notes: JSON.stringify(fullBackupPayload.deleted_product_ids || []), is_active: false });
   sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000016', name: 'SYS_CONFIG_DELIVERY_ALERT', notes: JSON.stringify(s.delivery_alert || {}), is_active: false });
+  sysConfigRowsToUpsert.push({ id: '00000000-0000-0000-0000-000000000040', name: 'SYS_PUSH_SUBSCRIPTIONS', notes: JSON.stringify(fullBackupPayload.push_subscriptions || []), is_active: false });
 
   for (const cfg of sysConfigRowsToUpsert) {
     await supabase.from('recipes').upsert({
@@ -808,8 +811,9 @@ async function main() {
   }
 
   let finalShifts: any[] = [];
-  if (fConfigMap.has('SYS_CONFIG_SHIFTS')) {
-    try { finalShifts = JSON.parse(fConfigMap.get('SYS_CONFIG_SHIFTS')!); } catch {}
+  const shiftKey = fConfigMap.has('SYS_CONFIG_SHIFT_HISTORY') ? 'SYS_CONFIG_SHIFT_HISTORY' : 'SYS_CONFIG_SHIFTS';
+  if (fConfigMap.has(shiftKey)) {
+    try { finalShifts = JSON.parse(fConfigMap.get(shiftKey)!); } catch {}
   }
 
   let finalCashflow: any[] = [];

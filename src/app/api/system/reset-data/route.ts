@@ -176,29 +176,45 @@ export async function POST(req: NextRequest) {
         '00000000-0000-0000-0000-000000000028', // DB_ROW_PENDING_RETURNS
         '00000000-0000-0000-0000-000000000027', // DB_ROW_ORDER_RETURNS
         '00000000-0000-0000-0000-000000000022', // DB_ROW_OVEN_BATCHES
+        '00000000-0000-0000-0000-000000000029', // DB_ROW_HELD_ORDERS
+        '00000000-0000-0000-0000-00000000002a', // DB_ROW_RESOLVED_RETURNS
       ];
       await supabase.from('recipes').delete().in('id', operationalRecipeIds);
 
       await supabase.from('recipes').delete().in('name', [
         'SPOILAGE_LIST',
         'DB_ROW_SPOILAGE_LIST',
+        'SYS_CONFIG_SPOILAGE',
         'MATERIAL_STOCK_ADJUSTMENTS',
         'MATERIAL_TRANSACTIONS',
         'SYS_CONFIG_CURRENT_SHIFT',
         'SYS_CONFIG_SHIFT_HISTORY',
+        'SYS_CONFIG_SHIFTS',
         'SYS_CONFIG_NOTIFICATION_HISTORY',
         'NOTIFICATION_HISTORY',
         'bakery_notification_history',
         'DB_ROW_STOCK_ADJUSTMENTS',
+        'SYS_CONFIG_STOCK_ADJUSTMENTS',
+        'SYS_CONFIG_MATERIAL_STOCK_ADJUSTMENTS',
+        'SYS_CONFIG_MATERIAL_TRANSACTIONS',
         'material_stock_adjustments',
         'material_transactions',
         'SYS_CONFIG_EXPENSES',
         'SYS_CONFIG_CASHFLOW',
         'DB_ROW_CLOSINGS',
+        'SYS_CONFIG_CLOSINGS',
         'DB_ROW_PENDING_TRANSFERS',
+        'SYS_CONFIG_PENDING_TRANSFERS',
         'DB_ROW_RESOLVED_TRANSFERS',
+        'SYS_CONFIG_RESOLVED_TRANSFERS',
         'DB_ROW_PENDING_RETURNS',
+        'SYS_CONFIG_PENDING_RETURNS',
+        'SYS_CONFIG_ORDER_RETURNS',
         'DB_ROW_OVEN_BATCHES',
+        'SYS_CONFIG_OVEN_BATCHES',
+        'DB_ROW_HELD_ORDERS',
+        'SYS_CONFIG_HELD_ORDERS',
+        'SYS_CONFIG_RESOLVED_RETURNS',
       ]);
     } catch (e: any) {
       console.warn('Xóa recipes operational rows:', e?.message || e);
