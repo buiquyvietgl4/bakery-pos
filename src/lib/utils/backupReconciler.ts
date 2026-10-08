@@ -1380,7 +1380,7 @@ export async function executePushToSQL(
         const uniquePending = Array.from(new Map(sourcePending.map((p: any) => [p.id, p])).values());
         localStorage.setItem('bakery_pending_returns', JSON.stringify(uniquePending));
         await supabase.from('recipes').upsert({
-          id: '00000000-0000-0000-0000-000000000029',
+          id: '00000000-0000-0000-0000-000000000028',
           name: 'SYS_CONFIG_PENDING_RETURNS',
           yield_qty: 1,
           yield_unit: 'config',

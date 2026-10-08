@@ -819,6 +819,9 @@ export default function POSPage() {
           } else if (rawNum) {
             await supabase.from('orders').delete().eq('order_number', rawNum);
           }
+          if (rawNum) {
+            broadcastOrderStatusUpdate(rawNum, 'cancelled').catch(() => {});
+          }
         }
       } catch (e) {
         console.warn('Lỗi xóa Supabase:', e);

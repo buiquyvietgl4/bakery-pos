@@ -31,6 +31,7 @@ describe('SQL Cloud & Local SQL Parity & Zero Data Loss Suite', () => {
         'bakery_resolved_returns',
         'bakery_held_orders',
         'bakery_custom_cake_orders',
+        'bakery_deleted_order_keys',
         'bakery_oven_batches',
         'bakery_admin_pin',
         'bakery_product_metadata_map',
@@ -236,6 +237,26 @@ describe('SQL Cloud & Local SQL Parity & Zero Data Loss Suite', () => {
 
       expect(restoredIngs).toEqual(deletedIngredients);
       expect(restoredRecs).toEqual(deletedRecipes);
+    });
+  });
+
+  describe('5. Zero UUID Collision Check across SYS_CONFIG Entities', () => {
+    it('DB_ROW_GLOBAL_SQL_ID và DB_ROW_RESET_EPOCH_ID phải là 2 UUID độc lập', async () => {
+      const { DB_ROW_GLOBAL_SQL_ID } = await import('@/lib/supabase/databaseProfileManager');
+      const { DB_ROW_RESET_EPOCH_ID } = await import('@/lib/utils/systemResetManager');
+
+      expect(DB_ROW_GLOBAL_SQL_ID).not.toBe(DB_ROW_RESET_EPOCH_ID);
+      expect(DB_ROW_GLOBAL_SQL_ID).toBe('00000000-0000-0000-0000-000000000098');
+      expect(DB_ROW_RESET_EPOCH_ID).toBe('00000000-0000-0000-0000-000000000099');
+    });
+
+    it('DB_ROW_HELD_ORDERS_ID và DB_ROW_PENDING_RETURNS_ID không được trùng nhau', async () => {
+      const { DB_ROW_HELD_ORDERS_ID } = await import('@/lib/utils/heldOrderManager');
+      const { DB_ROW_PENDING_RETURNS_ID } = await import('@/lib/supabase/realtimeSync');
+
+      expect(DB_ROW_HELD_ORDERS_ID).not.toBe(DB_ROW_PENDING_RETURNS_ID);
+      expect(DB_ROW_PENDING_RETURNS_ID).toBe('00000000-0000-0000-0000-000000000028');
+      expect(DB_ROW_HELD_ORDERS_ID).toBe('00000000-0000-0000-0000-000000000029');
     });
   });
 });

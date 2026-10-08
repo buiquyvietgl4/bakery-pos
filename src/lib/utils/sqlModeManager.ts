@@ -87,6 +87,7 @@ export const BAKERY_DATA_KEYS = [
   'bakery_order_returns',
   'bakery_held_orders',
   'bakery_custom_cake_orders',
+  'bakery_deleted_order_keys',
   'bakery_oven_batches',
   'bakery_kds_status_locks',
 ];

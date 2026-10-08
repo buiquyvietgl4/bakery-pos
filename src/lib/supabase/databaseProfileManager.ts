@@ -28,7 +28,7 @@ export const STORAGE_KEY_RECONCILE_LOCKED = 'bakery_reconcile_locked';
 export const EVENT_DB_PROFILE_CHANGED = 'bakery_db_profile_changed';
 
 // Đồng bộ CSDL Chính lên toàn bộ các thiết bị vào chung link app
-export const DB_ROW_GLOBAL_SQL_ID = '00000000-0000-0000-0000-000000000099';
+export const DB_ROW_GLOBAL_SQL_ID = '00000000-0000-0000-0000-000000000098';
 export const DB_ROW_GLOBAL_SQL_NAME = 'SYS_CONFIG_DATABASE_PROFILE';
 export const EVENT_GLOBAL_SQL_SYNCED = 'bakery_global_sql_synced';
 export const STORAGE_KEY_LAST_GLOBAL_SQL_SYNC = 'bakery_last_global_sql_sync_ts';
@@ -66,6 +66,18 @@ export const BAKERY_DATA_KEYS = [
   'bakery_autobank_config',
   'bakery_transfer_verification_config',
   'bakery_notification_history',
+  'bakery_order_returns',
+  'bakery_held_orders',
+  'bakery_pending_returns',
+  'bakery_resolved_returns',
+  'bakery_resolved_transfers',
+  'bakery_deleted_order_keys',
+  'bakery_deleted_ingredient_ids',
+  'bakery_deleted_recipe_ids',
+  'bakery_deleted_product_ids',
+  'bakery_oven_batches',
+  'bakery_product_metadata_map',
+  'bakery_admin_pin',
 ];
 
 export function cleanSupabaseUrl(rawUrl: string): string {
