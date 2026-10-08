@@ -109,6 +109,7 @@ export interface BakeryBackupData {
     totalExpenses: number;
     totalImages: number;
     estimatedSizeBytes: number;
+    [key: string]: any;
   };
   products: CachedProduct[];
   recipes: BakeryRecipe[];
@@ -134,6 +135,9 @@ export interface BakeryBackupData {
   notification_history?: any[];
   product_metadata?: any;
   deleted_product_ids?: any[];
+  deleted_ingredient_ids?: any[];
+  deleted_recipe_ids?: any[];
+  pending_returns?: any[];
   resolved_transfers?: any[];
   resolved_returns?: any[];
   oven_batches?: any[];

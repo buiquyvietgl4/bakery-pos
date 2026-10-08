@@ -626,6 +626,18 @@ CREATE TABLE IF NOT EXISTS pending_transfers (
     raw_payload_json TEXT
 );
 
+CREATE TABLE IF NOT EXISTS pending_returns (
+    id TEXT PRIMARY KEY,
+    order_number TEXT NOT NULL,
+    refund_amount NUMERIC DEFAULT 0,
+    reason TEXT,
+    requested_by TEXT,
+    cashier TEXT,
+    status TEXT DEFAULT 'pending',
+    requested_at TIMESTAMP,
+    raw_payload_json TEXT
+);
+
 CREATE TABLE IF NOT EXISTS current_shift (
     id TEXT PRIMARY KEY,
     is_open BOOLEAN DEFAULT TRUE,
@@ -895,7 +907,7 @@ ${generateSchemaSql()}
 `;
   if (Array.isArray(data?.order_returns) && data.order_returns.length > 0) {
     for (const ret of data.order_returns) {
-      sql += `INSERT INTO order_returns (id, order_id, order_number, return_type, refund_amount, refund_method, exchange_difference, reason_summary, notes, approved_by, created_at) VALUES (${sqlEscape(ret.id)}, ${sqlEscape(ret.order_id)}, ${sqlEscape(ret.order_number)}, ${sqlEscape(ret.return_type || 'refund')}, ${sqlEscape(ret.refund_amount || 0)}, ${sqlEscape(ret.refund_method || 'cash')}, ${sqlEscape(ret.exchange_difference || 0)}, ${sqlEscape(ret.reason_summary || null)}, ${sqlEscape(ret.notes || null)}, ${sqlEscape(ret.approved_by || 'Thu Ngân')}, ${sqlEscape(ret.created_at || new Date().toISOString())});
+      sql += `INSERT INTO order_returns (id, order_id, order_number, return_type, refund_amount, refund_method, exchange_difference, reason_summary, notes, approved_by, created_at) VALUES (${sqlEscape(ret.id)}, ${sqlEscape(ret.order_id)}, ${sqlEscape(ret.order_number)}, ${sqlEscape(ret.return_type || 'refund')}, ${sqlEscape(ret.refund_amount || 0)}, ${sqlEscape(ret.refund_method || 'cash')}, ${sqlEscape(ret.exchange_difference || 0)}, ${sqlEscape(ret.reason_summary || ret.reason || null)}, ${sqlEscape(ret.notes || null)}, ${sqlEscape(ret.approved_by || 'Thu Ngân')}, ${sqlEscape(ret.created_at || new Date().toISOString())});
 `;
       if (Array.isArray(ret.items)) {
         for (const rItem of ret.items) {
@@ -1341,6 +1353,62 @@ INSERT INTO transfer_verify_config (id, mode, skip_for_admin, alert_sound, auto_
     }
   }
 
+  // ----------------------------------------------------------------------------
+  // 27. BẢNG DANH SÁCH ĐƠN CHỜ DUYỆT ĐỔI TRẢ (PENDING_RETURNS)
+  // ----------------------------------------------------------------------------
+  const pendingReturns = data?.pending_returns || data?.bakery_pending_returns || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_pending_returns') || '[]') : []);
+  if (Array.isArray(pendingReturns) && pendingReturns.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 27. BẢNG DANH SÁCH ĐƠN CHỜ DUYỆT ĐỔI TRẢ (PENDING_RETURNS)
+-- ----------------------------------------------------------------------------
+`;
+    for (const pr of pendingReturns) {
+      const rawPayload = JSON.stringify(pr);
+      sql += `INSERT INTO pending_returns (id, order_number, refund_amount, reason, requested_by, cashier, status, requested_at, raw_payload_json) VALUES (${sqlEscape(pr.id || pr.order_number || generateUUID())}, ${sqlEscape(pr.order_number || pr.orderNumber)}, ${sqlEscape(pr.refund_amount || pr.refundAmount || 0)}, ${sqlEscape(pr.reason || '')}, ${sqlEscape(pr.requested_by || pr.requestedBy || 'POS')}, ${sqlEscape(pr.cashier || '')}, ${sqlEscape(pr.status || 'pending')}, ${sqlEscape(pr.requested_at || pr.requestedAt || new Date().toISOString())}, ${sqlEscape(rawPayload)}) ON CONFLICT(id) DO UPDATE SET raw_payload_json = EXCLUDED.raw_payload_json;\n`;
+    }
+  }
+
+  // ----------------------------------------------------------------------------
+  // 28. BẢNG PHIẾU ĐỔI TRẢ / HOÀN TIỀN (ORDER_RETURNS & ORDER_RETURN_ITEMS)
+  // ----------------------------------------------------------------------------
+  const orderReturns = data?.order_returns || data?.bakery_order_returns || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_order_returns') || '[]') : []);
+  if (Array.isArray(orderReturns) && orderReturns.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 28. BẢNG PHIẾU ĐỔI TRẢ / HOÀN TIỀN (ORDER_RETURNS & ORDER_RETURN_ITEMS)
+-- ----------------------------------------------------------------------------
+`;
+    for (const or of orderReturns) {
+      const orId = or.id || generateUUID();
+      sql += `INSERT INTO order_returns (id, order_id, order_number, return_type, refund_amount, refund_method, exchange_difference, reason_summary, notes, approved_by, created_at) VALUES (${sqlEscape(orId)}, ${sqlEscape(or.order_id || orId)}, ${sqlEscape(or.order_number || '')}, ${sqlEscape(or.return_type || 'refund')}, ${sqlEscape(or.refund_amount || 0)}, ${sqlEscape(or.refund_method || 'cash')}, ${sqlEscape(or.exchange_difference || 0)}, ${sqlEscape(or.reason_summary || or.reason || '')}, ${sqlEscape(or.notes || '')}, ${sqlEscape(or.approved_by || 'Admin')}, ${sqlEscape(or.created_at || new Date().toISOString())}) ON CONFLICT(id) DO UPDATE SET notes = EXCLUDED.notes;\n`;
+
+      if (Array.isArray(or.items) && or.items.length > 0) {
+        for (const item of or.items) {
+          const itemId = item.id || generateUUID();
+          sql += `INSERT INTO order_return_items (id, return_id, product_id, product_name, quantity, unit_price, refund_subtotal, restocked, condition, reason, notes) VALUES (${sqlEscape(itemId)}, ${sqlEscape(orId)}, ${sqlEscape(item.product_id || item.productId || null)}, ${sqlEscape(item.product_name || item.productName || 'Bánh')}, ${sqlEscape(item.quantity || 1)}, ${sqlEscape(item.unit_price || item.unitPrice || 0)}, ${sqlEscape(item.refund_subtotal || item.refundSubtotal || 0)}, ${sqlEscape(item.restocked ?? true)}, ${sqlEscape(item.condition || 'intact')}, ${sqlEscape(item.reason || '')}, ${sqlEscape(item.notes || '')}) ON CONFLICT(id) DO NOTHING;\n`;
+        }
+      }
+    }
+  }
+
+  // ----------------------------------------------------------------------------
+  // 29. BẢNG ĐƠN TẠM GIỮ TẠI QUẦY (HELD_ORDERS)
+  // ----------------------------------------------------------------------------
+  const heldOrders = data?.held_orders || data?.bakery_held_orders || (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_held_orders') || '[]') : []);
+  if (Array.isArray(heldOrders) && heldOrders.length > 0) {
+    sql += `
+-- ----------------------------------------------------------------------------
+-- 29. BẢNG ĐƠN TẠM GIỮ TẠI QUẦY (HELD_ORDERS)
+-- ----------------------------------------------------------------------------
+`;
+    for (const ho of heldOrders) {
+      const hoId = ho.id || generateUUID();
+      const rawJson = JSON.stringify(ho);
+      sql += `INSERT INTO held_orders (id, hold_code, label, total_amount, item_count, raw_order_json, created_at) VALUES (${sqlEscape(hoId)}, ${sqlEscape(ho.holdCode || '#T')}, ${sqlEscape(ho.label || 'Đơn lưu tạm')}, ${sqlEscape(ho.totalAmount || 0)}, ${sqlEscape(ho.itemCount || 0)}, ${sqlEscape(rawJson)}, ${sqlEscape(ho.createdAt || new Date().toISOString())}) ON CONFLICT(id) DO UPDATE SET raw_order_json = EXCLUDED.raw_order_json;\n`;
+    }
+  }
+
   return sql;
 }
 
@@ -1632,6 +1700,31 @@ export async function restoreLocalFromBackupData(rawData: any): Promise<{ succes
       localSnapshot['bakery_resolved_returns'] = typeof resReturns === 'string' ? resReturns : JSON.stringify(resReturns);
     }
 
+    const orderReturns = data.order_returns || data.bakery_order_returns;
+    if (orderReturns) {
+      localSnapshot['bakery_order_returns'] = typeof orderReturns === 'string' ? orderReturns : JSON.stringify(orderReturns);
+    }
+
+    const heldOrders = data.held_orders || data.bakery_held_orders;
+    if (heldOrders) {
+      localSnapshot['bakery_held_orders'] = typeof heldOrders === 'string' ? heldOrders : JSON.stringify(heldOrders);
+    }
+
+    const pendingReturns = data.pending_returns || data.bakery_pending_returns;
+    if (pendingReturns) {
+      localSnapshot['bakery_pending_returns'] = typeof pendingReturns === 'string' ? pendingReturns : JSON.stringify(pendingReturns);
+    }
+
+    const delIngIds = data.deleted_ingredient_ids || data.bakery_deleted_ingredient_ids;
+    if (delIngIds) {
+      localSnapshot['bakery_deleted_ingredient_ids'] = typeof delIngIds === 'string' ? delIngIds : JSON.stringify(delIngIds);
+    }
+
+    const delRecIds = data.deleted_recipe_ids || data.bakery_deleted_recipe_ids;
+    if (delRecIds) {
+      localSnapshot['bakery_deleted_recipe_ids'] = typeof delRecIds === 'string' ? delRecIds : JSON.stringify(delRecIds);
+    }
+
     const ovenBatches = data.oven_batches || data.bakery_oven_batches;
     if (ovenBatches) {
       localSnapshot['bakery_oven_batches'] = typeof ovenBatches === 'string' ? ovenBatches : JSON.stringify(ovenBatches);
@@ -1732,10 +1825,13 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let notification_history: any[] = [];
     let order_returns: any[] = [];
     let held_orders: any[] = [];
+    let pending_returns: any[] = [];
     let oven_batches: any[] = [];
     let resolved_transfers: any[] = [];
     let resolved_returns: any[] = [];
     let deleted_product_ids: any[] = [];
+    let deleted_ingredient_ids: any[] = [];
+    let deleted_recipe_ids: any[] = [];
     let cloud_stock_map: Record<string, number> = {};
 
     // Tải cấu hình định mức BOM bánh sinh nhật trực tiếp từ bảng bakery_bom_settings
@@ -1793,7 +1889,10 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_OVEN_BATCHES' && Array.isArray(parsed)) oven_batches = parsed;
           if (row.name === 'SYS_CONFIG_RESOLVED_TRANSFERS' && Array.isArray(parsed)) resolved_transfers = parsed;
           if (row.name === 'SYS_CONFIG_RESOLVED_RETURNS' && Array.isArray(parsed)) resolved_returns = parsed;
+          if (row.name === 'SYS_CONFIG_PENDING_RETURNS' && Array.isArray(parsed)) pending_returns = parsed;
           if (row.name === 'SYS_CONFIG_DELETED_PRODUCTS' && Array.isArray(parsed)) deleted_product_ids = parsed;
+          if (row.name === 'SYS_CONFIG_DELETED_INGREDIENTS' && Array.isArray(parsed)) deleted_ingredient_ids = parsed;
+          if (row.name === 'SYS_CONFIG_DELETED_RECIPES' && Array.isArray(parsed)) deleted_recipe_ids = parsed;
           if (row.name === 'SYS_CONFIG_STOCKS' && typeof parsed === 'object') cloud_stock_map = parsed;
         } catch {}
       }
@@ -1871,8 +1970,11 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       resolved_returns,
       order_returns,
       held_orders,
+      pending_returns,
       oven_batches,
       deleted_product_ids,
+      deleted_ingredient_ids,
+      deleted_recipe_ids,
       stocks: cloud_stock_map,
       current_shift,
       shifts: shift_history,

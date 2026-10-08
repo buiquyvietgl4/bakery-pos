@@ -936,7 +936,10 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   let notificationHistory: any[] = [];
   let productMetadata: any = {};
   let deletedProductIds: any[] = [];
+  let deletedIngredientIds: any[] = [];
+  let deletedRecipeIds: any[] = [];
   let resolvedTransfers: any[] = [];
+  let pendingReturns: any[] = [];
   let resolvedReturns: any[] = [];
   let ovenBatches: any[] = [];
   let orderReturns: any[] = [];
@@ -962,8 +965,14 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawPM) productMetadata = JSON.parse(rawPM);
       const rawDP = localStorage.getItem('bakery_deleted_product_ids');
       if (rawDP) deletedProductIds = JSON.parse(rawDP);
+      const rawDI = localStorage.getItem('bakery_deleted_ingredient_ids');
+      if (rawDI) deletedIngredientIds = JSON.parse(rawDI);
+      const rawDR = localStorage.getItem('bakery_deleted_recipe_ids');
+      if (rawDR) deletedRecipeIds = JSON.parse(rawDR);
       const rawRT = localStorage.getItem('bakery_resolved_transfers');
       if (rawRT) resolvedTransfers = JSON.parse(rawRT);
+      const rawPR = localStorage.getItem('bakery_pending_returns');
+      if (rawPR) pendingReturns = JSON.parse(rawPR);
       const rawRR = localStorage.getItem('bakery_resolved_returns');
       if (rawRR) resolvedReturns = JSON.parse(rawRR);
       const rawOB = localStorage.getItem('bakery_oven_batches');
@@ -1116,6 +1125,9 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     notification_history: notificationHistory,
     product_metadata: productMetadata,
     deleted_product_ids: deletedProductIds,
+    deleted_ingredient_ids: deletedIngredientIds,
+    deleted_recipe_ids: deletedRecipeIds,
+    pending_returns: pendingReturns,
     resolved_transfers: resolvedTransfers,
     resolved_returns: resolvedReturns,
     oven_batches: ovenBatches,

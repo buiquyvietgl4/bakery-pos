@@ -55,9 +55,14 @@ export const BAKERY_DATA_KEYS = [
   'bakery_accounting_closings',
   'bakery_closing_records',
   'bakery_security_config',
+  'bakery_admin_pin',
   'bakery_vietqr_config',
   'bakery_ewallet_config',
   'bakery_printer_config',
+  'bakery_print_receipt_template_58mm',
+  'bakery_print_receipt_template_80mm',
+  'bakery_print_sticker_template_50x30',
+  'bakery_print_sticker_template_50x40',
   'bakery_telegram_config',
   'bakery_store_branding',
   'bakery_cake_costing_config',
@@ -72,10 +77,18 @@ export const BAKERY_DATA_KEYS = [
   'bakery_transfer_verification_config',
   'bakery_notification_history',
   'bakery_product_metadata',
+  'bakery_product_metadata_map',
   'bakery_deleted_product_ids',
   'bakery_deleted_ingredient_ids',
+  'bakery_deleted_recipe_ids',
   'bakery_resolved_transfers',
+  'bakery_pending_returns',
+  'bakery_resolved_returns',
+  'bakery_order_returns',
+  'bakery_held_orders',
+  'bakery_custom_cake_orders',
   'bakery_oven_batches',
+  'bakery_kds_status_locks',
 ];
 
 export const STORAGE_KEYS_BACKUP = BAKERY_DATA_KEYS;
@@ -280,6 +293,12 @@ export function applyDataSnapshot(snapshot: Record<string, any>): void {
     window.dispatchEvent(new Event('bakery_stocks_updated'));
     window.dispatchEvent(new Event('bakery_orders_updated'));
     window.dispatchEvent(new Event('bakery_recipes_updated'));
+    window.dispatchEvent(new Event('bakery_ingredients_updated'));
+    window.dispatchEvent(new Event('bakery_bom_updated'));
+    window.dispatchEvent(new Event('bakery_order_returns_updated'));
+    window.dispatchEvent(new Event('bakery_held_orders_updated'));
+    window.dispatchEvent(new Event('bakery_pending_returns_updated'));
+    window.dispatchEvent(new Event('bakery_oven_batches_updated'));
     window.dispatchEvent(new Event('bakery_expenses_updated'));
     window.dispatchEvent(new Event('bakery_cashflow_updated'));
     window.dispatchEvent(new Event('bakery_spoilage_updated'));

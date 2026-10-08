@@ -1372,6 +1372,28 @@ export async function executePushToSQL(
         }, { onConflict: 'id' });
       } catch {}
     }
+    if (backupData.pending_returns && Array.isArray(backupData.pending_returns)) {
+      try {
+        const rawPending = localStorage.getItem('bakery_pending_returns');
+        const currentPending = rawPending ? JSON.parse(rawPending) : [];
+        const sourcePending = mergeMode === 'full_overwrite' ? backupData.pending_returns : [...backupData.pending_returns, ...currentPending];
+        const uniquePending = Array.from(new Map(sourcePending.map((p: any) => [p.id, p])).values());
+        localStorage.setItem('bakery_pending_returns', JSON.stringify(uniquePending));
+        await supabase.from('recipes').upsert({
+          id: '00000000-0000-0000-0000-000000000029',
+          name: 'SYS_CONFIG_PENDING_RETURNS',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          notes: JSON.stringify(uniquePending),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('bakery_pending_returns_updated', { detail: uniquePending }));
+        }
+      } catch {}
+    }
     const da = backupData.delivery_alert_config || (backupData.settings as any)?.delivery_alert_config;
     if (da) {
       try {
@@ -1396,6 +1418,42 @@ export async function executePushToSQL(
     if (backupData.deleted_product_ids && Array.isArray(backupData.deleted_product_ids) && backupData.deleted_product_ids.length > 0) {
       try {
         syncDeletedProductIdsToDb(backupData.deleted_product_ids);
+      } catch {}
+    }
+    if (backupData.deleted_ingredient_ids && Array.isArray(backupData.deleted_ingredient_ids) && backupData.deleted_ingredient_ids.length > 0) {
+      try {
+        const rawDel = localStorage.getItem('bakery_deleted_ingredient_ids');
+        const currentDel = rawDel ? JSON.parse(rawDel) : [];
+        const mergedDel = Array.from(new Set([...backupData.deleted_ingredient_ids, ...currentDel]));
+        localStorage.setItem('bakery_deleted_ingredient_ids', JSON.stringify(mergedDel));
+        await supabase.from('recipes').upsert({
+          id: '00000000-0000-0000-0000-000000000045',
+          name: 'SYS_CONFIG_DELETED_INGREDIENTS',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          notes: JSON.stringify(mergedDel),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+      } catch {}
+    }
+    if (backupData.deleted_recipe_ids && Array.isArray(backupData.deleted_recipe_ids) && backupData.deleted_recipe_ids.length > 0) {
+      try {
+        const rawDel = localStorage.getItem('bakery_deleted_recipe_ids');
+        const currentDel = rawDel ? JSON.parse(rawDel) : [];
+        const mergedDel = Array.from(new Set([...backupData.deleted_recipe_ids, ...currentDel]));
+        localStorage.setItem('bakery_deleted_recipe_ids', JSON.stringify(mergedDel));
+        await supabase.from('recipes').upsert({
+          id: '00000000-0000-0000-0000-000000000046',
+          name: 'SYS_CONFIG_DELETED_RECIPES',
+          yield_qty: 1,
+          yield_unit: 'config',
+          cost_per_unit: 0,
+          notes: JSON.stringify(mergedDel),
+          is_active: false,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
       } catch {}
     }
     if (backupData.product_metadata && typeof backupData.product_metadata === 'object') {
@@ -1558,8 +1616,14 @@ export async function executePushToSQL(
       window.dispatchEvent(new Event('bakery_products_updated'));
       window.dispatchEvent(new Event('bakery_stocks_updated'));
       window.dispatchEvent(new Event('bakery_orders_updated'));
+      window.dispatchEvent(new Event('bakery_ingredients_updated'));
+      window.dispatchEvent(new Event('bakery_recipes_updated'));
       window.dispatchEvent(new Event('bakery_spoilage_updated'));
       window.dispatchEvent(new CustomEvent('bakery_stock_adjustment_logs_updated', { detail: null }));
+      window.dispatchEvent(new Event('bakery_order_returns_updated'));
+      window.dispatchEvent(new Event('bakery_held_orders_updated'));
+      window.dispatchEvent(new CustomEvent('bakery_oven_batches_updated'));
+      window.dispatchEvent(new CustomEvent('bakery_pending_returns_updated'));
       window.dispatchEvent(new Event('bakery_vietqr_updated'));
       window.dispatchEvent(new Event('bakery_ewallet_updated'));
       window.dispatchEvent(new Event('bakery_printer_updated'));
