@@ -14,6 +14,8 @@ export interface DatabaseProfile {
   url: string;
   anonKey: string;
   isDefault?: boolean;
+  isCustomized?: boolean;
+  version?: number;
   updatedAt?: string;
 }
 
@@ -328,11 +330,17 @@ export function saveDatabaseProfile(
     }
   }
 
-  const newProfile = {
+  const isCustom = updatedProfile.isCustomized ?? (cleanUpdatedUrl ? cleanUpdatedUrl !== DEFAULT_PRODUCTION_URL : false);
+  const currentVersion = updatedProfile.version || Date.now();
+  const currentUpdatedAt = updatedProfile.updatedAt || new Date().toISOString();
+
+  const newProfile: DatabaseProfile = {
     ...updatedProfile,
     url: cleanUpdatedUrl,
     anonKey: updatedProfile.anonKey ? updatedProfile.anonKey.trim() : '',
-    updatedAt: new Date().toISOString(),
+    isCustomized: isCustom,
+    version: currentVersion,
+    updatedAt: currentUpdatedAt,
   };
 
   const index = config.profiles.findIndex((p) => p.id === updatedProfile.id);
@@ -379,13 +387,15 @@ export async function saveGlobalProductionSql(
   }
 
   const nowIso = new Date().toISOString();
+  const nowVersion = Date.now();
   const payload = {
     url: cleanUrl,
     anonKey: cleanKey,
     name,
     updatedAt: nowIso,
     updatedBy: 'admin',
-    version: Date.now(),
+    version: nowVersion,
+    isCustomized: true,
   };
 
   // 1. Cập nhật cấu hình trên máy hiện tại
@@ -395,7 +405,9 @@ export async function saveGlobalProductionSql(
     description: `Cơ sở dữ liệu đám mây chính thức của tiệm (${cleanUrl.replace(/^https?:\/\//, '').split('.')[0] || 'Cloud'}).`,
     url: cleanUrl,
     anonKey: cleanKey,
-    isDefault: true,
+    isDefault: false,
+    isCustomized: true,
+    version: nowVersion,
     updatedAt: nowIso,
   };
 
@@ -411,6 +423,8 @@ export async function saveGlobalProductionSql(
         anonKey: cleanKey,
         activeProfileId: 'production',
         name,
+        version: nowVersion,
+        updatedAt: nowIso,
       }),
     });
   } catch (err) {
@@ -476,6 +490,15 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
   if (typeof window === 'undefined') return { changed: false };
   if (isLocalMode()) return { changed: false };
 
+  const config = getMultiSqlConfig();
+  const currentProd = config.profiles.find((p) => p.id === 'production');
+  const testingUrl = cleanSupabaseUrl(DEFAULT_TESTING_URL);
+  const currentProdUrl = cleanSupabaseUrl(currentProd?.url || '');
+  const currentProdKey = (currentProd?.anonKey || '').trim();
+  const currentVersion = typeof currentProd?.version === 'number' ? currentProd.version : 0;
+  const currentUpdatedAtMs = currentProd?.updatedAt ? new Date(currentProd.updatedAt).getTime() : 0;
+  const isCustomized = Boolean(currentProd?.isCustomized || (currentProdUrl && currentProdUrl !== DEFAULT_PRODUCTION_URL));
+
   // 1. Kiểm tra qua API máy chủ (/api/system/database-profile)
   try {
     const res = await fetch('/api/system/database-profile', { cache: 'no-store' });
@@ -485,38 +508,66 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
         const serverUrl = cleanSupabaseUrl(json.data.url);
         const serverKey = (json.data.anonKey || '').trim();
         const serverUpdatedAt = json.data.updatedAt || '';
+        const serverUpdatedAtMs = serverUpdatedAt ? new Date(serverUpdatedAt).getTime() : 0;
+        const serverVersion = typeof json.data.version === 'number' ? json.data.version : 0;
+        const serverIsCustom =
+          json.isCustom === true ||
+          json.data?.isCustom === true ||
+          (json.isDefault !== true && json.data?.isDefault !== true && Boolean(serverUrl && serverUrl !== DEFAULT_PRODUCTION_URL));
+        const serverIsDefault =
+          json.isDefault === true ||
+          json.data?.isDefault === true ||
+          (!serverIsCustom && serverUrl === DEFAULT_PRODUCTION_URL);
 
-        const config = getMultiSqlConfig();
-        const currentProd = config.profiles.find((p) => p.id === 'production');
-        const testingUrl = cleanSupabaseUrl(DEFAULT_TESTING_URL);
-
-        if (currentProd) {
-          const currentUrl = cleanSupabaseUrl(currentProd.url);
-          const currentKey = (currentProd.anonKey || '').trim();
-
-          // Chặn tuyệt đối: Không cho phép CSDL Test (azgjnahbibrcbjooepef) được gán làm CSDL Chính
-          if (serverUrl === testingUrl) {
-            return { changed: false };
-          }
-
-          // Nếu URL hoặc Key từ máy chủ khác với máy này
-          if (serverUrl && serverKey && (serverUrl !== currentUrl || serverKey !== currentKey)) {
-            console.log(
-              `[GlobalSqlSync] Phát hiện CSDL Chính mới từ máy chủ: ${serverUrl}. Đang tự động đồng bộ...`
-            );
-            currentProd.url = serverUrl;
-            currentProd.anonKey = serverKey;
-            currentProd.updatedAt = serverUpdatedAt || new Date().toISOString();
-
-            localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
-
-            // Nếu thiết bị này đang chạy môi trường production (Cloud SQL Chính)
-            if (config.activeProfileId === 'production' && !isLocalMode()) {
-              clearProfileLocalData(); // Xóa cache cũ để nạp mới từ CSDL mới
-              window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED, { detail: config }));
+        if (currentProd && serverUrl && serverUrl !== testingUrl) {
+          // Trường hợp 1: Server là fallback mặc định (chưa có cấu hình tùy biến lưu trên server)
+          if (serverIsDefault || !serverIsCustom) {
+            if (isCustomized) {
+              // BẢO VỆ CẤU HÌNH NGƯỜI DÙNG: Client đã được cấu hình CSDL tùy biến,
+              // TUYỆT ĐỐI KHÔNG GHI ĐÈ URL MẶC ĐỊNH LÊN CLIENT!
+              // Tự động push cấu hình hiện tại của client lên server để đồng bộ
+              try {
+                fetch('/api/system/database-profile', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    url: currentProdUrl,
+                    anonKey: currentProdKey,
+                    activeProfileId: 'production',
+                    name: currentProd.name,
+                    version: currentVersion || Date.now(),
+                    updatedAt: currentProd.updatedAt || new Date().toISOString(),
+                  }),
+                }).catch(() => {});
+              } catch {}
             }
-            window.dispatchEvent(new CustomEvent(EVENT_GLOBAL_SQL_SYNCED, { detail: currentProd }));
-            return { changed: true, updatedProfile: currentProd };
+          } else {
+            // Trường hợp 2: Server có cấu hình tùy biến thực sự từ Admin
+            // So sánh version/timestamp: chỉ cập nhật nếu Server thực sự mới hơn Client
+            const isServerNewer =
+              serverVersion > currentVersion ||
+              (serverVersion === 0 && serverUpdatedAtMs > currentUpdatedAtMs);
+            const isDiff = serverUrl !== currentProdUrl || serverKey !== currentProdKey;
+
+            if (isServerNewer && isDiff) {
+              console.log(
+                `[GlobalSqlSync] Phát hiện CSDL Chính mới từ máy chủ: ${serverUrl}. Đang tự động đồng bộ...`
+              );
+              currentProd.url = serverUrl;
+              currentProd.anonKey = serverKey;
+              currentProd.version = serverVersion || Date.now();
+              currentProd.updatedAt = serverUpdatedAt || new Date().toISOString();
+              currentProd.isCustomized = true;
+
+              localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
+
+              if (config.activeProfileId === 'production' && !isLocalMode()) {
+                clearProfileLocalData();
+                window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED, { detail: config }));
+              }
+              window.dispatchEvent(new CustomEvent(EVENT_GLOBAL_SQL_SYNCED, { detail: currentProd }));
+              return { changed: true, updatedProfile: currentProd };
+            }
           }
         }
       }
@@ -527,11 +578,8 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
 
   // 2. Kiểm tra dự phòng qua Cloud Supabase SYS_CONFIG_DATABASE_PROFILE
   try {
-    const config = getMultiSqlConfig();
-    const currentProd = config.profiles.find((p) => p.id === 'production');
     const queryUrl = cleanSupabaseUrl(currentProd?.url || DEFAULT_PRODUCTION_URL);
     const queryKey = (currentProd?.anonKey || DEFAULT_PRODUCTION_KEY || '').trim();
-    const testingUrl = cleanSupabaseUrl(DEFAULT_TESTING_URL);
 
     if (queryUrl && queryKey) {
       const probeClient = createClient(queryUrl, queryKey, { auth: { persistSession: false } });
@@ -548,32 +596,38 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
           const cloudUrl = cleanSupabaseUrl(parsed.url);
           const cloudKey = (parsed.anonKey || '').trim();
           const cloudUpdatedAt = parsed.updatedAt || '';
+          const cloudUpdatedAtMs = cloudUpdatedAt ? new Date(cloudUpdatedAt).getTime() : 0;
+          const cloudVersion = typeof parsed.version === 'number' ? parsed.version : 0;
 
-          // Chặn tuyệt đối: Không nhận CSDL Test làm CSDL Chính
-          if (cloudUrl === testingUrl) {
-            return { changed: false };
-          }
+          if (cloudUrl && cloudUrl !== testingUrl && currentProd) {
+            // Không bao giờ để CSDL cũ đè URL mặc định lên cấu hình tùy biến của client
+            if (isCustomized && cloudUrl === DEFAULT_PRODUCTION_URL) {
+              // Bỏ qua
+            } else {
+              const isCloudNewer =
+                cloudVersion > currentVersion ||
+                (cloudVersion === 0 && cloudUpdatedAtMs > currentUpdatedAtMs);
+              const isDiff = cloudUrl !== currentProdUrl || cloudKey !== currentProdKey;
 
-          if (currentProd) {
-            const currentUrl = cleanSupabaseUrl(currentProd.url);
-            const currentKey = (currentProd.anonKey || '').trim();
+              if (isCloudNewer && isDiff) {
+                console.log(
+                  `[GlobalSqlSync] Phát hiện CSDL Chính mới từ Cloud SYS_CONFIG: ${cloudUrl}. Đang đồng bộ...`
+                );
+                currentProd.url = cloudUrl;
+                currentProd.anonKey = cloudKey;
+                currentProd.version = cloudVersion || Date.now();
+                currentProd.updatedAt = cloudUpdatedAt || new Date().toISOString();
+                currentProd.isCustomized = true;
 
-            if (cloudUrl && cloudKey && (cloudUrl !== currentUrl || cloudKey !== currentKey)) {
-              console.log(
-                `[GlobalSqlSync] Phát hiện CSDL Chính mới từ Cloud SYS_CONFIG: ${cloudUrl}. Đang đồng bộ...`
-              );
-              currentProd.url = cloudUrl;
-              currentProd.anonKey = cloudKey;
-              currentProd.updatedAt = cloudUpdatedAt || new Date().toISOString();
+                localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
 
-              localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
-
-              if (config.activeProfileId === 'production' && !isLocalMode()) {
-                clearProfileLocalData();
-                window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED, { detail: config }));
+                if (config.activeProfileId === 'production' && !isLocalMode()) {
+                  clearProfileLocalData();
+                  window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED, { detail: config }));
+                }
+                window.dispatchEvent(new CustomEvent(EVENT_GLOBAL_SQL_SYNCED, { detail: currentProd }));
+                return { changed: true, updatedProfile: currentProd };
               }
-              window.dispatchEvent(new CustomEvent(EVENT_GLOBAL_SQL_SYNCED, { detail: currentProd }));
-              return { changed: true, updatedProfile: currentProd };
             }
           }
         }
@@ -681,7 +735,12 @@ export function resetProfileToDefault(profileId: DatabaseEnvironmentId): MultiSq
   if (defaultItem) {
     const index = config.profiles.findIndex((p) => p.id === profileId);
     if (index >= 0) {
-      config.profiles[index] = { ...defaultItem };
+      config.profiles[index] = {
+        ...defaultItem,
+        isCustomized: false,
+        version: Date.now(),
+        updatedAt: new Date().toISOString(),
+      };
     }
     localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
     window.dispatchEvent(new CustomEvent(EVENT_DB_PROFILE_CHANGED, { detail: config }));

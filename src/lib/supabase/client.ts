@@ -36,10 +36,18 @@ function initSupabaseClient(): SupabaseClient {
 
 let currentClient: SupabaseClient = initSupabaseClient();
 
-// Lắng nghe sự kiện đổi môi trường DB để khởi tạo lại client ngay lập tức
+export function reinitSupabaseClient(): SupabaseClient {
+  currentClient = initSupabaseClient();
+  return currentClient;
+}
+
+// Lắng nghe sự kiện đổi môi trường DB hoặc sync CSDL mới để khởi tạo lại client ngay lập tức
 if (typeof window !== 'undefined') {
   window.addEventListener(EVENT_DB_PROFILE_CHANGED, () => {
-    currentClient = initSupabaseClient();
+    reinitSupabaseClient();
+  });
+  window.addEventListener('bakery_global_sql_synced', () => {
+    reinitSupabaseClient();
   });
 }
 

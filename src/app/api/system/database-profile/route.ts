@@ -10,6 +10,7 @@ import os from 'os';
 const PROFILE_FILE = path.join(process.cwd(), '.active_database_profile.json');
 const TMP_PROFILE_FILE = path.join(os.tmpdir(), '.active_database_profile.json');
 const ENV_LOCAL_FILE = path.join(process.cwd(), '.env.local');
+const ENV_FILE = path.join(process.cwd(), '.env');
 
 const DEFAULT_PROD_URL = 'https://fhiuojcvsouwugatnmve.supabase.co';
 const DEFAULT_PROD_KEY = 'sb_publishable_ZH4xsT4R5cWZ3P9uW76IZg_-k3mRtED';
@@ -44,11 +45,49 @@ function readSavedProfile(): any | null {
   return null;
 }
 
+function updateEnvFile(filePath: string, cleanUrl: string, cleanKey: string) {
+  try {
+    if (fs.existsSync(filePath)) {
+      let envContent = fs.readFileSync(filePath, 'utf-8');
+      if (/NEXT_PUBLIC_SUPABASE_URL=/.test(envContent)) {
+        envContent = envContent.replace(/NEXT_PUBLIC_SUPABASE_URL=.*/, `NEXT_PUBLIC_SUPABASE_URL=${cleanUrl}`);
+      } else {
+        envContent += `\nNEXT_PUBLIC_SUPABASE_URL=${cleanUrl}`;
+      }
+
+      if (/NEXT_PUBLIC_SUPABASE_ANON_KEY=/.test(envContent)) {
+        envContent = envContent.replace(/NEXT_PUBLIC_SUPABASE_ANON_KEY=.*/, `NEXT_PUBLIC_SUPABASE_ANON_KEY=${cleanKey}`);
+      } else {
+        envContent += `\nNEXT_PUBLIC_SUPABASE_ANON_KEY=${cleanKey}`;
+      }
+
+      if (/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=/.test(envContent)) {
+        envContent = envContent.replace(/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=.*/, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${cleanKey}`);
+      } else {
+        envContent += `\nNEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${cleanKey}`;
+      }
+
+      fs.writeFileSync(filePath, envContent, 'utf-8');
+    }
+  } catch (err) {
+    console.warn(`[database-profile] Không thể cập nhật file ${filePath}:`, err);
+  }
+}
+
 export async function GET() {
   try {
     const saved = readSavedProfile();
     if (saved && saved.url) {
-      return NextResponse.json({ success: true, data: saved });
+      return NextResponse.json({
+        success: true,
+        isCustom: true,
+        isDefault: false,
+        data: {
+          ...saved,
+          isCustom: true,
+          isDefault: false,
+        },
+      });
     }
   } catch (err) {
     console.warn('[database-profile] Lỗi đọc file profile:', err);
@@ -56,11 +95,16 @@ export async function GET() {
 
   return NextResponse.json({
     success: true,
+    isCustom: false,
+    isDefault: true,
     data: {
       url: process.env.NEXT_PUBLIC_SUPABASE_URL || DEFAULT_PROD_URL,
       anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || DEFAULT_PROD_KEY,
       activeProfileId: 'production',
-      updatedAt: new Date().toISOString(),
+      updatedAt: null,
+      version: 0,
+      isDefault: true,
+      isCustom: false,
     },
   });
 }
@@ -68,17 +112,27 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { url, anonKey, activeProfileId, name } = body;
+    const { url, anonKey, activeProfileId, name, version, updatedAt } = body;
 
     const cleanUrl = (url || '').trim().replace(/\/+$/, '').replace(/\/rest\/v1\/?$/i, '').replace(/\/+$/, '');
     const cleanKey = (anonKey || '').trim();
+
+    if (!cleanUrl || !cleanKey) {
+      return NextResponse.json(
+        { success: false, error: 'URL hoặc Anon Key không được để trống' },
+        { status: 400 }
+      );
+    }
 
     const profileData = {
       activeProfileId: activeProfileId || 'production',
       name: name || 'CSDL Chính (Vận Hành)',
       url: cleanUrl,
       anonKey: cleanKey,
-      updatedAt: new Date().toISOString(),
+      isCustom: true,
+      isDefault: false,
+      version: typeof version === 'number' && version > 0 ? version : Date.now(),
+      updatedAt: updatedAt || new Date().toISOString(),
     };
 
     // 1. Lưu vào in-memory để phục vụ ngay các request tiếp theo
@@ -96,31 +150,14 @@ export async function POST(req: NextRequest) {
       fs.writeFileSync(TMP_PROFILE_FILE, JSON.stringify(profileData, null, 2), 'utf-8');
     } catch {}
 
-    // 2. Nếu có .env.local và URL hợp lệ, cập nhật luôn .env.local để đồng bộ toàn diện
-    try {
-      if (cleanUrl && cleanKey && fs.existsSync(ENV_LOCAL_FILE)) {
-        let envContent = fs.readFileSync(ENV_LOCAL_FILE, 'utf-8');
-        if (/NEXT_PUBLIC_SUPABASE_URL=/.test(envContent)) {
-          envContent = envContent.replace(/NEXT_PUBLIC_SUPABASE_URL=.*/, `NEXT_PUBLIC_SUPABASE_URL=${cleanUrl}`);
-        } else {
-          envContent += `\nNEXT_PUBLIC_SUPABASE_URL=${cleanUrl}`;
-        }
-
-        if (/NEXT_PUBLIC_SUPABASE_ANON_KEY=/.test(envContent)) {
-          envContent = envContent.replace(/NEXT_PUBLIC_SUPABASE_ANON_KEY=.*/, `NEXT_PUBLIC_SUPABASE_ANON_KEY=${cleanKey}`);
-        } else {
-          envContent += `\nNEXT_PUBLIC_SUPABASE_ANON_KEY=${cleanKey}`;
-        }
-
-        fs.writeFileSync(ENV_LOCAL_FILE, envContent, 'utf-8');
-      }
-    } catch (envErr) {
-      console.warn('[database-profile] Không thể cập nhật .env.local:', envErr);
-    }
+    // 4. Cập nhật .env.local và .env
+    updateEnvFile(ENV_LOCAL_FILE, cleanUrl, cleanKey);
+    updateEnvFile(ENV_FILE, cleanUrl, cleanKey);
 
     return NextResponse.json({
       success: true,
-      message: 'Đã cập nhật URL và Khóa CSDL mới xuống ổ cứng máy chủ thành công!',
+      message: 'Đã cập nhật URL và Khóa CSDL mới xuống máy chủ thành công!',
+      isCustom: true,
       data: profileData,
     });
   } catch (err: any) {

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Database,
   Globe,
@@ -44,6 +44,7 @@ import {
   DEFAULT_PRODUCTION_KEY,
   saveGlobalProductionSql,
 } from '@/lib/supabase/databaseProfileManager';
+import { reinitSupabaseClient } from '@/lib/supabase/client';
 
 export default function CustomSqlConfigSection() {
   const [config, setConfig] = useState<MultiSqlConfig>(() => getMultiSqlConfig());
@@ -52,6 +53,7 @@ export default function CustomSqlConfigSection() {
   const [editKey, setEditKey] = useState('');
   const [showKey, setShowKey] = useState(false);
   const [isCopied, setIsCopied] = useState(false);
+  const isUserEditingRef = useRef(false);
 
   // Trạng thái Test Ping
   const [isTesting, setIsTesting] = useState(false);
@@ -80,7 +82,6 @@ export default function CustomSqlConfigSection() {
     return () => window.removeEventListener(EVENT_DB_PROFILE_CHANGED, handleUpdate);
   }, []);
 
-
   // Hàm tải thống kê thời gian thực từ Cloud
   const handleFetchStats = async (url: string, key: string) => {
     if (!url || !key) return;
@@ -95,8 +96,9 @@ export default function CustomSqlConfigSection() {
     }
   };
 
-  // Đồng bộ form khi chọn profile khác và nạp stats
+  // Đồng bộ form khi chọn profile khác hoặc khi config cập nhật (chỉ khi người dùng không đang tự gõ)
   useEffect(() => {
+    if (isUserEditingRef.current) return;
     const prof = config.profiles.find((p) => p.id === selectedProfileId);
     if (prof) {
       setEditUrl(prof.url || '');
@@ -109,6 +111,11 @@ export default function CustomSqlConfigSection() {
       }
     }
   }, [selectedProfileId, config]);
+
+  const handleSelectProfile = (id: string) => {
+    isUserEditingRef.current = false;
+    setSelectedProfileId(id);
+  };
 
   const activeProfile = getActiveProfile();
   const currentSelectedProfile =
@@ -130,18 +137,22 @@ export default function CustomSqlConfigSection() {
   // Xóa trắng CSDL Thử Nghiệm (để trống hoàn toàn)
   const handleClearTestProfile = () => {
     if (confirm('Bạn có chắc chắn muốn XÓA TRẮNG (để trống) cấu hình CSDL Thử Nghiệm không?')) {
+      isUserEditingRef.current = false;
       setEditUrl('');
       setEditKey('');
       setTestResult(null);
       setLiveStats(null);
-      saveDatabaseProfile(
+      const newCfg = saveDatabaseProfile(
         {
           ...currentSelectedProfile,
           url: '',
           anonKey: '',
+          isCustomized: false,
         },
         'fetch_from_new'
       );
+      setConfig(newCfg);
+      reinitSupabaseClient();
       setNotice({
         type: 'info',
         text: 'Đã xóa trắng và lưu CSDL Thử Nghiệm ở trạng thái để trống.',
@@ -183,6 +194,12 @@ export default function CustomSqlConfigSection() {
           currentSelectedProfile.name
         );
         if (res.success) {
+          isUserEditingRef.current = false;
+          setConfig(res.config);
+          setEditUrl(cleanInputUrl);
+          setEditKey(cleanInputKey);
+          reinitSupabaseClient();
+          handleFetchStats(cleanInputUrl, cleanInputKey);
           setNotice({
             type: 'success',
             text: `✅ ĐÃ LƯU & ĐỒNG BỘ TOÀN BỘ APP: CSDL Chính mới đã được đồng bộ lên toàn hệ thống! Mọi thiết bị khác vào chung link web sẽ tự động nhận CSDL mới này.`,
@@ -225,14 +242,18 @@ export default function CustomSqlConfigSection() {
         }
       }
 
-      saveDatabaseProfile(
+      isUserEditingRef.current = false;
+      const newCfg = saveDatabaseProfile(
         {
           ...currentSelectedProfile,
           url: cleanInputUrl,
           anonKey: cleanInputKey,
+          isCustomized: Boolean(cleanInputUrl),
         },
         'fetch_from_new'
       );
+      setConfig(newCfg);
+      reinitSupabaseClient();
 
       if (!cleanInputUrl) {
         setLiveStats(null);
@@ -242,6 +263,7 @@ export default function CustomSqlConfigSection() {
           text: `Đã lưu CSDL Thử Nghiệm ở trạng thái ĐỂ TRỐNG (Chưa thiết lập).`,
         });
       } else {
+        handleFetchStats(cleanInputUrl, cleanInputKey);
         setNotice({
           type: 'success',
           text: `Đã lưu thành công cấu hình CSDL Thử Nghiệm độc lập!`,
@@ -258,16 +280,20 @@ export default function CustomSqlConfigSection() {
         `Bạn có chắc chắn muốn khôi phục cấu hình của "${currentSelectedProfile.name}" về mặc định ban đầu không?\nCấu hình mặc định sẽ được đồng bộ cho toàn bộ các máy khác vào chung link app.`
       )
     ) {
+      isUserEditingRef.current = false;
       if (selectedProfileId === 'production') {
         setIsSavingGlobal(true);
         try {
-          await saveGlobalProductionSql(
+          const res = await saveGlobalProductionSql(
             DEFAULT_PRODUCTION_URL,
             DEFAULT_PRODUCTION_KEY,
             'CSDL Chính (Vận Hành)'
           );
+          setConfig(res.config);
           setEditUrl(DEFAULT_PRODUCTION_URL);
           setEditKey(DEFAULT_PRODUCTION_KEY);
+          reinitSupabaseClient();
+          handleFetchStats(DEFAULT_PRODUCTION_URL, DEFAULT_PRODUCTION_KEY);
           setNotice({
             type: 'info',
             text: `Đã khôi phục "${currentSelectedProfile.name}" về mặc định hệ thống và đồng bộ toàn bộ app.`,
@@ -282,7 +308,17 @@ export default function CustomSqlConfigSection() {
           setTimeout(() => setNotice(null), 5000);
         }
       } else {
-        resetProfileToDefault(selectedProfileId);
+        const newCfg = resetProfileToDefault(selectedProfileId);
+        setConfig(newCfg);
+        const defProf = newCfg.profiles.find((p) => p.id === selectedProfileId);
+        setEditUrl(defProf?.url || '');
+        setEditKey(defProf?.anonKey || '');
+        reinitSupabaseClient();
+        if (defProf?.url && defProf?.anonKey) {
+          handleFetchStats(defProf.url, defProf.anonKey);
+        } else {
+          setLiveStats(null);
+        }
         setNotice({
           type: 'info',
           text: `Đã khôi phục "${currentSelectedProfile.name}" về mặc định hệ thống.`,
@@ -403,7 +439,7 @@ export default function CustomSqlConfigSection() {
             <button
               key={prof.id}
               type="button"
-              onClick={() => setSelectedProfileId(prof.id)}
+              onClick={() => handleSelectProfile(prof.id)}
               className={`p-4 rounded-2xl text-left border-2 transition-all cursor-pointer relative ${
                 isSelected
                   ? isTest
@@ -626,7 +662,10 @@ export default function CustomSqlConfigSection() {
             <input
               type="text"
               value={editUrl}
-              onChange={(e) => setEditUrl(e.target.value)}
+              onChange={(e) => {
+                isUserEditingRef.current = true;
+                setEditUrl(e.target.value);
+              }}
               placeholder={
                 selectedProfileId === 'testing'
                   ? 'Để trống nếu không dùng Cloud Test (hoặc https://xyz-test.supabase.co)'
@@ -664,7 +703,10 @@ export default function CustomSqlConfigSection() {
             <input
               type={showKey ? 'text' : 'password'}
               value={editKey}
-              onChange={(e) => setEditKey(e.target.value)}
+              onChange={(e) => {
+                isUserEditingRef.current = true;
+                setEditKey(e.target.value);
+              }}
               placeholder={
                 selectedProfileId === 'testing'
                   ? 'Để trống nếu không dùng Cloud Test (hoặc sb_publishable_...)'

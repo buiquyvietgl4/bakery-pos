@@ -72,24 +72,95 @@ describe('Global Production SQL Synchronization', () => {
     expect(currentProd?.anonKey).toBe(updatedKey);
   });
 
-  it('fetchAndApplyGlobalSqlProfile không thay đổi nếu CSDL trên server trùng khớp với CSDL hiện tại', async () => {
-    const currentConfig = getMultiSqlConfig();
-    const prod = currentConfig.profiles.find((p) => p.id === 'production')!;
+  it('fetchAndApplyGlobalSqlProfile bảo vệ cấu hình tùy biến của client khi server chỉ trả về fallback mặc định (isDefault: true)', async () => {
+    // Client đã cấu hình CSDL tùy biến
+    const userCustomUrl = 'https://my-own-bakery.supabase.co';
+    const userCustomKey = 'sb_publishable_myKey777';
 
-    // Mock API server trả về cùng CSDL
+    saveDatabaseProfile(
+      {
+        id: 'production',
+        name: 'CSDL Chính (Vận Hành)',
+        description: 'Tùy biến của tôi',
+        url: userCustomUrl,
+        anonKey: userCustomKey,
+        isCustomized: true,
+        version: 1000,
+      },
+      'fetch_from_new'
+    );
+
+    // Mock server API chỉ trả về fallback mặc định
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         success: true,
+        isDefault: true,
+        isCustom: false,
         data: {
-          url: prod.url,
-          anonKey: prod.anonKey,
-          updatedAt: prod.updatedAt,
+          url: DEFAULT_PRODUCTION_URL,
+          anonKey: DEFAULT_PRODUCTION_KEY,
+          version: 0,
+          isDefault: true,
+          isCustom: false,
         },
       }),
     } as any);
 
     const res = await fetchAndApplyGlobalSqlProfile();
+
+    // Client TUYỆT ĐỐI KHÔNG BỊ GHI ĐÈ BỞI DEFAULT FALLBACK CỦA SERVER!
     expect(res.changed).toBe(false);
+
+    const cfg = getMultiSqlConfig();
+    const prod = cfg.profiles.find((p) => p.id === 'production');
+    expect(prod?.url).toBe(userCustomUrl);
+    expect(prod?.anonKey).toBe(userCustomKey);
+  });
+
+  it('fetchAndApplyGlobalSqlProfile không bị ghi đè nếu server gửi cấu hình có version cũ hơn client', async () => {
+    const userCustomUrl = 'https://latest-db.supabase.co';
+    const userCustomKey = 'sb_publishable_latestKey111';
+
+    saveDatabaseProfile(
+      {
+        id: 'production',
+        name: 'CSDL Chính (Vận Hành)',
+        description: 'Cấu hình mới nhất',
+        url: userCustomUrl,
+        anonKey: userCustomKey,
+        isCustomized: true,
+        version: 5000,
+        updatedAt: '2026-10-08T16:00:00.000Z',
+      },
+      'fetch_from_new'
+    );
+
+    // Mock server API trả về cấu hình cũ hơn (version 3000 < 5000)
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        success: true,
+        isCustom: true,
+        isDefault: false,
+        data: {
+          url: 'https://older-db.supabase.co',
+          anonKey: 'sb_publishable_olderKey222',
+          version: 3000,
+          updatedAt: '2026-10-08T15:00:00.000Z',
+          isCustom: true,
+          isDefault: false,
+        },
+      }),
+    } as any);
+
+    const res = await fetchAndApplyGlobalSqlProfile();
+
+    expect(res.changed).toBe(false);
+
+    const cfg = getMultiSqlConfig();
+    const prod = cfg.profiles.find((p) => p.id === 'production');
+    expect(prod?.url).toBe(userCustomUrl);
+    expect(prod?.anonKey).toBe(userCustomKey);
   });
 });
