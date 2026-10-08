@@ -295,7 +295,7 @@ export function SqlParityAuditModal({ isOpen, onClose }: SqlParityAuditModalProp
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-zinc-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-zinc-950/70 backdrop-blur-xs animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl border border-zinc-200 shadow-2xl w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200">
         {/* HEADER MODAL */}
         <div className="p-5 sm:p-6 border-b border-zinc-100 flex items-center justify-between gap-4 bg-gradient-to-r from-emerald-50/50 via-teal-50/30 to-amber-50/50">

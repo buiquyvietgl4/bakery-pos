@@ -31,14 +31,17 @@ import {
   reconcileBackupWithCurrentState, 
   executePushToSQL 
 } from '@/lib/utils/backupReconciler';
+import { SqlParityAuditModal } from './SqlParityAuditModal';
 
 interface BackupRestoreModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onOpenParityAudit?: () => void;
 }
 
-export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, onClose }) => {
+export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, onClose, onOpenParityAudit }) => {
   const [activeTab, setActiveTab] = useState<'backup' | 'restore'>('backup');
+  const [isParityAuditOpen, setIsParityAuditOpen] = useState(false);
 
   // ── STATE TAB 1: SAO LƯU ──
   const [config, setConfig] = useState<AutoBackupConfig>(getAutoBackupConfig());
@@ -521,28 +524,46 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
         </div>
 
         {/* NAVIGATION TABS */}
-        <div className="flex border-b border-gray-200 bg-amber-50/50 px-6 pt-3 gap-2">
+        <div className="flex flex-wrap items-center justify-between border-b border-gray-200 bg-amber-50/50 px-6 pt-3 gap-2">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab('backup')}
+              className={`flex items-center gap-2 rounded-t-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+                activeTab === 'backup'
+                  ? 'bg-white text-amber-700 shadow-sm border-t-2 border-amber-600'
+                  : 'text-gray-600 hover:text-amber-800 hover:bg-amber-100/50'
+              }`}
+            >
+              <HardDrive className="h-4 w-4" />
+              1. Tự Động Sao Lưu (Auto Backup)
+            </button>
+            <button
+              onClick={() => setActiveTab('restore')}
+              className={`flex items-center gap-2 rounded-t-xl px-5 py-2.5 text-sm font-semibold transition-all ${
+                activeTab === 'restore'
+                  ? 'bg-white text-amber-700 shadow-sm border-t-2 border-amber-600'
+                  : 'text-gray-600 hover:text-amber-800 hover:bg-amber-100/50'
+              }`}
+            >
+              <Upload className="h-4 w-4" />
+              2. Khôi Phục & Đẩy Lên SQL
+            </button>
+          </div>
+
           <button
-            onClick={() => setActiveTab('backup')}
-            className={`flex items-center gap-2 rounded-t-xl px-5 py-2.5 text-sm font-semibold transition-all ${
-              activeTab === 'backup'
-                ? 'bg-white text-amber-700 shadow-sm border-t-2 border-amber-600'
-                : 'text-gray-600 hover:text-amber-800 hover:bg-amber-100/50'
-            }`}
+            type="button"
+            onClick={() => {
+              if (onOpenParityAudit) {
+                onOpenParityAudit();
+              } else {
+                setIsParityAuditOpen(true);
+              }
+            }}
+            className="mb-2 flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-xs font-black text-white shadow-xs hover:shadow-sm transition cursor-pointer active:scale-95"
+            title="Kiểm định toàn diện 60 tiêu chí, đánh giá rủi ro và xác nhận đồng nhất Cloud SQL và Local SQL"
           >
-            <HardDrive className="h-4 w-4" />
-            1. Tự Động Sao Lưu (Auto Backup)
-          </button>
-          <button
-            onClick={() => setActiveTab('restore')}
-            className={`flex items-center gap-2 rounded-t-xl px-5 py-2.5 text-sm font-semibold transition-all ${
-              activeTab === 'restore'
-                ? 'bg-white text-amber-700 shadow-sm border-t-2 border-amber-600'
-                : 'text-gray-600 hover:text-amber-800 hover:bg-amber-100/50'
-            }`}
-          >
-            <Upload className="h-4 w-4" />
-            2. Khôi Phục & Đẩy Lên SQL
+            <ShieldCheck className="w-4 h-4 text-white" />
+            <span>Kiểm Định & Đánh Giá Rủi Ro SQL</span>
           </button>
         </div>
 
@@ -1487,6 +1508,14 @@ export const BackupRestoreModal: React.FC<BackupRestoreModalProps> = ({ isOpen, 
         </div>
 
       </div>
+
+      {/* MODAL KIỂM ĐỊNH TOÀN DIỆN & ĐÁNH GIÁ RỦI RO ĐỒNG BỘ SQL NỘI BỘ */}
+      {!onOpenParityAudit && (
+        <SqlParityAuditModal
+          isOpen={isParityAuditOpen}
+          onClose={() => setIsParityAuditOpen(false)}
+        />
+      )}
     </div>
   );
 };

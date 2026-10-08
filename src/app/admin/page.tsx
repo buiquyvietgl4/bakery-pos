@@ -7349,71 +7349,6 @@ export default function AdminDashboard() {
         <div className="space-y-4">
           {renderSystemSubTabs()}
           <div className="max-w-5xl w-full mx-auto space-y-6">
-          {/* HEADER CHÍNH CỦA TRANG CSDL */}
-          <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div className="space-y-1">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-700 flex items-center justify-center font-bold">
-                  <Database className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="font-black text-xl text-zinc-900 flex items-center gap-2">
-                    Quản Trị Cơ Sở Dữ Liệu & Lưu Trữ SQL
-                  </h2>
-                  <p className="text-xs text-zinc-500">
-                    Lựa chọn linh hoạt giữa Chạy Online (Cloud SQL) và Chạy Cục bộ (Local SQL máy tính) với dữ liệu cô lập tuyệt đối.
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* CHỈ BÁO HUY HIỆU TRẠNG THÁI HIỆN TẠI & NÚT SAO LƯU SQL GOM VÀO ĐÂY */}
-            <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-              <div className={`px-3.5 py-2 rounded-2xl border flex items-center gap-2 text-xs font-bold ${
-                sqlModeConfig.mode === 'online'
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                  : 'bg-amber-50 border-amber-200 text-amber-800'
-              }`}>
-                <span className={`w-2.5 h-2.5 rounded-full ${
-                  sqlModeConfig.mode === 'online' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500 animate-pulse'
-                }`} />
-                <span>
-                  Đang chạy:{' '}
-                  <b>{sqlModeConfig.mode === 'online' ? '1. Online Cloud SQL' : '2. Local SQL Cục Bộ'}</b>
-                </span>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setIsParityAuditModalOpen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-xs font-black text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
-                title="Kiểm định toàn diện 60 tiêu chí, đánh giá rủi ro và xác nhận đồng nhất Cloud SQL và Local SQL"
-              >
-                <ShieldCheck className="w-4 h-4 text-white" />
-                <span>Kiểm Định & Đánh Giá Rủi Ro SQL</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsBackupModalOpen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-xs font-black text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
-                title="Tự động sao lưu toàn bộ dữ liệu & phục hồi đẩy lên SQL đối soát thông minh"
-              >
-                <Database className="w-4 h-4 text-white" />
-                <span>Sao Lưu & Phục Hồi SQL</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setIsResetModalOpen(true)}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-xs font-black text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
-                title="Reset toàn bộ dữ liệu hệ thống (Giao dịch hoặc Toàn bộ) có bảo vệ Zero-Resurrection"
-              >
-                <Trash2 className="w-4 h-4 text-white" />
-                <span>Reset Dữ Liệu</span>
-              </button>
-            </div>
-          </div>
 
           {/* ── BẢNG ĐIỀU KHIỂN THEO DÕI DUNG LƯỢNG HỆ THỐNG (500 MB CSDL ĐƠN HÀNG & 1 GB STORE ẢNH) ── */}
           <div className="bg-white rounded-3xl border border-zinc-200 p-5 sm:p-6 shadow-xs space-y-5">
@@ -9948,6 +9883,7 @@ export default function AdminDashboard() {
       <BackupRestoreModal
         isOpen={isBackupModalOpen}
         onClose={() => setIsBackupModalOpen(false)}
+        onOpenParityAudit={() => setIsParityAuditModalOpen(true)}
       />
 
       {/* ── MODAL RESET DỮ LIỆU TOÀN BỘ HỆ THỐNG ── */}
