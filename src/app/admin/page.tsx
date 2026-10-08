@@ -78,6 +78,7 @@ import {
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { SystemResetModal } from '@/components/admin/SystemResetModal';
+import { SqlParityAuditModal } from '@/components/admin/SqlParityAuditModal';
 import { startAutoBackupWatcher, stopAutoBackupWatcher } from '@/lib/utils/backupManager';
 import { AccountingClosingSection } from '@/components/admin/AccountingClosingSection';
 import { fetchClosingRecordsFromDb } from '@/lib/utils/closingManager';
@@ -307,6 +308,7 @@ export default function AdminDashboard() {
   const [isPrinterSettingsOpen, setIsPrinterSettingsOpen] = useState(false);
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isParityAuditModalOpen, setIsParityAuditModalOpen] = useState(false);
   const [isAdminSyncing, setIsAdminSyncing] = useState(false);
   const navScrollRef = useRef<HTMLDivElement>(null);
 
@@ -7373,6 +7375,16 @@ export default function AdminDashboard() {
 
               <button
                 type="button"
+                onClick={() => setIsParityAuditModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-xs font-black text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
+                title="Kiểm định toàn diện 60 tiêu chí, đánh giá rủi ro và xác nhận đồng nhất Cloud SQL và Local SQL"
+              >
+                <ShieldCheck className="w-4 h-4 text-white" />
+                <span>Kiểm Định & Đánh Giá Rủi Ro SQL</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => setIsBackupModalOpen(true)}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-xs font-black text-white shadow-2xs hover:shadow-xs transition cursor-pointer"
                 title="Tự động sao lưu toàn bộ dữ liệu & phục hồi đẩy lên SQL đối soát thông minh"
@@ -9935,6 +9947,12 @@ export default function AdminDashboard() {
         onResetComplete={() => {
           loadData();
         }}
+      />
+
+      {/* ── MODAL KIỂM ĐỊNH TOÀN DIỆN & ĐÁNH GIÁ RỦI RO ĐỒNG BỘ SQL ── */}
+      <SqlParityAuditModal
+        isOpen={isParityAuditModalOpen}
+        onClose={() => setIsParityAuditModalOpen(false)}
       />
     </div>
   );
