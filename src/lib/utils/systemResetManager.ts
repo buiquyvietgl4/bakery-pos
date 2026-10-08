@@ -276,6 +276,32 @@ export async function clearAllClientStorage(
         }
         localStorage.setItem('bakery_notification_history', '[]');
         localStorage.setItem('bakery_notifs_initialized', 'true');
+        // Reset sạch cấu hình BOM bánh sinh nhật
+        localStorage.setItem('bakery_full_bom_config', JSON.stringify({
+          version: '2026.1',
+          targetFoodCostPct: 36.5,
+          cakeBases: [],
+          creamCoatings: [],
+          fillings: [],
+          packagings: [],
+          freeAccessories: [],
+          decorAddons: [],
+          birthdayBomPresets: [],
+        }));
+        localStorage.setItem('bakery_bom_initialized', 'true');
+        window.dispatchEvent(new CustomEvent('bakery_bom_updated', {
+          detail: {
+            version: '2026.1',
+            targetFoodCostPct: 36.5,
+            cakeBases: [],
+            creamCoatings: [],
+            fillings: [],
+            packagings: [],
+            freeAccessories: [],
+            decorAddons: [],
+            birthdayBomPresets: [],
+          }
+        }));
         window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
         window.dispatchEvent(new Event('bakery_products_updated'));
         window.dispatchEvent(new Event('bakery_recipes_updated'));

@@ -20,22 +20,64 @@ import { isLocalMode } from '@/lib/utils/sqlModeManager';
 
 export const CAKE_BOM_CONFIG_KEY = 'bakery_full_bom_config';
 export const CAKE_BOM_UPDATED_EVENT = 'bakery_bom_updated';
+export const CAKE_BOM_INITIALIZED_KEY = 'bakery_bom_initialized';
+
+export const EMPTY_FULL_CAKE_BOM_CONFIG: FullCakeBomConfig = {
+  version: '2026.1',
+  targetFoodCostPct: 36.5,
+  cakeBases: [],
+  creamCoatings: [],
+  fillings: [],
+  packagings: [],
+  freeAccessories: [],
+  decorAddons: [],
+  birthdayBomPresets: [],
+};
 
 // ── LẤY CẤU HÌNH TỪ LOCALSTORAGE ──
 export function getFullCakeBomConfig(): FullCakeBomConfig {
   if (typeof window === 'undefined') return INITIAL_FULL_CAKE_BOM_CONFIG;
   try {
     const raw = localStorage.getItem(CAKE_BOM_CONFIG_KEY);
-    if (!raw) return INITIAL_FULL_CAKE_BOM_CONFIG;
+    if (!raw) {
+      if (localStorage.getItem(CAKE_BOM_INITIALIZED_KEY) === 'true') {
+        return EMPTY_FULL_CAKE_BOM_CONFIG;
+      }
+      return INITIAL_FULL_CAKE_BOM_CONFIG;
+    }
     const parsed = JSON.parse(raw);
-    if (!parsed || !parsed.cakeBases) return INITIAL_FULL_CAKE_BOM_CONFIG;
+    if (!parsed) return EMPTY_FULL_CAKE_BOM_CONFIG;
     return {
-      ...INITIAL_FULL_CAKE_BOM_CONFIG,
-      ...parsed,
+      version: parsed.version || '2026.1',
+      targetFoodCostPct: Number(parsed.targetFoodCostPct ?? 36.5),
+      cakeBases: Array.isArray(parsed.cakeBases) ? parsed.cakeBases : [],
+      creamCoatings: Array.isArray(parsed.creamCoatings) ? parsed.creamCoatings : [],
+      fillings: Array.isArray(parsed.fillings) ? parsed.fillings : [],
+      packagings: Array.isArray(parsed.packagings) ? parsed.packagings : [],
+      freeAccessories: Array.isArray(parsed.freeAccessories) ? parsed.freeAccessories : [],
+      decorAddons: Array.isArray(parsed.decorAddons) ? parsed.decorAddons : [],
+      birthdayBomPresets: Array.isArray(parsed.birthdayBomPresets) ? parsed.birthdayBomPresets : [],
     };
   } catch {
-    return INITIAL_FULL_CAKE_BOM_CONFIG;
+    return EMPTY_FULL_CAKE_BOM_CONFIG;
   }
+}
+
+// ── RESET TRẮNG CẤU HÌNH BOM BÁNH SINH NHẬT ──
+export function resetFullCakeBomConfig(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(CAKE_BOM_CONFIG_KEY, JSON.stringify(EMPTY_FULL_CAKE_BOM_CONFIG));
+    localStorage.setItem(CAKE_BOM_INITIALIZED_KEY, 'true');
+    window.dispatchEvent(new CustomEvent(CAKE_BOM_UPDATED_EVENT, { detail: EMPTY_FULL_CAKE_BOM_CONFIG }));
+  } catch (e) {
+    console.error('Lỗi reset BOM vào localStorage:', e);
+  }
+
+  // Tự động đồng bộ cấu hình rỗng lên CSDL
+  syncCakeBomConfigToDb(EMPTY_FULL_CAKE_BOM_CONFIG).catch((err) => {
+    console.warn('Lỗi đồng bộ reset BOM lên CSDL:', err);
+  });
 }
 
 // ── LƯU CẤU HÌNH VÀO LOCALSTORAGE VÀ SYNC CLOUD & LOCAL SQL ──
@@ -158,6 +200,11 @@ export async function fetchFullCakeBomConfigFromDb(): Promise<FullCakeBomConfig 
     }
   } catch {}
 
+  // Nếu DB trống và máy đã từng khởi tạo / reset
+  if (typeof window !== 'undefined' && localStorage.getItem(CAKE_BOM_INITIALIZED_KEY) === 'true') {
+    return EMPTY_FULL_CAKE_BOM_CONFIG;
+  }
+
   return null;
 }
 
@@ -198,17 +245,17 @@ export function calculateCakeCostDetails(
   // 1. Cốt bánh
   const base = config.cakeBases.find((b) => b.id === params.cakeBaseId) || config.cakeBases[0];
   const baseSize =
-    (params.cakeBaseSizeId ? base?.sizes.find((s) => s.id === params.cakeBaseSizeId) : null) ||
-    base?.sizes[2] ||
-    base?.sizes[0];
+    (params.cakeBaseSizeId ? base?.sizes?.find((s) => s.id === params.cakeBaseSizeId) : null) ||
+    base?.sizes?.[2] ||
+    base?.sizes?.[0];
   const baseCost = baseSize?.baseCost ?? 0;
 
   // 2. Kem phủ (tự động link size theo đường kính cm của cốt bánh nếu không truyền)
   const cream = config.creamCoatings.find((c) => c.id === params.creamCoatingId) || config.creamCoatings[0];
   const creamSize =
-    (params.creamCoatingSizeId ? cream?.sizes.find((s) => s.id === params.creamCoatingSizeId) : null) ||
-    cream?.sizes.find((s) => s.diameterCm === baseSize?.diameterCm) ||
-    cream?.sizes[0];
+    (params.creamCoatingSizeId ? cream?.sizes?.find((s) => s.id === params.creamCoatingSizeId) : null) ||
+    cream?.sizes?.find((s) => s.diameterCm === baseSize?.diameterCm) ||
+    cream?.sizes?.[0];
   const creamCost = creamSize?.baseCost ?? 0;
 
   // 3. Nhân bánh

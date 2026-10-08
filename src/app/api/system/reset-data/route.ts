@@ -67,7 +67,17 @@ function resetLocalSqlFiles(mode: 'operational' | 'full', epoch: number) {
             dbJson.bakery_products = [];
             dbJson.bakery_recipes = [];
             dbJson.bakery_ingredients = [];
-            dbJson.bakery_full_bom_config = null;
+            dbJson.bakery_full_bom_config = {
+              version: '2026.1',
+              targetFoodCostPct: 36.5,
+              cakeBases: [],
+              creamCoatings: [],
+              fillings: [],
+              packagings: [],
+              freeAccessories: [],
+              decorAddons: [],
+              birthdayBomPresets: [],
+            };
           }
 
           dbJson.bakery_system_reset_epoch = epoch;
@@ -247,7 +257,19 @@ export async function POST(req: NextRequest) {
       } catch {}
 
       try {
-        await supabase.from('bakery_bom_settings').delete().neq('id', 'none');
+        await supabase.from('bakery_bom_settings').upsert({
+          id: 'primary',
+          version: '2026.1',
+          target_food_cost_pct: 36.5,
+          cake_bases: [],
+          cream_coatings: [],
+          fillings: [],
+          packagings: [],
+          free_accessories: [],
+          decor_addons: [],
+          birthday_bom_presets: [],
+          updated_at: new Date().toISOString(),
+        });
       } catch {}
 
       // Xóa công thức thường, chừa lại SYS_CONFIG_SECURITY và SYS_RESET_EPOCH
