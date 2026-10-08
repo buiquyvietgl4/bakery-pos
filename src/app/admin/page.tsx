@@ -115,7 +115,7 @@ import { ShiftManagementSection } from '@/components/admin/ShiftManagementSectio
 import AccountManagementSection from '@/components/admin/AccountManagementSection';
 import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
-import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes } from '@/lib/utils/recipeCalculator';
+import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes, deleteRecipeEverywhere, unmarkRecipeDeleted } from '@/lib/utils/recipeCalculator';
 import {
   ExpenseItem,
   CashflowTransaction,
@@ -2410,6 +2410,8 @@ export default function AdminDashboard() {
       items: formattedItems,
     };
 
+    unmarkRecipeDeleted(currentId, newRecipeName);
+
     try {
       if (navigator.onLine) {
         const bakeNotes = JSON.stringify({
@@ -2492,21 +2494,7 @@ export default function AdminDashboard() {
     if (confirm(`Bạn có chắc chắn muốn xóa công thức bánh "${name}"?`)) {
       const updated = recipes.filter((r) => r.id !== id);
       setRecipes(updated);
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('bakery_recipes', JSON.stringify(updated));
-      }
-      autoSyncToLocalSqlFolder().catch(() => {});
-      broadcastRecipeChange('delete', { id });
-      try {
-        if (navigator.onLine && !isLocalMode()) {
-          try {
-            await supabase.from('recipe_items').delete().eq('recipe_id', id);
-          } catch {}
-          await supabase.from('recipes').delete().eq('id', id);
-        }
-      } catch (err) {
-        console.error(err);
-      }
+      await deleteRecipeEverywhere(id, name);
     }
   };
 

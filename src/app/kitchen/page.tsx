@@ -341,13 +341,24 @@ export default function KitchenPage() {
   const [isRecipePickerOpen, setIsRecipePickerOpen] = useState<boolean>(false);
 
   // ── LÒ NƯỚNG ĐANG HOẠT ĐỘNG (ACTIVE OVEN TIMERS) ──
+  const sanitizeOvenBatches = (list: any): ActiveOvenBatch[] => {
+    if (!Array.isArray(list)) return [];
+    return list.filter(
+      (b) => b && typeof b === 'object' && typeof b.cake_name === 'string' && typeof b.quantity === 'number'
+    );
+  };
+
   const [ovenBatches, setOvenBatches] = useState<ActiveOvenBatch[]>(() => {
     if (typeof window !== 'undefined') {
       try {
         const saved = localStorage.getItem('bakery_oven_batches');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
+          const sanitized = sanitizeOvenBatches(parsed);
+          if (Array.isArray(parsed) && sanitized.length !== parsed.length) {
+            localStorage.setItem('bakery_oven_batches', JSON.stringify(sanitized));
+          }
+          return sanitized;
         }
       } catch {}
     }
@@ -357,22 +368,20 @@ export default function KitchenPage() {
   // Đồng bộ mẻ nướng lò từ CSDL Supabase và giữa các thiết bị
   useEffect(() => {
     fetchOvenBatchesFromDb().then((batches) => {
-      if (Array.isArray(batches) && batches.length > 0) {
-        setOvenBatches(batches);
-      }
+      setOvenBatches(sanitizeOvenBatches(batches));
     }).catch(console.error);
 
     const handleBatchesSync = (e: any) => {
       if (e.detail && Array.isArray(e.detail)) {
-        setOvenBatches(e.detail);
+        setOvenBatches(sanitizeOvenBatches(e.detail));
       }
     };
 
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === 'bakery_oven_batches' && e.newValue) {
+      if (e.key === 'bakery_oven_batches') {
         try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) setOvenBatches(parsed);
+          const parsed = e.newValue ? JSON.parse(e.newValue) : [];
+          setOvenBatches(sanitizeOvenBatches(parsed));
         } catch {}
       }
     };
@@ -3312,7 +3321,7 @@ export default function KitchenPage() {
                 )}
               </div>
               <div className="text-[11px] text-zinc-400">
-                {ovenBatches.map((b) => `${b.quantity}x ${b.cake_name} (${b.status === 'done' ? 'CHÍN XONG' : Math.max(0, Math.ceil((b.ends_at - Date.now()) / 60000)) + 'p'})`).join(' • ')}
+                {ovenBatches.map((b) => `${b.quantity ?? 1}x ${b.cake_name || 'Bánh'} (${b.status === 'done' ? 'CHÍN XONG' : Math.max(0, Math.ceil(((b.ends_at || Date.now()) - Date.now()) / 60000)) + 'p'})`).join(' • ')}
               </div>
             </div>
           </div>

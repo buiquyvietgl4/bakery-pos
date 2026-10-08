@@ -2,11 +2,18 @@
 
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
+import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { broadcastRecipeChange } from '@/lib/supabase/realtimeSync';
 import { filterActiveIngredients, getDeletedIngredientIds } from '@/lib/utils/ingredientManager';
 import { DEFAULT_BAKERY_RECIPES, BakeryRecipe } from '@/lib/constants/bakeryData';
 
 export const RECIPES_UPDATED_EVENT = 'bakery_recipes_updated';
-const STORAGE_KEY_RECIPES = 'bakery_recipes';
+export const BAKERY_RECIPES_KEY = 'bakery_recipes';
+const STORAGE_KEY_RECIPES = BAKERY_RECIPES_KEY;
+
+export const BAKERY_DELETED_RECIPE_IDS_KEY = 'bakery_deleted_recipe_ids';
+export const DB_ROW_DELETED_RECIPES_ID = '00000000-0000-0000-0000-000000000046';
+export const DB_ROW_DELETED_RECIPES_NAME = 'SYS_CONFIG_DELETED_RECIPES';
 
 export interface ParsedRecipeItem {
   numericQty: number;
@@ -118,21 +125,205 @@ export function normalizeRecipe<T = any>(recipe: T): T {
 }
 
 /**
+ * Lấy danh sách Set các ID và Tên công thức bánh đã bị người dùng chủ động xóa.
+ */
+export function getDeletedRecipeIds(): Set<string> {
+  if (typeof window === 'undefined') return new Set();
+  try {
+    const raw = localStorage.getItem(BAKERY_DELETED_RECIPE_IDS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        return new Set(arr.map((item) => String(item).toLowerCase().trim()));
+      }
+    }
+  } catch (e) {
+    console.warn('Lỗi đọc bakery_deleted_recipe_ids:', e);
+  }
+  return new Set();
+}
+
+/**
+ * Lọc bỏ các công thức đã bị xóa hoặc là row cấu hình hệ thống SYS_
+ */
+export function filterActiveRecipes(recipes: any[]): any[] {
+  if (!Array.isArray(recipes)) return [];
+  const deletedSet = getDeletedRecipeIds();
+
+  return recipes.filter((rec) => {
+    if (!rec) return false;
+    const name = String(rec.name || '').trim();
+    const id = String(rec.id || '').trim();
+    if (name.startsWith('SYS_') || id.startsWith('SYS_')) return false;
+    if (rec.is_active === false) return false;
+
+    // Kiểm tra danh sách đen xóa
+    if (id && deletedSet.has(id.toLowerCase())) return false;
+    if (name && deletedSet.has(name.toLowerCase())) return false;
+
+    return true;
+  });
+}
+
+/**
+ * Đồng bộ danh sách đen công thức bánh đã xóa lên Supabase SQL
+ */
+export async function syncDeletedRecipeIdsToDb(deletedIds: string[]): Promise<void> {
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_DELETED_RECIPES_ID,
+        name: DB_ROW_DELETED_RECIPES_NAME,
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: 0,
+        total_material_cost: 0,
+        notes: JSON.stringify(deletedIds),
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi syncDeletedRecipeIdsToDb:', err);
+  }
+}
+
+/**
+ * Tải danh sách công thức bánh đã xóa từ Supabase SQL
+ */
+export async function fetchDeletedRecipeIdsFromDb(): Promise<string[]> {
+  if (isLocalMode()) return [];
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return [];
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_DELETED_RECIPES_ID},name.eq.${DB_ROW_DELETED_RECIPES_NAME}`)
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (Array.isArray(parsed)) {
+        if (typeof window !== 'undefined') {
+          const localSet = getDeletedRecipeIds();
+          parsed.forEach((id) => localSet.add(String(id).toLowerCase().trim()));
+          localStorage.setItem(BAKERY_DELETED_RECIPE_IDS_KEY, JSON.stringify(Array.from(localSet)));
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi fetchDeletedRecipeIdsFromDb:', err);
+  }
+  return [];
+}
+
+/**
+ * Đánh dấu công thức bánh vào danh sách đen xóa vĩnh viễn (Anti-Resurrection Tombstone)
+ */
+export function markRecipeAsDeleted(id: string, name?: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const set = getDeletedRecipeIds();
+    if (id) set.add(String(id).toLowerCase().trim());
+    if (name) set.add(String(name).toLowerCase().trim());
+
+    const arr = Array.from(set);
+    localStorage.setItem(BAKERY_DELETED_RECIPE_IDS_KEY, JSON.stringify(arr));
+
+    // Cập nhật ngay trong localStorage('bakery_recipes')
+    const rawRecs = localStorage.getItem(BAKERY_RECIPES_KEY);
+    if (rawRecs) {
+      const parsed = JSON.parse(rawRecs);
+      if (Array.isArray(parsed)) {
+        const remaining = parsed.filter(
+          (r) =>
+            String(r.id).toLowerCase().trim() !== String(id).toLowerCase().trim() &&
+            String(r.name).toLowerCase().trim() !== String(name || '').toLowerCase().trim()
+        );
+        localStorage.setItem(BAKERY_RECIPES_KEY, JSON.stringify(remaining));
+      }
+    }
+
+    // Đồng bộ lên Supabase Cloud SQL nếu không ở Local Mode
+    syncDeletedRecipeIdsToDb(arr).catch(() => {});
+  } catch (e) {
+    console.warn('Lỗi ghi bakery_deleted_recipe_ids:', e);
+  }
+}
+
+/**
+ * Gỡ một công thức bánh khỏi danh sách đen khi người dùng tạo mới lại
+ */
+export function unmarkRecipeDeleted(id: string, name?: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const set = getDeletedRecipeIds();
+    let changed = false;
+    if (id && set.has(String(id).toLowerCase().trim())) {
+      set.delete(String(id).toLowerCase().trim());
+      changed = true;
+    }
+    if (name && set.has(String(name).toLowerCase().trim())) {
+      set.delete(String(name).toLowerCase().trim());
+      changed = true;
+    }
+
+    if (changed) {
+      const arr = Array.from(set);
+      localStorage.setItem(BAKERY_DELETED_RECIPE_IDS_KEY, JSON.stringify(arr));
+      syncDeletedRecipeIdsToDb(arr).catch(() => {});
+    }
+  } catch (e) {
+    console.warn('Lỗi unmarkRecipeDeleted:', e);
+  }
+}
+
+/**
+ * Xóa toàn diện một công thức bánh:
+ * 1. Đưa vào danh sách đen Tombstone (ngăn chặn tái sinh từ cache/mặc định)
+ * 2. Xóa khỏi localStorage('bakery_recipes')
+ * 3. Xóa trên Supabase Cloud SQL (cả recipes và recipe_items)
+ * 4. Phát sóng realtimeSync cho các thiết bị khác
+ * 5. Tự động đồng bộ file Local SQL
+ */
+export async function deleteRecipeEverywhere(id: string, name?: string): Promise<void> {
+  markRecipeAsDeleted(id, name);
+  autoSyncToLocalSqlFolder().catch(() => {});
+  broadcastRecipeChange('delete', { id, name });
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
+      try {
+        await supabase.from('recipe_items').delete().eq('recipe_id', id);
+      } catch {}
+      await supabase.from('recipes').delete().eq('id', id);
+    }
+  } catch (err) {
+    console.error('Lỗi khi xóa recipe trên Supabase:', err);
+  }
+}
+
+/**
  * Lấy danh sách công thức đang lưu trong bộ nhớ cục bộ
  */
 export function getStoredRecipes(): BakeryRecipe[] {
   if (typeof window !== 'undefined') {
     try {
       const raw = localStorage.getItem(STORAGE_KEY_RECIPES);
-      if (raw) {
+      if (raw !== null) {
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map(normalizeRecipe);
+        if (Array.isArray(parsed)) {
+          return filterActiveRecipes(parsed.map(normalizeRecipe));
         }
       }
     } catch {}
   }
-  return DEFAULT_BAKERY_RECIPES.map(normalizeRecipe);
+  return filterActiveRecipes(DEFAULT_BAKERY_RECIPES.map(normalizeRecipe));
 }
 
 /**
@@ -146,6 +337,9 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
   }
 
   try {
+    // Tải danh sách đen công thức đã bị xóa từ Supabase trước
+    await fetchDeletedRecipeIdsFromDb().catch(() => {});
+
     const [recipesRes, itemsRes, ingsRes] = await Promise.all([
       supabase
         .from('recipes')
@@ -162,11 +356,11 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
 
     if (recipesRes.error || !recipesRes.data) {
       console.warn('Lỗi tải recipes từ Supabase:', recipesRes.error);
-      return fallback;
+      return filterActiveRecipes(fallback);
     }
 
-    const cleanRecipes = recipesRes.data.filter(
-      (r: any) => !r.name?.startsWith('SYS_') && r.is_active !== false
+    const cleanRecipes = filterActiveRecipes(
+      recipesRes.data.filter((r: any) => !r.name?.startsWith('SYS_') && r.is_active !== false)
     );
 
     if (cleanRecipes.length === 0) {
@@ -177,7 +371,7 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
           return [];
         }
       }
-      return fallback;
+      return filterActiveRecipes(fallback);
     }
 
     const ings = filterActiveIngredients(ingsRes.data || []);
@@ -261,16 +455,18 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
       });
     });
 
+    const finalRecipes = filterActiveRecipes(fullRecipes);
+
     if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem(STORAGE_KEY_RECIPES, JSON.stringify(fullRecipes));
-        window.dispatchEvent(new CustomEvent(RECIPES_UPDATED_EVENT, { detail: fullRecipes }));
+        localStorage.setItem(STORAGE_KEY_RECIPES, JSON.stringify(finalRecipes));
+        window.dispatchEvent(new CustomEvent(RECIPES_UPDATED_EVENT, { detail: finalRecipes }));
       } catch {}
     }
 
-    return fullRecipes;
+    return finalRecipes;
   } catch (err) {
     console.error('Lỗi khi fetchRecipesFromDb:', err);
-    return fallback;
+    return filterActiveRecipes(fallback);
   }
 }

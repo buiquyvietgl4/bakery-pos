@@ -215,7 +215,9 @@ export function CustomCakeCostingSettings() {
       alert('Phải giữ lại ít nhất 1 loại cốt bánh!');
       return;
     }
-    setConfig({ ...config, cakeBases: config.cakeBases.filter((_, i) => i !== baseIdx) });
+    const newConfig = { ...config, cakeBases: config.cakeBases.filter((_, i) => i !== baseIdx) };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   const handleAddBaseSize = (baseIdx: number) => {
@@ -242,7 +244,11 @@ export function CustomCakeCostingSettings() {
       return;
     }
     const updatedSizes = base.sizes.filter((_, i) => i !== sizeIdx);
-    handleUpdateCakeBase(baseIdx, 'sizes', updatedSizes);
+    const updatedBases = [...config.cakeBases];
+    updatedBases[baseIdx] = { ...updatedBases[baseIdx], sizes: updatedSizes };
+    const newConfig = { ...config, cakeBases: updatedBases };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   const handleSaveBaseBomModal = () => {
@@ -255,7 +261,11 @@ export function CustomCakeCostingSettings() {
     const updatedSizes = [...base.sizes];
     updatedSizes[sizeIndex] = updatedSize;
 
-    handleUpdateCakeBase(baseIndex, 'sizes', updatedSizes);
+    const updatedBases = [...config.cakeBases];
+    updatedBases[baseIndex] = { ...base, sizes: updatedSizes };
+    const newConfig = { ...config, cakeBases: updatedBases };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
     setEditingBaseBom(null);
   };
 
@@ -302,7 +312,9 @@ export function CustomCakeCostingSettings() {
       alert('Phải giữ lại ít nhất 1 loại kem phủ!');
       return;
     }
-    setConfig({ ...config, creamCoatings: config.creamCoatings.filter((_, i) => i !== creamIdx) });
+    const newConfig = { ...config, creamCoatings: config.creamCoatings.filter((_, i) => i !== creamIdx) };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   const handleAddCreamSize = (creamIdx: number) => {
@@ -327,7 +339,11 @@ export function CustomCakeCostingSettings() {
       return;
     }
     const updatedSizes = cream.sizes.filter((_, i) => i !== sizeIdx);
-    handleUpdateCreamCoating(creamIdx, 'sizes', updatedSizes);
+    const updatedCreams = [...config.creamCoatings];
+    updatedCreams[creamIdx] = { ...updatedCreams[creamIdx], sizes: updatedSizes };
+    const newConfig = { ...config, creamCoatings: updatedCreams };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   const handleSaveCreamBomModal = () => {
@@ -340,7 +356,11 @@ export function CustomCakeCostingSettings() {
     const updatedSizes = [...cream.sizes];
     updatedSizes[sizeIndex] = updatedSize;
 
-    handleUpdateCreamCoating(creamIndex, 'sizes', updatedSizes);
+    const updatedCreams = [...config.creamCoatings];
+    updatedCreams[creamIndex] = { ...cream, sizes: updatedSizes };
+    const newConfig = { ...config, creamCoatings: updatedCreams };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
     setEditingCreamBom(null);
   };
 
@@ -375,7 +395,9 @@ export function CustomCakeCostingSettings() {
   };
 
   const handleDeleteFilling = (idx: number) => {
-    setConfig({ ...config, fillings: config.fillings.filter((_, i) => i !== idx) });
+    const newConfig = { ...config, fillings: config.fillings.filter((_, i) => i !== idx) };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   // 4. HỘP VÀ BAO BÌ HANDLERS
@@ -409,7 +431,9 @@ export function CustomCakeCostingSettings() {
   };
 
   const handleDeletePackaging = (idx: number) => {
-    setConfig({ ...config, packagings: config.packagings.filter((_, i) => i !== idx) });
+    const newConfig = { ...config, packagings: config.packagings.filter((_, i) => i !== idx) };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   // 5. VẬT TƯ TẶNG KÈM HANDLERS
@@ -445,7 +469,9 @@ export function CustomCakeCostingSettings() {
   };
 
   const handleDeleteFreeAccessory = (idx: number) => {
-    setConfig({ ...config, freeAccessories: config.freeAccessories.filter((_, i) => i !== idx) });
+    const newConfig = { ...config, freeAccessories: config.freeAccessories.filter((_, i) => i !== idx) };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   // 6. PHỤ KIỆN VÀ DECOR HANDLERS
@@ -468,7 +494,9 @@ export function CustomCakeCostingSettings() {
   };
 
   const handleDeleteDecorAddon = (idx: number) => {
-    setConfig({ ...config, decorAddons: config.decorAddons.filter((_, i) => i !== idx) });
+    const newConfig = { ...config, decorAddons: config.decorAddons.filter((_, i) => i !== idx) };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   // 7. BOM BÁNH SINH NHẬT HANDLERS
@@ -497,7 +525,9 @@ export function CustomCakeCostingSettings() {
   };
 
   const handleDeleteBomPreset = (idx: number) => {
-    setConfig({ ...config, birthdayBomPresets: config.birthdayBomPresets.filter((_, i) => i !== idx) });
+    const newConfig = { ...config, birthdayBomPresets: config.birthdayBomPresets.filter((_, i) => i !== idx) };
+    setConfig(newConfig);
+    saveFullCakeBomConfig(newConfig);
   };
 
   return (

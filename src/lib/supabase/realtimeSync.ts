@@ -2405,12 +2405,25 @@ export async function saveOvenBatchesToDb(batches: any[]): Promise<void> {
   }
 }
 
+function sanitizeOvenBatches(list: any): any[] {
+  if (!Array.isArray(list)) return [];
+  return list.filter(
+    (b) => b && typeof b === 'object' && typeof b.cake_name === 'string' && typeof b.quantity === 'number'
+  );
+}
+
 export async function fetchOvenBatchesFromDb(): Promise<any[]> {
-  if (isLocalMode()) {
-    return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_oven_batches') || '[]') : [];
-  }
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_oven_batches') || '[]') : [];
+  const getLocal = () => {
+    if (typeof window === 'undefined') return [];
+    try {
+      return sanitizeOvenBatches(JSON.parse(localStorage.getItem('bakery_oven_batches') || '[]'));
+    } catch {
+      return [];
+    }
+  };
+
+  if (isLocalMode() || (typeof navigator !== 'undefined' && !navigator.onLine)) {
+    return getLocal();
   }
 
   try {
@@ -2423,18 +2436,17 @@ export async function fetchOvenBatchesFromDb(): Promise<any[]> {
 
     if (!error && data?.notes) {
       const parsed = JSON.parse(data.notes);
-      if (Array.isArray(parsed)) {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('bakery_oven_batches', JSON.stringify(parsed));
-          window.dispatchEvent(new CustomEvent(OVEN_BATCHES_SYNC_EVENT, { detail: parsed }));
-        }
-        return parsed;
+      const sanitized = sanitizeOvenBatches(parsed);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bakery_oven_batches', JSON.stringify(sanitized));
+        window.dispatchEvent(new CustomEvent(OVEN_BATCHES_SYNC_EVENT, { detail: sanitized }));
       }
+      return sanitized;
     }
   } catch (err) {
     console.warn('Lỗi fetchOvenBatchesFromDb:', err);
   }
-  return typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('bakery_oven_batches') || '[]') : [];
+  return getLocal();
 }
 
 export async function broadcastOvenBatches(batches: any[]): Promise<void> {

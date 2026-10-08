@@ -109,6 +109,12 @@ export async function syncCakeBomConfigToDb(config: FullCakeBomConfig): Promise<
 
 // ── TẢI CẤU HÌNH TỪ SUPABASE CLOUD ──
 export async function fetchFullCakeBomConfigFromDb(): Promise<FullCakeBomConfig | null> {
+  if (isLocalMode()) {
+    return getFullCakeBomConfig();
+  }
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    return getFullCakeBomConfig();
+  }
   try {
     const { data, error } = await supabase
       .from('bakery_bom_settings')

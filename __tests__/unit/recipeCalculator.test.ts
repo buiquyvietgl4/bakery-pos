@@ -1,5 +1,16 @@
-import { describe, it, expect } from 'vitest';
-import { parseRecipeItem, formatScaledQty, normalizeRecipe } from '@/lib/utils/recipeCalculator';
+import { describe, it, expect, beforeEach } from 'vitest';
+import {
+  parseRecipeItem,
+  formatScaledQty,
+  normalizeRecipe,
+  markRecipeAsDeleted,
+  getDeletedRecipeIds,
+  filterActiveRecipes,
+  unmarkRecipeDeleted,
+  getStoredRecipes,
+  BAKERY_DELETED_RECIPE_IDS_KEY,
+  BAKERY_RECIPES_KEY,
+} from '@/lib/utils/recipeCalculator';
 
 describe('parseRecipeItem', () => {
   it('xử lý input rỗng hoặc falsy', () => {
@@ -96,3 +107,42 @@ describe('normalizeRecipe', () => {
     expect(normalizeRecipe(undefined)).toBe(undefined);
   });
 });
+
+describe('Anti-Resurrection Tombstone cho Recipe BOM', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+
+  it('lọc bỏ các công thức đã bị đánh dấu xóa', () => {
+    markRecipeAsDeleted('rec-delete-me-01', 'Bánh Test Bị Xóa');
+
+    const deletedIds = getDeletedRecipeIds();
+    expect(deletedIds.has('rec-delete-me-01')).toBe(true);
+    expect(deletedIds.has('bánh test bị xóa')).toBe(true);
+
+    const recipesList = [
+      { id: 'rec-delete-me-01', name: 'Bánh Test Bị Xóa', is_active: true },
+      { id: 'rec-stay-02', name: 'Bánh Còn Lại', is_active: true },
+      { id: '00000000-0000-0000-0000-000000000046', name: 'SYS_CONFIG_DELETED_RECIPES', is_active: false },
+    ];
+
+    const filtered = filterActiveRecipes(recipesList);
+    expect(filtered.length).toBe(1);
+    expect(filtered[0].id).toBe('rec-stay-02');
+  });
+
+  it('gỡ bỏ công thức khỏi danh sách xóa khi người dùng tạo mới lại', () => {
+    markRecipeAsDeleted('rec-recreate-01', 'Bánh Bông Lan');
+    expect(getDeletedRecipeIds().has('rec-recreate-01')).toBe(true);
+
+    unmarkRecipeDeleted('rec-recreate-01', 'Bánh Bông Lan');
+    expect(getDeletedRecipeIds().has('rec-recreate-01')).toBe(false);
+  });
+
+  it('getStoredRecipes tôn trọng mảng rỗng [] và không phục hồi danh sách mặc định nếu người dùng đã chủ động xóa', () => {
+    localStorage.setItem(BAKERY_RECIPES_KEY, JSON.stringify([]));
+    const stored = getStoredRecipes();
+    expect(stored).toEqual([]);
+  });
+});
+

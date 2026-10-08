@@ -10,7 +10,7 @@ export const BAKERY_INGREDIENTS_KEY = 'bakery_ingredients';
 export const BAKERY_DELETED_INGREDIENT_IDS_KEY = 'bakery_deleted_ingredient_ids';
 export const INGREDIENTS_UPDATED_EVENT = 'bakery_ingredients_updated';
 
-export const DB_ROW_DELETED_INGREDIENTS_ID = '00000000-0000-0000-0000-000000000022';
+export const DB_ROW_DELETED_INGREDIENTS_ID = '00000000-0000-0000-0000-000000000045';
 export const DB_ROW_DELETED_INGREDIENTS_NAME = 'SYS_CONFIG_DELETED_INGREDIENTS';
 
 export interface Ingredient {
