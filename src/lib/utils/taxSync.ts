@@ -439,6 +439,21 @@ let lastFetchTaxOrdersTime = 0;
 let inflightTaxOrdersPromise: Promise<any[]> | null = null;
 const TAX_ORDERS_CACHE_TTL_MS = 25_000; // 25 giây cache
 
+export function clearTaxOrdersCache(): void {
+  cachedTaxOrders = null;
+  lastFetchTaxOrdersTime = 0;
+  inflightTaxOrdersPromise = null;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('bakery_db_profile_changed', () => {
+    clearTaxOrdersCache();
+  });
+  window.addEventListener('bakery_global_sql_synced', () => {
+    clearTaxOrdersCache();
+  });
+}
+
 export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
   let deletedKeys = new Set<string>();
   if (typeof window !== 'undefined') {

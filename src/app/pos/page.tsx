@@ -1365,19 +1365,16 @@ export default function POSPage() {
 
           if (!error && data) {
             if (data.length === 0) {
-              const { getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
-              if (getLocalResetEpoch() > 0) {
-                setProducts([]);
-                if (typeof window !== 'undefined') {
-                  localStorage.removeItem('bakery_products');
-                }
-                try {
-                  await db.products.clear();
-                } catch {}
-                return;
+              setProducts([]);
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('bakery_products');
               }
+              try {
+                await db.products.clear();
+              } catch {}
+              return;
             } else {
-              const merged = mergeProductLists(currentProducts, data);
+              const merged = mergeProductLists([], data);
               setProducts(merged);
               if (typeof window !== 'undefined') {
                 localStorage.setItem('bakery_products', JSON.stringify(merged));
@@ -1460,9 +1457,21 @@ export default function POSPage() {
     };
     window.addEventListener(VIETQR_UPDATED_EVENT, handleVietqrEvt);
     window.addEventListener(EWALLET_UPDATED_EVENT, handleEwalletEvt);
+    const handleDbProfileChanged = () => {
+      console.log('🔄 [POS] Phát hiện CSDL SQL đã thay đổi, đang nạp lại sản phẩm và đơn hàng...');
+      loadProducts();
+      reloadOrdersData();
+    };
+    window.addEventListener('bakery_db_profile_changed', handleDbProfileChanged);
+    window.addEventListener('bakery_global_sql_synced', handleDbProfileChanged);
+    window.addEventListener('bakery_unified_sql_env_changed', handleDbProfileChanged);
+
     window.addEventListener(AUTOBANK_CONFIG_UPDATED_EVENT, handleAutoBankEvt);
 
     return () => {
+      window.removeEventListener('bakery_db_profile_changed', handleDbProfileChanged);
+      window.removeEventListener('bakery_global_sql_synced', handleDbProfileChanged);
+      window.removeEventListener('bakery_unified_sql_env_changed', handleDbProfileChanged);
       window.removeEventListener('bakery_products_updated', handleProductsUpdated);
       window.removeEventListener('bakery_stocks_updated', handleProductsUpdated);
       window.removeEventListener(VIETQR_UPDATED_EVENT, handleVietqrEvt);

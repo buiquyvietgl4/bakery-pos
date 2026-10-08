@@ -151,7 +151,37 @@ export function getActiveUnifiedSqlEnv(): UnifiedSqlEnvId {
  */
 export function getActiveUnifiedSqlEnvInfo(): UnifiedSqlEnvInfo {
   const activeId = getActiveUnifiedSqlEnv();
-  return UNIFIED_SQL_ENVS[activeId] || UNIFIED_SQL_ENVS.cloud_production;
+  const base = UNIFIED_SQL_ENVS[activeId] || UNIFIED_SQL_ENVS.cloud_production;
+
+  if (activeId === 'cloud_production') {
+    try {
+      const activeProf = getActiveProfile();
+      const rawUrl = activeProf?.url || DEFAULT_PRODUCTION_URL;
+      const ref = extractProjectRef(rawUrl);
+      return {
+        ...base,
+        storageLocation: ref ? `${ref}.supabase.co` : base.storageLocation,
+      };
+    } catch {
+      return base;
+    }
+  }
+
+  if (activeId === 'cloud_testing') {
+    try {
+      const activeProf = getActiveProfile();
+      const rawUrl = activeProf?.url || DEFAULT_TESTING_URL;
+      const ref = extractProjectRef(rawUrl);
+      return {
+        ...base,
+        storageLocation: ref ? `${ref}.supabase.co` : (activeProf?.url ? activeProf.url.replace(/^https?:\/\//, '') : 'Chưa cấu hình'),
+      };
+    } catch {
+      return base;
+    }
+  }
+
+  return base;
 }
 
 /**

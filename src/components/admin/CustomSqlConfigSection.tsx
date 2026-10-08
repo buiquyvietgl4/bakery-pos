@@ -43,8 +43,10 @@ import {
   DEFAULT_PRODUCTION_URL,
   DEFAULT_PRODUCTION_KEY,
   saveGlobalProductionSql,
+  clearProfileLocalData,
 } from '@/lib/supabase/databaseProfileManager';
 import { reinitSupabaseClient } from '@/lib/supabase/client';
+import { clearTaxOrdersCache } from '@/lib/utils/taxSync';
 
 export default function CustomSqlConfigSection() {
   const [config, setConfig] = useState<MultiSqlConfig>(() => getMultiSqlConfig());
@@ -198,12 +200,19 @@ export default function CustomSqlConfigSection() {
           setConfig(res.config);
           setEditUrl(cleanInputUrl);
           setEditKey(cleanInputKey);
+          await clearProfileLocalData();
+          clearTaxOrdersCache();
           reinitSupabaseClient();
           handleFetchStats(cleanInputUrl, cleanInputKey);
           setNotice({
             type: 'success',
-            text: `✅ ĐÃ LƯU & ĐỒNG BỘ TOÀN BỘ APP: CSDL Chính mới đã được đồng bộ lên toàn hệ thống! Mọi thiết bị khác vào chung link web sẽ tự động nhận CSDL mới này.`,
+            text: `✅ ĐÃ LƯU & ĐỒNG BỘ TOÀN BỘ APP! Đang tự động làm mới ứng dụng (Reload) trong 1 giây để nạp 100% dữ liệu từ CSDL mới...`,
           });
+          setTimeout(() => {
+            if (typeof window !== 'undefined') {
+              window.location.reload();
+            }
+          }, 800);
         } else {
           setNotice({
             type: 'error',
@@ -363,16 +372,19 @@ export default function CustomSqlConfigSection() {
   };
 
   // Thực hiện kích hoạt môi trường đã chọn
-  const handleConfirmSwitch = () => {
+  const handleConfirmSwitch = async () => {
     setIsActivating(true);
+    // Xóa sạch Dexie cache và bộ nhớ đệm
+    await clearProfileLocalData();
+    clearTaxOrdersCache();
     // Chuyển môi trường và xử lý cách ly dữ liệu
     switchActiveEnvironment(selectedProfileId, targetSwitchAction);
     setShowSwitchModal(false);
 
-    // Tải lại trang sau 300ms để áp dụng sạch sẽ toàn bộ kết nối
+    // Tải lại trang sau 400ms để áp dụng sạch sẽ toàn bộ kết nối
     setTimeout(() => {
       window.location.reload();
-    }, 300);
+    }, 400);
   };
 
   return (

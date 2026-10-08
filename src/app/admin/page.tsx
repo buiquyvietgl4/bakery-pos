@@ -1682,19 +1682,16 @@ export default function AdminDashboard() {
 
           if (!sbErr && prodData) {
             if (prodData.length === 0) {
-              const { getLocalResetEpoch } = await import('@/lib/utils/systemResetManager');
-              if (getLocalResetEpoch() > 0) {
-                currentProds = [];
-                setProducts([]);
-                if (typeof window !== 'undefined') {
-                  localStorage.removeItem('bakery_products');
-                }
-                try {
-                  await db.products.clear();
-                } catch {}
+              currentProds = [];
+              setProducts([]);
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem('bakery_products');
               }
+              try {
+                await db.products.clear();
+              } catch {}
             } else {
-              currentProds = mergeProductLists(currentProds, prodData);
+              currentProds = mergeProductLists([], prodData);
             }
           }
         } catch (e) {
@@ -2097,6 +2094,16 @@ export default function AdminDashboard() {
       }, 1000);
     };
 
+    const handleDbProfileChanged = () => {
+      console.log('🔄 [ADMIN] Phát hiện CSDL SQL đã thay đổi, đang nạp lại toàn bộ dữ liệu...');
+      loadData();
+      reloadAdminOrders(true);
+    };
+
+    window.addEventListener('bakery_db_profile_changed', handleDbProfileChanged);
+    window.addEventListener('bakery_global_sql_synced', handleDbProfileChanged);
+    window.addEventListener('bakery_unified_sql_env_changed', handleDbProfileChanged);
+
     window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);
     window.addEventListener(EXPENSES_UPDATED_EVENT, handleExpensesUpdate);
     window.addEventListener(CASHFLOW_UPDATED_EVENT, handleCashflowUpdate);
@@ -2108,6 +2115,9 @@ export default function AdminDashboard() {
 
     return () => {
       unsubscribeSync();
+      window.removeEventListener('bakery_db_profile_changed', handleDbProfileChanged);
+      window.removeEventListener('bakery_global_sql_synced', handleDbProfileChanged);
+      window.removeEventListener('bakery_unified_sql_env_changed', handleDbProfileChanged);
       window.removeEventListener('bakery_stocks_updated', handleStockUpdate);
       window.removeEventListener('bakery_products_updated', handleStockUpdate);
       window.removeEventListener('bakery_recipes_updated', handleRecipesUpdate);

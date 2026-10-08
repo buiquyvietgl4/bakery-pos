@@ -256,10 +256,21 @@ export function applyProfileSnapshot(snapshot: Record<string, string>): void {
   }
 }
 
+async function getDexieDb() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const mod = await import('@/lib/db/dexie');
+    return mod.db || null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Xóa sạch dữ liệu cục bộ của tiệm (Clean Slate) để tránh trộn dữ liệu cũ
+ * Xóa sạch dữ liệu cục bộ của tiệm (Clean Slate) bao gồm cả localStorage và Dexie IndexedDB
+ * Ngăn chặn 100% tình trạng dữ liệu của CSDL cũ bị lưu đọng và trộn lẫn sang CSDL mới
  */
-export function clearProfileLocalData(): void {
+export async function clearProfileLocalData(): Promise<void> {
   if (typeof window === 'undefined') return;
   try {
     for (const key of BAKERY_DATA_KEYS) {
@@ -268,6 +279,41 @@ export function clearProfileLocalData(): void {
   } catch (err) {
     console.warn('Lỗi clear profile local data:', err);
   }
+  try {
+    const dexDb = await getDexieDb();
+    if (dexDb) {
+      await Promise.allSettled([
+        dexDb.products?.clear(),
+        dexDb.orders?.clear(),
+        dexDb.syncQueue?.clear(),
+      ]);
+    }
+  } catch (dexErr) {
+    console.warn('Lỗi clear Dexie local data:', dexErr);
+  }
+}
+
+/**
+ * Phiên bản xóa đồng bộ (Sync) kích hoạt xóa Dexie ngầm
+ */
+export function clearProfileLocalDataSync(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    for (const key of BAKERY_DATA_KEYS) {
+      localStorage.removeItem(key);
+    }
+  } catch (err) {
+    console.warn('Lỗi clear profile local data sync:', err);
+  }
+  try {
+    getDexieDb().then((dexDb) => {
+      if (dexDb) {
+        dexDb.products?.clear().catch(() => {});
+        dexDb.orders?.clear().catch(() => {});
+        dexDb.syncQueue?.clear().catch(() => {});
+      }
+    }).catch(() => {});
+  } catch {}
 }
 
 /**
@@ -412,6 +458,7 @@ export async function saveGlobalProductionSql(
   };
 
   const newConfig = saveDatabaseProfile(updatedProfile, 'fetch_from_new');
+  await clearProfileLocalData();
 
   // 2. Đồng bộ xuống server API (/api/system/database-profile)
   try {
