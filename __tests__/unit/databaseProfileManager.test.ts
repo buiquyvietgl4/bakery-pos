@@ -9,6 +9,7 @@ import {
   cloneCloudDatabaseTables,
   saveDatabaseProfile,
   switchActiveEnvironment,
+  resetProfileToDefault,
   DEFAULT_PRODUCTION_URL,
   DEFAULT_TESTING_URL,
 } from '@/lib/supabase/databaseProfileManager';
@@ -163,4 +164,59 @@ describe('Database Profile Manager & Cloud DB Utilities', () => {
       expect(res.error).toContain('không được trùng nhau');
     });
   });
+
+  describe('Custom Production Profile Persistence & Zero Revert', () => {
+    it('cho phép lưu CSDL Chính với bất kỳ URL nào bao gồm DEFAULT_TESTING_URL mà không bị nhảy về URL cũ', () => {
+      const customUrl = DEFAULT_TESTING_URL;
+      const customKey = 'sb_publishable_custom_12345';
+
+      const cfg = saveDatabaseProfile({
+        id: 'production',
+        name: 'CSDL Chính Mới',
+        description: 'Custom Prod',
+        url: customUrl,
+        anonKey: customKey,
+      });
+
+      const prod = cfg.profiles.find((p) => p.id === 'production');
+      expect(prod?.url).toBe(customUrl);
+      expect(prod?.anonKey).toBe(customKey);
+      expect(prod?.isCustomized).toBe(true);
+
+      // CSDL Test tự động giải phóng để không trùng CSDL Chính
+      const testProf = cfg.profiles.find((p) => p.id === 'testing');
+      expect(testProf?.url).toBe('');
+
+      // Giả lập thoát khỏi cài đặt hoặc reload trang (gọi lại getMultiSqlConfig)
+      const reloadedCfg = getMultiSqlConfig();
+      const reloadedProd = reloadedCfg.profiles.find((p) => p.id === 'production');
+      expect(reloadedProd?.url).toBe(customUrl);
+      expect(reloadedProd?.anonKey).toBe(customKey);
+      expect(reloadedProd?.url).not.toBe(DEFAULT_PRODUCTION_URL);
+
+      const active = getActiveProfile();
+      expect(active.url).toBe(customUrl);
+    });
+
+    it('khôi phục về mặc định xóa sạch khóa cứng custom prod url', () => {
+      saveDatabaseProfile({
+        id: 'production',
+        name: 'CSDL Chính Mới',
+        description: 'Custom Prod',
+        url: 'https://new-custom.supabase.co',
+        anonKey: 'new-key',
+      });
+
+      expect(getActiveProfile().url).toBe('https://new-custom.supabase.co');
+
+      const resetCfg = resetProfileToDefault('production');
+      const resetProd = resetCfg.profiles.find((p) => p.id === 'production');
+      expect(resetProd?.url).toBe(DEFAULT_PRODUCTION_URL);
+
+      const reloadedCfg = getMultiSqlConfig();
+      const reloadedProd = reloadedCfg.profiles.find((p) => p.id === 'production');
+      expect(reloadedProd?.url).toBe(DEFAULT_PRODUCTION_URL);
+    });
+  });
 });
+

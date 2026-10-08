@@ -50,7 +50,7 @@ import { clearTaxOrdersCache } from '@/lib/utils/taxSync';
 
 export default function CustomSqlConfigSection() {
   const [config, setConfig] = useState<MultiSqlConfig>(() => getMultiSqlConfig());
-  const [selectedProfileId, setSelectedProfileId] = useState<string>('production');
+  const [selectedProfileId, setSelectedProfileId] = useState<string>(() => getActiveProfile().id || 'production');
   const [editUrl, setEditUrl] = useState('');
   const [editKey, setEditKey] = useState('');
   const [showKey, setShowKey] = useState(false);
@@ -178,14 +178,13 @@ export default function CustomSqlConfigSection() {
         return;
       }
 
-      // NGUYÊN TẮC TÁCH BIỆT: CSDL Chính không được dùng chung Project với CSDL Test
+      // NGUYÊN TẮC TÁCH BIỆT: CSDL Chính luôn được ưu tiên tuyệt đối.
+      // Nếu CSDL Test đang chứa URL này, tự động giải phóng CSDL Test để tránh chồng lấn
       const testProfile = config.profiles.find((p) => p.id === 'testing');
       if (testProfile?.url && cleanInputUrl === cleanSupabaseUrl(testProfile.url)) {
-        alert(
-          '❌ LỖI TRÙNG PROJECT: CSDL Chính không được dùng chung Project với CSDL Thử Nghiệm!\n\n' +
-          'Hai môi trường phải sử dụng 2 Project Supabase hoàn toàn riêng biệt để bảo vệ dữ liệu bán hàng thật của tiệm.'
-        );
-        return;
+        testProfile.url = '';
+        testProfile.anonKey = '';
+        testProfile.isCustomized = false;
       }
 
       setIsSavingGlobal(true);

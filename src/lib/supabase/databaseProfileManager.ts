@@ -25,6 +25,8 @@ export interface MultiSqlConfig {
 }
 
 export const STORAGE_KEY_MULTI_SQL_CONFIG = 'bakery_multi_sql_config';
+export const STORAGE_KEY_CUSTOM_PROD_URL = 'bakery_custom_prod_url';
+export const STORAGE_KEY_CUSTOM_PROD_KEY = 'bakery_custom_prod_key';
 export const STORAGE_KEY_PROFILE_VAULT_PREFIX = 'bakery_vault_profile_';
 export const STORAGE_KEY_RECONCILE_LOCKED = 'bakery_reconcile_locked';
 export const EVENT_DB_PROFILE_CHANGED = 'bakery_db_profile_changed';
@@ -139,64 +141,69 @@ export function getMultiSqlConfig(): MultiSqlConfig {
   if (typeof window === 'undefined') return getDefaultMultiSqlConfig();
   try {
     const raw = localStorage.getItem(STORAGE_KEY_MULTI_SQL_CONFIG);
+    const profileMap = new Map<string, DatabaseProfile>();
+    DEFAULT_PROFILES.forEach((p) => profileMap.set(p.id, { ...p }));
+
+    let activeProfileId = 'production';
+
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && Array.isArray(parsed.profiles)) {
-        // Đảm bảo luôn có ít nhất 2 profile production và testing
-        const profileMap = new Map<string, DatabaseProfile>();
-        DEFAULT_PROFILES.forEach((p) => profileMap.set(p.id, { ...p }));
+        activeProfileId = parsed.activeProfileId || 'production';
         parsed.profiles.forEach((p: DatabaseProfile) => {
           if (p && p.id) {
             profileMap.set(p.id, { ...profileMap.get(p.id), ...p });
           }
         });
-
-        // Tự động kiểm tra và sửa lỗi chống chồng chéo CSDL:
-        let hasFixedConfig = false;
-
-        // 1. Nếu profile 'production' (Chính) lại trỏ nhầm vào URL CSDL Test (azgjnahbibrcbjooepef)
-        const prod = profileMap.get('production');
-        if (prod) {
-          const prodUrl = cleanSupabaseUrl(prod.url);
-          const testingUrl = cleanSupabaseUrl(DEFAULT_TESTING_URL);
-          if (prodUrl && prodUrl === testingUrl) {
-            prod.url = DEFAULT_PRODUCTION_URL;
-            prod.anonKey = DEFAULT_PRODUCTION_KEY;
-            hasFixedConfig = true;
-          }
-        }
-
-        // 2. NGUYÊN TẮC TÁCH BIỆT: CSDL Test tuyệt đối KHÔNG ĐƯỢC dùng chung Project với CSDL Chính
-        const test = profileMap.get('testing');
-        if (prod && test && test.url) {
-          const prodUrl = cleanSupabaseUrl(prod.url);
-          const testUrl = cleanSupabaseUrl(test.url);
-          if (prodUrl && testUrl && prodUrl === testUrl) {
-            // Tách biệt hoàn toàn: Tự động xóa URL của test để tránh trộn lẫn vào CSDL Chính
-            test.url = '';
-            test.anonKey = '';
-            hasFixedConfig = true;
-          }
-        }
-
-        if (hasFixedConfig) {
-          try {
-            localStorage.setItem(
-              STORAGE_KEY_MULTI_SQL_CONFIG,
-              JSON.stringify({
-                activeProfileId: parsed.activeProfileId || 'production',
-                profiles: Array.from(profileMap.values()),
-              })
-            );
-          } catch {}
-        }
-
-        return {
-          activeProfileId: parsed.activeProfileId || 'production',
-          profiles: Array.from(profileMap.values()),
-        };
       }
     }
+
+    // Ưu tiên đọc key lưu cứng riêng biệt STORAGE_KEY_CUSTOM_PROD_URL / KEY
+    const customProdUrl = localStorage.getItem(STORAGE_KEY_CUSTOM_PROD_URL);
+    const customProdKey = localStorage.getItem(STORAGE_KEY_CUSTOM_PROD_KEY);
+    if (customProdUrl) {
+      const prod = profileMap.get('production');
+      if (prod) {
+        prod.url = cleanSupabaseUrl(customProdUrl);
+        if (customProdKey) prod.anonKey = customProdKey.trim();
+        prod.isCustomized = true;
+      }
+    }
+
+    let hasFixedConfig = false;
+
+    // NGUYÊN TẮC TÁCH BIỆT: CSDL Test tuyệt đối KHÔNG ĐƯỢC dùng chung Project với CSDL Chính.
+    // Nếu CSDL Chính trùng với CSDL Test, CSDL Chính luôn được ưu tiên, CSDL Test sẽ tự động để trống.
+    const prod = profileMap.get('production');
+    const test = profileMap.get('testing');
+    if (prod && test && test.url) {
+      const prodUrl = cleanSupabaseUrl(prod.url);
+      const testUrl = cleanSupabaseUrl(test.url);
+      if (prodUrl && testUrl && prodUrl === testUrl) {
+        test.url = '';
+        test.anonKey = '';
+        test.isCustomized = false;
+        hasFixedConfig = true;
+      }
+    }
+
+    const profiles = Array.from(profileMap.values());
+    if (hasFixedConfig || customProdUrl) {
+      try {
+        localStorage.setItem(
+          STORAGE_KEY_MULTI_SQL_CONFIG,
+          JSON.stringify({
+            activeProfileId,
+            profiles,
+          })
+        );
+      } catch {}
+    }
+
+    return {
+      activeProfileId,
+      profiles,
+    };
   } catch (err) {
     console.warn('Lỗi đọc cấu hình multiSql:', err);
   }
@@ -372,7 +379,10 @@ export function saveDatabaseProfile(
   } else if (updatedProfile.id === 'production' && cleanUpdatedUrl) {
     const test = config.profiles.find((p) => p.id === 'testing');
     if (test?.url && cleanUpdatedUrl === cleanSupabaseUrl(test.url)) {
-      throw new Error('CSDL Chính không được dùng chung Project với CSDL Thử Nghiệm!');
+      // Tự động giải phóng CSDL Thử Nghiệm để CSDL Chính được ưu tiên tuyệt đối
+      test.url = '';
+      test.anonKey = '';
+      test.isCustomized = false;
     }
   }
 
@@ -394,6 +404,19 @@ export function saveDatabaseProfile(
     config.profiles[index] = newProfile;
   } else {
     config.profiles.push(newProfile);
+  }
+
+  // Nếu là production, lưu thêm vào khóa cứng riêng biệt STORAGE_KEY_CUSTOM_PROD_URL / KEY
+  if (updatedProfile.id === 'production') {
+    if (cleanUpdatedUrl && cleanUpdatedUrl !== DEFAULT_PRODUCTION_URL) {
+      localStorage.setItem(STORAGE_KEY_CUSTOM_PROD_URL, cleanUpdatedUrl);
+      if (newProfile.anonKey) {
+        localStorage.setItem(STORAGE_KEY_CUSTOM_PROD_KEY, newProfile.anonKey);
+      }
+    } else if (cleanUpdatedUrl === DEFAULT_PRODUCTION_URL) {
+      localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_URL);
+      localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_KEY);
+    }
   }
 
   // Nếu profile vừa sửa chính là profile đang active, xử lý hướng dữ liệu
@@ -424,12 +447,20 @@ export async function saveGlobalProductionSql(
 
   const currentCfg = getMultiSqlConfig();
   const testProf = currentCfg.profiles.find((p) => p.id === 'testing');
+  // Nếu CSDL Chính trùng với CSDL Thử Nghiệm, giải phóng CSDL Thử Nghiệm để CSDL Chính được dùng độc quyền
   if (testProf?.url && cleanUrl === cleanSupabaseUrl(testProf.url)) {
-    return {
-      success: false,
-      error: 'CSDL Chính không được dùng chung Project với CSDL Thử Nghiệm! Hai môi trường phải tách biệt 100%.',
-      config: currentCfg,
-    };
+    testProf.url = '';
+    testProf.anonKey = '';
+    testProf.isCustomized = false;
+  }
+
+  // Lưu ngay vào khóa cứng riêng biệt
+  if (cleanUrl !== DEFAULT_PRODUCTION_URL) {
+    localStorage.setItem(STORAGE_KEY_CUSTOM_PROD_URL, cleanUrl);
+    localStorage.setItem(STORAGE_KEY_CUSTOM_PROD_KEY, cleanKey);
+  } else {
+    localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_URL);
+    localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_KEY);
   }
 
   const nowIso = new Date().toISOString();
@@ -539,7 +570,6 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
 
   const config = getMultiSqlConfig();
   const currentProd = config.profiles.find((p) => p.id === 'production');
-  const testingUrl = cleanSupabaseUrl(DEFAULT_TESTING_URL);
   const currentProdUrl = cleanSupabaseUrl(currentProd?.url || '');
   const currentProdKey = (currentProd?.anonKey || '').trim();
   const currentVersion = typeof currentProd?.version === 'number' ? currentProd.version : 0;
@@ -566,7 +596,7 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
           json.data?.isDefault === true ||
           (!serverIsCustom && serverUrl === DEFAULT_PRODUCTION_URL);
 
-        if (currentProd && serverUrl && serverUrl !== testingUrl) {
+        if (currentProd && serverUrl) {
           // Trường hợp 1: Server là fallback mặc định (chưa có cấu hình tùy biến lưu trên server)
           if (serverIsDefault || !serverIsCustom) {
             if (isCustomized) {
@@ -605,6 +635,23 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
               currentProd.version = serverVersion || Date.now();
               currentProd.updatedAt = serverUpdatedAt || new Date().toISOString();
               currentProd.isCustomized = true;
+
+              // Lưu khóa cứng riêng biệt
+              if (serverUrl !== DEFAULT_PRODUCTION_URL) {
+                localStorage.setItem(STORAGE_KEY_CUSTOM_PROD_URL, serverUrl);
+                localStorage.setItem(STORAGE_KEY_CUSTOM_PROD_KEY, serverKey);
+              } else {
+                localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_URL);
+                localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_KEY);
+              }
+
+              // Nếu trùng CSDL Test, tự động giải phóng CSDL Test
+              const test = config.profiles.find((p) => p.id === 'testing');
+              if (test && test.url && cleanSupabaseUrl(test.url) === serverUrl) {
+                test.url = '';
+                test.anonKey = '';
+                test.isCustomized = false;
+              }
 
               localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
 
@@ -646,7 +693,7 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
           const cloudUpdatedAtMs = cloudUpdatedAt ? new Date(cloudUpdatedAt).getTime() : 0;
           const cloudVersion = typeof parsed.version === 'number' ? parsed.version : 0;
 
-          if (cloudUrl && cloudUrl !== testingUrl && currentProd) {
+          if (cloudUrl && currentProd) {
             // Không bao giờ để CSDL cũ đè URL mặc định lên cấu hình tùy biến của client
             if (isCustomized && cloudUrl === DEFAULT_PRODUCTION_URL) {
               // Bỏ qua
@@ -665,6 +712,23 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
                 currentProd.version = cloudVersion || Date.now();
                 currentProd.updatedAt = cloudUpdatedAt || new Date().toISOString();
                 currentProd.isCustomized = true;
+
+                // Lưu khóa cứng riêng biệt
+                if (cloudUrl !== DEFAULT_PRODUCTION_URL) {
+                  localStorage.setItem(STORAGE_KEY_CUSTOM_PROD_URL, cloudUrl);
+                  localStorage.setItem(STORAGE_KEY_CUSTOM_PROD_KEY, cloudKey);
+                } else {
+                  localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_URL);
+                  localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_KEY);
+                }
+
+                // Nếu trùng CSDL Test, tự động giải phóng CSDL Test
+                const test = config.profiles.find((p) => p.id === 'testing');
+                if (test && test.url && cleanSupabaseUrl(test.url) === cloudUrl) {
+                  test.url = '';
+                  test.anonKey = '';
+                  test.isCustomized = false;
+                }
 
                 localStorage.setItem(STORAGE_KEY_MULTI_SQL_CONFIG, JSON.stringify(config));
 
@@ -776,6 +840,10 @@ function handleDataSyncAction(
  */
 export function resetProfileToDefault(profileId: DatabaseEnvironmentId): MultiSqlConfig {
   if (typeof window === 'undefined') return DEFAULT_MULTI_SQL_CONFIG;
+  if (profileId === 'production') {
+    localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_URL);
+    localStorage.removeItem(STORAGE_KEY_CUSTOM_PROD_KEY);
+  }
   const config = getMultiSqlConfig();
   const defaultItem = DEFAULT_PROFILES.find((p) => p.id === profileId);
 
