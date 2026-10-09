@@ -36,12 +36,16 @@ import {
   persistProductToSupabase,
 } from '@/lib/utils/productManager';
 import {
+  Ingredient,
   filterActiveIngredients,
   getDeletedIngredientIds,
   markIngredientAsDeleted,
   unmarkIngredientDeleted,
   deleteIngredientEverywhere,
   fetchDeletedIngredientIdsFromDb,
+  mergeIngredientLists,
+  autoRecoverIngredientsFromRecipes,
+  persistIngredientToSupabase,
 } from '@/lib/utils/ingredientManager';
 import {
   getTelegramConfig,
@@ -186,18 +190,7 @@ const VIETQR_BANKS = [
   { id: 'ABB', name: 'ABBANK (An Bình)', short: 'ABBANK' },
 ];
 
-interface Ingredient {
-  id: string;
-  name: string;
-  unit: string;
-  category: string;
-  stock_qty: number;
-  reorder_level: number;
-  avg_cost: number;
-  wastage_pct: number;
-  packaging_unit?: string;
-  conversion_rate?: number;
-}
+
 
 // ExpenseItem & CashflowTransaction are imported from accountingSync
 
@@ -1831,32 +1824,40 @@ export default function AdminDashboard() {
           await fetchDeletedIngredientIdsFromDb();
         } catch {}
 
-        // 2. Tải danh mục vật tư từ Supabase Cloud
+        // 2. Lấy nguyên liệu từ local storage trước để làm cơ sở merge
+        let localIngs: any[] = [];
+        if (typeof window !== 'undefined') {
+          try {
+            const localRaw = localStorage.getItem('bakery_ingredients');
+            if (localRaw) {
+              const parsed = JSON.parse(localRaw);
+              if (Array.isArray(parsed)) localIngs = parsed;
+            }
+          } catch {}
+        }
+
+        // 3. Tải danh mục vật tư từ Supabase Cloud và merge bảo toàn nguyên liệu cục bộ
         try {
           const { data: ingData, error: ingErr } = await supabase
             .from('ingredients')
             .select('*')
             .order('name');
 
-          if (!ingErr && ingData && ingData.length > 0) {
-            cleanIngs = ingData;
+          if (!ingErr && ingData) {
+            cleanIngs = mergeIngredientLists(localIngs, ingData);
+          } else {
+            cleanIngs = localIngs;
           }
         } catch (e) {
           console.warn('Không tải được ingredients từ Supabase, chuyển qua local:', e);
+          cleanIngs = localIngs;
         }
+      }
 
-        // Fallback local storage nếu Supabase rỗng hoặc lỗi mạng
-        if (cleanIngs.length === 0 && typeof window !== 'undefined') {
-          try {
-            const localRaw = localStorage.getItem('bakery_ingredients');
-            if (localRaw) {
-              const parsed = JSON.parse(localRaw);
-              if (Array.isArray(parsed) && parsed.length > 0) {
-                cleanIngs = parsed;
-              }
-            }
-          } catch {}
-        }
+      // 4. Tự động quét và phục hồi mọi nguyên liệu có trong công thức BOM (như "Bột mì bánh") nếu bị thiếu trong Kho
+      const { ingredients: recoveredIngs, recoveredCount } = autoRecoverIngredientsFromRecipes(cleanIngs, recipes);
+      if (recoveredCount > 0) {
+        cleanIngs = recoveredIngs;
       }
 
       // Lọc bỏ triệt để các nguyên liệu đã bị xóa (Anti-resurrection filter)
@@ -1953,7 +1954,14 @@ export default function AdminDashboard() {
 
     // Tự động kéo dữ liệu Cloud: Công thức BOM, Chi phí OPEX, Sổ quỹ, Bánh hỏng, Kiểm kê, Chốt sổ
     fetchRecipesFromDb().then((recs) => {
-      if (Array.isArray(recs)) setRecipes(recs.map(normalizeRecipe));
+      if (Array.isArray(recs)) {
+        const norm = recs.map(normalizeRecipe);
+        setRecipes(norm);
+        setIngredients((prev) => {
+          const { ingredients: recov, recoveredCount } = autoRecoverIngredientsFromRecipes(prev, norm);
+          return recoveredCount > 0 ? recov : prev;
+        });
+      }
     }).catch(console.error);
 
     fetchExpensesFromDb().then((exps) => {
@@ -2635,20 +2643,7 @@ export default function AdminDashboard() {
     unmarkIngredientDeleted(newId, newIngName);
 
     try {
-      if (navigator.onLine && !isLocalMode()) {
-        await supabase.from('ingredients').insert({
-          id: newId,
-          name: newIngObj.name,
-          unit: newIngObj.unit,
-          category: newIngObj.category,
-          stock_qty: newIngObj.stock_qty,
-          reorder_level: newIngObj.reorder_level,
-          avg_cost: newIngObj.avg_cost,
-          wastage_pct: newIngObj.wastage_pct,
-          packaging_unit: newIngObj.packaging_unit,
-          conversion_rate: newIngObj.conversion_rate,
-        });
-      }
+      await persistIngredientToSupabase(newIngObj);
 
       const nextIngs = [...ingredients, newIngObj];
       setIngredients(nextIngs);
@@ -2716,20 +2711,7 @@ export default function AdminDashboard() {
     };
 
     try {
-      if (navigator.onLine && !isLocalMode()) {
-        await supabase.from('ingredients').update({
-          name: updatedIng.name,
-          unit: updatedIng.unit,
-          category: updatedIng.category,
-          stock_qty: updatedIng.stock_qty,
-          reorder_level: updatedIng.reorder_level,
-          avg_cost: updatedIng.avg_cost,
-          wastage_pct: updatedIng.wastage_pct,
-          packaging_unit: updatedIng.packaging_unit,
-          conversion_rate: updatedIng.conversion_rate,
-          updated_at: new Date().toISOString(),
-        }).eq('id', editingIngredient.id);
-      }
+      await persistIngredientToSupabase(updatedIng);
 
       const nextIngs = ingredients.map((i) => (i.id === editingIngredient.id ? updatedIng : i));
       setIngredients(nextIngs);
@@ -3506,20 +3488,7 @@ export default function AdminDashboard() {
       }
       autoSyncToLocalSqlFolder();
 
-      if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
-        try {
-          await supabase.from('ingredients').update({
-            stock_qty: newQty,
-            avg_cost: newAvgCost,
-            unit: baseUnit,
-            packaging_unit: pkgUnit,
-            conversion_rate: rate,
-            updated_at: new Date().toISOString(),
-          }).eq('id', ing.id);
-        } catch (err) {
-          console.error('Lỗi cập nhật nhập kho trên Supabase:', err);
-        }
-      }
+      await persistIngredientToSupabase(updatedIng);
 
       const isDiffUnit = rate > 1 || pkgUnit.toLowerCase() !== baseUnit.toLowerCase();
       const descPo = isDiffUnit
