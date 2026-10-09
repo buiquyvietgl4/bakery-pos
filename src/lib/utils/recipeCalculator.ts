@@ -373,15 +373,9 @@ export function getStoredRecipes(): BakeryRecipe[] {
           return filterActiveRecipes(parsed.map(normalizeRecipe));
         }
       }
-      // Khi raw === null: kiểm tra xem hệ thống đã từng được khởi tạo hoặc đã qua reset chưa
-      const initialized = localStorage.getItem(BAKERY_RECIPES_INITIALIZED_KEY);
-      const resetEpoch = localStorage.getItem('bakery_system_reset_epoch');
-      if (initialized === 'true' || resetEpoch) {
-        return [];
-      }
     } catch {}
   }
-  return filterActiveRecipes(DEFAULT_BAKERY_RECIPES.map(normalizeRecipe));
+  return [];
 }
 
 /**

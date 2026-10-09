@@ -183,5 +183,11 @@ describe('Anti-Resurrection Tombstone cho Recipe BOM', () => {
     expect(localStorage.getItem(BAKERY_RECIPES_INITIALIZED_KEY)).toBe('true');
     expect(getStoredRecipes()).toEqual([]);
   });
+
+  it('getStoredRecipes mặc định trả về [] kể cả khi máy hoàn toàn mới (không có mock data)', () => {
+    localStorage.clear();
+    const stored = getStoredRecipes();
+    expect(stored).toEqual([]);
+  });
 });
 
