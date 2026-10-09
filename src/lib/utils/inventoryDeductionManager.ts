@@ -6,9 +6,10 @@ import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { db } from '@/lib/db/dexie';
 import { syncOrderToSupabase } from '@/lib/supabase/realtimeSync';
 import { CakeOrderSpec } from '@/lib/types/bakery-bom';
-import { filterActiveIngredients } from '@/lib/utils/ingredientManager';
+import { filterActiveIngredients, persistIngredientToSupabase, autoRecoverIngredientsFromRecipes } from '@/lib/utils/ingredientManager';
 import { recordBakingLog } from '@/lib/utils/bakingHistoryManager';
 import { parseRecipeItem } from '@/lib/utils/recipeCalculator';
+import { generateUUID } from '@/lib/utils/uuid';
 
 export const INGREDIENTS_STORAGE_KEY = 'bakery_ingredients';
 export const INGREDIENTS_UPDATED_EVENT = 'bakery_ingredients_updated';
@@ -463,8 +464,47 @@ export interface RecipeDeductionResult {
 }
 
 /**
+ * Chuẩn hóa chuỗi tiếng Việt không dấu để so sánh tìm kiếm chính xác
+ */
+function normalizeVietnamese(str: string): string {
+  return (str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .trim();
+}
+
+/**
+ * Quy đổi đơn vị định lượng nguyên liệu giữa công thức BOM và tồn kho
+ */
+function convertIngredientQuantity(neededQty: number, fromUnit: string, toUnit: string): number {
+  const f = (fromUnit || '').toLowerCase().trim();
+  const t = (toUnit || '').toLowerCase().trim();
+  if (f === t || !f || !t) return neededQty;
+
+  // g -> kg: 500g = 0.5kg
+  if ((f === 'g' || f === 'gram' || f === 'gr') && (t === 'kg' || t === 'kilogram')) {
+    return neededQty / 1000;
+  }
+  // kg -> g: 1.5kg = 1500g
+  if ((f === 'kg' || f === 'kilogram') && (t === 'g' || t === 'gram' || t === 'gr')) {
+    return neededQty * 1000;
+  }
+  // ml -> l: 200ml = 0.2l
+  if ((f === 'ml' || f === 'mililit') && (t === 'l' || t === 'lit' || t === 'lít')) {
+    return neededQty / 1000;
+  }
+  // l -> ml: 1l = 1000ml
+  if ((f === 'l' || f === 'lit' || f === 'lít') && (t === 'ml' || t === 'mililit')) {
+    return neededQty * 1000;
+  }
+  return neededQty;
+}
+
+/**
  * Tự động trừ tồn kho nguyên vật liệu cho một mẻ bánh bán lẻ / bánh thường (BOM Recipe)
- * Được kích hoạt khi thợ bếp nướng xong và bấm "🥖 Ra Lò & Nhập Kho POS"
+ * Được kích hoạt khi thợ bếp bắt đầu nướng hoặc khi bánh ra lò / làm mẻ trực tiếp từ Admin
  */
 export async function deductRecipeIngredients(
   recipe: any,
@@ -494,14 +534,24 @@ export async function deductRecipeIngredients(
     };
   }
 
-  const currentIngredients = getBakeryIngredients();
+  // 1. Lấy danh sách nguyên liệu hiện tại; nếu chưa từng có trong kho, tự động kéo từ Cloud SQL hoặc auto-recover
+  let currentIngredients = getBakeryIngredients();
+  const rawStorage = typeof window !== 'undefined' ? localStorage.getItem(INGREDIENTS_STORAGE_KEY) : null;
+  if (currentIngredients.length === 0 && rawStorage === null) {
+    try {
+      const { data } = await supabase.from('ingredients').select('*');
+      if (data && data.length > 0) {
+        currentIngredients = filterActiveIngredients(data);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(INGREDIENTS_STORAGE_KEY, JSON.stringify(currentIngredients));
+        }
+      }
+    } catch {}
+  }
+
   if (currentIngredients.length === 0) {
-    return {
-      success: false,
-      message: 'Không tìm thấy dữ liệu kho nguyên vật liệu (bakery_ingredients).',
-      deductedItems: [],
-      totalCost: 0,
-    };
+    const { ingredients: recov } = autoRecoverIngredientsFromRecipes([], [recipe]);
+    currentIngredients = recov;
   }
 
   const deductedItems: DeductedIngredientSummary[] = [];
@@ -515,36 +565,71 @@ export async function deductRecipeIngredients(
     if (neededQty <= 0) continue;
 
     let matchedIng = null;
-    if (item.ingredient_id || item.ingredientId) {
-      const targetId = item.ingredient_id || item.ingredientId;
-      matchedIng = currentIngredients.find((i) => i.id === targetId);
+    const targetId = String(item.ingredient_id || item.ingredientId || '').trim();
+    if (targetId) {
+      matchedIng = currentIngredients.find((i) => String(i.id).trim() === targetId);
     }
 
-    const targetName = item.ingredient_name || item.name || item.ingredientName;
+    const targetName = String(item.ingredient_name || item.name || item.ingredientName || '').trim();
     if (!matchedIng && targetName) {
-      const qName = String(targetName).toLowerCase().trim();
-      matchedIng = currentIngredients.find(
-        (i) => i.name.toLowerCase().trim() === qName ||
-               i.name.toLowerCase().includes(qName) ||
-               qName.includes(i.name.toLowerCase())
-      );
+      const qLower = targetName.toLowerCase();
+      const qNorm = normalizeVietnamese(targetName);
+
+      // A. Trùng chính xác tên thường
+      matchedIng = currentIngredients.find((i) => (i.name || '').toLowerCase().trim() === qLower);
+
+      // B. Trùng chính xác tên không dấu
+      if (!matchedIng) {
+        matchedIng = currentIngredients.find((i) => normalizeVietnamese(i.name) === qNorm);
+      }
+
+      // C. Trùng khớp một phần (substring)
+      if (!matchedIng) {
+        matchedIng = currentIngredients.find((i) => {
+          const iNorm = normalizeVietnamese(i.name);
+          return iNorm.includes(qNorm) || qNorm.includes(iNorm);
+        });
+      }
+    }
+
+    // D. Nếu nguyên liệu chưa tồn tại trong kho (do mới tạo hoặc sót), tự động khởi tạo vào kho
+    if (!matchedIng && targetName) {
+      const newIngId = targetId || generateUUID();
+      const defaultUnit = parsed.unit || 'g';
+      const uCost = Number(item.cost || item.line_cost || 0);
+      const autoRecovered: any = {
+        id: newIngId,
+        name: targetName,
+        unit: defaultUnit,
+        category: 'Nguyên liệu bánh',
+        stock_qty: 0,
+        reorder_level: 1000,
+        avg_cost: uCost,
+        wastage_pct: 0,
+        packaging_unit: defaultUnit === 'ml' ? 'Hộp 1L' : defaultUnit === 'g' ? 'Túi 1kg' : 'Túi',
+        conversion_rate: defaultUnit === 'ml' || defaultUnit === 'g' ? 1000 : 1,
+      };
+      currentIngredients.push(autoRecovered);
+      matchedIng = autoRecovered;
+      persistIngredientToSupabase(autoRecovered).catch(() => {});
     }
 
     if (matchedIng) {
+      const actualDeductedQty = convertIngredientQuantity(neededQty, parsed.unit, matchedIng.unit || 'g');
       const prevStock = Number(matchedIng.stock_qty || 0);
-      const newStock = Math.max(0, prevStock - neededQty);
+      const newStock = Math.max(0, prevStock - actualDeductedQty);
 
       matchedIng.stock_qty = newStock;
       modifiedIngredientIds.push(matchedIng.id);
 
       const uCost = Number(matchedIng.avg_cost || item.cost || item.line_cost || 0);
-      const lineCost = Math.round(neededQty * uCost);
+      const lineCost = Math.round(actualDeductedQty * uCost);
       totalBakeCost += lineCost;
 
       deductedItems.push({
         ingredientId: matchedIng.id,
         name: matchedIng.name,
-        deductedQty: neededQty,
+        deductedQty: actualDeductedQty,
         unit: matchedIng.unit || parsed.unit || 'g',
         previousStock: prevStock,
         remainingStock: newStock,
@@ -553,7 +638,7 @@ export async function deductRecipeIngredients(
       consumedIngs.push({
         ingredientId: matchedIng.id,
         name: matchedIng.name,
-        quantity: neededQty,
+        quantity: actualDeductedQty,
         unit: matchedIng.unit || parsed.unit || 'g',
         unitCost: uCost,
         totalCost: lineCost,

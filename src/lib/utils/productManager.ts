@@ -6,6 +6,7 @@ import { db } from '@/lib/db/dexie';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { broadcastProductChange } from '@/lib/supabase/realtimeSync';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
+import { generateUUID } from '@/lib/utils/uuid';
 
 export const BAKERY_DELETED_PRODUCT_IDS_KEY = 'bakery_deleted_product_ids';
 export const BAKERY_PRODUCTS_KEY = 'bakery_products';
@@ -586,4 +587,205 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
   }
 
   return Array.from(productMap.values());
+}
+
+/**
+ * Lấy ảnh bánh mặc định chất lượng cao dựa theo tên và phân loại bánh.
+ */
+export function getDefaultCakeImageUrl(name: string, category?: string): string {
+  const n = (name || '').toLowerCase().trim();
+  const cat = (category || '').toLowerCase().trim();
+
+  // 1. Bánh mì chuột, baguette, bánh mì truyền thống
+  if (n.includes('chuột') || n.includes('baguette') || n.includes('bánh mì việt') || n.includes('bánh mì không') || n.includes('bánh mì ổ')) {
+    return 'https://images.unsplash.com/photo-1549931319-a545dcf3bc73?w=600&auto=format&fit=crop';
+  }
+  // 2. Bánh mì hoa cúc, brioche, bánh mì bơ sữa
+  if (n.includes('hoa cúc') || n.includes('brioche') || n.includes('bơ sữa') || n.includes('hoa cuc')) {
+    return 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=600&auto=format&fit=crop';
+  }
+  // 3. Bánh sừng bò, Croissant, Danish
+  if (n.includes('croissant') || n.includes('sừng bò') || n.includes('sung bo') || n.includes('danish')) {
+    return 'https://images.unsplash.com/photo-1555507036-ab1f4038808a?w=600&auto=format&fit=crop';
+  }
+  // 4. Bánh donut
+  if (n.includes('donut') || n.includes('đô nắt') || n.includes('vòng')) {
+    return 'https://images.unsplash.com/photo-1527515862127-a4fc05baf7a5?w=600&auto=format&fit=crop';
+  }
+  // 5. Bánh sinh nhật socola, ganache
+  if ((n.includes('sinh nhật') || cat.includes('sinh nhật') || cat.includes('kem')) && (n.includes('socola') || n.includes('choco'))) {
+    return 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop';
+  }
+  // 6. Bánh sinh nhật vani, whipping, kem sữa, bento, trái cây
+  if (n.includes('sinh nhật') || cat.includes('sinh nhật') || cat.includes('kem') || n.includes('bento') || n.includes('whipping')) {
+    return 'https://images.unsplash.com/photo-1535141192574-5d4897c13136?w=600&auto=format&fit=crop';
+  }
+  // 7. Bánh su kem, choux
+  if (n.includes('su kem') || n.includes('choux')) {
+    return 'https://images.unsplash.com/photo-1612203985729-70726954388c?w=600&auto=format&fit=crop';
+  }
+  // 8. Bánh tiramisu, mousse, cheese
+  if (n.includes('tiramisu') || n.includes('mousse') || n.includes('cheese')) {
+    return 'https://images.unsplash.com/photo-1571877227200-a0d98ea607e9?w=600&auto=format&fit=crop';
+  }
+  // 9. Mặc định chung cho bánh tiệm nướng
+  return 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&auto=format&fit=crop';
+}
+
+/**
+ * Tự động đồng bộ tất cả bánh thường và bánh sinh nhật có BOM vào danh mục Sản Phẩm Bánh (Products)
+ * - Bánh có BOM mặc định được thêm vào danh sách bánh và có ảnh đẹp tương ứng.
+ * - Loại bỏ hoàn toàn sự phụ thuộc vào việc phải nhấn "Thêm bánh theo BOM" thủ công.
+ */
+export function syncBomToProducts(
+  recipes: any[] = [],
+  birthdayPresets: any[] = [],
+  currentProducts: any[] = []
+): { updatedProducts: any[]; addedCount: number } {
+  const deletedSet = getDeletedProductIds();
+  const prodMap = new Map<string, any>();
+  const nameMap = new Map<string, any>();
+
+  for (const p of currentProducts) {
+    if (!p) continue;
+    const pId = String(p.id || '').toLowerCase().trim();
+    const pName = String(p.name || '').toLowerCase().trim();
+    if (pId) prodMap.set(pId, p);
+    if (pName) nameMap.set(pName, p);
+    if (p.recipe_id) prodMap.set(String(p.recipe_id).toLowerCase().trim(), p);
+    if (p.bom_preset_id) prodMap.set(String(p.bom_preset_id).toLowerCase().trim(), p);
+  }
+
+  const result = [...currentProducts];
+  let addedCount = 0;
+
+  // 1. Quét qua Bánh thường có BOM (recipes)
+  for (const rec of recipes) {
+    if (!rec || !rec.name) continue;
+    const recName = String(rec.name).trim();
+    if (
+      recName.startsWith('SYS_') ||
+      recName.startsWith('SYSTEM_') ||
+      recName.startsWith('DB_ROW_') ||
+      rec.category === 'system_config'
+    ) {
+      continue;
+    }
+
+    const nameKey = recName.toLowerCase();
+    const idKey = String(rec.id || '').toLowerCase();
+
+    // Không hồi sinh bánh đã bị xóa
+    if (deletedSet.has(nameKey) || (idKey && deletedSet.has(idKey))) continue;
+
+    const existing = (idKey && prodMap.get(idKey)) || nameMap.get(nameKey);
+    if (!existing) {
+      const defaultImg = getDefaultCakeImageUrl(recName, rec.category);
+      const cost = Math.round(Number(rec.cost_per_unit) || 0);
+      const sellPrice = Number(rec.suggested_price) > 0
+        ? Number(rec.suggested_price)
+        : (cost > 0 ? Math.round(cost / 0.35 / 1000) * 1000 : 35000);
+
+      const isValidUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+      const prodId = isValidUuid(rec.product_id) ? rec.product_id : (isValidUuid(rec.id) ? rec.id : generateUUID());
+
+      const newProd = {
+        id: prodId,
+        name: recName,
+        category: rec.category || 'Bánh tươi',
+        selling_price: sellPrice,
+        price: sellPrice,
+        base_cost_price: cost,
+        image_url: defaultImg,
+        product_type: 'produced',
+        is_active: true,
+        stock_qty: 10,
+        unit: rec.yield_unit || 'cái',
+        bom_preset_id: rec.id,
+        recipe_id: rec.id,
+        show_on_menu: true,
+      };
+
+      result.push(newProd);
+      prodMap.set(String(newProd.id).toLowerCase(), newProd);
+      nameMap.set(nameKey, newProd);
+      addedCount++;
+      persistProductToSupabase(newProd).catch(() => {});
+    } else {
+      // Nếu sản phẩm đã có nhưng chưa có ảnh hoặc ảnh trống -> bổ sung ảnh mặc định
+      if (!existing.image_url || existing.image_url === '') {
+        existing.image_url = getDefaultCakeImageUrl(recName, rec.category);
+        if (!existing.bom_preset_id) existing.bom_preset_id = rec.id;
+        if (!existing.recipe_id) existing.recipe_id = rec.id;
+      }
+    }
+  }
+
+  // 2. Quét qua Bánh sinh nhật có BOM (birthdayPresets)
+  for (const preset of birthdayPresets) {
+    if (!preset || !preset.name) continue;
+    const presetName = String(preset.name).trim();
+    if (
+      presetName.startsWith('SYS_') ||
+      presetName.startsWith('SYSTEM_') ||
+      presetName.startsWith('DB_ROW_')
+    ) {
+      continue;
+    }
+
+    const nameKey = presetName.toLowerCase();
+    const idKey = String(preset.id || '').toLowerCase();
+
+    // Không hồi sinh bánh đã bị xóa
+    if (deletedSet.has(nameKey) || (idKey && deletedSet.has(idKey))) continue;
+
+    const existing = (idKey && prodMap.get(idKey)) || nameMap.get(nameKey);
+    if (!existing) {
+      const defaultImg = getDefaultCakeImageUrl(presetName, 'Bánh kem & Bánh đặt');
+      const targetCostPct = Number(preset.targetFoodCostPct) || 36.5;
+      const sellPrice = Number(preset.suggestedSellingPrice) || 380000;
+      const cost = Math.round(sellPrice * targetCostPct / 100);
+
+      const isValidUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
+      const prodId = isValidUuid(preset.id) ? preset.id : generateUUID();
+
+      const newProd = {
+        id: prodId,
+        name: presetName,
+        category: 'Bánh kem & Bánh đặt',
+        selling_price: sellPrice,
+        price: sellPrice,
+        base_cost_price: cost,
+        image_url: defaultImg,
+        product_type: 'produced',
+        cake_type_label: 'birthday',
+        is_active: true,
+        stock_qty: 5,
+        unit: 'ổ',
+        bom_preset_id: preset.id,
+        recipe_id: preset.id,
+        show_on_menu: true,
+      };
+
+      result.push(newProd);
+      prodMap.set(String(newProd.id).toLowerCase(), newProd);
+      nameMap.set(nameKey, newProd);
+      addedCount++;
+      persistProductToSupabase(newProd).catch(() => {});
+    } else {
+      if (!existing.image_url || existing.image_url === '') {
+        existing.image_url = getDefaultCakeImageUrl(presetName, 'Bánh kem & Bánh đặt');
+        if (!existing.bom_preset_id) existing.bom_preset_id = preset.id;
+      }
+    }
+  }
+
+  if (addedCount > 0 && typeof window !== 'undefined') {
+    try {
+      localStorage.setItem('bakery_products', JSON.stringify(result));
+      window.dispatchEvent(new Event('bakery_products_updated'));
+    } catch {}
+  }
+
+  return { updatedProducts: result, addedCount };
 }

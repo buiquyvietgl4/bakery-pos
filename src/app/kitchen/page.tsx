@@ -69,6 +69,7 @@ import { parseRecipeItem, formatScaledQty, normalizeRecipe, fetchRecipesFromDb }
 import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 import { cleanCakeNameAndSize, getAddonIcon } from '@/lib/utils/customCakeCosting';
 import { deductOrderIngredients, deductRecipeIngredients } from '@/lib/utils/inventoryDeductionManager';
+import { filterActiveIngredients } from '@/lib/utils/ingredientManager';
 
 interface OrderItem {
   id: string;
@@ -146,6 +147,7 @@ export interface ActiveOvenBatch {
   ends_at: number;
   status: 'baking' | 'done';
   notified?: boolean;
+  is_deducted?: boolean;
 }
 
 // 🛡️ BỘ NHỚ KHÓA TRẠNG THÁI BỀN VỮNG (PERSISTENT STATUS LOCKS):
@@ -687,11 +689,36 @@ export default function KitchenPage() {
   }, []);
 
   // ── BẮT ĐẦU CHO MẺ BÁNH VÀO LÒ NƯỚNG ──
-  const handleStartBaking = (recipe: BakeryRecipe) => {
+  const handleStartBaking = async (recipe: BakeryRecipe) => {
     const durationMin = Number(customBakeMinutes) || Number(recipe.bake_time_minutes) || 20;
     const durationSec = durationMin * 60;
     const qty = Number(targetBatchQty) > 0 ? Number(targetBatchQty) : (recipe.yield_qty || 10);
     const temp = Number(customBakeTemp) > 0 ? Number(customBakeTemp) : (recipe.bake_temp_celsius || 190);
+
+    let isDeducted = false;
+    // Tự động trừ tồn kho nguyên vật liệu ngay khi bắt đầu làm / nướng mẻ bánh
+    try {
+      const deductRes = await deductRecipeIngredients(recipe, qty, {
+        bakeTemp: temp,
+        durationMinutes: durationMin,
+        performedBy: 'Thợ bếp nướng',
+        notes: `Bắt đầu nướng mẻ ${qty} ${recipe.yield_unit || 'cái'} ${recipe.name}`,
+      });
+      if (deductRes.success && deductRes.deductedItems.length > 0) {
+        isDeducted = true;
+        setKdsToast({
+          id: 'toast-deduct-' + Date.now(),
+          title: '📦 Đã Trừ Tồn Kho Nguyên Liệu!',
+          subtitle: `Tự động trừ ${deductRes.deductedItems.length} loại vật tư mẻ ${recipe.name} (+${(deductRes.totalCost || 0).toLocaleString('vi-VN')}₫ giá vốn)`,
+          details: deductRes.deductedItems
+            .slice(0, 3)
+            .map((d) => `${d.name}: -${d.deductedQty}${d.unit}`)
+            .join(' • ') + (deductRes.deductedItems.length > 3 ? ` (+${deductRes.deductedItems.length - 3} loại khác)` : ''),
+        });
+      }
+    } catch (deductErr) {
+      console.warn('Lỗi tự động trừ kho khi bắt đầu nướng:', deductErr);
+    }
 
     const newBatch: ActiveOvenBatch = {
       id: 'batch-' + Date.now(),
@@ -706,6 +733,7 @@ export default function KitchenPage() {
       ends_at: Date.now() + durationSec * 1000,
       status: 'baking',
       notified: false,
+      is_deducted: isDeducted,
     };
 
     const updated = [newBatch, ...ovenBatches];
@@ -838,33 +866,35 @@ export default function KitchenPage() {
         // 2. Tự động đồng bộ vào file Local SQL trên máy tính
         autoSyncToLocalSqlFolder().catch(() => {});
 
-        // 3. TỰ ĐỘNG TRỪ TỒN KHO NGUYÊN VẬT LIỆU CHO MẺ BÁNH BÁN LẺ & GHI LỊCH SỬ LÀM BÁNH
-        const matchedRecipe = recipes.find(
-          (r) => (batch.recipe_id && r.id === batch.recipe_id) ||
-                 (r.name && r.name.toLowerCase().trim() === batch.cake_name.toLowerCase().trim())
-        );
-        if (matchedRecipe && Array.isArray(matchedRecipe.items) && matchedRecipe.items.length > 0) {
-          try {
-            const deductRes = await deductRecipeIngredients(matchedRecipe, batch.quantity, {
-              batchId: batch.id,
-              bakeTemp: batch.bake_temp,
-              durationMinutes: Math.round((batch.duration_seconds || 0) / 60),
-              performedBy: 'Thợ bếp nướng',
-              notes: `Mẻ nướng ${batch.quantity} ${batch.unit || 'cái'} ${batch.cake_name}`,
-            });
-            if (deductRes.success && deductRes.deductedItems.length > 0) {
-              setKdsToast({
-                id: 'toast-deduct-' + Date.now(),
-                title: '📦 Đã Trừ Tồn Kho Nguyên Liệu!',
-                subtitle: `Tự động trừ ${deductRes.deductedItems.length} loại vật tư mẻ ${batch.cake_name} (+${(deductRes.totalCost || 0).toLocaleString('vi-VN')}₫ giá vốn)`,
-                details: deductRes.deductedItems
-                  .slice(0, 3)
-                  .map((d) => `${d.name}: -${d.deductedQty}${d.unit}`)
-                  .join(' • ') + (deductRes.deductedItems.length > 3 ? ` (+${deductRes.deductedItems.length - 3} loại khác)` : ''),
+        // 3. TỰ ĐỘNG TRỪ TỒN KHO NGUYÊN VẬT LIỆU CHO MẺ BÁNH BÁN LẺ (nếu chưa trừ lúc vào lò)
+        if (!batch.is_deducted) {
+          const matchedRecipe = recipes.find(
+            (r) => (batch.recipe_id && r.id === batch.recipe_id) ||
+                   (r.name && r.name.toLowerCase().trim() === batch.cake_name.toLowerCase().trim())
+          );
+          if (matchedRecipe && Array.isArray(matchedRecipe.items) && matchedRecipe.items.length > 0) {
+            try {
+              const deductRes = await deductRecipeIngredients(matchedRecipe, batch.quantity, {
+                batchId: batch.id,
+                bakeTemp: batch.bake_temp,
+                durationMinutes: Math.round((batch.duration_seconds || 0) / 60),
+                performedBy: 'Thợ bếp nướng',
+                notes: `Mẻ nướng ${batch.quantity} ${batch.unit || 'cái'} ${batch.cake_name}`,
               });
+              if (deductRes.success && deductRes.deductedItems.length > 0) {
+                setKdsToast({
+                  id: 'toast-deduct-' + Date.now(),
+                  title: '📦 Đã Trừ Tồn Kho Nguyên Liệu!',
+                  subtitle: `Tự động trừ ${deductRes.deductedItems.length} loại vật tư mẻ ${batch.cake_name} (+${(deductRes.totalCost || 0).toLocaleString('vi-VN')}₫ giá vốn)`,
+                  details: deductRes.deductedItems
+                    .slice(0, 3)
+                    .map((d) => `${d.name}: -${d.deductedQty}${d.unit}`)
+                    .join(' • ') + (deductRes.deductedItems.length > 3 ? ` (+${deductRes.deductedItems.length - 3} loại khác)` : ''),
+                });
+              }
+            } catch (deductErr) {
+              console.warn('Lỗi tự động trừ kho mẻ bánh thường:', deductErr);
             }
-          } catch (deductErr) {
-            console.warn('Lỗi tự động trừ kho mẻ bánh thường:', deductErr);
           }
         }
       } catch (err) {
@@ -1848,6 +1878,22 @@ export default function KitchenPage() {
     fetchRecipesFromDb().then((recs) => {
       if (Array.isArray(recs)) setRecipes(recs);
     }).catch(console.error);
+
+    // Tự động kéo danh sách nguyên vật liệu kho từ Supabase để KDS luôn sẵn sàng trừ kho chính xác
+    (async () => {
+      try {
+        const { data } = await supabase.from('ingredients').select('*');
+        if (data && data.length > 0) {
+          const active = filterActiveIngredients(data);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('bakery_ingredients', JSON.stringify(active));
+            window.dispatchEvent(new CustomEvent('bakery_ingredients_updated', { detail: active }));
+          }
+        }
+      } catch (err) {
+        console.warn(err);
+      }
+    })();
 
     const handleRecipesUpdate = (e: any) => {
       if (e.detail && Array.isArray(e.detail)) {

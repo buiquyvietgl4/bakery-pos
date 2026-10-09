@@ -34,7 +34,10 @@ import {
   decodeProductWithMeta,
   mergeProductLists,
   persistProductToSupabase,
+  syncBomToProducts,
+  getDefaultCakeImageUrl,
 } from '@/lib/utils/productManager';
+import { deductRecipeIngredients, getBakeryIngredients } from '@/lib/utils/inventoryDeductionManager';
 import {
   Ingredient,
   filterActiveIngredients,
@@ -1027,13 +1030,10 @@ export default function AdminDashboard() {
   });
   const [calculatingStorage, setCalculatingStorage] = useState(false);
 
-  // ── THÊM MỚI SẢN PHẨM BÁNH STATE ──
+  // ── THÊM MỚI SẢN PHẨM BÁNH STATE (Chỉ còn Bánh tiệm tự làm và Hàng nhập bán, vì bánh BOM đã tự động có trong thực đơn) ──
   const [isAddProductModalOpen, setIsAddProductModalOpen] = useState(false);
-  const [addProductMode, setAddProductMode] = useState<'free' | 'bom' | 'imported'>('free');
+  const [addProductMode, setAddProductMode] = useState<'free' | 'imported'>('free');
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
-  const [isBomListModalOpen, setIsBomListModalOpen] = useState(false);
-  const [bomListSearch, setBomListSearch] = useState('');
-  const [tempSelectedBomId, setTempSelectedBomId] = useState<string | null>(null);
   const [newProdName, setNewProdName] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('Bánh kem & Bánh đặt');
   const [newProdPrice, setNewProdPrice] = useState<number>(380000);
@@ -1050,69 +1050,10 @@ export default function AdminDashboard() {
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [productOriginFilter, setProductOriginFilter] = useState<'all' | 'produced' | 'imported'>('all');
 
-  // Danh sách các loại bánh có BOM (từ recipes & birthdayBomPresets)
-  const availableBomList = useMemo(() => {
-    const list: any[] = [];
-    const seenNames = new Set<string>();
-
-    // 1. Công thức trong recipes
-    (recipes || []).forEach((rec: any) => {
-      if (
-        rec &&
-        rec.name &&
-        !rec.name.startsWith('SYS_CONFIG_') &&
-        !rec.name.startsWith('SYSTEM_') &&
-        !rec.name.startsWith('DB_ROW_')
-      ) {
-        list.push({
-          id: rec.id,
-          name: rec.name,
-          cost_per_unit: Math.round(rec.cost_per_unit || 0),
-          suggested_price: rec.suggested_price || Math.round((rec.cost_per_unit || 0) / 0.35),
-          yield_qty: rec.yield_qty || 1,
-          items: rec.items || [],
-          source: 'recipe',
-        });
-        seenNames.add(rec.name.trim().toLowerCase());
-      }
-    });
-
-    // 2. Các mẫu BOM bánh sinh nhật (birthdayBomPresets)
-    try {
-      const fullBom = getFullCakeBomConfig();
-      if (fullBom?.birthdayBomPresets && fullBom.birthdayBomPresets.length > 0) {
-        fullBom.birthdayBomPresets.forEach((preset: any) => {
-          if (preset && preset.name && !seenNames.has(preset.name.trim().toLowerCase())) {
-            const cost = preset.suggestedSellingPrice
-              ? Math.round(preset.suggestedSellingPrice * (preset.targetFoodCostPct || 36.5) / 100)
-              : 120000;
-            list.push({
-              id: preset.id,
-              name: preset.name,
-              cost_per_unit: cost,
-              suggested_price: preset.suggestedSellingPrice || Math.round(cost / 0.365),
-              yield_qty: 1,
-              items: [],
-              source: 'preset',
-              notes: preset.notes,
-            });
-            seenNames.add(preset.name.trim().toLowerCase());
-          }
-        });
-      }
-    } catch {}
-
-    return list;
-  }, [recipes]);
-
-  // Lọc theo từ khóa tìm kiếm trong modal BOM picker
-  const filteredBomList = useMemo(() => {
-    if (!bomListSearch.trim()) return availableBomList;
-    const q = bomListSearch.toLowerCase().trim();
-    return availableBomList.filter(
-      (b) => b.name.toLowerCase().includes(q) || (b.notes && b.notes.toLowerCase().includes(q))
-    );
-  }, [availableBomList, bomListSearch]);
+  // ── LÀM MẺ BÁNH TRỰC TIẾP TỪ BOM (ADMIN TRỪ KHO) STATE ──
+  const [bakeBatchModalRecipe, setBakeBatchModalRecipe] = useState<any | null>(null);
+  const [bakeBatchQty, setBakeBatchQty] = useState<number>(10);
+  const [isBakingBatch, setIsBakingBatch] = useState<boolean>(false);
 
   // ── KẾ TOÁN & TÀI CHÍNH STATE ──
   const [accountingPeriod, setAccountingPeriod] = useState<'month' | 'today' | 'all'>('month');
@@ -1792,6 +1733,12 @@ export default function AdminDashboard() {
           localStorage.setItem('bakery_stocks', JSON.stringify(adminStocks));
         }
       }
+      // Tự động đồng bộ tất cả bánh thường & bánh sinh nhật có BOM vào danh sách sản phẩm và bổ sung ảnh mặc định
+      const currentRecipes = getStoredRecipes();
+      const birthdayPresets = getFullCakeBomConfig()?.birthdayBomPresets || [];
+      const { updatedProducts: syncedProds } = syncBomToProducts(currentRecipes, birthdayPresets, currentProds);
+      currentProds = syncedProds;
+
       setProducts(currentProds);
       if (typeof window !== 'undefined') {
         localStorage.setItem('bakery_products', JSON.stringify(currentProds));
@@ -1960,6 +1907,11 @@ export default function AdminDashboard() {
         setIngredients((prev) => {
           const { ingredients: recov, recoveredCount } = autoRecoverIngredientsFromRecipes(prev, norm);
           return recoveredCount > 0 ? recov : prev;
+        });
+        setProducts((prev) => {
+          const birthdayPresets = getFullCakeBomConfig()?.birthdayBomPresets || [];
+          const { updatedProducts, addedCount } = syncBomToProducts(norm, birthdayPresets, prev);
+          return addedCount > 0 ? updatedProducts : prev;
         });
       }
     }).catch(console.error);
@@ -2596,6 +2548,11 @@ export default function AdminDashboard() {
     }
     broadcastRecipeChange(editingRecipeId ? 'update' : 'create', recipeObj);
 
+    // Tự động đồng bộ ngay công thức BOM mới vào danh sách Bánh và ảnh bán hàng!
+    const birthdayPresets = getFullCakeBomConfig()?.birthdayBomPresets || [];
+    const { updatedProducts: newProds } = syncBomToProducts(updatedRecipes, birthdayPresets, products);
+    setProducts(newProds);
+
     setTimeout(() => setRecipeSuccess(null), 5000);
     setIsAddRecipeModalOpen(false);
 
@@ -2617,6 +2574,61 @@ export default function AdminDashboard() {
       const updated = recipes.filter((r) => r.id !== id);
       setRecipes(updated);
       await deleteRecipeEverywhere(id, name);
+    }
+  };
+
+  // ── XỬ LÝ LÀM MẺ BÁNH TRỰC TIẾP TỪ ADMIN BOM (TRỪ KHO NGUYÊN LIỆU + CỘNG TỒN SẢN PHẨM) ──
+  const handleBakeRecipeBatch = async () => {
+    if (!bakeBatchModalRecipe) return;
+    setIsBakingBatch(true);
+    try {
+      const targetQty = Math.max(1, Number(bakeBatchQty) || Number(bakeBatchModalRecipe.yield_qty) || 1);
+      const res = await deductRecipeIngredients(bakeBatchModalRecipe, targetQty, {
+        performedBy: 'Quản trị viên (Admin)',
+        notes: `Làm mẻ bánh trực tiếp từ Admin BOM: ${targetQty} ${bakeBatchModalRecipe.yield_unit || 'cái'}`,
+      });
+
+      if (res.success) {
+        // 1. Cập nhật state ingredients
+        const updatedIngs = getBakeryIngredients();
+        if (updatedIngs.length > 0) {
+          setIngredients(updatedIngs);
+        }
+
+        // 2. Tìm sản phẩm tương ứng để cộng tồn kho
+        const recNameLower = String(bakeBatchModalRecipe.name || '').toLowerCase().trim();
+        const targetProd = products.find(
+          (p) => (bakeBatchModalRecipe.product_id && p.id === bakeBatchModalRecipe.product_id) ||
+                 (p.recipe_id && p.recipe_id === bakeBatchModalRecipe.id) ||
+                 (p.bom_preset_id && p.bom_preset_id === bakeBatchModalRecipe.id) ||
+                 (p.name && p.name.toLowerCase().trim() === recNameLower)
+        );
+
+        if (targetProd) {
+          const newStock = (Number(targetProd.stock_qty) || 0) + targetQty;
+          const updatedTarget = { ...targetProd, stock_qty: newStock };
+          const updatedProds = products.map((p) => (p.id === targetProd.id ? updatedTarget : p));
+          setProducts(updatedProds);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('bakery_products', JSON.stringify(updatedProds));
+            window.dispatchEvent(new Event('bakery_products_updated'));
+          }
+          persistProductToSupabase(updatedTarget).catch(() => {});
+          broadcastProductChange({ action: 'update', product: updatedTarget }).catch(() => {});
+        }
+
+        setRecipeSuccess(
+          `🥖 Đã làm thành công mẻ ${targetQty} ${bakeBatchModalRecipe.yield_unit || 'cái'} "${bakeBatchModalRecipe.name}"! Tự động trừ ${res.deductedItems.length} loại nguyên vật liệu trong kho.`
+        );
+        setTimeout(() => setRecipeSuccess(null), 6000);
+        setBakeBatchModalRecipe(null);
+      } else {
+        alert(`Không thể làm mẻ bánh: ${res.message}`);
+      }
+    } catch (err: any) {
+      alert(`Lỗi làm mẻ bánh: ${err?.message || err}`);
+    } finally {
+      setIsBakingBatch(false);
     }
   };
 
@@ -3163,9 +3175,7 @@ export default function AdminDashboard() {
       supplier_name: isImported ? (newProdSupplierName || 'Hàng nhập ngoài') : undefined,
       barcode: newProdBarcode || undefined,
       food_cost_pct: foodCostPct,
-      image_url: newProdImageUrl || (isImported 
-        ? 'https://images.unsplash.com/photo-1558961363-fa8fdf82db35?w=600&auto=format&fit=crop'
-        : 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=600&auto=format&fit=crop'),
+      image_url: newProdImageUrl || getDefaultCakeImageUrl(newProdName, newProdCategory),
       is_preorder_only: isImported ? false : (newProdCakeLabel === 'pre_order' || newProdIsPreorder),
       cake_type_label: isImported ? 'standard' : newProdCakeLabel,
       show_on_menu: newProdShowOnMenu,
@@ -3173,9 +3183,6 @@ export default function AdminDashboard() {
       stock_qty: Math.max(0, Number(newProdStockQty) || 0),
       is_active: true,
     };
-    if (addProductMode === 'bom' && selectedRecipeId) {
-      newProductObj.recipe_id = selectedRecipeId;
-    }
 
     try {
       unmarkProductDeleted(newId, newProdName);
@@ -5022,7 +5029,7 @@ export default function AdminDashboard() {
               </button>
             </div>
 
-            {/* Tab chuyển đổi chế độ */}
+            {/* Tab chuyển đổi chế độ: 2 chế độ rõ ràng */}
             <div className="flex rounded-xl bg-zinc-100 p-1 gap-1">
               <button
                 type="button"
@@ -5034,31 +5041,13 @@ export default function AdminDashboard() {
                   setNewProdPrice(380000);
                   setNewProdCategory('Bánh kem & Bánh đặt');
                 }}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
                   addProductMode === 'free'
-                    ? 'bg-white text-amber-700 shadow-sm border border-amber-200'
+                    ? 'bg-white text-amber-700 shadow-sm border border-amber-200 font-black'
                     : 'text-zinc-500 hover:text-zinc-700'
                 }`}
               >
-                ✏️ Tiệm tự làm
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAddProductMode('bom');
-                  setSelectedRecipeId(null);
-                  setNewProdBaseCost(null);
-                  setNewProdName('');
-                  setNewProdPrice(380000);
-                  setNewProdCategory('Bánh kem & Bánh đặt');
-                }}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                  addProductMode === 'bom'
-                    ? 'bg-white text-emerald-700 shadow-sm border border-emerald-200'
-                    : 'text-zinc-500 hover:text-zinc-700'
-                }`}
-              >
-                📋 Theo BOM
+                ✏️ Tiệm Tự Làm (Bánh mới / Đặt trước)
               </button>
               <button
                 type="button"
@@ -5071,98 +5060,22 @@ export default function AdminDashboard() {
                   setNewProdImportPrice(30000);
                   setNewProdCategory('Bánh nhập & Đóng gói');
                 }}
-                className={`flex-1 py-2 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                className={`flex-1 py-2.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
                   addProductMode === 'imported'
-                    ? 'bg-white text-blue-700 shadow-sm border border-blue-200'
+                    ? 'bg-white text-blue-700 shadow-sm border border-blue-200 font-black'
                     : 'text-zinc-500 hover:text-zinc-700'
                 }`}
               >
-                📦 Hàng Nhập Bán
+                📦 Hàng Nhập Về Bán (Resale)
               </button>
             </div>
 
-            {/* Chế độ BOM: Nút ấn mở popup List Bánh Có BOM để tích chọn */}
-            {addProductMode === 'bom' && (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-zinc-700 text-xs flex items-center gap-1.5">
-                    <ClipboardList className="w-4 h-4 text-emerald-600" />
-                    <span>Định Mức BOM Liên Kết:</span>
-                  </label>
-                  {selectedRecipeId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedRecipeId(null);
-                        setNewProdName('');
-                        setNewProdBaseCost(null);
-                        setNewProdPrice(380000);
-                      }}
-                      className="text-[11px] text-zinc-400 hover:text-rose-600 font-medium cursor-pointer transition"
-                    >
-                      Xóa lựa chọn
-                    </button>
-                  )}
-                </div>
-
-                {/* NÚT BẤM MỞ MODAL LIST BÁNH CÓ BOM */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setTempSelectedBomId(selectedRecipeId);
-                    setBomListSearch('');
-                    setIsBomListModalOpen(true);
-                  }}
-                  className={`w-full p-3.5 rounded-2xl font-black text-xs sm:text-sm flex items-center justify-between gap-3 transition cursor-pointer border-2 shadow-xs ${
-                    selectedRecipeId
-                      ? 'bg-emerald-50 border-emerald-500 text-emerald-900 ring-2 ring-emerald-200'
-                      : 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white border-transparent shadow-md hover:shadow-lg'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
-                      selectedRecipeId ? 'bg-emerald-600 text-white' : 'bg-white/20 text-white'
-                    }`}>
-                      <ClipboardList className="w-4 h-4" />
-                    </div>
-                    <div className="text-left min-w-0">
-                      <div className="truncate">
-                        {selectedRecipeId
-                          ? (availableBomList.find((r) => r.id === selectedRecipeId)?.name || 'Đã chọn bánh có BOM')
-                          : '📋 Mở List Bánh Có BOM (Tích Chọn)'}
-                      </div>
-                      <div className={`text-[10px] font-medium truncate ${selectedRecipeId ? 'text-emerald-700 font-bold' : 'text-emerald-100'}`}>
-                        {selectedRecipeId
-                          ? `Giá gốc: ${Math.round(newProdBaseCost || 0).toLocaleString('vi-VN')}₫ • Giá bán: ${(newProdPrice || 0).toLocaleString('vi-VN')}₫`
-                          : `Có ${availableBomList.length} loại bánh có BOM • Bấm để mở danh sách và tích chọn`}
-                      </div>
-                    </div>
-                  </div>
-                  <span className={`px-2.5 py-1 rounded-xl text-xs font-black shrink-0 ${
-                    selectedRecipeId
-                      ? 'bg-emerald-600 text-white shadow-xs'
-                      : 'bg-white text-emerald-700 shadow-xs'
-                  }`}>
-                    {selectedRecipeId ? 'Đổi Bánh Khác' : 'Chọn Bánh'}
-                  </span>
-                </button>
-
-                {selectedRecipeId && (
-                  <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-900 space-y-1">
-                    <div className="flex items-center justify-between font-bold">
-                      <span className="flex items-center gap-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Đã tích chọn: {newProdName}</span>
-                      </span>
-                      <span className="text-emerald-700 font-mono font-black">{Number(newProdPrice).toLocaleString('vi-VN')}₫</span>
-                    </div>
-                    <p className="text-[11px] text-emerald-700 leading-relaxed">
-                      Đã tự động điền tên bánh, giá vốn gốc ({Math.round(newProdBaseCost || 0).toLocaleString('vi-VN')}₫) và giá bán gợi ý. Bạn vẫn có thể chỉnh sửa lại giá và thông tin bên dưới trước khi lưu.
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
+            <div className="p-2.5 bg-amber-50/70 border border-amber-200/60 rounded-xl text-[11px] text-amber-800 flex items-center gap-2">
+              <span className="text-base shrink-0">💡</span>
+              <span>
+                <b>Mẹo:</b> Mọi loại bánh có định mức BOM (bánh thường & bánh sinh nhật) đã được hệ thống <b>tự động đưa vào danh mục thực đơn và có ảnh mặc định</b>.
+              </span>
+            </div>
 
             <form onSubmit={handleCreateProduct} className="space-y-3 text-xs">
               <div>
@@ -5266,8 +5179,8 @@ export default function AdminDashboard() {
                 </div>
               )}
 
-              {/* Hiển thị giá gốc BOM nếu có (cho chế độ BOM) */}
-              {addProductMode === 'bom' && newProdBaseCost !== null && newProdBaseCost > 0 && (
+              {/* Hiển thị giá gốc BOM nếu có */}
+              {newProdBaseCost !== null && newProdBaseCost > 0 && (
                 <div className="p-2.5 bg-blue-50 rounded-xl border border-blue-200 flex items-center justify-between text-[11px]">
                   <span className="text-blue-800">📊 Giá gốc nguyên liệu (BOM): <b>{(Number(newProdBaseCost) || 0).toLocaleString('vi-VN')}₫</b></span>
                   <span className={`font-bold px-2 py-0.5 rounded-full ${
@@ -5390,7 +5303,7 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={creatingProduct || (addProductMode === 'bom' && !selectedRecipeId)}
+                  disabled={creatingProduct || !newProdName.trim()}
                   className="flex-2 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
@@ -5398,205 +5311,6 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL POPUP: LIST BÁNH CÓ BOM ĐỂ TÍCH CHỌN ── */}
-      {isBomListModalOpen && (
-        <div className="fixed inset-0 z-[130] bg-black/75 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-150">
-          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl border border-zinc-200 p-4 sm:p-6 space-y-4 max-h-[90vh] flex flex-col my-auto animate-in zoom-in-95 duration-150">
-            {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 shadow-xs">
-                  <ClipboardList className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-black text-base text-zinc-900 flex items-center gap-2">
-                    <span>Danh Sách Bánh Có Định Mức BOM</span>
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold">
-                      {filteredBomList.length} loại
-                    </span>
-                  </h3>
-                  <p className="text-xs text-zinc-500">
-                    Tích chọn 1 loại bánh có BOM để tự động điền giá vốn và giá bán gợi ý vào thực đơn
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsBomListModalOpen(false)}
-                className="p-2 rounded-xl text-zinc-400 hover:text-zinc-700 hover:bg-zinc-100 cursor-pointer transition"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* Thanh tìm kiếm */}
-            <div className="relative shrink-0">
-              <Search className="w-4 h-4 text-zinc-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                value={bomListSearch}
-                onChange={(e) => setBomListSearch(e.target.value)}
-                placeholder="Tìm kiếm theo tên loại bánh có BOM..."
-                className="w-full pl-10 pr-8 py-2.5 rounded-2xl border border-zinc-200 bg-zinc-50 font-bold text-xs text-zinc-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition"
-              />
-              {bomListSearch && (
-                <button
-                  type="button"
-                  onClick={() => setBomListSearch('')}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 text-xs cursor-pointer"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {/* Danh sách các bánh có BOM dạng thẻ tích chọn (Scrollable) */}
-            <div className="flex-1 overflow-y-auto space-y-2 pr-1 min-h-[240px]">
-              {filteredBomList.length === 0 ? (
-                <div className="p-8 text-center bg-zinc-50 rounded-2xl border border-dashed border-zinc-200 space-y-2">
-                  <div className="text-zinc-400 text-sm font-bold">
-                    {availableBomList.length === 0
-                      ? 'Chưa có công thức BOM nào trong hệ thống.'
-                      : 'Không tìm thấy loại bánh nào phù hợp với từ khóa.'}
-                  </div>
-                  <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                    Bạn có thể tạo thêm công thức BOM mới trong tab &ldquo;Công Thức BOM&rdquo; hoặc mục &ldquo;BOM Bánh Sinh Nhật&rdquo;.
-                  </p>
-                </div>
-              ) : (
-                filteredBomList.map((rec: any) => {
-                  const isChecked = tempSelectedBomId === rec.id;
-                  return (
-                    <div
-                      key={rec.id}
-                      onClick={() => setTempSelectedBomId(rec.id)}
-                      className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex items-center gap-3.5 ${
-                        isChecked
-                          ? 'border-emerald-500 bg-emerald-50/70 ring-2 ring-emerald-200 shadow-xs'
-                          : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
-                      }`}
-                    >
-                      {/* Ô Checkbox / Radio tích chọn */}
-                      <div className="shrink-0">
-                        <div
-                          className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition ${
-                            isChecked
-                              ? 'border-emerald-600 bg-emerald-600 text-white shadow-xs'
-                              : 'border-zinc-300 bg-white'
-                          }`}
-                        >
-                          {isChecked && <Check className="w-4 h-4 stroke-[3]" />}
-                        </div>
-                      </div>
-
-                      {/* Thông tin bánh */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="font-black text-sm text-zinc-900 truncate">
-                            {rec.name}
-                          </span>
-                          <div className="flex items-center gap-1.5 shrink-0">
-                            {rec.source === 'preset' && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 font-extrabold border border-pink-200">
-                                BOM Sinh Nhật
-                              </span>
-                            )}
-                            {isChecked && (
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-black">
-                                ✓ Đang Chọn
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1 text-[11px]">
-                          <span className="text-zinc-500">
-                            Giá vốn BOM:{' '}
-                            <b className="text-zinc-900 font-black">
-                              {Math.round(rec.cost_per_unit || 0).toLocaleString('vi-VN')}₫
-                            </b>
-                          </span>
-                          <span className="text-zinc-300">•</span>
-                          <span className="text-zinc-500">
-                            SL/mẻ: <b className="text-zinc-700">{rec.yield_qty || 1}</b>
-                          </span>
-                          {rec.suggested_price && (
-                            <>
-                              <span className="text-zinc-300">•</span>
-                              <span className="text-emerald-700 font-bold">
-                                Giá bán gợi ý: {(Number(rec.suggested_price) || 0).toLocaleString('vi-VN')}₫
-                              </span>
-                            </>
-                          )}
-                        </div>
-
-                        {rec.items && rec.items.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {rec.items.slice(0, 5).map((item: any, idx: number) => (
-                              <span
-                                key={idx}
-                                className="text-[10px] bg-zinc-100 px-2 py-0.5 rounded-lg border border-zinc-200 text-zinc-600 font-medium"
-                              >
-                                {item.name}
-                              </span>
-                            ))}
-                            {rec.items.length > 5 && (
-                              <span className="text-[10px] text-zinc-400 font-bold">
-                                +{rec.items.length - 5} nguyên liệu
-                              </span>
-                            )}
-                          </div>
-                        )}
-                        {rec.notes && (!rec.items || rec.items.length === 0) && (
-                          <div className="mt-1 text-[11px] text-zinc-400 italic truncate">
-                            {rec.notes}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* Footer Modal: Nút Hủy và Xác Nhận Tích Chọn */}
-            <div className="flex items-center justify-between gap-3 pt-3 border-t border-zinc-100 shrink-0">
-              <span className="text-xs text-zinc-500">
-                {tempSelectedBomId ? 'Đã chọn 1 loại bánh' : 'Chưa chọn bánh nào'}
-              </span>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsBomListModalOpen(false)}
-                  className="px-4 py-2.5 rounded-xl border border-zinc-200 font-bold text-xs text-zinc-600 hover:bg-zinc-100 cursor-pointer transition"
-                >
-                  Đóng
-                </button>
-                <button
-                  type="button"
-                  disabled={!tempSelectedBomId}
-                  onClick={() => {
-                    const selectedRec = availableBomList.find((r) => r.id === tempSelectedBomId);
-                    if (selectedRec) {
-                      setSelectedRecipeId(selectedRec.id);
-                      setNewProdName(selectedRec.name);
-                      setNewProdBaseCost(Math.round(selectedRec.cost_per_unit || 0));
-                      setNewProdPrice(selectedRec.suggested_price || Math.round((selectedRec.cost_per_unit || 0) / 0.35));
-                      setNewProdCategory('Bánh kem & Bánh đặt');
-                    }
-                    setIsBomListModalOpen(false);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-black text-xs cursor-pointer shadow-md shadow-emerald-600/30 transition flex items-center gap-1.5"
-                >
-                  <Check className="w-4 h-4 stroke-[3]" />
-                  <span>Xác Nhận Tích Chọn</span>
-                </button>
-              </div>
-            </div>
           </div>
         </div>
       )}
@@ -7584,11 +7298,26 @@ export default function AdminDashboard() {
                     })}
                   </div>
 
-                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200/60 flex justify-between items-center text-xs font-bold">
-                    <span className="text-amber-800">Giá bán đề xuất:</span>
-                    <span className="text-sm font-black text-amber-700">
-                      {(Number(rec.suggested_price) || (rec.cost_per_unit ? Math.round(Number(rec.cost_per_unit) / 0.35) : 0)).toLocaleString('vi-VN')}₫
-                    </span>
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 pt-1">
+                    <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200/60 flex-1 flex justify-between items-center text-xs font-bold">
+                      <span className="text-amber-800">Giá bán đề xuất:</span>
+                      <span className="text-sm font-black text-amber-700">
+                        {(Number(rec.suggested_price) || (rec.cost_per_unit ? Math.round(Number(rec.cost_per_unit) / 0.35) : 0)).toLocaleString('vi-VN')}₫
+                      </span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBakeBatchModalRecipe(rec);
+                        setBakeBatchQty(rec.yield_qty || 10);
+                      }}
+                      className="px-3.5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-sm shadow-orange-600/30 cursor-pointer transition active:scale-95 shrink-0"
+                      title="Làm mẻ bánh này ngay (Tự động trừ kho nguyên liệu và cộng tồn kho sản phẩm)"
+                    >
+                      <ChefHat className="w-4 h-4" />
+                      <span>🥖 Làm Mẻ (Trừ Kho)</span>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -7883,6 +7612,101 @@ export default function AdminDashboard() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: LÀM MẺ BÁNH TRỰC TIẾP TỪ BOM (TRỪ KHO NGUYÊN LIỆU) ── */}
+      {bakeBatchModalRecipe && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150 my-auto">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-orange-100 text-orange-700 flex items-center justify-center shadow-xs">
+                  <ChefHat className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-zinc-900">
+                    Làm Mẻ Bánh: {bakeBatchModalRecipe.name}
+                  </h3>
+                  <p className="text-xs text-zinc-500">
+                    Tự động trừ tồn kho nguyên vật liệu và cộng số lượng bánh vào thực đơn bán hàng
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBakeBatchModalRecipe(null)}
+                className="p-1.5 rounded-xl text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="font-bold text-zinc-700 block mb-1">
+                  Số lượng sản xuất ({bakeBatchModalRecipe.yield_unit || 'cái'}):
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={bakeBatchQty}
+                  onChange={(e) => setBakeBatchQty(Math.max(1, parseInt(e.target.value) || 1))}
+                  className="w-full p-3 rounded-2xl border-2 border-orange-200 bg-orange-50/50 font-black text-orange-700 text-lg text-center focus:outline-none focus:border-orange-500"
+                />
+              </div>
+
+              <div className="p-3 bg-zinc-50 rounded-2xl border border-zinc-200 space-y-2">
+                <span className="font-bold text-zinc-700 block text-[11px] uppercase tracking-wider">
+                  📦 Nguyên liệu dự kiến sẽ trừ kho (Tỷ lệ mẻ: {bakeBatchQty}/{bakeBatchModalRecipe.yield_qty || 1}):
+                </span>
+                <div className="max-h-48 overflow-y-auto divide-y divide-zinc-200/60 pr-1">
+                  {(bakeBatchModalRecipe.items || []).map((it: any, idx: number) => {
+                    const parsed = parseRecipeItem(it);
+                    const mult = (Number(bakeBatchQty) || 1) / (Number(bakeBatchModalRecipe.yield_qty) || 1);
+                    const scaledQty = Math.round(parsed.numericQty * mult * 10) / 10;
+                    return (
+                      <div key={idx} className="py-1.5 flex justify-between items-center text-xs">
+                        <span className="text-zinc-700 font-medium">{it.name}</span>
+                        <span className="font-bold text-orange-700 font-mono">
+                          -{scaledQty} {parsed.unit}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-[11px] text-emerald-800 space-y-1">
+                <div className="flex items-center gap-1.5 font-bold">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>Cộng kho thành phẩm tự động</span>
+                </div>
+                <p className="text-emerald-700">
+                  Sau khi bấm xác nhận, hệ thống sẽ tự động trừ kho các nguyên liệu trên và cộng thêm <b>+{bakeBatchQty} {bakeBatchModalRecipe.yield_unit || 'cái'}</b> vào số lượng tồn kho sản phẩm để thu ngân POS bán ngay.
+                </p>
+              </div>
+
+              <div className="flex gap-2.5 pt-2 border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setBakeBatchModalRecipe(null)}
+                  className="flex-1 py-3 rounded-xl border border-zinc-200 font-bold text-zinc-600 hover:bg-zinc-50 cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="button"
+                  disabled={isBakingBatch}
+                  onClick={handleBakeRecipeBatch}
+                  className="flex-2 py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black shadow-md shadow-orange-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 transition active:scale-95"
+                >
+                  <ChefHat className="w-4 h-4" />
+                  <span>{isBakingBatch ? 'Đang trừ kho...' : '🔥 Xác Nhận Làm Mẻ & Trừ Kho'}</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

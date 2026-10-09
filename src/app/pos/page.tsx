@@ -11,7 +11,10 @@ import {
   isImportedProduct,
   decodeProductWithMeta,
   mergeProductLists,
+  syncBomToProducts,
 } from '@/lib/utils/productManager';
+import { getStoredRecipes } from '@/lib/utils/recipeCalculator';
+import { getFullCakeBomConfig } from '@/lib/utils/cakeBomManager';
 import { generateUUID } from '@/lib/utils/uuid';
 import { 
   Search, ShoppingCart, Trash2, Plus, Minus, CreditCard, 
@@ -1347,6 +1350,12 @@ export default function POSPage() {
       }
 
       currentProducts = filterActiveProducts(currentProducts);
+      try {
+        const currentRecipes = getStoredRecipes();
+        const bPresets = getFullCakeBomConfig()?.birthdayBomPresets || [];
+        const { updatedProducts: synced } = syncBomToProducts(currentRecipes, bPresets, currentProducts);
+        currentProducts = synced;
+      } catch {}
 
       setProducts(currentProducts);
       if (typeof window !== 'undefined') {
@@ -1374,7 +1383,13 @@ export default function POSPage() {
               } catch {}
               return;
             } else {
-              const merged = mergeProductLists([], data);
+              let merged = mergeProductLists([], data);
+              try {
+                const currentRecipes = getStoredRecipes();
+                const bPresets = getFullCakeBomConfig()?.birthdayBomPresets || [];
+                const { updatedProducts: synced } = syncBomToProducts(currentRecipes, bPresets, merged);
+                merged = synced;
+              } catch {}
               setProducts(merged);
               if (typeof window !== 'undefined') {
                 localStorage.setItem('bakery_products', JSON.stringify(merged));
