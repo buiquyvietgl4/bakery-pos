@@ -10,6 +10,7 @@ import { DEFAULT_BAKERY_RECIPES, BakeryRecipe } from '@/lib/constants/bakeryData
 export const RECIPES_UPDATED_EVENT = 'bakery_recipes_updated';
 export const BAKERY_RECIPES_KEY = 'bakery_recipes';
 const STORAGE_KEY_RECIPES = BAKERY_RECIPES_KEY;
+export const BAKERY_RECIPES_INITIALIZED_KEY = 'bakery_recipes_initialized';
 
 export const BAKERY_DELETED_RECIPE_IDS_KEY = 'bakery_deleted_recipe_ids';
 export const DB_ROW_DELETED_RECIPES_ID = '00000000-0000-0000-0000-000000000046';
@@ -309,6 +310,57 @@ export async function deleteRecipeEverywhere(id: string, name?: string): Promise
 }
 
 /**
+ * Xóa sạch toàn bộ công thức bánh bán lẻ:
+ * 1. Đưa tất cả vào danh sách đen Tombstone
+ * 2. Làm sạch localStorage('bakery_recipes') thành '[]' và đặt initialized = 'true'
+ * 3. Xóa trên Supabase Cloud SQL
+ * 4. Phát sóng realtimeSync và đồng bộ Local SQL
+ */
+export async function deleteAllRecipesEverywhere(recipesToDelete: BakeryRecipe[]): Promise<void> {
+  if (Array.isArray(recipesToDelete)) {
+    recipesToDelete.forEach((r) => markRecipeAsDeleted(r.id, r.name));
+  }
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY_RECIPES, '[]');
+      localStorage.setItem(BAKERY_RECIPES_INITIALIZED_KEY, 'true');
+      window.dispatchEvent(new CustomEvent(RECIPES_UPDATED_EVENT, { detail: [] }));
+    } catch {}
+  }
+  autoSyncToLocalSqlFolder().catch(() => {});
+  broadcastRecipeChange('delete', { id: 'ALL', name: 'ALL' });
+
+  try {
+    if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
+      const ids = Array.isArray(recipesToDelete) ? recipesToDelete.map((r) => r.id).filter(Boolean) : [];
+      if (ids.length > 0) {
+        try {
+          await supabase.from('recipe_items').delete().in('recipe_id', ids);
+        } catch {}
+        await supabase.from('recipes').delete().in('id', ids);
+      }
+    }
+  } catch (err) {
+    console.error('Lỗi khi xóa tất cả recipes trên Supabase:', err);
+  }
+}
+
+/**
+ * Reset sạch toàn bộ công thức bánh lưu trong bộ nhớ cục bộ
+ */
+export function resetAllStoredRecipes(): void {
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.setItem(STORAGE_KEY_RECIPES, '[]');
+      localStorage.setItem(BAKERY_RECIPES_INITIALIZED_KEY, 'true');
+      window.dispatchEvent(new CustomEvent(RECIPES_UPDATED_EVENT, { detail: [] }));
+    } catch (e) {
+      console.error('Lỗi reset bakery_recipes vào localStorage:', e);
+    }
+  }
+}
+
+/**
  * Lấy danh sách công thức đang lưu trong bộ nhớ cục bộ
  */
 export function getStoredRecipes(): BakeryRecipe[] {
@@ -320,6 +372,12 @@ export function getStoredRecipes(): BakeryRecipe[] {
         if (Array.isArray(parsed)) {
           return filterActiveRecipes(parsed.map(normalizeRecipe));
         }
+      }
+      // Khi raw === null: kiểm tra xem hệ thống đã từng được khởi tạo hoặc đã qua reset chưa
+      const initialized = localStorage.getItem(BAKERY_RECIPES_INITIALIZED_KEY);
+      const resetEpoch = localStorage.getItem('bakery_system_reset_epoch');
+      if (initialized === 'true' || resetEpoch) {
+        return [];
       }
     } catch {}
   }
@@ -365,13 +423,11 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
 
     if (cleanRecipes.length === 0) {
       if (typeof window !== 'undefined') {
-        const resetEpoch = localStorage.getItem('bakery_system_reset_epoch');
-        if (resetEpoch) {
-          localStorage.removeItem('bakery_recipes');
-          return [];
-        }
+        localStorage.setItem(STORAGE_KEY_RECIPES, '[]');
+        localStorage.setItem(BAKERY_RECIPES_INITIALIZED_KEY, 'true');
+        window.dispatchEvent(new CustomEvent(RECIPES_UPDATED_EVENT, { detail: [] }));
       }
-      return filterActiveRecipes(fallback);
+      return [];
     }
 
     const ings = filterActiveIngredients(ingsRes.data || []);
@@ -460,6 +516,7 @@ export async function fetchRecipesFromDb(): Promise<BakeryRecipe[]> {
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(STORAGE_KEY_RECIPES, JSON.stringify(finalRecipes));
+        localStorage.setItem(BAKERY_RECIPES_INITIALIZED_KEY, 'true');
         window.dispatchEvent(new CustomEvent(RECIPES_UPDATED_EVENT, { detail: finalRecipes }));
       } catch {}
     }

@@ -118,7 +118,7 @@ import { ShiftManagementSection } from '@/components/admin/ShiftManagementSectio
 import AccountManagementSection from '@/components/admin/AccountManagementSection';
 import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
-import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes, deleteRecipeEverywhere, unmarkRecipeDeleted } from '@/lib/utils/recipeCalculator';
+import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes, deleteRecipeEverywhere, deleteAllRecipesEverywhere, unmarkRecipeDeleted } from '@/lib/utils/recipeCalculator';
 import {
   ExpenseItem,
   CashflowTransaction,
@@ -1941,7 +1941,7 @@ export default function AdminDashboard() {
 
     // Tự động kéo dữ liệu Cloud: Công thức BOM, Chi phí OPEX, Sổ quỹ, Bánh hỏng, Kiểm kê, Chốt sổ
     fetchRecipesFromDb().then((recs) => {
-      if (recs && recs.length > 0) setRecipes(recs.map(normalizeRecipe));
+      if (Array.isArray(recs)) setRecipes(recs.map(normalizeRecipe));
     }).catch(console.error);
 
     fetchExpensesFromDb().then((exps) => {
@@ -2049,6 +2049,14 @@ export default function AdminDashboard() {
             return updated;
           });
         } else if (action === 'delete') {
+          if (recipe?.id === 'ALL' || recipe?.name === 'ALL') {
+            setRecipes([]);
+            try {
+              localStorage.setItem('bakery_recipes', '[]');
+              localStorage.setItem('bakery_recipes_initialized', 'true');
+            } catch {}
+            return;
+          }
           setRecipes((prev) => {
             const updated = prev.filter((r) => r.id !== recipe.id);
             try {
@@ -2577,6 +2585,74 @@ export default function AdminDashboard() {
       setRecipes(updated);
       await deleteRecipeEverywhere(id, name);
     }
+  };
+
+  const handleClearAllRecipes = async () => {
+    if (recipes.length === 0) return;
+    if (!confirm(`Bạn có chắc chắn muốn xóa toàn bộ ${recipes.length} công thức BOM bánh bán lẻ? Toàn bộ công thức sẽ được xóa sạch khỏi hệ thống và CSDL.`)) {
+      return;
+    }
+    const currentRecs = [...recipes];
+    setRecipes([]);
+    await deleteAllRecipesEverywhere(currentRecs);
+    setRecipeSuccess('Đã xóa sạch toàn bộ công thức BOM bánh bán lẻ thành công!');
+    setTimeout(() => setRecipeSuccess(null), 4000);
+  };
+
+  const handleRestoreSampleRecipes = async () => {
+    if (!confirm('Nạp lại 6 công thức bánh bán lẻ mẫu chuẩn (Bánh mì hoa cúc, Croissant, Su kem, v.v.) vào hệ thống?')) {
+      return;
+    }
+    const { DEFAULT_BAKERY_RECIPES } = await import('@/lib/constants/bakeryData');
+    DEFAULT_BAKERY_RECIPES.forEach((r) => unmarkRecipeDeleted(r.id, r.name));
+
+    const sampleNormalized = DEFAULT_BAKERY_RECIPES.map(normalizeRecipe);
+    setRecipes(sampleNormalized);
+
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bakery_recipes', JSON.stringify(sampleNormalized));
+      localStorage.setItem('bakery_recipes_initialized', 'true');
+      window.dispatchEvent(new CustomEvent('bakery_recipes_updated', { detail: sampleNormalized }));
+    }
+
+    if (navigator.onLine && !isLocalMode()) {
+      try {
+        for (const r of sampleNormalized) {
+          await supabase.from('recipes').upsert({
+            id: r.id,
+            name: r.name,
+            yield_qty: r.yield_qty || 1,
+            yield_unit: r.yield_unit || 'chiếc',
+            cost_per_unit: r.cost_per_unit || 0,
+            total_material_cost: (r.cost_per_unit || 0) * (r.yield_qty || 1),
+            notes: JSON.stringify({
+              bake_time_minutes: r.bake_time_minutes,
+              bake_temp_celsius: r.bake_temp_celsius,
+              notes: r.notes || r.description,
+              items: r.items,
+            }),
+            is_active: true,
+          });
+
+          if (Array.isArray(r.items) && r.items.length > 0) {
+            const itemsToInsert = r.items.map((it: any) => ({
+              recipe_id: r.id,
+              ingredient_id: it.ingredient_id,
+              quantity: it.quantity || it.qty || 0,
+              unit: it.unit || 'g',
+              line_cost: it.cost || 0,
+            }));
+            await supabase.from('recipe_items').delete().eq('recipe_id', r.id);
+            await supabase.from('recipe_items').insert(itemsToInsert);
+          }
+        }
+      } catch (err) {
+        console.warn('Lỗi lưu sample recipes lên Supabase:', err);
+      }
+    }
+
+    setRecipeSuccess('Đã nạp thành công 6 công thức bánh bán lẻ mẫu chuẩn!');
+    setTimeout(() => setRecipeSuccess(null), 4000);
   };
 
   // ── XỬ LÝ THÊM MỚI VẬT TƯ / NGUYÊN LIỆU (ADD INGREDIENT) ──
@@ -7191,18 +7267,40 @@ export default function AdminDashboard() {
                 Giá vốn được tự động tính dựa trên định lượng nguyên liệu và đơn giá nhập kho hiện tại
               </p>
             </div>
-            <button
-              onClick={() => {
-                if (ingredients.length === 0) {
-                  alert('Kho chưa có nguyên liệu nào. Vui lòng thêm nguyên liệu ở Tab "Kho Xuất Nhập & Vật Tư" trước!');
-                  return;
-                }
-                handleOpenAddRecipe();
-              }}
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/25 cursor-pointer transition shrink-0"
-            >
-              <Plus className="w-4 h-4" /> Thêm Công Thức Bánh Mới
-            </button>
+            <div className="flex items-center gap-2 flex-wrap shrink-0">
+              {recipes.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllRecipes}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs cursor-pointer transition shrink-0"
+                  title="Xóa sạch toàn bộ công thức BOM trên hệ thống và CSDL"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-600" /> Xóa Tất Cả BOM ({recipes.length})
+                </button>
+              )}
+              {recipes.length === 0 && (
+                <button
+                  type="button"
+                  onClick={handleRestoreSampleRecipes}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-bold text-xs cursor-pointer transition shrink-0"
+                  title="Khôi phục lại 6 công thức mẫu mặc định"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-600" /> Nạp 6 Công Thức Mẫu
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  if (ingredients.length === 0) {
+                    alert('Kho chưa có nguyên liệu nào. Vui lòng thêm nguyên liệu ở Tab "Kho Xuất Nhập & Vật Tư" trước!');
+                    return;
+                  }
+                  handleOpenAddRecipe();
+                }}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/25 cursor-pointer transition shrink-0"
+              >
+                <Plus className="w-4 h-4" /> Thêm Công Thức Bánh Mới
+              </button>
+            </div>
           </div>
 
           {recipeSuccess && (
@@ -7217,14 +7315,22 @@ export default function AdminDashboard() {
               <BookOpen className="w-10 h-10 text-zinc-300 mx-auto" />
               <p className="font-bold text-zinc-700 text-sm">Chưa có công thức bánh nào trong hệ thống</p>
               <p className="text-xs text-zinc-500 max-w-sm mx-auto">
-                Bấm nút "Thêm Công Thức Bánh Mới" để khai báo định mức nguyên liệu và tự động tính toán giá vốn chính xác.
+                Bấm nút "Thêm Công Thức Bánh Mới" để khai báo định mức nguyên liệu hoặc bấm "Nạp 6 công thức mẫu" để tải lại bộ mẫu chuẩn.
               </p>
-              <button
-                onClick={handleOpenAddRecipe}
-                className="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700"
-              >
-                Tạo công thức đầu tiên
-              </button>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={handleOpenAddRecipe}
+                  className="px-4 py-2 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700"
+                >
+                  Tạo công thức đầu tiên
+                </button>
+                <button
+                  onClick={handleRestoreSampleRecipes}
+                  className="px-4 py-2 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold hover:bg-amber-100 flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-600" /> Nạp 6 công thức mẫu
+                </button>
+              </div>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

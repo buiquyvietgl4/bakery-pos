@@ -913,7 +913,7 @@ export async function broadcastSecurityConfig(config: any) {
  * Phát sóng cập nhật công thức bánh BOM tới tất cả thiết bị (Admin, Kitchen)
  */
 export async function broadcastRecipeChange(action: 'create' | 'update' | 'delete', recipe: any) {
-  if (isLocalMode()) return;
+  if (isLocalMode() || (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test')) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {

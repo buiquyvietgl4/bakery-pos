@@ -134,7 +134,7 @@ export async function checkServerResetEpoch(): Promise<{ shouldAbort: boolean; s
       window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
       if (serverMode === 'full') {
         window.dispatchEvent(new Event('bakery_products_updated'));
-        window.dispatchEvent(new Event('bakery_recipes_updated'));
+        window.dispatchEvent(new CustomEvent('bakery_recipes_updated', { detail: [] }));
       }
       window.dispatchEvent(new CustomEvent('bakery_system_wiped', { detail: { epoch: serverEpoch, mode: serverMode } }));
 
@@ -289,6 +289,10 @@ export async function clearAllClientStorage(
           birthdayBomPresets: [],
         }));
         localStorage.setItem('bakery_bom_initialized', 'true');
+        // Reset sạch cấu hình BOM bánh bán lẻ
+        localStorage.setItem('bakery_recipes', '[]');
+        localStorage.setItem('bakery_recipes_initialized', 'true');
+        localStorage.setItem('bakery_deleted_recipe_ids', '[]');
         window.dispatchEvent(new CustomEvent('bakery_bom_updated', {
           detail: {
             version: '2026.1',
@@ -302,9 +306,9 @@ export async function clearAllClientStorage(
             birthdayBomPresets: [],
           }
         }));
+        window.dispatchEvent(new CustomEvent('bakery_recipes_updated', { detail: [] }));
         window.dispatchEvent(new CustomEvent('bakery_notif_history_change'));
         window.dispatchEvent(new Event('bakery_products_updated'));
-        window.dispatchEvent(new Event('bakery_recipes_updated'));
       }
     } catch (lsErr) {
       console.warn('Lỗi dọn localStorage:', lsErr);

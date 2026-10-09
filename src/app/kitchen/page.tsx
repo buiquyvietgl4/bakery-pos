@@ -1770,7 +1770,7 @@ export default function KitchenPage() {
       },
       onRecipeChange: (payload) => {
         fetchRecipesFromDb().then((recs) => {
-          if (recs && recs.length > 0) setRecipes(recs);
+          if (Array.isArray(recs)) setRecipes(recs);
         });
       },
       onSystemGlobalWipe: async (payload) => {
@@ -1799,6 +1799,9 @@ export default function KitchenPage() {
           if (payloadEpoch > 0) setLocalResetEpoch(payloadEpoch);
           setOrders([]);
           setUnreadNotifs(0);
+          if (payload?.mode === 'full') {
+            setRecipes([]);
+          }
         } catch (e) {
           console.error('[KITCHEN] Lỗi khi dọn dẹp bộ nhớ reset:', e);
         }
@@ -1813,12 +1816,20 @@ export default function KitchenPage() {
 
     // Tự động kéo danh sách công thức mới nhất từ Supabase Cloud
     fetchRecipesFromDb().then((recs) => {
-      if (recs && recs.length > 0) setRecipes(recs);
+      if (Array.isArray(recs)) setRecipes(recs);
     }).catch(console.error);
 
     const handleRecipesUpdate = (e: any) => {
       if (e.detail && Array.isArray(e.detail)) {
         setRecipes(e.detail);
+      } else {
+        try {
+          const raw = localStorage.getItem('bakery_recipes');
+          if (raw) setRecipes(JSON.parse(raw));
+          else setRecipes([]);
+        } catch {
+          setRecipes([]);
+        }
       }
     };
     window.addEventListener('bakery_recipes_updated', handleRecipesUpdate);

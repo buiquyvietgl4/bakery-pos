@@ -8,8 +8,11 @@ import {
   filterActiveRecipes,
   unmarkRecipeDeleted,
   getStoredRecipes,
+  deleteAllRecipesEverywhere,
+  resetAllStoredRecipes,
   BAKERY_DELETED_RECIPE_IDS_KEY,
   BAKERY_RECIPES_KEY,
+  BAKERY_RECIPES_INITIALIZED_KEY,
 } from '@/lib/utils/recipeCalculator';
 
 describe('parseRecipeItem', () => {
@@ -143,6 +146,42 @@ describe('Anti-Resurrection Tombstone cho Recipe BOM', () => {
     localStorage.setItem(BAKERY_RECIPES_KEY, JSON.stringify([]));
     const stored = getStoredRecipes();
     expect(stored).toEqual([]);
+  });
+
+  it('getStoredRecipes trả về [] khi raw === null nhưng hệ thống đã được đánh dấu khởi tạo (BAKERY_RECIPES_INITIALIZED_KEY = true)', () => {
+    localStorage.removeItem(BAKERY_RECIPES_KEY);
+    localStorage.setItem(BAKERY_RECIPES_INITIALIZED_KEY, 'true');
+    const stored = getStoredRecipes();
+    expect(stored).toEqual([]);
+  });
+
+  it('getStoredRecipes trả về [] khi raw === null nhưng đã có bakery_system_reset_epoch', () => {
+    localStorage.removeItem(BAKERY_RECIPES_KEY);
+    localStorage.setItem('bakery_system_reset_epoch', '1791234567');
+    const stored = getStoredRecipes();
+    expect(stored).toEqual([]);
+  });
+
+  it('resetAllStoredRecipes thiết lập bakery_recipes thành [] và đánh dấu initialized = true', () => {
+    resetAllStoredRecipes();
+    expect(localStorage.getItem(BAKERY_RECIPES_KEY)).toBe('[]');
+    expect(localStorage.getItem(BAKERY_RECIPES_INITIALIZED_KEY)).toBe('true');
+    expect(getStoredRecipes()).toEqual([]);
+  });
+
+  it('deleteAllRecipesEverywhere đưa toàn bộ công thức vào tombstone và làm sạch storage', async () => {
+    const mockRecipes: any[] = [
+      { id: 'rec-01', name: 'Bánh Mì Test 1' },
+      { id: 'rec-02', name: 'Bánh Mì Test 2' },
+    ];
+    await deleteAllRecipesEverywhere(mockRecipes);
+
+    const deletedIds = getDeletedRecipeIds();
+    expect(deletedIds.has('rec-01')).toBe(true);
+    expect(deletedIds.has('rec-02')).toBe(true);
+    expect(localStorage.getItem(BAKERY_RECIPES_KEY)).toBe('[]');
+    expect(localStorage.getItem(BAKERY_RECIPES_INITIALIZED_KEY)).toBe('true');
+    expect(getStoredRecipes()).toEqual([]);
   });
 });
 
