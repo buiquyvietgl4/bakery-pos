@@ -80,6 +80,7 @@ export const BAKERY_DATA_KEYS = [
   'bakery_deleted_recipe_ids',
   'bakery_deleted_product_ids',
   'bakery_oven_batches',
+  'bakery_baking_history',
   'bakery_product_metadata_map',
   'bakery_admin_pin',
 ];

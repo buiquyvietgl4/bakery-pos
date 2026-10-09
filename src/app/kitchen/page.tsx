@@ -68,7 +68,7 @@ import { addSpoilageLog } from '@/lib/utils/spoilageManager';
 import { parseRecipeItem, formatScaledQty, normalizeRecipe, fetchRecipesFromDb } from '@/lib/utils/recipeCalculator';
 import { fetchVietqrConfigFromDb, getVietqrConfig, VIETQR_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 import { cleanCakeNameAndSize, getAddonIcon } from '@/lib/utils/customCakeCosting';
-import { deductOrderIngredients } from '@/lib/utils/inventoryDeductionManager';
+import { deductOrderIngredients, deductRecipeIngredients } from '@/lib/utils/inventoryDeductionManager';
 
 interface OrderItem {
   id: string;
@@ -837,6 +837,36 @@ export default function KitchenPage() {
 
         // 2. Tự động đồng bộ vào file Local SQL trên máy tính
         autoSyncToLocalSqlFolder().catch(() => {});
+
+        // 3. TỰ ĐỘNG TRỪ TỒN KHO NGUYÊN VẬT LIỆU CHO MẺ BÁNH BÁN LẺ & GHI LỊCH SỬ LÀM BÁNH
+        const matchedRecipe = recipes.find(
+          (r) => (batch.recipe_id && r.id === batch.recipe_id) ||
+                 (r.name && r.name.toLowerCase().trim() === batch.cake_name.toLowerCase().trim())
+        );
+        if (matchedRecipe && Array.isArray(matchedRecipe.items) && matchedRecipe.items.length > 0) {
+          try {
+            const deductRes = await deductRecipeIngredients(matchedRecipe, batch.quantity, {
+              batchId: batch.id,
+              bakeTemp: batch.bake_temp,
+              durationMinutes: Math.round((batch.duration_seconds || 0) / 60),
+              performedBy: 'Thợ bếp nướng',
+              notes: `Mẻ nướng ${batch.quantity} ${batch.unit || 'cái'} ${batch.cake_name}`,
+            });
+            if (deductRes.success && deductRes.deductedItems.length > 0) {
+              setKdsToast({
+                id: 'toast-deduct-' + Date.now(),
+                title: '📦 Đã Trừ Tồn Kho Nguyên Liệu!',
+                subtitle: `Tự động trừ ${deductRes.deductedItems.length} loại vật tư mẻ ${batch.cake_name} (+${(deductRes.totalCost || 0).toLocaleString('vi-VN')}₫ giá vốn)`,
+                details: deductRes.deductedItems
+                  .slice(0, 3)
+                  .map((d) => `${d.name}: -${d.deductedQty}${d.unit}`)
+                  .join(' • ') + (deductRes.deductedItems.length > 3 ? ` (+${deductRes.deductedItems.length - 3} loại khác)` : ''),
+              });
+            }
+          } catch (deductErr) {
+            console.warn('Lỗi tự động trừ kho mẻ bánh thường:', deductErr);
+          }
+        }
       } catch (err) {
         console.error('Lỗi cộng tồn kho từ mẻ bánh ra lò:', err);
       }

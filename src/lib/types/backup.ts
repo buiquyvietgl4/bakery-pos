@@ -4,6 +4,7 @@ import { CachedProduct } from '@/lib/db/dexie';
 import { BakeryRecipe } from '@/lib/constants/bakeryData';
 import { SpoilageLog } from './spoilage';
 import { StockAdjustmentLog } from './stockAdjustment';
+import { BakingHistoryRecord } from './bakingHistory';
 
 export interface BackupImageItem {
   id: string;
@@ -118,6 +119,7 @@ export interface BakeryBackupData {
   spoilage_logs: SpoilageLog[];
   material_transactions?: any[];
   material_stock_adjustments?: any[];
+  baking_history?: BakingHistoryRecord[];
   orders: BackupOrder[];
   order_returns?: any[];
   held_orders?: any[];

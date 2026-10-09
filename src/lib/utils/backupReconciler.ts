@@ -28,6 +28,7 @@ import { saveHeldOrdersToDb, deduplicateHeldOrders } from './heldOrderManager';
 import { saveOvenBatchesToDb } from '@/lib/supabase/realtimeSync';
 import { saveTelegramConfigToDb } from './telegramNotify';
 import { saveDeliveryAlertConfigToDb } from './deliveryAlerts';
+import { saveBakingHistoryToDb, deduplicateBakingHistory, BAKING_HISTORY_UPDATED_EVENT } from './bakingHistoryManager';
 
 const BASE_BUCKET = 'bakery-images';
 
@@ -1224,6 +1225,21 @@ export async function executePushToSQL(
         const mergedMsa = deduplicateMaterialStockAdjustmentLogs(sourceMsa);
         localStorage.setItem('bakery_material_stock_adjustments', JSON.stringify(mergedMsa));
         await saveMaterialStockAdjustmentLogsToDb(mergedMsa).catch(console.error);
+      } catch {}
+    }
+
+    // ── LỊCH SỬ LÀM BÁNH (BAKING HISTORY) ──
+    if (backupData.baking_history && Array.isArray(backupData.baking_history) && backupData.baking_history.length > 0) {
+      try {
+        const rawBh = localStorage.getItem('bakery_baking_history');
+        const currentBh = rawBh ? JSON.parse(rawBh) : [];
+        const sourceBh = mergeMode === 'full_overwrite' ? backupData.baking_history : [...backupData.baking_history, ...currentBh];
+        const mergedBh = deduplicateBakingHistory(sourceBh);
+        localStorage.setItem('bakery_baking_history', JSON.stringify(mergedBh));
+        await saveBakingHistoryToDb(mergedBh).catch(console.error);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent(BAKING_HISTORY_UPDATED_EVENT, { detail: mergedBh }));
+        }
       } catch {}
     }
 

@@ -56,4 +56,5 @@ config.yml
 /archives/
 /docs/
 .active_database_profile.json
-
+.push_subscriptions.json
+/SQL/

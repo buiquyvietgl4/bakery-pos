@@ -13,7 +13,7 @@ import {
   FileSpreadsheet, Receipt, Calendar, Filter, Search, Database,
   Send, Bell, History, Printer, Flame, Edit, Globe, Folder, FolderCheck, FileCode, AlertCircle, Eye, EyeOff,
   Zap, Link2, Settings, Settings2, ShieldCheck, Volume2, Mic, ArrowRight, Clock, Scale, RotateCcw, ShoppingCart, FileKey, LockOpen, Cloud,
-  ClipboardList
+  ClipboardList, ChefHat
 } from 'lucide-react';
 import { getFullCakeBomConfig } from '@/lib/utils/cakeBomManager';
 import { soundManager } from '@/lib/utils/audioAlert';
@@ -77,6 +77,12 @@ import {
   clearMaterialStockAdjustmentLogs,
   MATERIAL_STOCK_ADJUSTMENT_EVENT,
 } from '@/lib/utils/materialStockAdjustmentManager';
+import { BakingHistoryRecord } from '@/lib/types/bakingHistory';
+import {
+  getBakingHistory,
+  fetchBakingHistoryFromDb,
+  BAKING_HISTORY_UPDATED_EVENT,
+} from '@/lib/utils/bakingHistoryManager';
 import { PrinterSettingsModal } from '@/components/pos/PrinterSettingsModal';
 import { BackupRestoreModal } from '@/components/admin/BackupRestoreModal';
 import { SystemResetModal } from '@/components/admin/SystemResetModal';
@@ -481,11 +487,17 @@ export default function AdminDashboard() {
   const [poBaseUnitName, setPoBaseUnitName] = useState<string>('g');
   const [poConversionRate, setPoConversionRate] = useState<number>(1000);
 
-  // ── PHÂN HỆ LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ & KIỂM KÊ ──
-  const [inventoryViewSubTab, setInventoryViewSubTab] = useState<'stock' | 'history' | 'adjustments'>('stock');
+  // ── PHÂN HỆ LỊCH SỬ XUẤT NHẬP KHO VẬT TƯ, KIỂM KÊ & LÀM BÁNH ──
+  const [inventoryViewSubTab, setInventoryViewSubTab] = useState<'stock' | 'history' | 'adjustments' | 'baking_history'>('stock');
   const [materialTransactions, setMaterialTransactions] = useState<MaterialTransaction[]>(() => getMaterialTransactions());
   const [materialTxSearch, setMaterialTxSearch] = useState<string>('');
   const [materialTxTypeFilter, setMaterialTxTypeFilter] = useState<'all' | 'import' | 'export'>('all');
+
+  // ── LỊCH SỬ LÀM BÁNH & TIÊU THỤ NGUYÊN LIỆU (BAKING HISTORY) ──
+  const [bakingHistory, setBakingHistory] = useState<BakingHistoryRecord[]>(() => getBakingHistory());
+  const [bakingHistorySearch, setBakingHistorySearch] = useState<string>('');
+  const [bakingCategoryFilter, setBakingCategoryFilter] = useState<'all' | 'retail' | 'birthday'>('all');
+  const [bakingTimeFilter, setBakingTimeFilter] = useState<'all' | 'today' | '7days'>('all');
 
   // ── LỊCH SỬ SỬA TỒN KHO / KIỂM KÊ VẬT TƯ ──
   const [materialStockAdjustments, setMaterialStockAdjustments] = useState<MaterialStockAdjustmentLog[]>(() => getMaterialStockAdjustmentLogs());
@@ -1964,6 +1976,9 @@ export default function AdminDashboard() {
       if (adjs && adjs.length > 0) setMaterialStockAdjustments(adjs);
     }).catch(console.error);
     fetchClosingRecordsFromDb().catch(console.error);
+    fetchBakingHistoryFromDb().then((records) => {
+      if (records && records.length > 0) setBakingHistory(records);
+    }).catch(console.error);
 
     const handleMatUpdate = () => {
       setMaterialTransactions(getMaterialTransactions());
@@ -1974,6 +1989,15 @@ export default function AdminDashboard() {
       setMaterialStockAdjustments(getMaterialStockAdjustmentLogs());
     };
     window.addEventListener(MATERIAL_STOCK_ADJUSTMENT_EVENT, handleMatAdjUpdate);
+
+    const handleBakingUpdate = (e: any) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setBakingHistory(e.detail);
+      } else {
+        setBakingHistory(getBakingHistory());
+      }
+    };
+    window.addEventListener(BAKING_HISTORY_UPDATED_EVENT, handleBakingUpdate);
 
     // Lắng nghe đồng bộ sản phẩm & cấu hình thanh toán thời gian thực giữa điện thoại và máy tính
     const unsubscribeSync = subscribeCrossDeviceSync({
@@ -2206,6 +2230,7 @@ export default function AdminDashboard() {
       window.removeEventListener('transfer_approval_resolved', handlePendingTransfersUpdate);
       window.removeEventListener(MATERIAL_TRANSACTION_EVENT, handleMatUpdate);
       window.removeEventListener(MATERIAL_STOCK_ADJUSTMENT_EVENT, handleMatAdjUpdate);
+      window.removeEventListener(BAKING_HISTORY_UPDATED_EVENT, handleBakingUpdate);
       window.removeEventListener('bakery_system_wiped', handleSystemWiped);
     };
   }, []);
@@ -2805,6 +2830,56 @@ export default function AdminDashboard() {
     const link = document.createElement('a');
     link.href = url;
     link.download = `Lich_Su_Xuat_Nhap_Kho_Vat_Tu_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // ── XUẤT LỊCH SỬ LÀM BÁNH & NGUYÊN LIỆU TIÊU THỤ RA FILE CSV ──
+  const handleExportBakingHistoryCsv = () => {
+    if (!bakingHistory || bakingHistory.length === 0) {
+      alert('Chưa có dữ liệu lịch sử làm bánh để xuất!');
+      return;
+    }
+    const headers = [
+      'Mã mẻ / ID',
+      'Thời gian',
+      'Phân loại',
+      'Tên bánh',
+      'Số lượng ra lò',
+      'Đơn vị',
+      'Giá vốn mẻ (VND)',
+      'Giá vốn/cái (VND)',
+      'Mã đơn / Mã mẻ',
+      'Chi tiết nguyên liệu tiêu thụ',
+      'Người thực hiện',
+      'Ghi chú',
+    ];
+    const rows = bakingHistory.map((item) => {
+      const ingListStr = (item.ingredients || [])
+        .map((ing) => `${ing.name}: ${(Number(ing.quantity) || 0).toLocaleString()} ${ing.unit}`)
+        .join('; ');
+      const catName = item.cakeCategory === 'birthday' ? 'Bánh sinh nhật (KDS)' : 'Bánh thường (BOM)';
+      return [
+        item.id,
+        new Date(item.createdAt).toLocaleString('vi-VN'),
+        `"${catName}"`,
+        `"${(item.cakeName || '').replace(/"/g, '""')}"`,
+        item.quantity,
+        item.unit || 'cái',
+        item.totalCost || 0,
+        item.costPerUnit || 0,
+        `"${(item.orderNumber || item.batchId || '').replace(/"/g, '""')}"`,
+        `"${ingListStr.replace(/"/g, '""')}"`,
+        `"${(item.performedBy || 'Thợ làm bánh').replace(/"/g, '""')}"`,
+        `"${(item.notes || '').replace(/"/g, '""')}"`,
+      ];
+    });
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Lich_Su_Lam_Banh_Tieu_Thu_Kho_${new Date().toISOString().split('T')[0]}.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -6019,6 +6094,18 @@ export default function AdminDashboard() {
                   <Scale className="w-4 h-4" />
                   <span>Lịch Sử Sửa Tồn Kho ({materialStockAdjustments.length})</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setInventoryViewSubTab('baking_history')}
+                  className={`px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition cursor-pointer ${
+                    inventoryViewSubTab === 'baking_history'
+                      ? 'bg-purple-600 text-white shadow-xs'
+                      : 'text-zinc-600 hover:text-zinc-900'
+                  }`}
+                >
+                  <ChefHat className="w-4 h-4" />
+                  <span>Lịch Sử Làm Bánh ({bakingHistory.length})</span>
+                </button>
               </div>
 
               {inventoryViewSubTab === 'stock' ? (
@@ -6038,7 +6125,7 @@ export default function AdminDashboard() {
                     <Download className="w-3.5 h-3.5 text-amber-600" /> Xuất File CSV
                   </button>
                 </div>
-              ) : (
+              ) : inventoryViewSubTab === 'adjustments' ? (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleExportMaterialStockAdjustmentsCsv}
@@ -6046,6 +6133,16 @@ export default function AdminDashboard() {
                     title="Xuất danh sách lịch sử sửa tồn kho ra tệp CSV"
                   >
                     <Download className="w-3.5 h-3.5 text-blue-600" /> Xuất File CSV
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={handleExportBakingHistoryCsv}
+                    className="px-3.5 py-2 rounded-xl bg-white border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-bold text-xs shadow-2xs flex items-center gap-1.5 transition cursor-pointer"
+                    title="Xuất lịch sử làm bánh ra tệp CSV"
+                  >
+                    <Download className="w-3.5 h-3.5 text-purple-600" /> Xuất File CSV
                   </button>
                 </div>
               )}
@@ -6332,7 +6429,7 @@ export default function AdminDashboard() {
                   })()}
                 </div>
               </div>
-            ) : (
+            ) : inventoryViewSubTab === 'adjustments' ? (
               /* TAB CON 3: LỊCH SỬ SỬA ĐỔI TỒN KHO VẬT TƯ (KIỂM KÊ) */
               <div className="space-y-3 flex-1 flex flex-col min-h-0">
                 {/* 3 Thẻ thống kê nhanh */}
@@ -6479,6 +6576,233 @@ export default function AdminDashboard() {
                                 </td>
                                 <td className="py-2.5 px-3 text-[11px] text-zinc-500 whitespace-nowrap">
                                   {adj.adjustedBy || 'Hệ thống'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    );
+                  })()}
+                </div>
+              </div>
+            ) : (
+              /* TAB CON 4: LỊCH SỬ LÀM BÁNH & TIÊU THỤ NGUYÊN LIỆU */
+              <div className="space-y-3 flex-1 flex flex-col min-h-0">
+                {/* 3 Thẻ thống kê */}
+                {(() => {
+                  const totalBatches = bakingHistory.length;
+                  const totalCakes = bakingHistory.reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
+                  const totalIngredientCost = bakingHistory.reduce((sum, b) => sum + (Number(b.totalCost) || 0), 0);
+
+                  return (
+                    <div className="grid grid-cols-3 gap-2 shrink-0">
+                      <div className="p-2.5 bg-zinc-50 rounded-2xl border border-zinc-200">
+                        <span className="text-[10px] font-bold text-zinc-500 block">Tổng số mẻ làm</span>
+                        <span className="text-base font-black text-zinc-900 mt-0.5 block">{totalBatches} mẻ</span>
+                      </div>
+                      <div className="p-2.5 bg-purple-50 rounded-2xl border border-purple-200">
+                        <span className="text-[10px] font-bold text-purple-700 block">Tổng bánh thành phẩm</span>
+                        <span className="text-base font-black text-purple-700 mt-0.5 block">{totalCakes.toLocaleString()} cái/ổ</span>
+                      </div>
+                      <div className="p-2.5 bg-amber-50 rounded-2xl border border-amber-200">
+                        <span className="text-[10px] font-bold text-amber-800 block">Tổng vốn nguyên liệu tiêu hao</span>
+                        <span className="text-base font-black text-amber-800 mt-0.5 block">{totalIngredientCost.toLocaleString('vi-VN')}₫</span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Thanh tìm kiếm & bộ lọc */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 text-zinc-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={bakingHistorySearch}
+                      onChange={(e) => setBakingHistorySearch(e.target.value)}
+                      placeholder="Tìm theo tên bánh, mã mẻ, mã đơn, nguyên liệu..."
+                      className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-zinc-200 text-xs bg-zinc-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition"
+                    />
+                  </div>
+
+                  {/* Bộ lọc phân loại */}
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setBakingCategoryFilter('all')}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        bakingCategoryFilter === 'all'
+                          ? 'bg-zinc-900 text-white'
+                          : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      }`}
+                    >
+                      Tất cả loại
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBakingCategoryFilter('retail')}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        bakingCategoryFilter === 'retail'
+                          ? 'bg-amber-600 text-white'
+                          : 'bg-amber-50 text-amber-700 hover:bg-amber-100'
+                      }`}
+                    >
+                      🥖 Bánh thường (BOM)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBakingCategoryFilter('birthday')}
+                      className={`px-2.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        bakingCategoryFilter === 'birthday'
+                          ? 'bg-pink-600 text-white'
+                          : 'bg-pink-50 text-pink-700 hover:bg-pink-100'
+                      }`}
+                    >
+                      🎂 Sinh nhật (KDS)
+                    </button>
+                  </div>
+
+                  {/* Bộ lọc thời gian */}
+                  <div className="flex gap-1 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setBakingTimeFilter('all')}
+                      className={`px-2 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        bakingTimeFilter === 'all' ? 'bg-zinc-800 text-white' : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                      }`}
+                    >
+                      Tất cả ngày
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBakingTimeFilter('today')}
+                      className={`px-2 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        bakingTimeFilter === 'today' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                      }`}
+                    >
+                      Hôm nay
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBakingTimeFilter('7days')}
+                      className={`px-2 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        bakingTimeFilter === '7days' ? 'bg-purple-600 text-white' : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+                      }`}
+                    >
+                      7 ngày qua
+                    </button>
+                  </div>
+                </div>
+
+                {/* Bảng dữ liệu lịch sử làm bánh */}
+                <div className="overflow-y-auto max-h-[480px] border border-zinc-100 rounded-2xl">
+                  {(() => {
+                    const now = new Date();
+                    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+                    const sevenDaysAgo = startOfToday - 7 * 24 * 60 * 60 * 1000;
+
+                    const filtered = bakingHistory.filter((item) => {
+                      if (bakingCategoryFilter === 'retail' && item.cakeCategory !== 'retail') return false;
+                      if (bakingCategoryFilter === 'birthday' && item.cakeCategory !== 'birthday') return false;
+
+                      const itemTime = new Date(item.createdAt).getTime();
+                      if (bakingTimeFilter === 'today' && itemTime < startOfToday) return false;
+                      if (bakingTimeFilter === '7days' && itemTime < sevenDaysAgo) return false;
+
+                      if (bakingHistorySearch.trim()) {
+                        const q = bakingHistorySearch.toLowerCase();
+                        const matchName = item.cakeName?.toLowerCase().includes(q);
+                        const matchOrder = item.orderNumber?.toLowerCase().includes(q);
+                        const matchBatch = item.batchId?.toLowerCase().includes(q);
+                        const matchWorker = item.performedBy?.toLowerCase().includes(q);
+                        const matchNotes = item.notes?.toLowerCase().includes(q);
+                        const matchIng = item.ingredients?.some((ing) => ing.name?.toLowerCase().includes(q));
+                        if (!matchName && !matchOrder && !matchBatch && !matchWorker && !matchNotes && !matchIng) {
+                          return false;
+                        }
+                      }
+                      return true;
+                    });
+
+                    if (filtered.length === 0) {
+                      return (
+                        <div className="p-8 text-center text-zinc-400 flex flex-col items-center justify-center">
+                          <ChefHat className="w-8 h-8 text-zinc-300 stroke-1 mb-2" />
+                          <p className="font-bold text-xs text-zinc-500">Chưa có lịch sử làm bánh nào</p>
+                          <p className="text-[11px] text-zinc-400 mt-0.5">
+                            Khi hoàn thành mẻ nướng bánh thường (Ra lò & Nhập kho POS) hoặc hoàn thành đơn bánh sinh nhật trong KDS, hệ thống sẽ tự động trừ kho nguyên liệu và lưu lịch sử mẻ làm chi tiết tại đây.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-zinc-50 sticky top-0 border-b border-zinc-200 z-10">
+                          <tr className="text-zinc-400 font-bold">
+                            <th className="py-2.5 px-3">Thời gian</th>
+                            <th className="py-2.5 px-3">Loại</th>
+                            <th className="py-2.5 px-3">Tên bánh & Mã mẻ</th>
+                            <th className="py-2.5 px-3 text-right">Số lượng ra lò</th>
+                            <th className="py-2.5 px-3 text-right">Giá vốn mẻ</th>
+                            <th className="py-2.5 px-3 text-right">Giá vốn/cái</th>
+                            <th className="py-2.5 px-3">Nguyên liệu tiêu thụ (Đã trừ kho)</th>
+                            <th className="py-2.5 px-3">Người làm</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-100">
+                          {filtered.map((record) => {
+                            const isBday = record.cakeCategory === 'birthday';
+                            return (
+                              <tr key={record.id} className="hover:bg-zinc-50 transition">
+                                <td className="py-2.5 px-3 whitespace-nowrap text-zinc-500 text-[11px]">
+                                  {new Date(record.createdAt).toLocaleString('vi-VN')}
+                                </td>
+                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                  {isBday ? (
+                                    <span className="px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 text-[10px] font-bold">
+                                      🎂 Sinh nhật
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                                      🥖 Bánh thường
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <span className="font-bold text-zinc-900 block">{record.cakeName}</span>
+                                  <span className="text-[10px] text-zinc-400">
+                                    {record.orderNumber ? `Đơn: #${record.orderNumber}` : record.batchId ? `Mẻ: #${record.batchId}` : 'Mẻ thường'}
+                                    {record.bakeTemp ? ` • ${record.bakeTemp}°C` : ''}
+                                    {record.bakeMinutes ? ` • ${record.bakeMinutes}p` : ''}
+                                  </span>
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-black text-purple-700 whitespace-nowrap">
+                                  {(Number(record.quantity) || 0).toLocaleString()} {record.unit || 'cái'}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-black text-amber-700 whitespace-nowrap">
+                                  {(Number(record.totalCost) || 0).toLocaleString('vi-VN')}₫
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-medium text-zinc-600 whitespace-nowrap">
+                                  {(Number(record.costPerUnit) || 0).toLocaleString('vi-VN')}₫
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <div className="flex flex-wrap gap-1 max-w-[280px]">
+                                    {(record.ingredients || []).map((ing, iIdx) => (
+                                      <span
+                                        key={iIdx}
+                                        className="px-1.5 py-0.5 rounded-md bg-zinc-100 border border-zinc-200 text-zinc-700 text-[10px] whitespace-nowrap"
+                                        title={ing.totalCost ? `Vốn: ${ing.totalCost.toLocaleString('vi-VN')}₫` : undefined}
+                                      >
+                                        {ing.name}: <strong>{(Number(ing.quantity) || 0).toLocaleString()} {ing.unit}</strong>
+                                      </span>
+                                    ))}
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-3 text-[11px] text-zinc-500 whitespace-nowrap">
+                                  {record.performedBy || 'Thợ làm bánh'}
+                                  {record.notes && <div className="text-[10px] text-zinc-400 italic max-w-[120px] truncate" title={record.notes}>{record.notes}</div>}
                                 </td>
                               </tr>
                             );

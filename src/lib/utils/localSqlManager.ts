@@ -764,10 +764,29 @@ CREATE TABLE IF NOT EXISTS held_orders (
     raw_order_json TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS baking_history (
+    id TEXT PRIMARY KEY,
+    cake_name TEXT NOT NULL,
+    cake_category TEXT DEFAULT 'retail',
+    quantity NUMERIC DEFAULT 1,
+    unit TEXT DEFAULT 'cái',
+    recipe_id TEXT,
+    order_number TEXT,
+    batch_id TEXT,
+    bake_temp NUMERIC,
+    bake_minutes NUMERIC,
+    total_cost NUMERIC DEFAULT 0,
+    cost_per_unit NUMERIC DEFAULT 0,
+    ingredients_json TEXT,
+    performed_by TEXT,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
 `;
 }
 
-export function generateMasterSqlDump(data: any): string {
+export function generateMasterSqlDump(data?: any): string {
   const nowStr = new Date().toLocaleString('vi-VN');
   let sql = `-- ============================================================================
 -- MASTER SQL DUMP: TOÀN BỘ CƠ SỞ DỮ LIỆU TIỆM BÁNH (LOCAL SQL)
@@ -927,6 +946,25 @@ ${generateSchemaSql()}
   if (Array.isArray(data?.held_orders) && data.held_orders.length > 0) {
     for (const ho of data.held_orders) {
       sql += `INSERT INTO held_orders (id, hold_code, label, total_amount, item_count, raw_order_json, created_at) VALUES (${sqlEscape(ho.id)}, ${sqlEscape(ho.holdCode || ho.hold_code || '#T')}, ${sqlEscape(ho.label || null)}, ${sqlEscape(ho.totalAmount || ho.total_amount || 0)}, ${sqlEscape(ho.itemCount || ho.item_count || ho.items?.length || 0)}, ${sqlEscape(JSON.stringify(ho))}, ${sqlEscape(ho.createdAt || ho.created_at || new Date().toISOString())});
+`;
+    }
+  }
+
+  sql += `
+-- ----------------------------------------------------------------------------
+-- 4.7. BẢNG LỊCH SỬ LÀM BÁNH (BAKING_HISTORY)
+-- ----------------------------------------------------------------------------
+`;
+  let bakingHistList = data?.baking_history || data?.bakery_baking_history;
+  if (!bakingHistList && typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_baking_history');
+      if (raw) bakingHistList = JSON.parse(raw);
+    } catch {}
+  }
+  if (Array.isArray(bakingHistList) && bakingHistList.length > 0) {
+    for (const bh of bakingHistList) {
+      sql += `INSERT INTO baking_history (id, cake_name, cake_category, quantity, unit, recipe_id, order_number, batch_id, bake_temp, bake_minutes, total_cost, cost_per_unit, ingredients_json, performed_by, notes, created_at) VALUES (${sqlEscape(bh.id)}, ${sqlEscape(bh.cakeName || bh.cake_name || 'Bánh')}, ${sqlEscape(bh.cakeCategory || bh.cake_category || 'retail')}, ${sqlEscape(bh.quantity || 1)}, ${sqlEscape(bh.unit || 'cái')}, ${sqlEscape(bh.recipeId || bh.recipe_id || null)}, ${sqlEscape(bh.orderNumber || bh.order_number || null)}, ${sqlEscape(bh.batchId || bh.batch_id || null)}, ${sqlEscape(bh.bakeTemp || bh.bake_temp || null)}, ${sqlEscape(bh.bakeMinutes || bh.bake_minutes || null)}, ${sqlEscape(bh.totalCost || bh.total_cost || 0)}, ${sqlEscape(bh.costPerUnit || bh.cost_per_unit || 0)}, ${sqlEscape(JSON.stringify(bh.ingredients || []))}, ${sqlEscape(bh.performedBy || bh.performed_by || null)}, ${sqlEscape(bh.notes || null)}, ${sqlEscape(bh.createdAt || bh.created_at || new Date().toISOString())});
 `;
     }
   }
@@ -1730,6 +1768,11 @@ export async function restoreLocalFromBackupData(rawData: any): Promise<{ succes
       localSnapshot['bakery_oven_batches'] = typeof ovenBatches === 'string' ? ovenBatches : JSON.stringify(ovenBatches);
     }
 
+    const bakingHistory = data.baking_history || data.bakery_baking_history;
+    if (bakingHistory) {
+      localSnapshot['bakery_baking_history'] = typeof bakingHistory === 'string' ? bakingHistory : JSON.stringify(bakingHistory);
+    }
+
     // Áp dụng vào hệ thống
     applyDataSnapshot(localSnapshot);
 
@@ -1827,6 +1870,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
     let held_orders: any[] = [];
     let pending_returns: any[] = [];
     let oven_batches: any[] = [];
+    let baking_history: any[] = [];
     let resolved_transfers: any[] = [];
     let resolved_returns: any[] = [];
     let deleted_product_ids: any[] = [];
@@ -1887,6 +1931,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
           if (row.name === 'SYS_CONFIG_ORDER_RETURNS' && Array.isArray(parsed)) order_returns = parsed;
           if (row.name === 'SYS_CONFIG_HELD_ORDERS' && Array.isArray(parsed)) held_orders = parsed;
           if (row.name === 'SYS_CONFIG_OVEN_BATCHES' && Array.isArray(parsed)) oven_batches = parsed;
+          if (row.name === 'SYS_CONFIG_BAKING_HISTORY' && Array.isArray(parsed)) baking_history = parsed;
           if (row.name === 'SYS_CONFIG_RESOLVED_TRANSFERS' && Array.isArray(parsed)) resolved_transfers = parsed;
           if (row.name === 'SYS_CONFIG_RESOLVED_RETURNS' && Array.isArray(parsed)) resolved_returns = parsed;
           if (row.name === 'SYS_CONFIG_PENDING_RETURNS' && Array.isArray(parsed)) pending_returns = parsed;
@@ -1972,6 +2017,7 @@ export async function cloneOnlineSqlToLocal(): Promise<{ success: boolean; messa
       held_orders,
       pending_returns,
       oven_batches,
+      baking_history,
       deleted_product_ids,
       deleted_ingredient_ids,
       deleted_recipe_ids,

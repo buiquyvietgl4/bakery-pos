@@ -944,6 +944,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
   let ovenBatches: any[] = [];
   let orderReturns: any[] = [];
   let heldOrders: any[] = [];
+  let bakingHistory: any[] = [];
 
   if (typeof window !== 'undefined') {
     try {
@@ -981,6 +982,8 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
       if (rawOR) orderReturns = JSON.parse(rawOR);
       const rawHO = localStorage.getItem('bakery_held_orders');
       if (rawHO) heldOrders = JSON.parse(rawHO);
+      const rawBH = localStorage.getItem('bakery_baking_history');
+      if (rawBH) bakingHistory = JSON.parse(rawBH);
     } catch {}
   }
   printerConfig = getPrinterConfig();
@@ -1133,6 +1136,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     oven_batches: ovenBatches,
     order_returns: orderReturns,
     held_orders: heldOrders,
+    baking_history: bakingHistory,
     settings: {
       vietqr: vietqrConfig,
       ewallet: ewalletConfig,
@@ -1486,6 +1490,9 @@ export function normalizeBackupData(rawJson: any): BakeryBackupData {
   const oven_batches = Array.isArray(ls.bakery_oven_batches) ? ls.bakery_oven_batches : [];
   const notification_history = Array.isArray(ls.bakery_notification_history) ? ls.bakery_notification_history : [];
   const held_orders = Array.isArray(ls.bakery_held_orders) ? ls.bakery_held_orders : [];
+  const baking_history = Array.isArray(ls.bakery_baking_history)
+    ? ls.bakery_baking_history
+    : (Array.isArray(rawJson.baking_history) ? rawJson.baking_history : []);
 
   // 8. Cấu hình hệ thống
   const settings: any = {
@@ -1589,6 +1596,7 @@ export function normalizeBackupData(rawJson: any): BakeryBackupData {
     resolved_returns,
     oven_batches,
     notification_history,
+    baking_history,
     settings,
   };
 

@@ -7,6 +7,8 @@ import { db } from '@/lib/db/dexie';
 import { syncOrderToSupabase } from '@/lib/supabase/realtimeSync';
 import { CakeOrderSpec } from '@/lib/types/bakery-bom';
 import { filterActiveIngredients } from '@/lib/utils/ingredientManager';
+import { recordBakingLog } from '@/lib/utils/bakingHistoryManager';
+import { parseRecipeItem } from '@/lib/utils/recipeCalculator';
 
 export const INGREDIENTS_STORAGE_KEY = 'bakery_ingredients';
 export const INGREDIENTS_UPDATED_EVENT = 'bakery_ingredients_updated';
@@ -111,7 +113,17 @@ export function extractOrderBomRequirements(order: any): Array<{
   const orderMultiplier = Math.max(1, Number(mainItem?.quantity) || Number(order.quantity) || 1);
 
   // 1. Ưu tiên kiểm tra CakeOrderSpec (Đơn Bánh Sinh Nhật có BOM theo flowchart mới)
-  const spec: CakeOrderSpec | undefined = order.cake_order_spec || mainItem?.cake_order_spec;
+  let spec: CakeOrderSpec | undefined = order.cake_order_spec || mainItem?.cake_order_spec;
+  if (!spec && order.notes) {
+    try {
+      if (typeof order.notes === 'string') {
+        const parsedNotes = JSON.parse(order.notes);
+        if (parsedNotes.cake_order_spec) spec = parsedNotes.cake_order_spec;
+      } else if (typeof order.notes === 'object' && order.notes.cake_order_spec) {
+        spec = order.notes.cake_order_spec;
+      }
+    } catch {}
+  }
 
   if (spec && spec.isBirthdayCake) {
     // A. Cốt bánh
@@ -177,6 +189,69 @@ export function extractOrderBomRequirements(order: any): Array<{
     }
 
     return requirements;
+  }
+
+  // 1b. Kiểm tra cấu hình Custom Cake Costing (Cốt bánh, kem phủ, phụ kiện từ Custom Cake Modal)
+  let customCake = order.custom_cake || mainItem?.custom_cake;
+  if (!customCake && order.notes) {
+    try {
+      if (typeof order.notes === 'string') {
+        const parsedNotes = JSON.parse(order.notes);
+        customCake = parsedNotes.custom_cake || parsedNotes.cake_costing;
+      } else if (typeof order.notes === 'object') {
+        customCake = order.notes.custom_cake || order.notes.cake_costing;
+      }
+    } catch {}
+  }
+
+  if (customCake) {
+    if (customCake.selectedBase?.name) {
+      requirements.push({
+        ingredientId: customCake.selectedBase.id,
+        name: customCake.selectedBase.name,
+        quantity: (Number(customCake.selectedBase.quantity) || 1) * orderMultiplier,
+        unit: customCake.selectedBase.unit || 'cốt',
+      });
+    }
+    if (customCake.selectedFrosting?.name) {
+      requirements.push({
+        ingredientId: customCake.selectedFrosting.id,
+        name: customCake.selectedFrosting.name,
+        quantity: (Number(customCake.selectedFrosting.quantity) || 1) * orderMultiplier,
+        unit: customCake.selectedFrosting.unit || 'ml',
+      });
+    }
+    if (customCake.selectedFilling?.name) {
+      requirements.push({
+        ingredientId: customCake.selectedFilling.id,
+        name: customCake.selectedFilling.name,
+        quantity: (Number(customCake.selectedFilling.quantity) || 1) * orderMultiplier,
+        unit: customCake.selectedFilling.unit || 'g',
+      });
+    }
+    if (customCake.selectedBox?.name) {
+      requirements.push({
+        ingredientId: customCake.selectedBox.id,
+        name: customCake.selectedBox.name,
+        quantity: 1 * orderMultiplier,
+        unit: 'hộp',
+      });
+    }
+    if (Array.isArray(customCake.selectedAccessories)) {
+      for (const acc of customCake.selectedAccessories) {
+        if (acc?.name) {
+          requirements.push({
+            ingredientId: acc.id,
+            name: acc.name,
+            quantity: (Number(acc.quantity) || 1) * orderMultiplier,
+            unit: acc.unit || 'cái',
+          });
+        }
+      }
+    }
+    if (requirements.length > 0) {
+      return requirements;
+    }
   }
 
   // 2. Nếu đơn hàng không có CakeOrderSpec nhưng có công thức bánh chuẩn trong cấu hình BOM
@@ -298,6 +373,46 @@ export async function deductOrderIngredients(order: any): Promise<DeductionResul
     order.deducted_at = new Date().toISOString();
     order.deducted_items_count = deductedItems.length;
 
+    // 3b. Tự động ghi nhận vào Lịch Sử Làm Bánh (Baking History)
+    try {
+      const spec: CakeOrderSpec | undefined = order.cake_order_spec || order.items?.[0]?.cake_order_spec;
+      const cakeName = spec?.cakeBase?.name || order.cake_name || order.items?.[0]?.product_name_snapshot || 'Bánh Sinh Nhật';
+      const orderMultiplier = Math.max(1, Number(order.items?.[0]?.quantity) || Number(order.quantity) || 1);
+
+      let totalBakeCost = 0;
+      const consumedIngs = deductedItems.map((d) => {
+        const ingObj = currentIngredients.find((i) => i.id === d.ingredientId);
+        const uCost = Number(ingObj?.avg_cost || 0);
+        const lCost = Math.round(d.deductedQty * uCost);
+        totalBakeCost += lCost;
+        return {
+          ingredientId: d.ingredientId,
+          name: d.name,
+          quantity: d.deductedQty,
+          unit: d.unit,
+          unitCost: uCost,
+          totalCost: lCost,
+        };
+      });
+
+      recordBakingLog({
+        id: 'bake-order-' + (order.id || order.order_number || Date.now()),
+        cakeName,
+        cakeCategory: 'birthday',
+        quantity: orderMultiplier,
+        unit: 'chiếc',
+        orderNumber: orderNum,
+        totalCost: totalBakeCost,
+        costPerUnit: Math.round(totalBakeCost / orderMultiplier),
+        ingredients: consumedIngs,
+        performedBy: 'Bếp bánh (Đơn #' + orderNum + ')',
+        createdAt: new Date().toISOString(),
+        notes: `Tự động trừ kho theo định mức BOM đơn #${orderNum}`,
+      }).catch((e) => console.warn('Lỗi ghi baking history cho đơn bánh:', e));
+    } catch (histErr) {
+      console.warn('Lỗi tạo baking log cho đơn hàng:', histErr);
+    }
+
     // Cập nhật đơn hàng vào localStorage & Dexie
     if (typeof window !== 'undefined') {
       try {
@@ -314,10 +429,12 @@ export async function deductOrderIngredients(order: any): Promise<DeductionResul
         }
 
         // Cập nhật Dexie
-        await db.orders.update(order.id || order.local_id, {
-          bom_deducted: true,
-          inventory_deducted: true,
-        } as any).catch(() => {});
+        if (db?.orders?.update) {
+          await db.orders.update(order.id || order.local_id, {
+            bom_deducted: true,
+            inventory_deducted: true,
+          } as any).catch(() => {});
+        }
 
         // Đồng bộ Supabase nếu online và không ở chế độ Local SQL
         if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
@@ -334,5 +451,147 @@ export async function deductOrderIngredients(order: any): Promise<DeductionResul
     message: `Đã tự động trừ tồn kho ${deductedItems.length} nguyên vật liệu theo định mức BOM đơn #${orderNum}.`,
     deductedItems,
     orderNumber: orderNum,
+  };
+}
+
+export interface RecipeDeductionResult {
+  success: boolean;
+  skipped?: boolean;
+  message: string;
+  deductedItems: DeductedIngredientSummary[];
+  totalCost: number;
+}
+
+/**
+ * Tự động trừ tồn kho nguyên vật liệu cho một mẻ bánh bán lẻ / bánh thường (BOM Recipe)
+ * Được kích hoạt khi thợ bếp nướng xong và bấm "🥖 Ra Lò & Nhập Kho POS"
+ */
+export async function deductRecipeIngredients(
+  recipe: any,
+  quantity: number,
+  options?: {
+    batchId?: string;
+    bakeTemp?: number;
+    durationMinutes?: number;
+    bakeMinutes?: number;
+    performedBy?: string;
+    notes?: string;
+  }
+): Promise<RecipeDeductionResult> {
+  const cakeName = recipe?.name || 'Bánh Bán Lẻ';
+  const targetQty = Math.max(1, Number(quantity) || Number(recipe?.yield_qty) || 1);
+  const baseYield = Math.max(1, Number(recipe?.yield_qty) || 1);
+  const multiplier = targetQty / baseYield;
+
+  const recipeItems = Array.isArray(recipe?.items) ? recipe.items : [];
+  if (recipeItems.length === 0) {
+    return {
+      success: true,
+      skipped: true,
+      message: `Công thức "${cakeName}" không có danh sách nguyên liệu để trừ kho.`,
+      deductedItems: [],
+      totalCost: 0,
+    };
+  }
+
+  const currentIngredients = getBakeryIngredients();
+  if (currentIngredients.length === 0) {
+    return {
+      success: false,
+      message: 'Không tìm thấy dữ liệu kho nguyên vật liệu (bakery_ingredients).',
+      deductedItems: [],
+      totalCost: 0,
+    };
+  }
+
+  const deductedItems: DeductedIngredientSummary[] = [];
+  const modifiedIngredientIds: string[] = [];
+  const consumedIngs: any[] = [];
+  let totalBakeCost = 0;
+
+  for (const item of recipeItems) {
+    const parsed = parseRecipeItem(item);
+    const neededQty = parsed.numericQty * multiplier;
+    if (neededQty <= 0) continue;
+
+    let matchedIng = null;
+    if (item.ingredient_id || item.ingredientId) {
+      const targetId = item.ingredient_id || item.ingredientId;
+      matchedIng = currentIngredients.find((i) => i.id === targetId);
+    }
+
+    const targetName = item.ingredient_name || item.name || item.ingredientName;
+    if (!matchedIng && targetName) {
+      const qName = String(targetName).toLowerCase().trim();
+      matchedIng = currentIngredients.find(
+        (i) => i.name.toLowerCase().trim() === qName ||
+               i.name.toLowerCase().includes(qName) ||
+               qName.includes(i.name.toLowerCase())
+      );
+    }
+
+    if (matchedIng) {
+      const prevStock = Number(matchedIng.stock_qty || 0);
+      const newStock = Math.max(0, prevStock - neededQty);
+
+      matchedIng.stock_qty = newStock;
+      modifiedIngredientIds.push(matchedIng.id);
+
+      const uCost = Number(matchedIng.avg_cost || item.cost || item.line_cost || 0);
+      const lineCost = Math.round(neededQty * uCost);
+      totalBakeCost += lineCost;
+
+      deductedItems.push({
+        ingredientId: matchedIng.id,
+        name: matchedIng.name,
+        deductedQty: neededQty,
+        unit: matchedIng.unit || parsed.unit || 'g',
+        previousStock: prevStock,
+        remainingStock: newStock,
+      });
+
+      consumedIngs.push({
+        ingredientId: matchedIng.id,
+        name: matchedIng.name,
+        quantity: neededQty,
+        unit: matchedIng.unit || parsed.unit || 'g',
+        unitCost: uCost,
+        totalCost: lineCost,
+      });
+    }
+  }
+
+  if (deductedItems.length > 0) {
+    await saveBakeryIngredients(currentIngredients, modifiedIngredientIds);
+
+    // Ghi nhận vào Lịch Sử Làm Bánh
+    try {
+      await recordBakingLog({
+        id: options?.batchId || 'bake-batch-' + Date.now(),
+        cakeName,
+        cakeCategory: 'retail',
+        quantity: targetQty,
+        unit: recipe.yield_unit || 'cái',
+        recipeId: recipe.id,
+        batchId: options?.batchId,
+        bakeTemp: options?.bakeTemp || recipe.bake_temp_celsius,
+        bakeMinutes: options?.durationMinutes || recipe.bake_time_minutes,
+        totalCost: totalBakeCost,
+        costPerUnit: Math.round(totalBakeCost / targetQty),
+        ingredients: consumedIngs,
+        performedBy: options?.performedBy || 'Bếp bánh',
+        createdAt: new Date().toISOString(),
+        notes: options?.notes || `Mẻ nướng ${targetQty} ${recipe.yield_unit || 'cái'} ${cakeName}`,
+      });
+    } catch (e) {
+      console.warn('Lỗi ghi baking history cho mẻ bánh thường:', e);
+    }
+  }
+
+  return {
+    success: true,
+    message: `Đã tự động trừ kho ${deductedItems.length} loại nguyên liệu cho mẻ ${targetQty} ${recipe.yield_unit || 'cái'} ${cakeName}.`,
+    deductedItems,
+    totalCost: totalBakeCost,
   };
 }
