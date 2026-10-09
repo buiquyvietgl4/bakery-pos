@@ -626,12 +626,17 @@ export default function CustomSqlConfigSection() {
               <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">
                 <div className="text-[11px] text-zinc-500 font-semibold flex items-center gap-1">
                   <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-                  <span>Công Thức &amp; Config</span>
+                  <span>Công Thức (BOM)</span>
                 </div>
                 <div className="mt-1 font-black text-lg text-zinc-900">
                   {isLoadingStats ? '...' : (liveStats?.recipesCount ?? 0)}
                   <span className="text-[11px] font-normal text-zinc-500 ml-1">công thức ({liveStats?.recipeItemsCount ?? 0} BOM)</span>
                 </div>
+                {Boolean(liveStats?.systemConfigsCount && liveStats.systemConfigsCount > 0) && (
+                  <div className="text-[10px] text-zinc-400 font-medium mt-0.5 truncate" title={`${liveStats?.systemConfigsCount} khóa cấu hình kỹ thuật hệ thống (bảo mật, CSDL)`}>
+                    +{liveStats?.systemConfigsCount} config hệ thống
+                  </div>
+                )}
               </div>
 
               <div className="p-3 rounded-xl bg-zinc-50/70 border border-zinc-200/80">

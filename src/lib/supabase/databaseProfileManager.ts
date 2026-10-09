@@ -1016,6 +1016,7 @@ export interface DatabaseLiveStats {
   productsCount: number;
   ordersCount: number;
   recipesCount: number;
+  systemConfigsCount?: number;
   ingredientsCount: number;
   recipeItemsCount: number;
   orderItemsCount: number;
@@ -1042,6 +1043,7 @@ export async function fetchDatabaseLiveStats(
       productsCount: 0,
       ordersCount: 0,
       recipesCount: 0,
+      systemConfigsCount: 0,
       ingredientsCount: 0,
       recipeItemsCount: 0,
       orderItemsCount: 0,
@@ -1059,10 +1061,11 @@ export async function fetchDatabaseLiveStats(
       auth: { persistSession: false },
     });
 
-    const [prodRes, orderRes, recRes, ingRes, rItemRes, oItemRes] = await Promise.all([
+    const [prodRes, orderRes, recRes, sysConfigRes, ingRes, rItemRes, oItemRes] = await Promise.all([
       testClient.from('products').select('*', { count: 'exact', head: true }),
       testClient.from('orders').select('*', { count: 'exact', head: true }),
-      testClient.from('recipes').select('*', { count: 'exact', head: true }),
+      testClient.from('recipes').select('*', { count: 'exact', head: true }).eq('is_active', true),
+      testClient.from('recipes').select('*', { count: 'exact', head: true }).eq('is_active', false),
       testClient.from('ingredients').select('*', { count: 'exact', head: true }),
       testClient.from('recipe_items').select('*', { count: 'exact', head: true }),
       testClient.from('order_items').select('*', { count: 'exact', head: true }),
@@ -1082,6 +1085,7 @@ export async function fetchDatabaseLiveStats(
     const productsCount = prodRes.count ?? 0;
     const ordersCount = orderRes.count ?? 0;
     const recipesCount = recRes.count ?? 0;
+    const systemConfigsCount = sysConfigRes.count ?? 0;
     const ingredientsCount = ingRes.count ?? 0;
     const recipeItemsCount = rItemRes.count ?? 0;
     const orderItemsCount = oItemRes.count ?? 0;
@@ -1093,6 +1097,7 @@ export async function fetchDatabaseLiveStats(
       productsCount,
       ordersCount,
       recipesCount,
+      systemConfigsCount,
       ingredientsCount,
       recipeItemsCount,
       orderItemsCount,
@@ -1108,6 +1113,7 @@ export async function fetchDatabaseLiveStats(
       productsCount: 0,
       ordersCount: 0,
       recipesCount: 0,
+      systemConfigsCount: 0,
       ingredientsCount: 0,
       recipeItemsCount: 0,
       orderItemsCount: 0,

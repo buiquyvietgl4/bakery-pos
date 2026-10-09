@@ -225,6 +225,9 @@ export async function POST(req: NextRequest) {
         'DB_ROW_HELD_ORDERS',
         'SYS_CONFIG_HELD_ORDERS',
         'SYS_CONFIG_RESOLVED_RETURNS',
+        'SYS_CONFIG_DELETED_RECIPES',
+        'SYS_CONFIG_DELETED_PRODUCTS',
+        'SYS_CONFIG_DELETED_INGREDIENTS',
       ]);
     } catch (e: any) {
       console.warn('Xóa recipes operational rows:', e?.message || e);
@@ -272,9 +275,12 @@ export async function POST(req: NextRequest) {
         });
       } catch {}
 
-      // Xóa công thức thường, chừa lại SYS_CONFIG_SECURITY và SYS_RESET_EPOCH
+      // Xóa công thức thường, chừa lại các dòng cấu hình kỹ thuật hệ thống (SYS_*, SYSTEM_*)
       try {
-        await supabase.from('recipes').delete().neq('name', DB_ROW_SECURITY_NAME).neq('name', DB_ROW_RESET_EPOCH_NAME);
+        await supabase.from('recipes').delete().eq('is_active', true);
+      } catch {}
+      try {
+        await supabase.from('recipes').delete().not('name', 'like', 'SYS%').not('name', 'like', 'SYSTEM%');
       } catch {}
     }
 
