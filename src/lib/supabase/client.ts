@@ -52,7 +52,9 @@ if (typeof window !== 'undefined') {
 }
 
 function createSafeDummyMutation(table: string, methodName: string) {
-  console.warn(`🛡️ [SQL Firewall] Đã chặn lệnh ${methodName.toUpperCase()} vào bảng '${table}' trên Cloud Supabase vì đang chạy ở Chế độ Local SQL!`);
+  const isTest = typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST));
+  const reason = isTest ? 'đang chạy trong môi trường Kiểm thử (Vitest Suite)' : 'đang chạy ở Chế độ Local SQL';
+  console.warn(`🛡️ [SQL Firewall] Đã chặn lệnh ${methodName.toUpperCase()} vào bảng '${table}' trên Cloud Supabase vì ${reason}!`);
   const dummy: any = new Proxy({}, {
     get(_t, prop) {
       if (prop === 'then') {
@@ -73,16 +75,18 @@ function createSafeDummyMutation(table: string, methodName: string) {
 /**
  * Proxy Supabase Client: Mọi lệnh gọi supabase.from, supabase.channel, supabase.auth...
  * sẽ tự động chuyển tiếp tới instance client của môi trường CSDL đang hoạt động.
- * 🛡️ SQL FIREWALL: Khi hệ thống đang ở Chế độ Local SQL (isLocalMode = true),
+ * 🛡️ SQL FIREWALL: Khi hệ thống đang ở Chế độ Local SQL (isLocalMode = true)
+ * hoặc khi chạy trong môi trường kiểm thử (Vitest test),
  * mọi thao tác Ghi/Xóa/Cập nhật (insert, upsert, update, delete) xuống Cloud Supabase
- * đều bị chặn tuyệt đối để bảo vệ 100% tính độc lập dữ liệu giữa Local và Cloud!
+ * đều bị chặn tuyệt đối để bảo vệ 100% tính toàn vẹn và độc lập dữ liệu!
  */
 export const supabase: SupabaseClient = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     if (prop === 'from') {
       return (table: string) => {
         const originalBuilder = (currentClient as any).from(table);
-        if (!isLocalMode()) {
+        const isTestEnv = typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST));
+        if (!isLocalMode() && !isTestEnv) {
           return originalBuilder;
         }
         return new Proxy(originalBuilder, {
