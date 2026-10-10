@@ -1067,7 +1067,7 @@ export async function fetchDatabaseLiveStats(
       testClient.from('orders').select('*', { count: 'exact', head: true }),
       testClient.from('recipes').select('*', { count: 'exact', head: true }).eq('is_active', true),
       testClient.from('recipes').select('*', { count: 'exact', head: true }).eq('is_active', false),
-      testClient.from('ingredients').select('*', { count: 'exact', head: true }),
+      testClient.from('ingredients').select('id, name, category'),
       testClient.from('recipe_items').select('*', { count: 'exact', head: true }),
       testClient.from('order_items').select('*', { count: 'exact', head: true }),
     ]);
@@ -1087,7 +1087,17 @@ export async function fetchDatabaseLiveStats(
     const ordersCount = orderRes.count ?? 0;
     const recipesCount = recRes.count ?? 0;
     const systemConfigsCount = sysConfigRes.count ?? 0;
-    const ingredientsCount = ingRes.count ?? 0;
+    const ingredientsCount = Array.isArray(ingRes.data)
+      ? ingRes.data.filter((ing: any) => {
+          if (!ing) return false;
+          const name = String(ing.name || '').trim();
+          const id = String(ing.id || '').trim();
+          if (name.startsWith('SYS_') || id.startsWith('SYS_')) return false;
+          if (ing.category === 'system_config') return false;
+          if (id.startsWith('e5a2000') || name.toLowerCase().includes('real test')) return false;
+          return true;
+        }).length
+      : (ingRes.count ?? 0);
     const recipeItemsCount = rItemRes.count ?? 0;
     const orderItemsCount = oItemRes.count ?? 0;
 
