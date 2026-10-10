@@ -517,6 +517,7 @@ export default function AdminDashboard() {
   const [newIngConversionRate, setNewIngConversionRate] = useState<number>(1000);
   const [newIngCategory, setNewIngCategory] = useState('Bột & Ngũ cốc');
   const [newIngStockQty, setNewIngStockQty] = useState<number>(0);
+  const [newIngPackagePrice, setNewIngPackagePrice] = useState<number>(0);
   const [newIngAvgCost, setNewIngAvgCost] = useState<number>(0);
   const [newIngReorderLevel, setNewIngReorderLevel] = useState<number>(0);
   const [newIngWastagePct, setNewIngWastagePct] = useState<number>(0);
@@ -531,6 +532,7 @@ export default function AdminDashboard() {
   const [editIngConversionRate, setEditIngConversionRate] = useState<number>(1000);
   const [editIngCategory, setEditIngCategory] = useState('Bột & Ngũ cốc');
   const [editIngStockQty, setEditIngStockQty] = useState<number>(0);
+  const [editIngPackagePrice, setEditIngPackagePrice] = useState<number>(0);
   const [editIngAvgCost, setEditIngAvgCost] = useState<number>(0);
   const [editIngReorderLevel, setEditIngReorderLevel] = useState<number>(0);
   const [editIngWastagePct, setEditIngWastagePct] = useState<number>(0);
@@ -1796,7 +1798,7 @@ export default function AdminDashboard() {
           setPoBaseUnitName(baseU);
           setPoPackageUnitName(pkgU);
           setPoConversionRate(rate);
-          setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 35000));
+          setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 0));
         }
       } else {
         setPoIngredientId('');
@@ -2175,7 +2177,7 @@ export default function AdminDashboard() {
         setPoBaseUnitName(baseU);
         setPoPackageUnitName(pkgU);
         setPoConversionRate(rate);
-        setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 35000));
+        setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 0));
       }
       if (!soIngredientId || !ingredients.some((i) => i.id === soIngredientId)) {
         setSoIngredientId(ingredients[0].id);
@@ -2649,6 +2651,7 @@ export default function AdminDashboard() {
       // Reset form
       setNewIngName('');
       setNewIngStockQty(0);
+      setNewIngPackagePrice(0);
       setNewIngAvgCost(0);
       setNewIngUnit('g');
       setNewIngPackagingUnit('Túi 1kg');
@@ -2672,10 +2675,13 @@ export default function AdminDashboard() {
     setEditIngName(ing.name || '');
     setEditIngUnit(ing.unit || 'g');
     setEditIngPackagingUnit(ing.packaging_unit || (ing.unit === 'g' ? 'Túi 1kg' : ing.unit === 'ml' ? 'Hộp 1L' : 'Túi'));
-    setEditIngConversionRate(ing.conversion_rate && ing.conversion_rate > 0 ? ing.conversion_rate : (ing.unit === 'g' || ing.unit === 'ml' ? 1000 : 1));
+    const convRate = ing.conversion_rate && ing.conversion_rate > 0 ? ing.conversion_rate : (ing.unit === 'g' || ing.unit === 'ml' ? 1000 : 1);
+    const avgCost = ing.avg_cost || 0;
+    setEditIngConversionRate(convRate);
     setEditIngCategory(ing.category || 'Bột & Ngũ cốc');
     setEditIngStockQty(ing.stock_qty || 0);
-    setEditIngAvgCost(ing.avg_cost || 0);
+    setEditIngPackagePrice(convRate > 1 ? Math.round(avgCost * convRate) : avgCost);
+    setEditIngAvgCost(avgCost);
     setEditIngReorderLevel(ing.reorder_level ?? 0);
     setEditIngWastagePct(ing.wastage_pct ?? 0);
     setIsEditIngredientModalOpen(true);
@@ -3424,7 +3430,7 @@ export default function AdminDashboard() {
       setPoBaseUnitName(baseU);
       setPoPackageUnitName(pkgU);
       setPoConversionRate(rate);
-      setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 35000));
+      setPoPackageUnitPrice(rate > 1 ? Math.round(cost * rate) : (cost || 0));
     }
   };
 
@@ -6567,6 +6573,9 @@ export default function AdminDashboard() {
                       setNewIngUnit('g');
                       setNewIngPackagingUnit('Túi 1kg');
                       setNewIngConversionRate(1000);
+                      if (newIngPackagePrice > 0) {
+                        setNewIngAvgCost(Math.round((newIngPackagePrice / 1000) * 100) / 100);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6578,6 +6587,9 @@ export default function AdminDashboard() {
                       setNewIngUnit('g');
                       setNewIngPackagingUnit('Bao 25kg');
                       setNewIngConversionRate(25000);
+                      if (newIngPackagePrice > 0) {
+                        setNewIngAvgCost(Math.round((newIngPackagePrice / 25000) * 100) / 100);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6589,6 +6601,9 @@ export default function AdminDashboard() {
                       setNewIngUnit('ml');
                       setNewIngPackagingUnit('Hộp 1L');
                       setNewIngConversionRate(1000);
+                      if (newIngPackagePrice > 0) {
+                        setNewIngAvgCost(Math.round((newIngPackagePrice / 1000) * 100) / 100);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6600,6 +6615,9 @@ export default function AdminDashboard() {
                       setNewIngUnit('quả');
                       setNewIngPackagingUnit('Khay 30 quả');
                       setNewIngConversionRate(30);
+                      if (newIngPackagePrice > 0) {
+                        setNewIngAvgCost(Math.round((newIngPackagePrice / 30) * 100) / 100);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6611,6 +6629,9 @@ export default function AdminDashboard() {
                       setNewIngUnit('cái');
                       setNewIngPackagingUnit('Cái');
                       setNewIngConversionRate(1);
+                      if (newIngPackagePrice > 0) {
+                        setNewIngAvgCost(newIngPackagePrice);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6660,7 +6681,14 @@ export default function AdminDashboard() {
                       min="1"
                       value={newIngConversionRate || ''}
                       onFocus={(e) => e.target.select()}
-                      onChange={(e) => setNewIngConversionRate(e.target.value === '' ? ('' as any) : Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? ('' as any) : Number(e.target.value);
+                        setNewIngConversionRate(val);
+                        const rateNum = Number(val) || 1;
+                        if (newIngPackagePrice > 0 && rateNum > 0) {
+                          setNewIngAvgCost(Math.round((newIngPackagePrice / rateNum) * 100) / 100);
+                        }
+                      }}
                       className="flex-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-amber-900"
                     />
                     <span className="text-xs font-bold text-zinc-600 whitespace-nowrap">{newIngUnit || 'đơn vị kho'}</span>
@@ -6705,24 +6733,67 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="font-bold text-zinc-700">Đơn giá vốn ban đầu (VND/{newIngUnit}):</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatCurrencyInput(newIngAvgCost)}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setNewIngAvgCost(parseCurrencyInput(e.target.value))}
-                    placeholder="VD: 30"
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
-                  />
-                  {newIngConversionRate > 1 && newIngAvgCost > 0 && (
-                    <div className="text-[10px] text-zinc-400 mt-0.5">
-                      ~ {(Math.round((Number(newIngAvgCost) || 0) * (Number(newIngConversionRate) || 1)) || 0).toLocaleString('vi-VN')}₫ / {newIngPackagingUnit}
-                    </div>
-                  )}
+              {/* Khung nhập giá vốn ban đầu theo đơn vị nhập hàng */}
+              <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-950 text-xs flex items-center gap-1">
+                    💰 Giá Vốn Ban Đầu (Theo đơn vị mua hàng)
+                  </span>
+                  <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                    Tự động tính theo {newIngUnit || 'đơn vị kho'}
+                  </span>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="font-bold text-zinc-700 block text-xs">
+                      Giá mua 1 {newIngPackagingUnit || 'đơn vị nhập'} (VND) *
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(newIngPackagePrice)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = parseCurrencyInput(e.target.value);
+                        setNewIngPackagePrice(val);
+                        const rate = Number(newIngConversionRate) || 1;
+                        setNewIngAvgCost(rate > 0 ? Math.round((val / rate) * 100) / 100 : val);
+                      }}
+                      placeholder="VD: 20.000"
+                      className="w-full mt-1 p-2.5 rounded-xl border border-amber-300 bg-white font-black text-amber-700 text-sm focus:ring-2 focus:ring-amber-500 shadow-xs"
+                    />
+                    <div className="text-[10px] text-zinc-500 mt-1">
+                      Ví dụ: Đường nhập túi 1kg là 20.000₫
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-zinc-700 block text-xs">
+                      Tương đương giá vốn cơ sở (VND/{newIngUnit || 'kho'}):
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(newIngAvgCost)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = parseCurrencyInput(e.target.value);
+                        setNewIngAvgCost(val);
+                        const rate = Number(newIngConversionRate) || 1;
+                        setNewIngPackagePrice(Math.round(val * rate));
+                      }}
+                      placeholder="VD: 20"
+                      className="w-full mt-1 p-2.5 rounded-xl border border-emerald-300 bg-white font-black text-emerald-800 text-sm focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                    />
+                    <div className="text-[10px] text-emerald-700 font-bold mt-1">
+                      ✓ Dùng tính giá thành làm bánh (BOM)
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-zinc-700">Mức báo động sắp hết ({newIngUnit}):</label>
                   <input
@@ -6733,17 +6804,16 @@ export default function AdminDashboard() {
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="font-bold text-zinc-700">Hao hụt chế biến (%):</label>
-                <input
-                  type="number"
-                  value={newIngWastagePct || ''}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setNewIngWastagePct(e.target.value === '' ? ('' as any) : Number(e.target.value))}
-                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
-                />
+                <div>
+                  <label className="font-bold text-zinc-700">Hao hụt chế biến (%):</label>
+                  <input
+                    type="number"
+                    value={newIngWastagePct || ''}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setNewIngWastagePct(e.target.value === '' ? ('' as any) : Number(e.target.value))}
+                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
+                  />
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -6816,6 +6886,9 @@ export default function AdminDashboard() {
                       setEditIngUnit('g');
                       setEditIngPackagingUnit('Túi 1kg');
                       setEditIngConversionRate(1000);
+                      if (editIngPackagePrice > 0) {
+                        setEditIngAvgCost(Math.round((editIngPackagePrice / 1000) * 100) / 100);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6827,6 +6900,9 @@ export default function AdminDashboard() {
                       setEditIngUnit('g');
                       setEditIngPackagingUnit('Bao 25kg');
                       setEditIngConversionRate(25000);
+                      if (editIngPackagePrice > 0) {
+                        setEditIngAvgCost(Math.round((editIngPackagePrice / 25000) * 100) / 100);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6838,6 +6914,9 @@ export default function AdminDashboard() {
                       setEditIngUnit('ml');
                       setEditIngPackagingUnit('Hộp 1L');
                       setEditIngConversionRate(1000);
+                      if (editIngPackagePrice > 0) {
+                        setEditIngAvgCost(Math.round((editIngPackagePrice / 1000) * 100) / 100);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6849,6 +6928,9 @@ export default function AdminDashboard() {
                       setEditIngUnit('quả');
                       setEditIngPackagingUnit('Khay 30 quả');
                       setEditIngConversionRate(30);
+                      if (editIngPackagePrice > 0) {
+                        setEditIngAvgCost(Math.round((editIngPackagePrice / 30) * 100) / 100);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6860,6 +6942,9 @@ export default function AdminDashboard() {
                       setEditIngUnit('cái');
                       setEditIngPackagingUnit('Cái');
                       setEditIngConversionRate(1);
+                      if (editIngPackagePrice > 0) {
+                        setEditIngAvgCost(editIngPackagePrice);
+                      }
                     }}
                     className="px-2 py-1 bg-white hover:bg-amber-100 text-amber-900 rounded-lg border border-amber-200 text-[10px] font-bold cursor-pointer transition"
                   >
@@ -6909,7 +6994,14 @@ export default function AdminDashboard() {
                       min="1"
                       value={editIngConversionRate || ''}
                       onFocus={(e) => e.target.select()}
-                      onChange={(e) => setEditIngConversionRate(e.target.value === '' ? ('' as any) : Number(e.target.value))}
+                      onChange={(e) => {
+                        const val = e.target.value === '' ? ('' as any) : Number(e.target.value);
+                        setEditIngConversionRate(val);
+                        const rateNum = Number(val) || 1;
+                        if (editIngPackagePrice > 0 && rateNum > 0) {
+                          setEditIngAvgCost(Math.round((editIngPackagePrice / rateNum) * 100) / 100);
+                        }
+                      }}
                       className="flex-1 p-2 rounded-xl border border-zinc-200 bg-white font-bold text-amber-900"
                     />
                     <span className="text-xs font-bold text-zinc-600 whitespace-nowrap">{editIngUnit || 'đơn vị kho'}</span>
@@ -6959,23 +7051,67 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <div>
-                  <label className="font-bold text-zinc-700">Đơn giá vốn WAC (VND/{editIngUnit}):</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={formatCurrencyInput(editIngAvgCost)}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setEditIngAvgCost(parseCurrencyInput(e.target.value))}
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-bold text-amber-600"
-                  />
-                  {editIngConversionRate > 1 && editIngAvgCost > 0 && (
-                    <div className="text-[10px] text-zinc-400 mt-0.5">
-                      ~ {(Math.round((Number(editIngAvgCost) || 0) * (Number(editIngConversionRate) || 1)) || 0).toLocaleString('vi-VN')}₫ / {editIngPackagingUnit}
-                    </div>
-                  )}
+              {/* Khung giá mua đơn vị nhập & đơn giá vốn WAC */}
+              <div className="p-3 bg-amber-50/70 rounded-2xl border border-amber-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-amber-950 text-xs flex items-center gap-1">
+                    💰 Giá Mua Đơn Vị Nhập & Giá Vốn WAC
+                  </span>
+                  <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded-full">
+                    Tự động tính theo {editIngUnit || 'đơn vị kho'}
+                  </span>
                 </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <label className="font-bold text-zinc-700 block text-xs">
+                      Giá mua 1 {editIngPackagingUnit || 'đơn vị nhập'} (VND):
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(editIngPackagePrice)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = parseCurrencyInput(e.target.value);
+                        setEditIngPackagePrice(val);
+                        const rate = Number(editIngConversionRate) || 1;
+                        setEditIngAvgCost(rate > 0 ? Math.round((val / rate) * 100) / 100 : val);
+                      }}
+                      placeholder="VD: 20.000"
+                      className="w-full mt-1 p-2.5 rounded-xl border border-amber-300 bg-white font-black text-amber-700 text-sm focus:ring-2 focus:ring-amber-500 shadow-xs"
+                    />
+                    <div className="text-[10px] text-zinc-500 mt-1">
+                      Giá mua 1 {editIngPackagingUnit} từ nhà cung cấp
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="font-bold text-zinc-700 block text-xs">
+                      Đơn giá vốn WAC lưu kho (VND/{editIngUnit || 'kho'}):
+                    </label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={formatCurrencyInput(editIngAvgCost)}
+                      onFocus={(e) => e.target.select()}
+                      onChange={(e) => {
+                        const val = parseCurrencyInput(e.target.value);
+                        setEditIngAvgCost(val);
+                        const rate = Number(editIngConversionRate) || 1;
+                        setEditIngPackagePrice(Math.round(val * rate));
+                      }}
+                      placeholder="VD: 20"
+                      className="w-full mt-1 p-2.5 rounded-xl border border-emerald-300 bg-white font-black text-emerald-800 text-sm focus:ring-2 focus:ring-emerald-500 shadow-xs"
+                    />
+                    <div className="text-[10px] text-emerald-700 font-bold mt-1">
+                      ✓ Dùng tính giá thành làm bánh (BOM)
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div>
                   <label className="font-bold text-zinc-700">Mức báo động sắp hết ({editIngUnit}):</label>
                   <input
@@ -6986,17 +7122,16 @@ export default function AdminDashboard() {
                     className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
                   />
                 </div>
-              </div>
-
-              <div>
-                <label className="font-bold text-zinc-700">Hao hụt chế biến (%):</label>
-                <input
-                  type="number"
-                  value={editIngWastagePct || ''}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setEditIngWastagePct(e.target.value === '' ? ('' as any) : Number(e.target.value))}
-                  className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
-                />
+                <div>
+                  <label className="font-bold text-zinc-700">Hao hụt chế biến (%):</label>
+                  <input
+                    type="number"
+                    value={editIngWastagePct || ''}
+                    onFocus={(e) => e.target.select()}
+                    onChange={(e) => setEditIngWastagePct(e.target.value === '' ? ('' as any) : Number(e.target.value))}
+                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50"
+                  />
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">

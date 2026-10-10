@@ -723,7 +723,7 @@ export function syncBomToProducts(
       const cost = Math.round(Number(rec.cost_per_unit) || 0);
       const sellPrice = Number(rec.suggested_price) > 0
         ? Number(rec.suggested_price)
-        : (cost > 0 ? Math.round(cost / 0.35 / 1000) * 1000 : 35000);
+        : (cost > 0 ? Math.round(cost / 0.35 / 1000) * 1000 : 0);
 
       const isValidUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
       const prodId = isValidUuid(rec.product_id)

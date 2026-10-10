@@ -818,8 +818,8 @@ export default function KitchenPage() {
           updatedProducts.push({
             id: batch.product_id || 'prod-' + Date.now(),
             name: batch.cake_name,
-            price: 35000,
-            selling_price: 35000,
+            price: 0,
+            selling_price: 0,
             category: 'Bán thành phẩm',
             stock_qty: Number(batch.quantity),
             unit: batch.unit || 'cái',
@@ -835,7 +835,7 @@ export default function KitchenPage() {
             await db.products.put({
               id: p.id,
               name: p.name,
-              selling_price: p.selling_price || p.price || 35000,
+              selling_price: p.selling_price || p.price || 0,
               is_active: true,
               category: p.category,
               stock_qty: p.stock_qty,
