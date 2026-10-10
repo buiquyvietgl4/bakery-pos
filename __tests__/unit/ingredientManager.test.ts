@@ -166,7 +166,7 @@ describe('Ingredient Manager & Anti-Resurrection Tombstone', () => {
       expect(recovered).toBeDefined();
       expect(recovered?.id).toBe('ing-missing-1');
       expect(recovered?.unit).toBe('g');
-      expect(recovered?.stock_qty).toBe(5000);
+      expect(recovered?.stock_qty).toBe(0);
       expect(recovered?.avg_cost).toBe(30); // 4500 / 150 = 30
       expect(recovered?.packaging_unit).toBe('Túi 1kg');
       expect(recovered?.conversion_rate).toBe(1000);

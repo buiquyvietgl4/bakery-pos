@@ -380,12 +380,24 @@ export function mergeIngredientLists(localList: any[], supabaseList: any[]): Ing
           ? Number(raw.conversion_rate)
           : (Number(cloudIng.conversion_rate) > 0 ? Number(cloudIng.conversion_rate) : (finalUnit === 'ml' || finalUnit === 'g' ? 1000 : 1));
 
+        // Hợp nhất tồn kho thông minh theo mốc thời gian cập nhật gần nhất, tránh bị Cloud đè số lượng cũ
+        let resolvedStock = Number(cloudIng.stock_qty) || 0;
+        if (raw.stock_qty !== undefined && raw.stock_qty !== null) {
+          const rawTime = raw.updated_at ? new Date(raw.updated_at).getTime() : 0;
+          const cloudTime = cloudIng.updated_at ? new Date(cloudIng.updated_at).getTime() : 0;
+          if (rawTime >= cloudTime || cloudTime === 0) {
+            resolvedStock = Number(raw.stock_qty);
+          } else {
+            resolvedStock = Number(cloudIng.stock_qty !== undefined ? cloudIng.stock_qty : raw.stock_qty);
+          }
+        }
+
         ingMap.set(matchedKey, {
           ...cloudIng,
           unit: finalUnit,
           packaging_unit: finalPkg,
           conversion_rate: finalRate,
-          stock_qty: cloudIng.stock_qty !== undefined && cloudIng.stock_qty !== 0 ? cloudIng.stock_qty : (raw.stock_qty ?? cloudIng.stock_qty),
+          stock_qty: resolvedStock,
         });
       } else {
         // Chưa có trên cloud -> Giữ nguyên nguyên liệu local!
@@ -494,10 +506,10 @@ export function autoRecoverIngredientsFromRecipes(
           name: itemName,
           unit: unit,
           category: 'Bột & Ngũ cốc',
-          stock_qty: 5000,
-          reorder_level: 1000,
+          stock_qty: Number(item.stock_qty || 0),
+          reorder_level: Number(item.reorder_level || 0),
           avg_cost: unitCost,
-          wastage_pct: 3,
+          wastage_pct: Number(item.wastage_pct || 0),
           packaging_unit: unit === 'ml' ? 'Hộp 1L' : (unit === 'g' ? 'Túi 1kg' : 'Túi'),
           conversion_rate: unit === 'ml' || unit === 'g' ? 1000 : 1,
           created_at: new Date().toISOString(),
