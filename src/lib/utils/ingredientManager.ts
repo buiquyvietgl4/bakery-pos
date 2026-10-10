@@ -185,10 +185,76 @@ export function unmarkIngredientDeleted(id: string, name?: string): void {
   }
 }
 
+export interface CanDeleteIngredientResult {
+  allowed: boolean;
+  stockQty: number;
+  unit: string;
+  reason?: string;
+}
+
+/**
+ * Kiểm tra xem nguyên vật liệu có được phép xóa khỏi kho hay không.
+ * 🛡️ QUY TẮC BẢO VỆ TÀI CHÍNH & KẾ TOÁN:
+ * Nguyên liệu đang còn tồn kho (stock_qty > 0) KHÔNG ĐƯỢC PHÉP XÓA.
+ * Người dùng bắt buộc phải dùng hết trong sản xuất hoặc tạo phiếu Xuất Hủy / Hao Hụt
+ * đưa tồn kho về 0 trước khi xóa, nhằm bảo toàn giá vốn, tránh thất thoát chi phí và sai lệch sổ sách.
+ */
+export function canDeleteIngredient(
+  ingredient: { id?: string; name?: string; stock_qty?: number; unit?: string } | null | undefined
+): CanDeleteIngredientResult {
+  if (!ingredient) {
+    return { allowed: true, stockQty: 0, unit: '' };
+  }
+  const stockQty = Number(ingredient.stock_qty || 0);
+  const unit = ingredient.unit || 'đơn vị';
+
+  if (stockQty > 0) {
+    return {
+      allowed: false,
+      stockQty,
+      unit,
+      reason: `Nguyên liệu "${ingredient.name || 'này'}" hiện vẫn còn tồn kho (${stockQty.toLocaleString('vi-VN')} ${unit}). Để bảo đảm tính chính xác của chi phí, giá vốn và tránh thất thoát tài sản trên sổ sách kế toán, bạn không thể xóa nguyên liệu đang còn tồn. Vui lòng sử dụng hết hoặc lập phiếu Xuất Hủy / Hao Hụt (đưa tồn kho về 0) trước khi xóa.`,
+    };
+  }
+
+  return { allowed: true, stockQty: 0, unit };
+}
+
 /**
  * Xóa nguyên liệu triệt để trên tất cả các tầng: LocalStorage, Recipes BOM, và Supabase SQL (nếu Online).
+ * Bắt buộc tồn kho <= 0 (trừ khi có cờ force: true).
  */
-export async function deleteIngredientEverywhere(id: string, name: string): Promise<boolean> {
+export async function deleteIngredientEverywhere(
+  id: string,
+  name: string,
+  options?: { force?: boolean }
+): Promise<boolean> {
+  // 0. Kiểm tra quy tắc tài chính: Còn tồn kho > 0 không được phép xóa (tránh thất thoát chi phí kế toán)
+  if (typeof window !== 'undefined' && !options?.force) {
+    try {
+      const rawIngs = localStorage.getItem(BAKERY_INGREDIENTS_KEY);
+      if (rawIngs) {
+        const parsed = JSON.parse(rawIngs);
+        if (Array.isArray(parsed)) {
+          const target = parsed.find(
+            (i: any) =>
+              String(i.id || '').toLowerCase().trim() === id.toLowerCase().trim() ||
+              String(i.name || '').toLowerCase().trim() === name.toLowerCase().trim()
+          );
+          if (target) {
+            const check = canDeleteIngredient(target);
+            if (!check.allowed) {
+              console.warn(`[Kho] Chặn xóa nguyên liệu "${name}" vì còn tồn kho (${check.stockQty} ${check.unit}):`, check.reason);
+              return false;
+            }
+          }
+        }
+      }
+    } catch (checkErr) {
+      console.warn('Lỗi kiểm tra tồn kho trước khi xóa:', checkErr);
+    }
+  }
+
   // 1. Đánh dấu vào danh sách đen Tombstone
   markIngredientAsDeleted(id, name);
 

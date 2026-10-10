@@ -5,6 +5,7 @@ import {
   unmarkIngredientDeleted,
   filterActiveIngredients,
   deleteIngredientEverywhere,
+  canDeleteIngredient,
   mergeIngredientLists,
   autoRecoverIngredientsFromRecipes,
   persistIngredientToSupabase,
@@ -242,6 +243,104 @@ describe('Ingredient Manager & Anti-Resurrection Tombstone', () => {
       });
 
       expect(getDeletedIngredientIds().has('test-ing-1')).toBe(false);
+    });
+  });
+
+  describe('canDeleteIngredient & Quy tắc bảo vệ tài chính khi xóa nguyên liệu', () => {
+    it('chặn xóa nguyên liệu khi tồn kho > 0 để tránh lỗ hổng chi phí và thất thoát tài sản', () => {
+      const ingWithStock = {
+        id: 'ing-flour-1',
+        name: 'Bột mì Hoa Ngọc Lan',
+        stock_qty: 2500,
+        unit: 'g',
+      };
+
+      const result = canDeleteIngredient(ingWithStock);
+      expect(result.allowed).toBe(false);
+      expect(result.stockQty).toBe(2500);
+      expect(result.unit).toBe('g');
+      expect(result.reason).toContain('vẫn còn tồn kho');
+      expect(result.reason).toContain('Xuất Hủy / Hao Hụt');
+    });
+
+    it('cho phép xóa nguyên liệu khi tồn kho = 0 (đã sử dụng hết hoặc đã xuất hủy)', () => {
+      const ingZeroStock = {
+        id: 'ing-sugar-1',
+        name: 'Đường Biên Hòa',
+        stock_qty: 0,
+        unit: 'g',
+      };
+
+      const result = canDeleteIngredient(ingZeroStock);
+      expect(result.allowed).toBe(true);
+      expect(result.stockQty).toBe(0);
+      expect(result.unit).toBe('g');
+      expect(result.reason).toBeUndefined();
+    });
+
+    it('cho phép xóa an toàn khi nguyên liệu có tồn kho âm hoặc không xác định', () => {
+      const ingNegative = { id: 'ing-neg', name: 'Muối tinh', stock_qty: -5, unit: 'g' };
+      expect(canDeleteIngredient(ingNegative).allowed).toBe(true);
+
+      expect(canDeleteIngredient(null).allowed).toBe(true);
+      expect(canDeleteIngredient(undefined).allowed).toBe(true);
+    });
+
+    it('deleteIngredientEverywhere từ chối xóa và trả về false khi nguyên liệu còn tồn kho > 0', async () => {
+      saveSqlModeConfig({ mode: 'local' });
+
+      const currentIngs = [
+        { id: 'ing-butter-1', name: 'Bơ lạt Anchor', stock_qty: 1200, unit: 'g' },
+      ];
+      localStorage.setItem(BAKERY_INGREDIENTS_KEY, JSON.stringify(currentIngs));
+
+      const success = await deleteIngredientEverywhere('ing-butter-1', 'Bơ lạt Anchor');
+      expect(success).toBe(false);
+
+      // Nguyên liệu không được thêm vào tombstone danh sách đen
+      const deletedSet = getDeletedIngredientIds();
+      expect(deletedSet.has('ing-butter-1')).toBe(false);
+      expect(deletedSet.has('bơ lạt anchor')).toBe(false);
+
+      // Nguyên liệu vẫn còn nguyên vẹn trong kho
+      const inStore = JSON.parse(localStorage.getItem(BAKERY_INGREDIENTS_KEY) || '[]');
+      expect(inStore).toHaveLength(1);
+      expect(inStore[0].id).toBe('ing-butter-1');
+    });
+
+    it('deleteIngredientEverywhere xóa thành công khi nguyên liệu đã đưa về tồn kho = 0', async () => {
+      saveSqlModeConfig({ mode: 'local' });
+
+      const currentIngs = [
+        { id: 'ing-butter-zero', name: 'Bơ lạt Úc', stock_qty: 0, unit: 'g' },
+      ];
+      localStorage.setItem(BAKERY_INGREDIENTS_KEY, JSON.stringify(currentIngs));
+
+      const success = await deleteIngredientEverywhere('ing-butter-zero', 'Bơ lạt Úc');
+      expect(success).toBe(true);
+
+      // Đã được đưa vào tombstone
+      const deletedSet = getDeletedIngredientIds();
+      expect(deletedSet.has('ing-butter-zero')).toBe(true);
+
+      // Đã bị gỡ khỏi kho
+      const inStore = JSON.parse(localStorage.getItem(BAKERY_INGREDIENTS_KEY) || '[]');
+      expect(inStore).toHaveLength(0);
+    });
+
+    it('deleteIngredientEverywhere cho phép xóa nếu có cờ options.force = true', async () => {
+      saveSqlModeConfig({ mode: 'local' });
+
+      const currentIngs = [
+        { id: 'ing-forced', name: 'Phụ gia bánh', stock_qty: 50, unit: 'g' },
+      ];
+      localStorage.setItem(BAKERY_INGREDIENTS_KEY, JSON.stringify(currentIngs));
+
+      const success = await deleteIngredientEverywhere('ing-forced', 'Phụ gia bánh', { force: true });
+      expect(success).toBe(true);
+
+      const deletedSet = getDeletedIngredientIds();
+      expect(deletedSet.has('ing-forced')).toBe(true);
     });
   });
 });

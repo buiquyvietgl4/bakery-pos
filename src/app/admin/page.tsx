@@ -47,6 +47,7 @@ import {
   markIngredientAsDeleted,
   unmarkIngredientDeleted,
   deleteIngredientEverywhere,
+  canDeleteIngredient,
   fetchDeletedIngredientIdsFromDb,
   mergeIngredientLists,
   autoRecoverIngredientsFromRecipes,
@@ -2761,7 +2762,26 @@ export default function AdminDashboard() {
 
   // ── XỬ LÝ XÓA VẬT TƯ (DELETE INGREDIENT) ──
   const handleDeleteIngredient = async (id: string, name: string) => {
-    if (confirm(`Xác nhận xóa vật tư "${name}" khỏi kho? Lưu ý: Nếu công thức đang dùng vật tư này thì hãy cập nhật lại công thức trước.`)) {
+    const targetIng = ingredients.find((i) => i.id === id || i.name === name);
+    const check = canDeleteIngredient(targetIng);
+
+    // 🛡️ QUY TẮC BẢO VỆ TÀI CHÍNH & KẾ TOÁN: Còn tồn kho > 0 KHÔNG THỂ XÓA
+    if (!check.allowed) {
+      soundManager.playAlertTone();
+      alert(
+        `⛔ KHÔNG THỂ XÓA NGUYÊN LIỆU ĐANG CÒN TỒN KHO!\n\n` +
+        `Nguyên liệu "${name}" hiện vẫn còn tồn: ${check.stockQty.toLocaleString('vi-VN')} ${check.unit}.\n\n` +
+        `⚠️ QUY TẮC BẢO VỆ TÀI CHÍNH & KẾ TOÁN:\n` +
+        `Để tránh sai lệch giá vốn, thất thoát chi phí và bảo toàn sổ sách kế toán, bạn không thể xóa nguyên liệu khi còn tồn > 0.\n\n` +
+        `👉 HƯỚNG DẪN XỬ LÝ ĐỂ XÓA:\n` +
+        `1. Sử dụng hết nguyên liệu trong các mẻ làm bánh sản xuất.\n` +
+        `2. Hoặc tạo phiếu "Xuất Hủy / Hao Hụt" (tab Xuất kho) để ghi nhận chi phí hao hụt vào sổ sách.\n` +
+        `3. Hoặc bấm icon Kiểm Kê (⚖️) để điều chỉnh tồn kho thực tế về 0 trước khi xóa.`
+      );
+      return;
+    }
+
+    if (confirm(`Xác nhận xóa vật tư "${name}" khỏi kho? (Tồn kho hiện tại: 0 ${targetIng?.unit || ''}).\n\nLưu ý: Nếu công thức đang dùng vật tư này thì hãy cập nhật lại công thức trước.`)) {
       const nextIngs = ingredients.filter((i) => i.id !== id && i.name !== name);
       setIngredients(nextIngs);
       if (typeof window !== 'undefined') {
@@ -2769,7 +2789,11 @@ export default function AdminDashboard() {
       }
 
       // Xóa triệt để đa tầng: Tombstone, Recipes items, Local SQL, và Supabase Cloud (xóa recipe_items trước để tránh lỗi FK)
-      await deleteIngredientEverywhere(id, name);
+      const success = await deleteIngredientEverywhere(id, name);
+      if (!success) {
+        alert(`Không thể xóa nguyên liệu "${name}". Vui lòng kiểm tra lại tồn kho.`);
+        return;
+      }
 
       // Cập nhật lại dropdown vật tư nếu đang chọn vật tư vừa xóa
       if (poIngredientId === id) {
@@ -2779,7 +2803,7 @@ export default function AdminDashboard() {
         setSoIngredientId(nextIngs[0]?.id || '');
       }
 
-      setPoSuccess(`Đã xóa vật tư "${name}" khỏi danh mục kho vĩnh viễn!`);
+      setPoSuccess(`Đã xóa vật tư "${name}" (tồn kho: 0) khỏi danh mục kho vĩnh viễn!`);
       setTimeout(() => setPoSuccess(null), 4000);
     }
   };
@@ -5952,8 +5976,16 @@ export default function AdminDashboard() {
                               <button
                                 type="button"
                                 onClick={() => handleDeleteIngredient(ing.id, ing.name)}
-                                className="p-1.5 rounded-lg text-zinc-300 hover:text-rose-600 hover:bg-rose-50 transition cursor-pointer"
-                                title="Xóa vật tư này khỏi kho"
+                                className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                  Number(ing.stock_qty || 0) > 0
+                                    ? 'text-zinc-300 hover:text-amber-600 hover:bg-amber-50'
+                                    : 'text-zinc-300 hover:text-rose-600 hover:bg-rose-50'
+                                }`}
+                                title={
+                                  Number(ing.stock_qty || 0) > 0
+                                    ? `Còn tồn ${Number(ing.stock_qty || 0).toLocaleString('vi-VN')} ${ing.unit} - Bắt buộc dùng hết hoặc xuất hủy về 0 trước khi xóa`
+                                    : `Xóa vật tư "${ing.name}" khỏi kho (Tồn kho: 0)`
+                                }
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
