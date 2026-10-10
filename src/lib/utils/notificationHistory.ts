@@ -76,34 +76,7 @@ export function formatRelativeNotificationTime(timestamp: number): string {
   return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
 }
 
-/**
- * Danh sách thông báo mẫu khởi tạo khi ứng dụng lần đầu chạy
- */
-const INITIAL_DEMO_NOTIFS: NotificationLogItem[] = [
-  {
-    id: 'notif-init-welcome',
-    type: 'system',
-    title: '🎉 Hệ Thống Thông Báo Đã Sẵn Sàng',
-    message: 'Toàn bộ thông báo đơn hàng mới, lò nướng bắt đầu nướng, bánh chín ra lò và đơn giao gấp sẽ được tự động lưu trữ tại đây.',
-    timestamp: Date.now() - 5 * 60 * 1000,
-    createdAtFormatted: formatNotificationTime(new Date(Date.now() - 5 * 60 * 1000)),
-    isRead: false,
-    sender: 'Hệ thống Quản Trị',
-    channel: 'system',
-  },
-  {
-    id: 'notif-init-kds',
-    type: 'bake_done',
-    title: '🍞 Bánh Đã Chín Ra Lò: Bánh Mì Bơ Tỏi Phô Mai',
-    message: 'Mẻ nướng 10 cái đã hoàn thành và đạt nhiệt độ tiêu chuẩn. Thợ bánh đã cho ra khay.',
-    timestamp: Date.now() - 15 * 60 * 1000,
-    createdAtFormatted: formatNotificationTime(new Date(Date.now() - 15 * 60 * 1000)),
-    isRead: true,
-    sender: 'Lò Nướng #1',
-    channel: 'in_app',
-    url: '/kitchen',
-  },
-];
+const INITIAL_DEMO_NOTIFS: NotificationLogItem[] = [];
 
 function dispatchChange() {
   if (typeof window !== 'undefined') {
@@ -175,6 +148,8 @@ export function deduplicateNotifications(list: NotificationLogItem[]): Notificat
 
   for (const item of list) {
     if (!item) continue;
+    // Loại bỏ hoàn toàn thông báo demo cũ
+    if (item.id === 'notif-init-welcome' || item.id === 'notif-init-kds') continue;
 
     // Tìm xem đã có thông báo trùng lặp nào trong result chưa
     const existingIdx = result.findIndex((existing) => isDuplicateNotification(existing, item));
@@ -218,19 +193,10 @@ export function getNotificationHistory(): NotificationLogItem[] {
       return [];
     }
 
-    // Khi raw là null (chưa có key trong localStorage)
-    const isInitialized = localStorage.getItem('bakery_notifs_initialized');
-    const resetEpoch = localStorage.getItem('bakery_system_reset_epoch');
-    if (isInitialized === 'true' || Boolean(resetEpoch)) {
-      // Hệ thống đã từng khởi tạo hoặc đã từng có mốc reset -> Không tự ý re-seed thông báo mẫu
-      localStorage.setItem(STORAGE_KEY, '[]');
-      return [];
-    }
-
-    // Chỉ nạp demo ở lần đầu tiên chạy ứng dụng trên máy mới
+    // Khi raw là null (chưa có key trong localStorage) -> Không bao giờ nạp dữ liệu mẫu
     localStorage.setItem('bakery_notifs_initialized', 'true');
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(INITIAL_DEMO_NOTIFS));
-    return INITIAL_DEMO_NOTIFS;
+    localStorage.setItem(STORAGE_KEY, '[]');
+    return [];
   } catch (e) {
     console.warn('Lỗi đọc lịch sử thông báo:', e);
     return [];

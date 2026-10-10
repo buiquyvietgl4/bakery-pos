@@ -7,7 +7,7 @@ import {
   Camera, RefreshCw, ShieldCheck, ArrowRight, Clock
 } from 'lucide-react';
 import { parsePreorderFromNotes, broadcastTransferApprovalRequest, subscribeCrossDeviceSync, TransferApprovalPayload, TransferApprovalResolvedPayload, parseOrderBakeShortage, checkTransferResolvedStatus } from '@/lib/supabase/realtimeSync';
-import { getTransferVerificationConfig, TransferVerificationConfig, TRANSFER_VERIFY_UPDATED_EVENT } from '@/lib/utils/paymentSync';
+import { getTransferVerificationConfig, getVietqrConfig, TransferVerificationConfig, TRANSFER_VERIFY_UPDATED_EVENT } from '@/lib/utils/paymentSync';
 import { TransferProofCameraModal } from '@/components/pos/TransferProofCameraModal';
 import { useAuth } from '@/lib/auth/AuthContext';
 import { soundManager } from '@/lib/utils/audioAlert';
@@ -173,13 +173,7 @@ export const DeliveryPaymentModal: React.FC<DeliveryPaymentModalProps> = ({
     : (fromN.remaining_amount !== undefined ? fromN.remaining_amount : Math.max(0, totalAmt - depAmt))) || 0;
 
   // Cấu hình VietQR
-  const vConfig = vietqrConfig || {
-    bankId: 'MB',
-    bankName: 'MB Bank',
-    accountNo: '0981247020',
-    accountName: 'BUI QUY VIET',
-    template: 'compact2',
-  };
+  const vConfig = vietqrConfig || getVietqrConfig();
 
   const transferSyntax = `DH ${order.order_number}`;
 

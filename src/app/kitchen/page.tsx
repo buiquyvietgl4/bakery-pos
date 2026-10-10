@@ -3326,16 +3326,7 @@ export default function KitchenPage() {
             <span className="hidden sm:inline">Làm Mới</span>
           </button>
 
-          {/* Nút xóa đơn mẫu nếu còn tồn tại */}
-          {(orders || []).some((o) => o && (o.id === 'kds-demo-1' || o.id === 'kds-demo-2' || o.order_number === 'BK-PRE-20260908-01')) && (
-            <button
-              onClick={handleClearDemoOrders}
-              className="px-3 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 border border-rose-800 text-rose-300 font-bold transition flex items-center gap-1.5 cursor-pointer text-xs"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-              <span>Xóa Đơn Mẫu</span>
-            </button>
-          )}
+
 
           {lastUpdated && (
             <span className="text-[11px] text-zinc-500 hidden md:inline">

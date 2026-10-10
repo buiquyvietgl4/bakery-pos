@@ -47,8 +47,8 @@ const DB_ROW_EWALLET_NAME = 'SYS_CONFIG_EWALLET';
 export const DEFAULT_VIETQR_CONFIG: VietqrConfig = {
   bankId: 'MB',
   bankName: 'MBBank (Ngân hàng Quân Đội)',
-  accountNo: '0988888888',
-  accountName: 'TIEM BANH HANH PHUC',
+  accountNo: '',
+  accountName: '',
   template: 'compact2',
   transferSyntax: 'DH',
 };
@@ -72,6 +72,11 @@ export function getVietqrConfig(): VietqrConfig {
       const raw = localStorage.getItem(STORAGE_KEY_VIETQR);
       if (raw) {
         const parsed = JSON.parse(raw);
+        // Tự động xóa tài khoản mẫu demo cũ nếu còn lưu trong trình duyệt
+        if (parsed.accountNo === '0988888888' || parsed.accountName === 'TIEM BANH HANH PHUC' || parsed.accountName === 'TIEM BANH HOANG GIA') {
+          parsed.accountNo = '';
+          parsed.accountName = '';
+        }
         const res: VietqrConfig = { ...DEFAULT_VIETQR_CONFIG, ...parsed };
         inMemoryVietqr = res;
         return res;

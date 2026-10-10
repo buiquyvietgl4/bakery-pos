@@ -32,22 +32,22 @@ export const DB_ROW_TAX_POLICY_ID = '00000000-0000-0000-0000-00000000000e';
 export const DB_ROW_TAX_POLICY_NAME = 'SYS_CONFIG_TAX_POLICY';
 
 export const DEFAULT_HOUSEHOLD_INFO: HouseholdBusinessInfo = {
-  shop_name: 'Hộ Kinh Doanh Tiệm Bánh Ngọt',
-  tax_code: '0318247020',
-  business_address: '123 Phố Bánh Ngọt, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
-  owner_name: 'Nguyễn Văn Chủ Tiệm',
-  phone: '0981247020',
-  email: 'tiembanhngot@example.com',
-  business_area: 85,
-  bank_account_number: '1029384756',
-  bank_name: 'Vietcombank',
-  district: 'Quận 1',
-  province: 'TP. Hồ Chí Minh',
+  shop_name: '',
+  tax_code: '',
+  business_address: '',
+  owner_name: '',
+  phone: '',
+  email: '',
+  business_area: 0,
+  bank_account_number: '',
+  bank_name: '',
+  district: '',
+  province: '',
   software_name: 'Bakery POS ERP',
-  registered_revenue_level: 2, // 500 triệu - 3 tỷ
-  pit_calculation_method: 1,   // % trên doanh thu
-  regular_employees_count: 5,
-  operating_hours: '06:30 - 22:00',
+  registered_revenue_level: 1,
+  pit_calculation_method: 1,
+  regular_employees_count: 0,
+  operating_hours: '',
 };
 
 export const DEFAULT_TAX_POLICY: TaxPolicyConfig = {

@@ -147,6 +147,8 @@ import {
   CASHFLOW_UPDATED_EVENT,
 } from '@/lib/utils/accountingSync';
 import {
+  getVietqrConfig,
+  getEwalletConfig,
   fetchVietqrConfigFromDb,
   saveVietqrConfigToDb,
   fetchEwalletConfigFromDb,
@@ -412,13 +414,16 @@ export default function AdminDashboard() {
   };
   
   // ── VIETQR BANK TRANSFER CONFIG STATE ──
-  const [vietqrConfig, setVietqrConfig] = useState({
-    bankId: 'MB',
-    bankName: 'MBBank (Ngân hàng Quân Đội)',
-    accountNo: '0988888888',
-    accountName: 'TIEM BANH HOANG GIA',
-    template: 'compact2',
-    transferSyntax: 'DH',
+  const [vietqrConfig, setVietqrConfig] = useState(() => {
+    const cfg = getVietqrConfig();
+    return {
+      bankId: cfg.bankId || 'MB',
+      bankName: cfg.bankName || 'MBBank (Ngân hàng Quân Đội)',
+      accountNo: cfg.accountNo || '',
+      accountName: cfg.accountName || '',
+      template: cfg.template || 'compact2',
+      transferSyntax: cfg.transferSyntax || 'DH',
+    };
   });
   const [vietqrSaved, setVietqrSaved] = useState(false);
   const [testAmount, setTestAmount] = useState<number>(150000);
@@ -426,25 +431,7 @@ export default function AdminDashboard() {
   const [copiedAccount, setCopiedAccount] = useState(false);
 
   // ── E-WALLET (VÍ ĐIỆN TỬ) CONFIG STATE ──
-  const [ewalletConfig, setEwalletConfig] = useState<EwalletConfig>({
-    activeWallet: 'momo',
-    momo: {
-      phone: '0988888888',
-      name: 'TIEM BANH HOANG GIA',
-      qrUrl: '',
-    },
-    zalopay: {
-      phone: '0988888888',
-      name: 'TIEM BANH HOANG GIA',
-      qrUrl: '',
-    },
-    viettelmoney: {
-      phone: '0988888888',
-      name: 'TIEM BANH HOANG GIA',
-      qrUrl: '',
-    },
-    transferSyntax: 'VIMO',
-  });
+  const [ewalletConfig, setEwalletConfig] = useState<EwalletConfig>(() => getEwalletConfig());
   const [ewalletSaved, setEwalletSaved] = useState(false);
   const [previewWallet, setPreviewWallet] = useState<'momo' | 'zalopay' | 'viettelmoney'>('momo');
   const [testWalletAmount, setTestWalletAmount] = useState<number>(65000);
@@ -8557,26 +8544,9 @@ export default function AdminDashboard() {
                 <div className="flex items-center gap-3 pt-2">
                   <button
                     type="submit"
-                    className="flex-1 py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs shadow-md shadow-amber-600/25 flex items-center justify-center gap-2 cursor-pointer transition"
+                    className="w-full py-3 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white font-extrabold text-xs shadow-md shadow-amber-600/25 flex items-center justify-center gap-2 cursor-pointer transition"
                   >
                     <Save className="w-4 h-4" /> Lưu Cấu Hình VietQR
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVietqrConfig({
-                        bankId: 'MB',
-                        bankName: 'MBBank (Ngân hàng Quân Đội)',
-                        accountNo: '0988888888',
-                        accountName: 'TIEM BANH HOANG GIA',
-                        template: 'compact2',
-                        transferSyntax: 'DH',
-                      });
-                    }}
-                    className="px-4 py-3 rounded-2xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-100 transition"
-                  >
-                    Tài khoản mẫu
                   </button>
                 </div>
               </form>
@@ -8591,16 +8561,20 @@ export default function AdminDashboard() {
                 </div>
 
                 {/* QR Image Card */}
-                <div className="p-3 bg-white rounded-2xl border border-zinc-200/80 shadow-md flex flex-col items-center">
-                  <img
-                    key={`${vietqrConfig.bankId}-${vietqrConfig.accountNo}-${vietqrConfig.template}-${testAmount}-${testNote}`}
-                    src={`https://api.vietqr.io/image/${vietqrConfig.bankId}-${vietqrConfig.accountNo}-${vietqrConfig.template}.jpg?amount=${testAmount}&addInfo=${encodeURIComponent(testNote)}&accountName=${encodeURIComponent(vietqrConfig.accountName)}`}
-                    alt="VietQR Demo"
-                    className="w-64 h-auto rounded-xl object-contain"
-                    onError={(e) => {
-                      (e.target as any).src = 'https://api.vietqr.io/image/MB-0988888888-compact2.jpg';
-                    }}
-                  />
+                <div className="p-3 bg-white rounded-2xl border border-zinc-200/80 shadow-md flex flex-col items-center min-h-[200px] justify-center">
+                  {vietqrConfig.accountNo ? (
+                    <img
+                      key={`${vietqrConfig.bankId}-${vietqrConfig.accountNo}-${vietqrConfig.template}-${testAmount}-${testNote}`}
+                      src={`https://api.vietqr.io/image/${vietqrConfig.bankId}-${vietqrConfig.accountNo}-${vietqrConfig.template}.jpg?amount=${testAmount}&addInfo=${encodeURIComponent(testNote)}&accountName=${encodeURIComponent(vietqrConfig.accountName)}`}
+                      alt="VietQR Preview"
+                      className="w-64 h-auto rounded-xl object-contain"
+                    />
+                  ) : (
+                    <div className="text-center p-6 text-zinc-400 text-xs">
+                      <QrCode className="w-12 h-12 mx-auto mb-2 text-zinc-300 stroke-1" />
+                      Vui lòng nhập Số tài khoản để tạo mã QR thanh toán
+                    </div>
+                  )}
                 </div>
 
                 {/* Account info card */}
@@ -9990,36 +9964,9 @@ export default function AdminDashboard() {
                   <button
                     type="button"
                     onClick={() => handleSaveEwallet()}
-                    className="flex-1 py-3 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-extrabold text-xs shadow-md shadow-pink-600/25 flex items-center justify-center gap-2 cursor-pointer transition"
+                    className="w-full py-3 rounded-2xl bg-pink-600 hover:bg-pink-700 text-white font-extrabold text-xs shadow-md shadow-pink-600/25 flex items-center justify-center gap-2 cursor-pointer transition"
                   >
                     <Save className="w-4 h-4" /> Lưu Cấu Hình Ví Điện Tử
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEwalletConfig({
-                        activeWallet: 'momo',
-                        momo: {
-                          phone: '0988888888',
-                          name: 'TIEM BANH HOANG GIA',
-                          qrUrl: '',
-                        },
-                        zalopay: {
-                          phone: '0988888888',
-                          name: 'TIEM BANH HOANG GIA',
-                          qrUrl: '',
-                        },
-                        viettelmoney: {
-                          phone: '0988888888',
-                          name: 'TIEM BANH HOANG GIA',
-                          qrUrl: '',
-                        },
-                        transferSyntax: 'VIMO',
-                      });
-                    }}
-                    className="px-4 py-3 rounded-2xl border border-zinc-200 text-xs font-bold text-zinc-600 hover:bg-zinc-100 transition cursor-pointer"
-                  >
-                    Dữ liệu mẫu
                   </button>
                 </div>
               </div>
@@ -10067,18 +10014,32 @@ export default function AdminDashboard() {
                     </span>
                   </div>
 
-                  <div className="p-2 bg-zinc-50 rounded-2xl border border-zinc-200">
-                    <img
-                      src={
-                        previewWallet === 'momo'
-                          ? (ewalletConfig.momo.qrUrl || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`2|99|${ewalletConfig.momo.phone}|${ewalletConfig.momo.name}||0|0|${testWalletAmount}|${testWalletNote}|transfer_p2p`)}`)
-                          : previewWallet === 'zalopay'
-                          ? (ewalletConfig.zalopay.qrUrl || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`ZALOPAY|${ewalletConfig.zalopay.phone}|${ewalletConfig.zalopay.name}|${testWalletAmount}|${testWalletNote}`)}`)
-                          : (ewalletConfig.viettelmoney.qrUrl || `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`VIETTEL|${ewalletConfig.viettelmoney.phone}|${ewalletConfig.viettelmoney.name}|${testWalletAmount}|${testWalletNote}`)}`)
+                  <div className="p-2 bg-zinc-50 rounded-2xl border border-zinc-200 min-h-[192px] flex items-center justify-center">
+                    {(() => {
+                      const cur = previewWallet === 'momo' ? ewalletConfig.momo : previewWallet === 'zalopay' ? ewalletConfig.zalopay : ewalletConfig.viettelmoney;
+                      if (!cur.phone && !cur.qrUrl) {
+                        return (
+                          <div className="text-center p-4 text-zinc-400 text-xs">
+                            <QrCode className="w-10 h-10 mx-auto mb-1 text-zinc-300 stroke-1" />
+                            Chưa nhập số điện thoại hoặc ảnh QR
+                          </div>
+                        );
                       }
-                      alt="Wallet QR Preview"
-                      className="w-48 h-48 rounded-xl object-contain mx-auto"
-                    />
+                      const qrSrc = cur.qrUrl || (
+                        previewWallet === 'momo'
+                          ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`2|99|${cur.phone}|${cur.name}||0|0|${testWalletAmount}|${testWalletNote}|transfer_p2p`)}`
+                          : previewWallet === 'zalopay'
+                          ? `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`ZALOPAY|${cur.phone}|${cur.name}|${testWalletAmount}|${testWalletNote}`)}`
+                          : `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`VIETTEL|${cur.phone}|${cur.name}|${testWalletAmount}|${testWalletNote}`)}`
+                      );
+                      return (
+                        <img
+                          src={qrSrc}
+                          alt="Wallet QR Preview"
+                          className="w-48 h-48 rounded-xl object-contain mx-auto"
+                        />
+                      );
+                    })()}
                   </div>
 
                   <div className="w-full text-xs space-y-1.5 pt-1 text-left">

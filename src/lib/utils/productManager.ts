@@ -165,6 +165,7 @@ export function unmarkProductDeleted(id: string, name?: string): void {
 export function filterActiveProducts(products: any[]): any[] {
   if (!Array.isArray(products) || products.length === 0) return [];
   const deletedSet = getDeletedProductIds();
+  const mockPresetIds = new Set(['bom-preset-18-standard', 'bom-preset-16-choco']);
 
   return products
     .filter((p) => {
@@ -173,9 +174,13 @@ export function filterActiveProducts(products: any[]): any[] {
 
       const idKey = String(p.id || '').toLowerCase().trim();
       const nameKey = String(p.name || '').toLowerCase().trim();
+      const bomRef = String(p.bom_preset_id || '').toLowerCase().trim();
 
       if (idKey && deletedSet.has(idKey)) return false;
       if (nameKey && deletedSet.has(nameKey)) return false;
+
+      // Loại bỏ hoàn toàn dữ liệu mẫu cũ theo ID định danh mẫu nếu còn sót lại trong storage/cache
+      if (mockPresetIds.has(idKey) || mockPresetIds.has(bomRef)) return false;
 
       return true;
     })

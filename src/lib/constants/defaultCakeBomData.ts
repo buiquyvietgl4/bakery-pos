@@ -312,38 +312,7 @@ export const DEFAULT_DECOR_ADDONS: CakeDecorAddonModel[] = [
   { id: 'dec-chocolate-balls', name: 'Set 6 quả cầu socola vàng kim', category: 'decor', costPrice: 12000, sellingPrice: 25000, icon: '🍫' },
 ];
 
-export const DEFAULT_BIRTHDAY_BOM_PRESETS: BirthdayCakeBomPreset[] = [
-  {
-    id: 'bom-preset-18-standard',
-    name: 'BOM Bánh Sinh Nhật Whipping Vani 18cm (Tiêu Chuẩn Tiệm)',
-    cakeBaseId: 'base-vani',
-    cakeBaseSizeId: 'base-vani-18',
-    creamCoatingId: 'cream-whipping',
-    creamCoatingSizeId: 'cream-whip-18',
-    fillingId: 'fill-strawberry',
-    packagingId: 'pkg-mica-18',
-    freeAccessoryIds: ['acc-hat', 'acc-candle-num', 'acc-knife', 'acc-plates'],
-    decorAddonIds: ['dec-topper-hbd'],
-    targetFoodCostPct: 36.5,
-    suggestedSellingPrice: 400000,
-    notes: 'Mẫu bánh sinh nhật phổ biến nhất, bán chạy quanh năm',
-  },
-  {
-    id: 'bom-preset-16-choco',
-    name: 'BOM Bánh Sinh Nhật Socola Ganache 16cm',
-    cakeBaseId: 'base-socola',
-    cakeBaseSizeId: 'base-socola-16',
-    creamCoatingId: 'cream-whipping',
-    creamCoatingSizeId: 'cream-whip-16',
-    fillingId: 'fill-chocolate-ganache',
-    packagingId: 'pkg-mica-16',
-    freeAccessoryIds: ['acc-hat', 'acc-candle-num', 'acc-knife', 'acc-plates'],
-    decorAddonIds: ['dec-topper-hbd', 'dec-chocolate-balls'],
-    targetFoodCostPct: 36.5,
-    suggestedSellingPrice: 350000,
-    notes: 'Bánh socola đậm đà cho giới trẻ và cặp đôi',
-  },
-];
+export const DEFAULT_BIRTHDAY_BOM_PRESETS: BirthdayCakeBomPreset[] = [];
 
 export const INITIAL_FULL_CAKE_BOM_CONFIG: FullCakeBomConfig = {
   version: '2026.1',

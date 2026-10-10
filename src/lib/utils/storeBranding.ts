@@ -26,11 +26,11 @@ const DB_ROW_ID = '00000000-0000-0000-0000-000000000003';
 const DB_ROW_NAME = 'SYS_CONFIG_BRANDING';
 
 export const DEFAULT_BRANDING: StoreBrandingConfig = {
-  storeName: 'Tiệm Bánh ABC',
-  slogan: 'Artisan Bakery & Coffee • Bánh Tươi Mỗi Ngày',
+  storeName: 'Bakery POS',
+  slogan: 'Hệ thống Quản lý Bán hàng & Bếp Bánh',
   logoUrl: '',
-  phone: '0901 234 567',
-  address: '123 Đường Bánh Ngọt, TP.HCM',
+  phone: '',
+  address: '',
   footerMessage: 'Cảm ơn Quý khách & Hẹn gặp lại!',
   orderNumberPrefix: 'BK',
   orderCounter: 0,
@@ -49,6 +49,10 @@ export function getStoreBranding(): StoreBrandingConfig {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      // Tự động xóa số điện thoại / địa chỉ mẫu demo cũ nếu còn lưu
+      if (parsed.phone === '0901 234 567') parsed.phone = '';
+      if (parsed.address === '123 Đường Bánh Ngọt, TP.HCM') parsed.address = '';
+      if (parsed.storeName === 'Tiệm Bánh ABC') parsed.storeName = 'Bakery POS';
       const res: StoreBrandingConfig = { ...DEFAULT_BRANDING, ...parsed };
       inMemoryBranding = res;
       return res;
