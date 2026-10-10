@@ -181,6 +181,7 @@ export function filterActiveProducts(products: any[]): any[] {
 
       // Loại bỏ hoàn toàn dữ liệu mẫu cũ theo ID định danh mẫu nếu còn sót lại trong storage/cache
       if (mockPresetIds.has(idKey) || mockPresetIds.has(bomRef)) return false;
+      if (idKey.startsWith('e5a') || nameKey.includes('real test')) return false;
 
       return true;
     })

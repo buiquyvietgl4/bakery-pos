@@ -75,6 +75,9 @@ export function deduplicateHeldOrders(orders: HeldOrder[]): HeldOrder[] {
     const cleanId = (o.id || '').trim();
     const cleanCode = (o.holdCode || '').trim();
 
+    // Loại bỏ dữ liệu mẫu kiểm thử
+    if (cleanId.startsWith('HELD-REAL-') || (o.label && o.label.includes('Real Test'))) continue;
+
     if (cleanId && seenIds.has(cleanId)) continue;
     if (cleanCode && seenCodes.has(cleanCode)) continue;
 

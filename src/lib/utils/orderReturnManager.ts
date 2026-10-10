@@ -21,6 +21,15 @@ export function deduplicateOrderReturns(records: OrderReturnRecord[]): OrderRetu
   for (const r of records) {
     if (!r) continue;
     const cleanId = (r.id || '').trim();
+
+    // Loại bỏ dữ liệu mẫu kiểm thử
+    if (
+      cleanId.startsWith('RET-QC-') ||
+      cleanId.startsWith('RET-REAL-') ||
+      r.order_number?.startsWith('TEST-QC-') ||
+      r.order_number?.startsWith('ORD-REAL-')
+    ) continue;
+
     const fp = `${r.order_id || r.order_number}_${r.refund_amount}_${(r.created_at || '').slice(0, 19)}`;
 
     if (cleanId && seenIds.has(cleanId)) continue;

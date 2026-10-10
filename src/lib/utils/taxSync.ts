@@ -477,7 +477,15 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
         localOrders = parsed.filter((lo: any) => {
           const loNum = String(lo.order_number || lo.orderNumber || '').replace(/^#/, '').trim().toLowerCase();
           const loId = String(lo.id || lo.local_id || lo.server_id || '').replace(/^#/, '').trim().toLowerCase();
-          return !deletedKeys.has(loNum) && (!loId || !deletedKeys.has(loId));
+          if (deletedKeys.has(loNum) || (loId && deletedKeys.has(loId))) return false;
+          if (
+            loNum.startsWith('test-') ||
+            loNum.startsWith('ord-real-') ||
+            loNum.startsWith('bk-test-') ||
+            loNum.startsWith('bk-offline-test-') ||
+            loId.startsWith('e5a4000')
+          ) return false;
+          return true;
         });
       }
     } catch {}
@@ -550,6 +558,15 @@ export async function fetchTaxOrdersFromDb(force = false): Promise<any[]> {
           const soNum = String(so.order_number || '').replace(/^#/, '').trim().toLowerCase();
           const soId = String(so.id || '').replace(/^#/, '').trim().toLowerCase();
           if (deletedKeys.has(soNum) || (soId && deletedKeys.has(soId))) {
+            return;
+          }
+          if (
+            soNum.startsWith('test-') ||
+            soNum.startsWith('ord-real-') ||
+            soNum.startsWith('bk-test-') ||
+            soNum.startsWith('bk-offline-test-') ||
+            soId.startsWith('e5a4000')
+          ) {
             return;
           }
           const key = String(so.order_number || so.id);

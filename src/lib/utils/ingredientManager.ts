@@ -62,6 +62,9 @@ export function filterActiveIngredients(ingredients: any[]): any[] {
     if (name.startsWith('SYS_') || id.startsWith('SYS_')) return false;
     if (ing.category === 'system_config') return false;
 
+    // Loại bỏ dữ liệu mẫu kiểm thử
+    if (id.startsWith('e5a2000') || name.toLowerCase().includes('real test')) return false;
+
     // Kiểm tra danh sách đen xóa
     if (id && deletedSet.has(id.toLowerCase())) return false;
     if (name && deletedSet.has(name.toLowerCase())) return false;

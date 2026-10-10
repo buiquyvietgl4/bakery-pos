@@ -1069,9 +1069,19 @@ export default function AdminDashboard() {
           const rawDel = localStorage.getItem('bakery_deleted_order_keys');
           const delSet = rawDel ? new Set(JSON.parse(rawDel).map(String)) : null;
           if (Array.isArray(parsed) && parsed.length > 0) {
-            const cleanList = delSet 
-              ? parsed.filter((o: any) => !delSet.has(String(o.order_number)) && !delSet.has(String(o.id))) 
-              : parsed;
+            const cleanList = parsed.filter((o: any) => {
+              const num = String(o.order_number || o.orderNumber || '').toLowerCase();
+              const id = String(o.id || '').toLowerCase();
+              if (delSet && (delSet.has(String(o.order_number)) || delSet.has(String(o.id)))) return false;
+              if (
+                num.startsWith('test-') ||
+                num.startsWith('ord-real-') ||
+                num.startsWith('bk-test-') ||
+                num.startsWith('bk-offline-test-') ||
+                id.startsWith('e5a4000')
+              ) return false;
+              return true;
+            });
             setPosOrders(cleanList);
           }
         }

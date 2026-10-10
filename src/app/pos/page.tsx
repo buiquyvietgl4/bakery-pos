@@ -142,7 +142,7 @@ import { HeldOrder } from '@/lib/types/heldOrder';
 import { HeldOrdersModal } from '@/components/pos/HeldOrdersModal';
 import { ReturnExchangeModal } from '@/components/pos/ReturnExchangeModal';
 import { OrderReturnRecord } from '@/lib/types/orderReturn';
-import { saveOrderReturnsToDb, fetchOrderReturnsFromDb } from '@/lib/utils/orderReturnManager';
+import { saveOrderReturnsToDb, fetchOrderReturnsFromDb, getOrderReturns } from '@/lib/utils/orderReturnManager';
 import { saveHeldOrdersToDb, fetchHeldOrdersFromDb, getHeldOrders } from '@/lib/utils/heldOrderManager';
 import { matchesOrderSearch } from '@/lib/utils/orderSearch';
 import { getCashflow, saveCashflowLocally, saveCashflowToDb, CashflowTransaction } from '@/lib/utils/accountingSync';
@@ -665,7 +665,13 @@ export default function POSPage() {
         const saved = localStorage.getItem('bakery_orders');
         if (saved) {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return parsed;
+          if (Array.isArray(parsed)) {
+            return parsed.filter((o: any) => {
+              const num = String(o.order_number || o.orderNumber || '').toLowerCase();
+              const id = String(o.id || '').toLowerCase();
+              return !num.startsWith('test-') && !num.startsWith('ord-real-') && !num.startsWith('bk-test-') && !num.startsWith('bk-offline-test-') && !id.startsWith('e5a4000');
+            });
+          }
         }
       } catch {}
     }
@@ -673,13 +679,7 @@ export default function POSPage() {
   });
 
   const [allOrderReturns, setAllOrderReturns] = useState<OrderReturnRecord[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const raw = localStorage.getItem('bakery_order_returns');
-        if (raw) return JSON.parse(raw);
-      } catch {}
-    }
-    return [];
+    return getOrderReturns();
   });
 
   const [expandedReturnOrders, setExpandedReturnOrders] = useState<Record<string, boolean>>({});
@@ -1796,7 +1796,15 @@ export default function POSPage() {
             const validOrders = parsed.filter((o: any) => {
               const oNum = cleanKey(o.order_number || o.orderNumber);
               const oId = cleanKey(o.id || o.local_id || o.server_id);
-              return !deletedKeys.has(oNum) && (!oId || !deletedKeys.has(oId));
+              if (deletedKeys.has(oNum) || (oId && deletedKeys.has(oId))) return false;
+              if (
+                oNum.startsWith('test-') ||
+                oNum.startsWith('ord-real-') ||
+                oNum.startsWith('bk-test-') ||
+                oNum.startsWith('bk-offline-test-') ||
+                oId.startsWith('e5a4000')
+              ) return false;
+              return true;
             });
             invoices = validOrders.map((o: any) => {
               const shortage = parseOrderBakeShortage(o);
