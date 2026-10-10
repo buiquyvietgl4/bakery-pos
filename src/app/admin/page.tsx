@@ -131,6 +131,7 @@ import CustomSqlConfigSection from '@/components/admin/CustomSqlConfigSection';
 import LocalSqlConfigSection from '@/components/admin/LocalSqlConfigSection';
 import { ShiftManagementSection } from '@/components/admin/ShiftManagementSection';
 import AccountManagementSection from '@/components/admin/AccountManagementSection';
+import CurrencyInputField from '@/components/admin/CurrencyInputField';
 import { fetchTaxOrdersFromDb } from '@/lib/utils/taxSync';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { parseRecipeItem, normalizeRecipe, fetchRecipesFromDb, getStoredRecipes, deleteRecipeEverywhere, unmarkRecipeDeleted } from '@/lib/utils/recipeCalculator';
@@ -5137,16 +5138,14 @@ export default function AdminDashboard() {
                 </div>
                 <div>
                   <label className="font-bold text-zinc-700">Giá bán niêm yết (VND) *</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    required
-                    value={formatCurrencyInput(newProdPrice)}
-                    onFocus={(e) => e.target.select()}
-                    onChange={(e) => setNewProdPrice(parseCurrencyInput(e.target.value))}
-                    placeholder="VD: 35.000"
-                    className="w-full mt-1 p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-amber-600 text-sm"
-                  />
+                  <div className="mt-1">
+                    <CurrencyInputField
+                      value={newProdPrice}
+                      onChange={(val) => setNewProdPrice(val)}
+                      placeholder="VD: 35.000"
+                      className="w-full p-2.5 pr-8 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-amber-600 text-sm focus:ring-2 focus:ring-amber-500 shadow-xs"
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -5155,16 +5154,14 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <div>
                     <label className="font-bold text-zinc-700">Giá vốn nhập từ NCC (VND) *</label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      required
-                      value={formatCurrencyInput(newProdImportPrice)}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => setNewProdImportPrice(parseCurrencyInput(e.target.value))}
-                      placeholder="VD: 25.000"
-                      className="w-full mt-1 p-2.5 rounded-xl border border-blue-200 bg-blue-50/50 font-black text-blue-700 text-sm"
-                    />
+                    <div className="mt-1">
+                      <CurrencyInputField
+                        value={newProdImportPrice}
+                        onChange={(val) => setNewProdImportPrice(val)}
+                        placeholder="VD: 25.000"
+                        className="w-full p-2.5 pr-8 rounded-xl border border-blue-200 bg-blue-50/50 font-black text-blue-700 text-sm focus:ring-2 focus:ring-blue-500 shadow-xs"
+                      />
+                    </div>
                   </div>
                   <div>
                     <label className="font-bold text-zinc-700">Nhà cung cấp (NCC):</label>
@@ -5479,17 +5476,14 @@ export default function AdminDashboard() {
                         <label className="font-bold text-zinc-700 block">
                           Giá nhập vật tư (Giá 1 {poPackageUnitName || 'đơn vị'}):
                         </label>
-                        <div className="relative mt-1">
-                          <input
-                            type="text"
-                            inputMode="numeric"
-                            value={formatCurrencyInput(poPackageUnitPrice)}
-                            onFocus={(e) => e.target.select()}
-                            onChange={(e) => setPoPackageUnitPrice(parseCurrencyInput(e.target.value))}
+                        <div className="mt-1">
+                          <CurrencyInputField
+                            value={poPackageUnitPrice}
+                            onChange={(val) => setPoPackageUnitPrice(val)}
                             placeholder="VD: 35.000 hoặc 450.000"
-                            className="w-full p-2.5 pr-8 rounded-xl border border-zinc-300 bg-white font-black text-amber-700 text-sm"
+                            className="w-full p-2.5 pr-8 rounded-xl border border-zinc-300 bg-white font-black text-amber-700 text-sm focus:ring-2 focus:ring-amber-500 shadow-xs"
+                            unitSuffix="₫"
                           />
-                          <span className="absolute right-3 top-1/2 -translate-y-1/2 font-bold text-zinc-400 text-xs">₫</span>
                         </div>
                       </div>
                     </div>
@@ -6749,20 +6743,18 @@ export default function AdminDashboard() {
                     <label className="font-bold text-zinc-700 block text-xs">
                       Giá mua 1 {newIngPackagingUnit || 'đơn vị nhập'} (VND) *
                     </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(newIngPackagePrice)}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const val = parseCurrencyInput(e.target.value);
-                        setNewIngPackagePrice(val);
-                        const rate = Number(newIngConversionRate) || 1;
-                        setNewIngAvgCost(rate > 0 ? Math.round((val / rate) * 100) / 100 : val);
-                      }}
-                      placeholder="VD: 20.000"
-                      className="w-full mt-1 p-2.5 rounded-xl border border-amber-300 bg-white font-black text-amber-700 text-sm focus:ring-2 focus:ring-amber-500 shadow-xs"
-                    />
+                    <div className="mt-1">
+                      <CurrencyInputField
+                        value={newIngPackagePrice}
+                        onChange={(val) => {
+                          setNewIngPackagePrice(val);
+                          const rate = Number(newIngConversionRate) || 1;
+                          setNewIngAvgCost(rate > 0 ? Math.round((val / rate) * 100) / 100 : val);
+                        }}
+                        placeholder="VD: 20.000"
+                        className="w-full p-2.5 pr-8 rounded-xl border border-amber-300 bg-white font-black text-amber-700 text-sm focus:ring-2 focus:ring-amber-500 shadow-xs"
+                      />
+                    </div>
                     <div className="text-[10px] text-zinc-500 mt-1">
                       Ví dụ: Đường nhập túi 1kg là 20.000₫
                     </div>
@@ -6772,20 +6764,14 @@ export default function AdminDashboard() {
                     <label className="font-bold text-zinc-700 block text-xs">
                       Tương đương giá vốn cơ sở (VND/{newIngUnit || 'kho'}):
                     </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(newIngAvgCost)}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const val = parseCurrencyInput(e.target.value);
-                        setNewIngAvgCost(val);
-                        const rate = Number(newIngConversionRate) || 1;
-                        setNewIngPackagePrice(Math.round(val * rate));
-                      }}
-                      placeholder="VD: 20"
-                      className="w-full mt-1 p-2.5 rounded-xl border border-emerald-300 bg-white font-black text-emerald-800 text-sm focus:ring-2 focus:ring-emerald-500 shadow-xs"
-                    />
+                    <div className="mt-1 p-2.5 bg-emerald-50 rounded-xl border border-emerald-300 flex items-center justify-between min-h-[42px]">
+                      <span className="text-sm font-black text-emerald-900">
+                        {((newIngConversionRate > 0 ? Math.round((newIngPackagePrice / newIngConversionRate) * 100) / 100 : newIngPackagePrice) || 0).toLocaleString('vi-VN')}₫
+                      </span>
+                      <span className="text-xs font-bold text-emerald-700">
+                        / {newIngUnit || 'kho'}
+                      </span>
+                    </div>
                     <div className="text-[10px] text-emerald-700 font-bold mt-1">
                       ✓ Dùng tính giá thành làm bánh (BOM)
                     </div>
@@ -7067,20 +7053,18 @@ export default function AdminDashboard() {
                     <label className="font-bold text-zinc-700 block text-xs">
                       Giá mua 1 {editIngPackagingUnit || 'đơn vị nhập'} (VND):
                     </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(editIngPackagePrice)}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const val = parseCurrencyInput(e.target.value);
-                        setEditIngPackagePrice(val);
-                        const rate = Number(editIngConversionRate) || 1;
-                        setEditIngAvgCost(rate > 0 ? Math.round((val / rate) * 100) / 100 : val);
-                      }}
-                      placeholder="VD: 20.000"
-                      className="w-full mt-1 p-2.5 rounded-xl border border-amber-300 bg-white font-black text-amber-700 text-sm focus:ring-2 focus:ring-amber-500 shadow-xs"
-                    />
+                    <div className="mt-1">
+                      <CurrencyInputField
+                        value={editIngPackagePrice}
+                        onChange={(val) => {
+                          setEditIngPackagePrice(val);
+                          const rate = Number(editIngConversionRate) || 1;
+                          setEditIngAvgCost(rate > 0 ? Math.round((val / rate) * 100) / 100 : val);
+                        }}
+                        placeholder="VD: 20.000"
+                        className="w-full p-2.5 pr-8 rounded-xl border border-amber-300 bg-white font-black text-amber-700 text-sm focus:ring-2 focus:ring-amber-500 shadow-xs"
+                      />
+                    </div>
                     <div className="text-[10px] text-zinc-500 mt-1">
                       Giá mua 1 {editIngPackagingUnit} từ nhà cung cấp
                     </div>
@@ -7090,20 +7074,14 @@ export default function AdminDashboard() {
                     <label className="font-bold text-zinc-700 block text-xs">
                       Đơn giá vốn WAC lưu kho (VND/{editIngUnit || 'kho'}):
                     </label>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={formatCurrencyInput(editIngAvgCost)}
-                      onFocus={(e) => e.target.select()}
-                      onChange={(e) => {
-                        const val = parseCurrencyInput(e.target.value);
-                        setEditIngAvgCost(val);
-                        const rate = Number(editIngConversionRate) || 1;
-                        setEditIngPackagePrice(Math.round(val * rate));
-                      }}
-                      placeholder="VD: 20"
-                      className="w-full mt-1 p-2.5 rounded-xl border border-emerald-300 bg-white font-black text-emerald-800 text-sm focus:ring-2 focus:ring-emerald-500 shadow-xs"
-                    />
+                    <div className="mt-1 p-2.5 bg-emerald-50 rounded-xl border border-emerald-300 flex items-center justify-between min-h-[42px]">
+                      <span className="text-sm font-black text-emerald-900">
+                        {((editIngConversionRate > 0 ? Math.round((editIngPackagePrice / editIngConversionRate) * 100) / 100 : editIngPackagePrice) || 0).toLocaleString('vi-VN')}₫
+                      </span>
+                      <span className="text-xs font-bold text-emerald-700">
+                        / {editIngUnit || 'kho'}
+                      </span>
+                    </div>
                     <div className="text-[10px] text-emerald-700 font-bold mt-1">
                       ✓ Dùng tính giá thành làm bánh (BOM)
                     </div>
