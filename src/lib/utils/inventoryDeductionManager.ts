@@ -95,6 +95,45 @@ export async function saveBakeryIngredients(
 }
 
 /**
+ * Chuẩn hóa chuỗi tiếng Việt không dấu để so sánh tìm kiếm chính xác
+ */
+export function normalizeVietnamese(str: string): string {
+  return (str || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/đ/g, 'd')
+    .trim();
+}
+
+/**
+ * Quy đổi đơn vị định lượng nguyên liệu giữa công thức BOM và tồn kho
+ */
+export function convertIngredientQuantity(neededQty: number, fromUnit: string, toUnit: string): number {
+  const f = (fromUnit || '').toLowerCase().trim();
+  const t = (toUnit || '').toLowerCase().trim();
+  if (f === t || !f || !t) return neededQty;
+
+  // g -> kg: 500g = 0.5kg
+  if ((f === 'g' || f === 'gram' || f === 'gr') && (t === 'kg' || t === 'kilogram')) {
+    return neededQty / 1000;
+  }
+  // kg -> g: 1.5kg = 1500g
+  if ((f === 'kg' || f === 'kilogram') && (t === 'g' || t === 'gram' || t === 'gr')) {
+    return neededQty * 1000;
+  }
+  // ml -> l: 200ml = 0.2l
+  if ((f === 'ml' || f === 'mililit') && (t === 'l' || t === 'lit' || t === 'lít')) {
+    return neededQty / 1000;
+  }
+  // l -> ml: 1l = 1000ml
+  if ((f === 'l' || f === 'lit' || f === 'lít') && (t === 'ml' || t === 'mililit')) {
+    return neededQty * 1000;
+  }
+  return neededQty;
+}
+
+/**
  * Bóc tách toàn bộ nguyên vật liệu cần trừ kho từ 1 đơn hàng KDS
  */
 export function extractOrderBomRequirements(order: any): Array<{
@@ -127,35 +166,84 @@ export function extractOrderBomRequirements(order: any): Array<{
   }
 
   if (spec && spec.isBirthdayCake) {
-    // A. Cốt bánh
-    if (spec.cakeBase?.bomIngredients && Array.isArray(spec.cakeBase.bomIngredients)) {
-      for (const it of spec.cakeBase.bomIngredients) {
-        if (it.quantity > 0) {
+    // A. Nếu có cấu hình chi tiết nhiều tầng (multi-tier)
+    if (Array.isArray(spec.tiers) && spec.tiers.length > 0) {
+      for (const tier of spec.tiers) {
+        if (tier.cakeBase?.bomIngredients && Array.isArray(tier.cakeBase.bomIngredients)) {
+          for (const it of tier.cakeBase.bomIngredients) {
+            if (it.quantity > 0) {
+              requirements.push({
+                ingredientId: it.ingredientId,
+                name: it.name,
+                quantity: Number(it.quantity) * orderMultiplier,
+                unit: it.unit,
+              });
+            }
+          }
+        }
+        if (tier.creamCoating?.bomIngredients && Array.isArray(tier.creamCoating.bomIngredients)) {
+          for (const it of tier.creamCoating.bomIngredients) {
+            if (it.quantity > 0) {
+              requirements.push({
+                ingredientId: it.ingredientId,
+                name: it.name,
+                quantity: Number(it.quantity) * orderMultiplier,
+                unit: it.unit,
+              });
+            }
+          }
+        }
+        if (tier.filling?.name) {
           requirements.push({
-            ingredientId: it.ingredientId,
-            name: it.name,
-            quantity: Number(it.quantity) * orderMultiplier,
-            unit: it.unit,
+            ingredientId: tier.filling.id,
+            name: tier.filling.name,
+            quantity: 1 * orderMultiplier,
+            unit: 'phần',
           });
         }
       }
-    }
-
-    // B. Kem phủ
-    if (spec.creamCoating?.bomIngredients && Array.isArray(spec.creamCoating.bomIngredients)) {
-      for (const it of spec.creamCoating.bomIngredients) {
-        if (it.quantity > 0) {
-          requirements.push({
-            ingredientId: it.ingredientId,
-            name: it.name,
-            quantity: Number(it.quantity) * orderMultiplier,
-            unit: it.unit,
-          });
+    } else {
+      // Bánh 1 tầng thông thường
+      // A1. Cốt bánh
+      if (spec.cakeBase?.bomIngredients && Array.isArray(spec.cakeBase.bomIngredients)) {
+        for (const it of spec.cakeBase.bomIngredients) {
+          if (it.quantity > 0) {
+            requirements.push({
+              ingredientId: it.ingredientId,
+              name: it.name,
+              quantity: Number(it.quantity) * orderMultiplier,
+              unit: it.unit,
+            });
+          }
         }
+      }
+
+      // A2. Kem phủ
+      if (spec.creamCoating?.bomIngredients && Array.isArray(spec.creamCoating.bomIngredients)) {
+        for (const it of spec.creamCoating.bomIngredients) {
+          if (it.quantity > 0) {
+            requirements.push({
+              ingredientId: it.ingredientId,
+              name: it.name,
+              quantity: Number(it.quantity) * orderMultiplier,
+              unit: it.unit,
+            });
+          }
+        }
+      }
+
+      // A3. Nhân bánh (nếu có)
+      if (spec.filling?.name) {
+        requirements.push({
+          ingredientId: spec.filling.id,
+          name: spec.filling.name,
+          quantity: 1 * orderMultiplier,
+          unit: 'phần',
+        });
       }
     }
 
-    // C. Hộp & Bao bì
+    // B. Hộp & Bao bì
     if (spec.packaging?.name) {
       requirements.push({
         ingredientId: spec.packaging.id,
@@ -165,7 +253,7 @@ export function extractOrderBomRequirements(order: any): Array<{
       });
     }
 
-    // D. Vật tư tặng kèm (Mũ, nến, dao, dĩa...)
+    // C. Vật tư tặng kèm (Mũ, nến, dao, dĩa...)
     if (spec.freeAccessories && Array.isArray(spec.freeAccessories)) {
       for (const acc of spec.freeAccessories) {
         requirements.push({
@@ -177,7 +265,7 @@ export function extractOrderBomRequirements(order: any): Array<{
       }
     }
 
-    // E. Phụ kiện decor đặt thêm
+    // D. Phụ kiện decor đặt thêm
     if (spec.decorAddons && Array.isArray(spec.decorAddons)) {
       for (const dec of spec.decorAddons) {
         requirements.push({
@@ -333,22 +421,35 @@ export async function deductOrderIngredients(order: any): Promise<DeductionResul
 
     // Tìm theo ingredientId nếu có
     if (req.ingredientId) {
-      matchedIng = currentIngredients.find((i) => i.id === req.ingredientId);
+      matchedIng = currentIngredients.find((i) => String(i.id).trim() === String(req.ingredientId).trim());
     }
 
-    // Nếu không thấy theo ID, tìm theo tên gần đúng (case-insensitive)
+    // Nếu không thấy theo ID, tìm theo tên (hỗ trợ tiếng Việt không dấu & khớp một phần)
     if (!matchedIng && req.name) {
-      const qName = req.name.toLowerCase().trim();
-      matchedIng = currentIngredients.find(
-        (i) => i.name.toLowerCase().trim() === qName ||
-               i.name.toLowerCase().includes(qName) ||
-               qName.includes(i.name.toLowerCase())
-      );
+      const qLower = req.name.toLowerCase().trim();
+      const qNorm = normalizeVietnamese(req.name);
+
+      // A. Trùng chính xác tên thường
+      matchedIng = currentIngredients.find((i) => (i.name || '').toLowerCase().trim() === qLower);
+
+      // B. Trùng chính xác tên không dấu
+      if (!matchedIng) {
+        matchedIng = currentIngredients.find((i) => normalizeVietnamese(i.name) === qNorm);
+      }
+
+      // C. Khớp một phần
+      if (!matchedIng) {
+        matchedIng = currentIngredients.find((i) => {
+          const iNorm = normalizeVietnamese(i.name);
+          return iNorm.includes(qNorm) || qNorm.includes(iNorm);
+        });
+      }
     }
 
     if (matchedIng) {
+      const actualDeductedQty = convertIngredientQuantity(req.quantity, req.unit || '', matchedIng.unit || '');
       const prevStock = Number(matchedIng.stock_qty || 0);
-      const newStock = Math.max(0, prevStock - req.quantity);
+      const newStock = Math.max(0, prevStock - actualDeductedQty);
 
       matchedIng.stock_qty = newStock;
       modifiedIngredientIds.push(matchedIng.id);
@@ -356,7 +457,7 @@ export async function deductOrderIngredients(order: any): Promise<DeductionResul
       deductedItems.push({
         ingredientId: matchedIng.id,
         name: matchedIng.name,
-        deductedQty: req.quantity,
+        deductedQty: actualDeductedQty,
         unit: matchedIng.unit || req.unit || 'g',
         previousStock: prevStock,
         remainingStock: newStock,
@@ -463,44 +564,7 @@ export interface RecipeDeductionResult {
   totalCost: number;
 }
 
-/**
- * Chuẩn hóa chuỗi tiếng Việt không dấu để so sánh tìm kiếm chính xác
- */
-function normalizeVietnamese(str: string): string {
-  return (str || '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/đ/g, 'd')
-    .trim();
-}
 
-/**
- * Quy đổi đơn vị định lượng nguyên liệu giữa công thức BOM và tồn kho
- */
-function convertIngredientQuantity(neededQty: number, fromUnit: string, toUnit: string): number {
-  const f = (fromUnit || '').toLowerCase().trim();
-  const t = (toUnit || '').toLowerCase().trim();
-  if (f === t || !f || !t) return neededQty;
-
-  // g -> kg: 500g = 0.5kg
-  if ((f === 'g' || f === 'gram' || f === 'gr') && (t === 'kg' || t === 'kilogram')) {
-    return neededQty / 1000;
-  }
-  // kg -> g: 1.5kg = 1500g
-  if ((f === 'kg' || f === 'kilogram') && (t === 'g' || t === 'gram' || t === 'gr')) {
-    return neededQty * 1000;
-  }
-  // ml -> l: 200ml = 0.2l
-  if ((f === 'ml' || f === 'mililit') && (t === 'l' || t === 'lit' || t === 'lít')) {
-    return neededQty / 1000;
-  }
-  // l -> ml: 1l = 1000ml
-  if ((f === 'l' || f === 'lit' || f === 'lít') && (t === 'ml' || t === 'mililit')) {
-    return neededQty * 1000;
-  }
-  return neededQty;
-}
 
 /**
  * Tự động trừ tồn kho nguyên vật liệu cho một mẻ bánh bán lẻ / bánh thường (BOM Recipe)
