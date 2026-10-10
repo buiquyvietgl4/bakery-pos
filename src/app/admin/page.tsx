@@ -1439,13 +1439,16 @@ export default function AdminDashboard() {
 
     // Các nghiệp vụ quỹ bổ sung
     cashflow.forEach((c: any) => {
-      if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return;
+      if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-') || c.id?.startsWith('CASH-REAL-')) return;
+      const d = c.date || c.created_at || c.createdAt || '';
+      const cat = c.category === 'purchase' ? 'Nhập kho nguyên vật liệu' : (c.category || 'Thu chi khác');
+      const desc = c.desc || c.description || '';
       list.push({
-        ngay: c.date || '',
+        ngay: d,
         nguon: c.source === 'bank' ? 'VietQR / Ngân Hàng' : 'Tiền mặt tại két',
         loai: c.type === 'income' ? 'Thu vào' : 'Chi ra',
-        hang_muc: c.category || 'Thu chi khác',
-        dien_giai: c.desc || '',
+        hang_muc: cat,
+        dien_giai: desc,
         thu: c.type === 'income' ? Number(c.amount || 0) : 0,
         chi: c.type === 'expense' ? Number(c.amount || 0) : 0,
       });
@@ -3027,10 +3030,10 @@ export default function AdminDashboard() {
       const soCfItem: CashflowTransaction = {
         id: generateUUID(),
         type: 'expense',
-        category: 'adjustment',
+        category: 'Hao hụt / Xuất hủy',
         amount: lossValue,
         desc: `Xuất hao hụt: ${qty.toLocaleString()} ${ing.unit} ${ing.name} (${soReason})`,
-        date: new Date().toISOString().split('T')[0],
+        date: new Date().toISOString(),
       };
       setCashflow((prev) => {
         const updated = [soCfItem, ...prev];
@@ -3291,10 +3294,10 @@ export default function AdminDashboard() {
       const cfItem: CashflowTransaction = {
         id: generateUUID(),
         type: 'expense',
-        category: 'purchase',
+        category: 'Nhập kho hàng bán sẵn',
         amount: totalPurchaseValue,
         desc: `Nhập kho +${qty} ${targetProd.unit || 'cái'} ${targetProd.name} từ ${poProductSupplier || targetProd.supplier_name || 'Nhà cung cấp'}`,
-        date: new Date().toISOString().split('T')[0],
+        date: new Date().toISOString(),
       };
       setCashflow((prev) => {
         const updated = [cfItem, ...prev];
@@ -3503,10 +3506,10 @@ export default function AdminDashboard() {
       const poCfItem: CashflowTransaction = {
         id: generateUUID(),
         type: 'expense',
-        category: 'purchase',
+        category: 'Nhập kho nguyên vật liệu',
         amount: totalCost,
         desc: descPo,
-        date: new Date().toISOString().split('T')[0],
+        date: new Date().toISOString(),
       };
       setCashflow((prev) => {
         const updated = [poCfItem, ...prev];

@@ -9,6 +9,7 @@ import {
 import { isOrderCash, getOrderPaymentMethod } from './AccountingOverview';
 import { formatCurrencyInput, parseCurrencyInput } from '@/lib/utils/formatCurrency';
 import { exportMultiSheetExcel, ExcelSheet } from '@/lib/utils/exportExcel';
+import { CurrencyInputField } from '@/components/admin/CurrencyInputField';
 
 export interface DualCashflowLedgerProps {
   orders: any[];
@@ -19,6 +20,16 @@ export interface DualCashflowLedgerProps {
   periodLabel: string;
   startDateMs: number;
   endDateMs: number;
+}
+
+export function formatCashflowCategory(category?: string): string {
+  if (!category) return 'Thu chi khác';
+  const catLower = category.toLowerCase().trim();
+  if (catLower === 'purchase') return 'Nhập kho nguyên vật liệu';
+  if (catLower === 'opex') return 'Chi phí vận hành';
+  if (catLower === 'adjustment') return 'Hao hụt / Xuất hủy';
+  if (catLower === 'other') return 'Thu chi khác';
+  return category;
 }
 
 export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
@@ -129,12 +140,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
   const cfCashIncome = useMemo(() => {
     return cashflow
       .filter((c) => {
-        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
+        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-') || c.id?.startsWith('CASH-REAL-')) return false;
         const isIncome = c.type === 'income' || c.type === 'in';
         const isCash = !c.method || c.method === 'cash' || c.source === 'cash';
         if (!isIncome || !isCash) return false;
-        if (!c.date) return true;
-        const t = new Date(c.date).getTime();
+        const rawDate = c.date || (c as any).created_at || (c as any).createdAt;
+        if (!rawDate) return false;
+        const t = new Date(rawDate).getTime();
         return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
       .reduce((s, c) => s + Number(c.amount || 0), 0);
@@ -143,12 +155,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
   const cfCashExpense = useMemo(() => {
     return cashflow
       .filter((c) => {
-        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
+        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-') || c.id?.startsWith('CASH-REAL-')) return false;
         const isExpense = c.type === 'expense' || c.type === 'out';
         const isCash = !c.method || c.method === 'cash' || c.source === 'cash';
         if (!isExpense || !isCash) return false;
-        if (!c.date) return true;
-        const t = new Date(c.date).getTime();
+        const rawDate = c.date || (c as any).created_at || (c as any).createdAt;
+        if (!rawDate) return false;
+        const t = new Date(rawDate).getTime();
         return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
       .reduce((s, c) => s + Number(c.amount || 0), 0);
@@ -157,12 +170,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
   const cfBankIncome = useMemo(() => {
     return cashflow
       .filter((c) => {
-        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
+        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-') || c.id?.startsWith('CASH-REAL-')) return false;
         const isIncome = c.type === 'income' || c.type === 'in';
         const isBank = c.method === 'bank' || c.source === 'bank';
         if (!isIncome || !isBank) return false;
-        if (!c.date) return true;
-        const t = new Date(c.date).getTime();
+        const rawDate = c.date || (c as any).created_at || (c as any).createdAt;
+        if (!rawDate) return false;
+        const t = new Date(rawDate).getTime();
         return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
       .reduce((s, c) => s + Number(c.amount || 0), 0);
@@ -171,12 +185,13 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
   const cfBankExpense = useMemo(() => {
     return cashflow
       .filter((c) => {
-        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return false;
+        if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-') || c.id?.startsWith('CASH-REAL-')) return false;
         const isExpense = c.type === 'expense' || c.type === 'out';
         const isBank = c.method === 'bank' || c.source === 'bank';
         if (!isExpense || !isBank) return false;
-        if (!c.date) return true;
-        const t = new Date(c.date).getTime();
+        const rawDate = c.date || (c as any).created_at || (c as any).createdAt;
+        if (!rawDate) return false;
+        const t = new Date(rawDate).getTime();
         return isNaN(t) || (t >= startDateMs && t <= endDateMs);
       })
       .reduce((s, c) => s + Number(c.amount || 0), 0);
@@ -255,16 +270,21 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
       });
     });
 
-    // Các phiếu khác từ cashflow state (hoàn trả, đổi hàng, nạp/rút quỹ)
+    // Các phiếu khác từ cashflow state (hoàn trả, đổi hàng, nạp/rút quỹ, nhập kho vật tư)
     cashflow.forEach((c) => {
-      if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-')) return;
+      if (c.id?.startsWith('ord-') || c.id?.startsWith('exp-') || c.id?.startsWith('CASH-REAL-')) return;
+      const rawDate = c.date || (c as any).created_at || (c as any).createdAt;
+      const dateStr = rawDate
+        ? (String(rawDate).includes('T') ? rawDate : `${rawDate}T10:00:00`)
+        : '';
+      const rawDesc = c.desc || (c as any).description || 'Nghiệp vụ quỹ';
       list.push({
         id: c.id || 'cf-' + Math.random(),
-        date: c.date ? (String(c.date).includes('T') ? c.date : `${c.date}T10:00:00`) : new Date().toISOString(),
+        date: dateStr || new Date().toISOString(),
         type: c.type || 'expense',
         source: c.source || c.method || 'cash',
-        category: c.category || 'Thu chi khác',
-        desc: c.desc || 'Nghiệp vụ quỹ',
+        category: formatCashflowCategory(c.category),
+        desc: rawDesc,
         amount: Number(c.amount || 0),
       });
     });
@@ -781,13 +801,9 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
 
               <div>
                 <label className="font-bold text-zinc-700 block mb-1">Số tiền (VNĐ):</label>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  required
-                  value={formatCurrencyInput(txAmount)}
-                  onFocus={(e) => e.target.select()}
-                  onChange={(e) => setTxAmount(parseCurrencyInput(e.target.value))}
+                <CurrencyInputField
+                  value={txAmount}
+                  onChange={setTxAmount}
                   placeholder="Ví dụ: 500.000"
                   className="w-full p-2.5 rounded-xl border border-zinc-200 bg-zinc-50 font-black text-sm text-zinc-900 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none"
                 />

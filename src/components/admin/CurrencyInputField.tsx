@@ -100,3 +100,5 @@ export default function CurrencyInputField({
     </div>
   );
 }
+
+export { CurrencyInputField };

@@ -23,6 +23,9 @@ export interface CashflowTransaction {
   desc: string;
   date: string;
   method?: string;
+  source?: 'cash' | 'bank';
+  created_at?: string;
+  description?: string;
 }
 
 const STORAGE_KEY_EXPENSES = 'bakery_expenses';
@@ -72,6 +75,7 @@ export function deduplicateExpenses(items: ExpenseItem[]): ExpenseItem[] {
 
 /**
  * Lọc sạch các giao dịch sổ quỹ bị trùng lặp (theo ID hoặc theo nội dung)
+ * Đồng thời loại bỏ dữ liệu mẫu kiểm thử và chuẩn hóa định dạng
  */
 export function deduplicateCashflow(items: CashflowTransaction[]): CashflowTransaction[] {
   if (!Array.isArray(items) || items.length === 0) return [];
@@ -83,19 +87,31 @@ export function deduplicateCashflow(items: CashflowTransaction[]): CashflowTrans
     if (!item) continue;
     const cleanId = (item.id || '').trim();
     if (cleanId && seenIds.has(cleanId)) continue;
+    // Loại trừ dữ liệu mẫu thử nghiệm
+    if (cleanId.startsWith('CASH-REAL-')) continue;
 
-    const desc = (item.desc || (item as any).description || '').trim().toLowerCase();
-    const cat = (item.category || '').trim().toLowerCase();
+    const rawDesc = item.desc || (item as any).description || 'Nghiệp vụ quỹ';
+    const rawCat = item.category === 'purchase' ? 'Nhập kho nguyên vật liệu' : (item.category || 'Thu chi khác');
+    const rawDate = item.date || (item as any).created_at || (item as any).createdAt || '';
+
+    const desc = rawDesc.trim().toLowerCase();
+    const cat = rawCat.trim().toLowerCase();
     const type = (item.type || '').trim().toLowerCase();
     const amount = Number(item.amount) || 0;
-    const date = (item.date || (item as any).created_at || '').slice(0, 10);
-    const fingerprint = `${date}_${type}_${cat}_${amount}_${desc}`;
+    const dateSlice = rawDate.slice(0, 10);
+    const fingerprint = `${dateSlice}_${type}_${cat}_${amount}_${desc}`;
 
     if (seenFingerprints.has(fingerprint)) continue;
 
     if (cleanId) seenIds.add(cleanId);
     seenFingerprints.add(fingerprint);
-    result.push(item);
+
+    result.push({
+      ...item,
+      category: rawCat,
+      desc: rawDesc,
+      date: rawDate || item.date || '',
+    });
   }
   return result;
 }
