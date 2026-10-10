@@ -645,7 +645,7 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
               barcode: dp.barcode,
               image_url: dp.image_url,
               is_active: dp.is_active ?? true,
-              stock_qty: dp.stock_qty ?? 10,
+              stock_qty: dp.stock_qty ?? 0,
             });
           }
         });
@@ -659,33 +659,12 @@ export async function gatherFullBakeryData(): Promise<BakeryBackupData> {
     const sVal = stockMap[p.id] ?? (nameKey ? stockMap[nameKey] : undefined);
     const resolvedStock = sVal !== undefined
       ? Number(sVal)
-      : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : 10);
+      : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : 0);
     return {
       ...p,
       stock_qty: resolvedStock,
     };
   });
-
-  // Tự phục hồi nếu toàn bộ bánh bị 0 trong bộ nhớ
-  const allZeroInExport = products.length > 0 && products.every((p) => !p.stock_qty || Number(p.stock_qty) <= 0);
-  if (allZeroInExport) {
-    const logs = getStockAdjustmentLogs();
-    const adjMap = new Map<string, number>();
-    logs.forEach((l) => {
-      if (l.newQuantity !== undefined) {
-        if (l.productId) adjMap.set(String(l.productId).toLowerCase().trim(), Number(l.newQuantity));
-        if (l.productName) adjMap.set(String(l.productName).toLowerCase().trim(), Number(l.newQuantity));
-      }
-    });
-    products = products.map((p) => {
-      const nameKey = p.name ? String(p.name).toLowerCase().trim() : '';
-      const adj = adjMap.get(String(p.id).toLowerCase().trim()) ?? (nameKey ? adjMap.get(nameKey) : undefined);
-      return {
-        ...p,
-        stock_qty: adj !== undefined ? adj : 10,
-      };
-    });
-  }
 
   // 2. Công thức BOM & 3. Nguyên vật liệu kho
   let recipes: any[] = [];
@@ -1383,8 +1362,6 @@ function ensureValidStockQuantities(backup: BakeryBackupData, rawLsBakeryStocks?
     }
   }
 
-  const allZero = backup.products.every((p: any) => !p.stock_qty || Number(p.stock_qty) <= 0);
-
   backup.products = backup.products.map((p: any) => {
     const idKey = String(p.id || '').toLowerCase().trim();
     const nameKey = String(p.name || '').toLowerCase().trim();
@@ -1393,9 +1370,8 @@ function ensureValidStockQuantities(backup: BakeryBackupData, rawLsBakeryStocks?
     const fromAdj = adjMap.get(idKey) ?? (nameKey ? adjMap.get(nameKey) : undefined);
     let stock = fromStockMap !== undefined ? fromStockMap : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : undefined);
 
-    // Nếu toàn bộ bánh bị 0 do lỗi trước đó hoặc bánh này chưa có tồn
-    if (allZero || stock === undefined || stock === null) {
-      stock = fromAdj !== undefined ? fromAdj : (stock !== undefined && stock > 0 ? stock : 10);
+    if (stock === undefined || stock === null) {
+      stock = fromAdj !== undefined ? fromAdj : 0;
     }
 
     return {

@@ -667,7 +667,7 @@ export async function deductRecipeIngredients(
         unit: defaultUnit,
         category: 'Nguyên liệu bánh',
         stock_qty: 0,
-        reorder_level: 1000,
+        reorder_level: 0,
         avg_cost: uCost,
         wastage_pct: 0,
         packaging_unit: defaultUnit === 'ml' ? 'Hộp 1L' : defaultUnit === 'g' ? 'Túi 1kg' : 'Túi',

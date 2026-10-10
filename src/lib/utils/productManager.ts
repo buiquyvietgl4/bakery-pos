@@ -580,11 +580,11 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
         // Ưu tiên số lượng tồn kho:
         // 1. localStocks map (người dùng vừa thao tác sửa tức thì)
         // 2. existing.stock_qty (từ Supabase)
-        // 3. decoded.stock_qty -> 10
+        // 3. decoded.stock_qty -> 0
         const localVal = localStocks[matchedKey] ?? (nameKey ? localStocks[nameKey] : undefined);
         const resolvedStock = localVal !== undefined
           ? localVal
-          : (existing.stock_qty !== undefined ? existing.stock_qty : (decoded.stock_qty ?? 10));
+          : (existing.stock_qty !== undefined ? existing.stock_qty : (decoded.stock_qty ?? 0));
 
         productMap.set(matchedKey, {
           ...decoded,
@@ -603,7 +603,7 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
         const localVal = localStocks[localKey] ?? (nameKey ? localStocks[nameKey] : undefined);
         productMap.set(localKey, {
           ...decoded,
-          stock_qty: localVal !== undefined ? localVal : (decoded.stock_qty ?? 10),
+          stock_qty: localVal !== undefined ? localVal : (decoded.stock_qty ?? 0),
         });
         if (nameKey) nameToKeyMap.set(nameKey, localKey);
       }
@@ -614,7 +614,7 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
   for (const prod of productMap.values()) {
     const nameKey = String(prod.name || '').toLowerCase().trim();
     if (prod.stock_qty === undefined || prod.stock_qty === null) {
-      prod.stock_qty = localStocks[prod.id] ?? (nameKey ? localStocks[nameKey] : undefined) ?? 10;
+      prod.stock_qty = localStocks[prod.id] ?? (nameKey ? localStocks[nameKey] : undefined) ?? 0;
     }
   }
 
@@ -740,7 +740,7 @@ export function syncBomToProducts(
         image_url: defaultImg,
         product_type: 'produced',
         is_active: true,
-        stock_qty: 10,
+        stock_qty: 0,
         unit: rec.yield_unit || 'cái',
         bom_preset_id: rec.id,
         recipe_id: rec.id,
@@ -785,7 +785,7 @@ export function syncBomToProducts(
     if (!existing) {
       const defaultImg = getDefaultCakeImageUrl(presetName, 'Bánh kem & Bánh đặt');
       const targetCostPct = Number(preset.targetFoodCostPct) || 36.5;
-      const sellPrice = Number(preset.suggestedSellingPrice) || 380000;
+      const sellPrice = Number(preset.suggestedSellingPrice) || 0;
       const cost = Math.round(sellPrice * targetCostPct / 100);
 
       const isValidUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
@@ -804,7 +804,7 @@ export function syncBomToProducts(
         product_type: 'produced',
         cake_type_label: 'birthday',
         is_active: true,
-        stock_qty: 5,
+        stock_qty: 0,
         unit: 'ổ',
         bom_preset_id: preset.id,
         recipe_id: preset.id,

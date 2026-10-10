@@ -458,7 +458,7 @@ export default function POSPage() {
     setProducts((prev) => {
       const target = prev.find((p) => p.id === productId);
       if (target) {
-        const oldQty = target.stock_qty ?? 10;
+        const oldQty = target.stock_qty ?? 0;
         updatedTarget = { ...target, stock_qty: safeNewQty };
         addStockAdjustmentLog({
           productId,
@@ -505,7 +505,7 @@ export default function POSPage() {
       const target = prev.find((p) => p.id === productId);
       let safeNewQty = 0;
       if (target) {
-        const oldQty = target.stock_qty ?? 10;
+        const oldQty = target.stock_qty ?? 0;
         safeNewQty = Math.max(0, oldQty + amount);
         updatedTarget = { ...target, stock_qty: safeNewQty };
         addStockAdjustmentLog({
@@ -592,10 +592,10 @@ export default function POSPage() {
     customAddonCost: 0,
     filling: 'Không nhân (Chỉ phủ kem tươi)',
     fillingId: 'filling-none',
-    cakeMessage: 'Chúc Mừng Sinh Nhật',
-    notes: 'Ít ngọt, trang trí tone màu ấm, kèm nến số',
+    cakeMessage: '',
+    notes: '',
     totalPrice: 365000,
-    depositAmount: 150000,
+    depositAmount: 0,
     paymentMethod: 'cash',
     referenceImageUrl: '',
   });
@@ -1323,7 +1323,7 @@ export default function POSPage() {
         const stockFromMap = localStocks[p.id] ?? (nameKey ? localStocks[nameKey] : undefined);
         const resolvedStock = stockFromMap !== undefined
           ? Number(stockFromMap)
-          : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : 10);
+          : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : 0);
 
         return {
           ...p,
@@ -1334,24 +1334,6 @@ export default function POSPage() {
           is_semi_finished: p.is_semi_finished !== undefined ? p.is_semi_finished : false,
         };
       });
-
-      // Tự động phục hồi tồn kho nếu phát hiện toàn bộ bánh bị rơi vào trạng thái 0 bất thường (sau reset/khôi phục lỗi)
-      const allZeroStock = currentProducts.length > 0 && currentProducts.every((p: any) => !p.stock_qty || Number(p.stock_qty) === 0);
-      if (allZeroStock) {
-        console.warn('⚠️ [POS] Phát hiện toàn bộ sản phẩm có tồn kho bằng 0, đang tự động phục hồi về tồn kho ban đầu (10)...');
-        currentProducts = currentProducts.map((p: any) => ({
-          ...p,
-          stock_qty: 10,
-        }));
-        const healedStocks: Record<string, number> = { ...localStocks };
-        currentProducts.forEach((p: any) => {
-          healedStocks[p.id] = 10;
-          if (p.name) healedStocks[String(p.name).toLowerCase().trim()] = 10;
-        });
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('bakery_stocks', JSON.stringify(healedStocks));
-        }
-      }
 
       currentProducts = filterActiveProducts(currentProducts);
       try {
@@ -3193,7 +3175,7 @@ export default function POSPage() {
         returnRecord.exchange_replacement_items.forEach((ep) => {
           if (ep.product_id) {
             const currentP = products.find((p) => p.id === ep.product_id);
-            const oldStock = Number(currentP?.stock_qty ?? 10);
+            const oldStock = Number(currentP?.stock_qty ?? 0);
             updateProductStock(ep.product_id, Math.max(0, oldStock - ep.quantity), `Đổi món cho đơn #${orderNum}`);
           }
         });
@@ -4466,10 +4448,10 @@ export default function POSPage() {
         customAddonCost: 0,
         filling: 'Không nhân (Chỉ phủ kem tươi)',
         fillingId: 'filling-none',
-        cakeMessage: 'Chúc Mừng Sinh Nhật',
-        notes: 'Ít ngọt, trang trí hoa kem',
+        cakeMessage: '',
+        notes: '',
         totalPrice: 365000,
-        depositAmount: 150000,
+        depositAmount: 0,
         paymentMethod: 'cash',
         referenceImageUrl: '',
       });

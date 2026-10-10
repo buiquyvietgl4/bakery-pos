@@ -467,8 +467,8 @@ export default function AdminDashboard() {
 
   // ── THÔNG TIN NHẬP KHO THỰC TẾ & QUY ĐỔI ĐƠN VỊ ──
   const [poPackageUnitName, setPoPackageUnitName] = useState<string>('Túi');
-  const [poPackageUnitPrice, setPoPackageUnitPrice] = useState<number>(35000);
-  const [poPackageQty, setPoPackageQty] = useState<number>(5);
+  const [poPackageUnitPrice, setPoPackageUnitPrice] = useState<number>(0);
+  const [poPackageQty, setPoPackageQty] = useState<number>(1);
   const [poBaseUnitName, setPoBaseUnitName] = useState<string>('g');
   const [poConversionRate, setPoConversionRate] = useState<number>(1000);
 
@@ -499,13 +499,13 @@ export default function AdminDashboard() {
 
   // Form Nhập Kho (Purchase Order) - Bánh & Hàng Bán Sẵn (Thành phẩm nhập)
   const [poProductId, setPoProductId] = useState<string>('');
-  const [poProductQty, setPoProductQty] = useState<number>(10);
-  const [poProductUnitPrice, setPoProductUnitPrice] = useState<number>(50000);
+  const [poProductQty, setPoProductQty] = useState<number>(1);
+  const [poProductUnitPrice, setPoProductUnitPrice] = useState<number>(0);
   const [poProductSupplier, setPoProductSupplier] = useState<string>('');
 
   // Form Xuất Kho / Báo Hỏng
   const [soIngredientId, setSoIngredientId] = useState<string>('');
-  const [soQty, setSoQty] = useState<number>(100);
+  const [soQty, setSoQty] = useState<number>(1);
   const [soReason, setSoReason] = useState<string>('Lỗi mẻ nướng / Hỏng nguyên liệu');
   const [isSubmittingSo, setIsSubmittingSo] = useState<boolean>(false);
 
@@ -516,10 +516,10 @@ export default function AdminDashboard() {
   const [newIngPackagingUnit, setNewIngPackagingUnit] = useState('Túi 1kg');
   const [newIngConversionRate, setNewIngConversionRate] = useState<number>(1000);
   const [newIngCategory, setNewIngCategory] = useState('Bột & Ngũ cốc');
-  const [newIngStockQty, setNewIngStockQty] = useState<number>(5000);
-  const [newIngAvgCost, setNewIngAvgCost] = useState<number>(30);
-  const [newIngReorderLevel, setNewIngReorderLevel] = useState<number>(1000);
-  const [newIngWastagePct, setNewIngWastagePct] = useState<number>(3);
+  const [newIngStockQty, setNewIngStockQty] = useState<number>(0);
+  const [newIngAvgCost, setNewIngAvgCost] = useState<number>(0);
+  const [newIngReorderLevel, setNewIngReorderLevel] = useState<number>(0);
+  const [newIngWastagePct, setNewIngWastagePct] = useState<number>(0);
   const [creatingIngredient, setCreatingIngredient] = useState(false);
 
   // Modal Chỉnh Sửa Loại Vật Tư (Edit Ingredient Modal)
@@ -532,8 +532,8 @@ export default function AdminDashboard() {
   const [editIngCategory, setEditIngCategory] = useState('Bột & Ngũ cốc');
   const [editIngStockQty, setEditIngStockQty] = useState<number>(0);
   const [editIngAvgCost, setEditIngAvgCost] = useState<number>(0);
-  const [editIngReorderLevel, setEditIngReorderLevel] = useState<number>(1000);
-  const [editIngWastagePct, setEditIngWastagePct] = useState<number>(3);
+  const [editIngReorderLevel, setEditIngReorderLevel] = useState<number>(0);
+  const [editIngWastagePct, setEditIngWastagePct] = useState<number>(0);
   const [savingIngredient, setSavingIngredient] = useState(false);
 
   // ── RECIPES & BOM STATE ──
@@ -642,12 +642,8 @@ export default function AdminDashboard() {
             const active = filterActiveProducts(decoded);
             const prods = active.map((p: any) => ({
               ...p,
-              stock_qty: stockMap[p.id] ?? (p.name ? stockMap[p.name.toLowerCase().trim()] : undefined) ?? p.stock_qty ?? 10,
+              stock_qty: stockMap[p.id] ?? (p.name ? stockMap[p.name.toLowerCase().trim()] : undefined) ?? (p.stock_qty !== undefined ? Number(p.stock_qty) : 0),
             }));
-            const allZero = prods.length > 0 && prods.every((p: any) => !p.stock_qty || Number(p.stock_qty) === 0);
-            if (allZero) {
-              return prods.map((p: any) => ({ ...p, stock_qty: 10 }));
-            }
             return prods;
           }
         }
@@ -1025,9 +1021,9 @@ export default function AdminDashboard() {
   const [selectedRecipeId, setSelectedRecipeId] = useState<string | null>(null);
   const [newProdName, setNewProdName] = useState('');
   const [newProdCategory, setNewProdCategory] = useState('Bánh kem & Bánh đặt');
-  const [newProdPrice, setNewProdPrice] = useState<number>(380000);
+  const [newProdPrice, setNewProdPrice] = useState<number>(0);
   const [newProdBaseCost, setNewProdBaseCost] = useState<number | null>(null);
-  const [newProdImportPrice, setNewProdImportPrice] = useState<number>(100000);
+  const [newProdImportPrice, setNewProdImportPrice] = useState<number>(0);
   const [newProdSupplierName, setNewProdSupplierName] = useState('');
   const [newProdBarcode, setNewProdBarcode] = useState('');
   const [newProdIsPreorder, setNewProdIsPreorder] = useState(false);
@@ -1035,13 +1031,13 @@ export default function AdminDashboard() {
   const [newProdShowOnMenu, setNewProdShowOnMenu] = useState<boolean>(true);
   const [newProdBomPresetId, setNewProdBomPresetId] = useState<string>('');
   const [newProdImageUrl, setNewProdImageUrl] = useState('');
-  const [newProdStockQty, setNewProdStockQty] = useState<number>(10);
+  const [newProdStockQty, setNewProdStockQty] = useState<number>(0);
   const [creatingProduct, setCreatingProduct] = useState(false);
   const [productOriginFilter, setProductOriginFilter] = useState<'all' | 'produced' | 'imported'>('all');
 
   // ── LÀM MẺ BÁNH TRỰC TIẾP TỪ BOM (ADMIN TRỪ KHO) STATE ──
   const [bakeBatchModalRecipe, setBakeBatchModalRecipe] = useState<any | null>(null);
-  const [bakeBatchQty, setBakeBatchQty] = useState<number>(10);
+  const [bakeBatchQty, setBakeBatchQty] = useState<number>(1);
   const [isBakingBatch, setIsBakingBatch] = useState<boolean>(false);
 
   // ── KẾ TOÁN & TÀI CHÍNH STATE ──
@@ -1704,24 +1700,6 @@ export default function AdminDashboard() {
       }
 
       currentProds = filterActiveProducts(currentProds);
-      // Tự động phục hồi tồn kho nếu phát hiện toàn bộ bánh bị 0 do lỗi khôi phục trước đó
-      const allZeroInAdmin = currentProds.length > 0 && currentProds.every((p: any) => !p.stock_qty || Number(p.stock_qty) === 0);
-      if (allZeroInAdmin) {
-        console.warn('⚠️ [ADMIN] Phát hiện toàn bộ sản phẩm có tồn kho bằng 0, đang tự động phục hồi về 10...');
-        let adminStocks: Record<string, number> = {};
-        try {
-          const rawS = localStorage.getItem('bakery_stocks');
-          if (rawS) adminStocks = JSON.parse(rawS);
-        } catch {}
-        currentProds = currentProds.map((p: any) => ({ ...p, stock_qty: 10 }));
-        currentProds.forEach((p: any) => {
-          adminStocks[p.id] = 10;
-          if (p.name) adminStocks[String(p.name).toLowerCase().trim()] = 10;
-        });
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('bakery_stocks', JSON.stringify(adminStocks));
-        }
-      }
       // Tự động đồng bộ tất cả bánh thường & bánh sinh nhật có BOM vào danh sách sản phẩm và bổ sung ảnh mặc định
       const currentRecipes = getStoredRecipes();
       const birthdayPresets = getFullCakeBomConfig()?.birthdayBomPresets || [];
@@ -2670,8 +2648,8 @@ export default function AdminDashboard() {
 
       // Reset form
       setNewIngName('');
-      setNewIngStockQty(5000);
-      setNewIngAvgCost(30);
+      setNewIngStockQty(0);
+      setNewIngAvgCost(0);
       setNewIngUnit('g');
       setNewIngPackagingUnit('Túi 1kg');
       setNewIngConversionRate(1000);
@@ -2698,8 +2676,8 @@ export default function AdminDashboard() {
     setEditIngCategory(ing.category || 'Bột & Ngũ cốc');
     setEditIngStockQty(ing.stock_qty || 0);
     setEditIngAvgCost(ing.avg_cost || 0);
-    setEditIngReorderLevel(ing.reorder_level || 1000);
-    setEditIngWastagePct(ing.wastage_pct || 3);
+    setEditIngReorderLevel(ing.reorder_level ?? 0);
+    setEditIngWastagePct(ing.wastage_pct ?? 0);
     setIsEditIngredientModalOpen(true);
   };
 
@@ -3212,14 +3190,14 @@ export default function AdminDashboard() {
       setIsAddProductModalOpen(false);
 
       setNewProdName('');
-      setNewProdPrice(100000);
+      setNewProdPrice(0);
       setNewProdImageUrl('');
-      setNewProdStockQty(10);
+      setNewProdStockQty(0);
       setNewProdIsPreorder(false);
       setAddProductMode('free');
       setSelectedRecipeId(null);
       setNewProdBaseCost(null);
-      setNewProdImportPrice(100000);
+      setNewProdImportPrice(0);
       setNewProdSupplierName('');
       setNewProdBarcode('');
     } catch (err) {
@@ -3381,7 +3359,7 @@ export default function AdminDashboard() {
 
     const updated = products.map((p) => {
       if (p.id === productId) {
-        oldQty = p.stock_qty ?? 10;
+        oldQty = p.stock_qty ?? 0;
         targetProduct = { ...p, stock_qty: qty };
         return targetProduct;
       }
@@ -4732,14 +4710,14 @@ export default function AdminDashboard() {
 
                       {/* BADGE TỒN KHO */}
                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold shadow-xs flex items-center gap-1 ${
-                        (p.stock_qty ?? 10) === 0
+                        (p.stock_qty ?? 0) === 0
                           ? 'bg-rose-600 text-white'
-                          : (p.stock_qty ?? 10) <= 3
+                          : (p.stock_qty ?? 0) <= 3
                           ? 'bg-amber-500 text-white'
                           : 'bg-emerald-600 text-white'
                       }`}>
                         <Package className="w-3 h-3" />
-                        {(p.stock_qty ?? 10) === 0 ? 'Hết bánh (0)' : `Còn ${p.stock_qty ?? 10} cái`}
+                        {(p.stock_qty ?? 0) === 0 ? 'Hết bánh (0)' : `Còn ${p.stock_qty ?? 0} cái`}
                       </span>
                     </div>
 
@@ -4847,13 +4825,13 @@ export default function AdminDashboard() {
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-zinc-500 text-xs shrink-0 font-medium">Có sẵn:</span>
                         <span className={`px-2 py-0.5 rounded-full text-[11px] font-black shrink-0 ${
-                          (p.stock_qty ?? 10) === 0
+                          (p.stock_qty ?? 0) === 0
                             ? 'bg-rose-100 text-rose-700 border border-rose-200'
-                            : (p.stock_qty ?? 10) <= 3
+                            : (p.stock_qty ?? 0) <= 3
                             ? 'bg-amber-100 text-amber-800 border border-amber-200'
                             : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
                         }`}>
-                          {(p.stock_qty ?? 10) === 0 ? 'Hết bánh (0)' : `${p.stock_qty ?? 10} cái`}
+                          {(p.stock_qty ?? 0) === 0 ? 'Hết bánh (0)' : `${p.stock_qty ?? 0} cái`}
                         </span>
                       </div>
 
@@ -4873,7 +4851,7 @@ export default function AdminDashboard() {
                           type="button"
                           onClick={() => {
                             setEditingStockProductId(p.id);
-                            setTempStockValue(p.stock_qty ?? 10);
+                            setTempStockValue(p.stock_qty ?? 0);
                             setTempStockReason('Nhập thêm mẻ mới từ lò bếp');
                             setTempStockNote('');
                           }}
@@ -4896,16 +4874,16 @@ export default function AdminDashboard() {
                         
                         {/* Huy hiệu chênh lệch */}
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
-                          tempStockValue > (p.stock_qty ?? 10)
+                          tempStockValue > (p.stock_qty ?? 0)
                             ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                            : tempStockValue < (p.stock_qty ?? 10)
+                            : tempStockValue < (p.stock_qty ?? 0)
                             ? 'bg-rose-100 text-rose-800 border border-rose-300'
                             : 'bg-zinc-100 text-zinc-600'
                         }`}>
-                          {tempStockValue > (p.stock_qty ?? 10)
-                            ? `+${tempStockValue - (p.stock_qty ?? 10)} (Tăng)`
-                            : tempStockValue < (p.stock_qty ?? 10)
-                            ? `${tempStockValue - (p.stock_qty ?? 10)} (Giảm)`
+                          {tempStockValue > (p.stock_qty ?? 0)
+                            ? `+${tempStockValue - (p.stock_qty ?? 0)} (Tăng)`
+                            : tempStockValue < (p.stock_qty ?? 0)
+                            ? `${tempStockValue - (p.stock_qty ?? 0)} (Giảm)`
                             : 'Không đổi'}
                         </span>
 

@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS products (
     supplier_name TEXT,
     barcode TEXT,
     food_cost_pct NUMERIC DEFAULT 35,
-    stock_qty NUMERIC DEFAULT 10,
+    stock_qty NUMERIC DEFAULT 0,
     unit TEXT DEFAULT 'cái',
     is_active BOOLEAN DEFAULT TRUE,
     is_preorder_only BOOLEAN DEFAULT FALSE,
@@ -811,7 +811,7 @@ ${generateSchemaSql()}
       const importPrice = p.import_price ?? cost;
       const prodType = p.product_type || 'produced';
       const isAct = p.is_active !== undefined ? Boolean(p.is_active) : true;
-      sql += `INSERT INTO products (id, name, category, selling_price, base_cost_price, import_price, product_type, supplier_name, barcode, food_cost_pct, stock_qty, unit, is_active, is_preorder_only, recipe_id, image_url, created_at, updated_at) VALUES (${sqlEscape(p.id)}, ${sqlEscape(p.name)}, ${sqlEscape(p.category)}, ${sqlEscape(price)}, ${sqlEscape(cost)}, ${sqlEscape(importPrice)}, ${sqlEscape(prodType)}, ${sqlEscape(p.supplier_name)}, ${sqlEscape(p.barcode)}, ${sqlEscape(foodCostPct)}, ${sqlEscape(p.stock_qty ?? 10)}, ${sqlEscape(p.unit || 'cái')}, ${sqlEscape(isAct)}, ${sqlEscape(p.is_preorder_only || false)}, ${sqlEscape(p.recipe_id || p.recipeId)}, ${sqlEscape(p.image_url)}, ${sqlEscape(p.created_at || new Date().toISOString())}, ${sqlEscape(p.updated_at || new Date().toISOString())});
+      sql += `INSERT INTO products (id, name, category, selling_price, base_cost_price, import_price, product_type, supplier_name, barcode, food_cost_pct, stock_qty, unit, is_active, is_preorder_only, recipe_id, image_url, created_at, updated_at) VALUES (${sqlEscape(p.id)}, ${sqlEscape(p.name)}, ${sqlEscape(p.category)}, ${sqlEscape(price)}, ${sqlEscape(cost)}, ${sqlEscape(importPrice)}, ${sqlEscape(prodType)}, ${sqlEscape(p.supplier_name)}, ${sqlEscape(p.barcode)}, ${sqlEscape(foodCostPct)}, ${sqlEscape(p.stock_qty ?? 0)}, ${sqlEscape(p.unit || 'cái')}, ${sqlEscape(isAct)}, ${sqlEscape(p.is_preorder_only || false)}, ${sqlEscape(p.recipe_id || p.recipeId)}, ${sqlEscape(p.image_url)}, ${sqlEscape(p.created_at || new Date().toISOString())}, ${sqlEscape(p.updated_at || new Date().toISOString())});
 `;
     }
   }
@@ -1557,7 +1557,7 @@ export async function restoreLocalFromBackupData(rawData: any): Promise<{ succes
       localSnapshot['bakery_products'] = JSON.stringify(data.products);
       const stockMap: Record<string, number> = {};
       data.products.forEach((p: any) => {
-        if (p.id) stockMap[p.id] = p.stock_qty ?? 10;
+        if (p.id) stockMap[p.id] = p.stock_qty ?? 0;
       });
       localSnapshot['bakery_stocks'] = JSON.stringify(stockMap);
       try {

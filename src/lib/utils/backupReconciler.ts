@@ -295,7 +295,7 @@ export async function reconcileBackupWithCurrentState(backupData: BakeryBackupDa
       });
     } else {
       const existingStock = existing.stock_qty !== undefined && existing.stock_qty !== null ? Number(existing.stock_qty) : 0;
-      const bpStock = bp.stock_qty !== undefined && bp.stock_qty !== null ? Number(bp.stock_qty) : 10;
+      const bpStock = bp.stock_qty !== undefined && bp.stock_qty !== null ? Number(bp.stock_qty) : 0;
       const stockDiff = Math.abs(bpStock - existingStock) > 0.01;
       const priceDiff = Math.abs((Number(bp.selling_price) || 0) - (Number(existing.selling_price) || 0)) > 1;
       const imgDiff = !existing.image_url && !!bp.image_url;
@@ -753,7 +753,7 @@ export async function executePushToSQL(
 
         const idKey = String(bp.id || '').toLowerCase().trim();
         const nameKey = String(bp.name || '').toLowerCase().trim();
-        const targetStock = currentStocks[bp.id] ?? (nameKey ? currentStocks[nameKey] : undefined) ?? (bp.stock_qty !== undefined && bp.stock_qty !== null ? Number(bp.stock_qty) : 10);
+        const targetStock = currentStocks[bp.id] ?? (nameKey ? currentStocks[nameKey] : undefined) ?? (bp.stock_qty !== undefined && bp.stock_qty !== null ? Number(bp.stock_qty) : 0);
 
         // Chỉ gửi các cột hợp lệ tồn tại trong CSDL Supabase table products:
         // ['id', 'name', 'category', 'image_url', 'base_cost_price', 'selling_price', 'food_cost_pct', 'is_active', 'is_preorder_only', 'recipe_id', 'created_at', 'updated_at']
@@ -811,7 +811,7 @@ export async function executePushToSQL(
       const idKey = String(p.id || '').toLowerCase().trim();
       const nameKey = String(p.name || '').toLowerCase().trim();
       const s = currentStocks[p.id] ?? (nameKey ? currentStocks[nameKey] : undefined);
-      const stock = s !== undefined ? s : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : 10);
+      const stock = s !== undefined ? s : (p.stock_qty !== undefined && p.stock_qty !== null ? Number(p.stock_qty) : 0);
       return {
         ...p,
         stock_qty: stock,
@@ -868,7 +868,7 @@ export async function executePushToSQL(
           unit: bi.unit || 'g',
           category: bi.category || 'Vật tư làm bánh',
           stock_qty: Number(bi.stock_qty || 0),
-          reorder_level: Number(bi.reorder_level || 500),
+          reorder_level: Number(bi.reorder_level || 0),
           avg_cost: Number(bi.avg_cost || 0),
           wastage_pct: Number(bi.wastage_pct || 0),
         };
