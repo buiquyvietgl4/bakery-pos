@@ -56,7 +56,12 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
 
   // Hàm tính toán phân bổ Tiền mặt và Ngân hàng của từng đơn hàng
   const getOrderCashAndBank = (o: any) => {
-    const total = Number(o.total_amount || o.totalPrice || 0);
+    const isCompleted = o.status === 'completed';
+    const isPreorder = o.order_type === 'preorder' || o.order_number?.startsWith('BK-PRE') || !!o.preorder_pickup_at;
+    const dep = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
+    const fullTotal = Number(o.total_amount || o.totalPrice || 0);
+    const total = (isPreorder && !isCompleted && dep > 0) ? dep : fullTotal;
+
     if (total <= 0) return { cash: 0, bank: 0 };
     const method = getOrderPaymentMethod(o);
     if (method === 'cash') return { cash: total, bank: 0 };
@@ -214,12 +219,18 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
 
     // Hóa đơn POS (Thu tiền)
     orders.forEach((o) => {
-      const amt = Number(o.total_amount || o.totalPrice || 0);
+      const isCompleted = o.status === 'completed';
+      const isPreorder = o.order_type === 'preorder' || o.order_number?.startsWith('BK-PRE') || !!o.preorder_pickup_at;
+      const dep = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
+      const fullTotal = Number(o.total_amount || o.totalPrice || 0);
+      const isDepositOnly = isPreorder && !isCompleted && dep > 0;
+      const amt = isDepositOnly ? dep : fullTotal;
       if (amt <= 0) return;
       const num = o.order_number || o.orderNumber || 'BK';
       const date = o.created_at || o.createdAt || new Date().toISOString();
       const method = getOrderPaymentMethod(o);
       const { cash, bank } = getOrderCashAndBank(o);
+      const actionDesc = isDepositOnly ? 'tiền cọc đơn đặt' : 'đơn hàng';
 
       if (method === 'split') {
         list.push({
@@ -229,8 +240,8 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           source: 'split',
           cashAmount: cash,
           bankAmount: bank,
-          category: 'Doanh thu bán bánh (Kết hợp TM + CK)',
-          desc: `Thu tiền đơn hàng #${num} (${o.customer_name || 'Khách lẻ'}) [Tiền mặt: ${cash.toLocaleString('vi-VN')}₫ | Chuyển khoản: ${bank.toLocaleString('vi-VN')}₫]`,
+          category: isDepositOnly ? 'Thu tiền cọc đặt bánh (Kết hợp TM + CK)' : 'Doanh thu bán bánh (Kết hợp TM + CK)',
+          desc: `Thu ${actionDesc} #${num} (${o.customer_name || 'Khách lẻ'}) [Tiền mặt: ${cash.toLocaleString('vi-VN')}₫ | Chuyển khoản: ${bank.toLocaleString('vi-VN')}₫]`,
           amount: amt,
         });
       } else {
@@ -240,16 +251,18 @@ export const DualCashflowLedger: React.FC<DualCashflowLedgerProps> = ({
           date,
           type: 'income' as const,
           source: isCash ? 'cash' : 'bank',
-          category: isCash 
-            ? 'Doanh thu bán bánh (Tiền mặt)' 
-            : (method === 'momo'
-              ? 'Doanh thu bán bánh (Ví MoMo)'
-              : method === 'zalopay'
-              ? 'Doanh thu bán bánh (Ví ZaloPay)'
-              : method === 'viettelmoney'
-              ? 'Doanh thu bán bánh (Viettel Money)'
-              : 'Doanh thu bán bánh (VietQR/CK)'),
-          desc: `Thu tiền đơn hàng #${num} (${o.customer_name || 'Khách lẻ'})`,
+          category: isDepositOnly
+            ? (isCash ? 'Thu tiền cọc đặt bánh (Tiền mặt)' : 'Thu tiền cọc đặt bánh (VietQR/CK)')
+            : (isCash 
+              ? 'Doanh thu bán bánh (Tiền mặt)' 
+              : (method === 'momo'
+                ? 'Doanh thu bán bánh (Ví MoMo)'
+                : method === 'zalopay'
+                ? 'Doanh thu bán bánh (Ví ZaloPay)'
+                : method === 'viettelmoney'
+                ? 'Doanh thu bán bánh (Viettel Money)'
+                : 'Doanh thu bán bánh (VietQR/CK)')),
+          desc: `Thu ${actionDesc} #${num} (${o.customer_name || 'Khách lẻ'})`,
           amount: amt,
         });
       }

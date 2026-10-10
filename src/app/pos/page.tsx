@@ -1561,6 +1561,63 @@ export default function POSPage() {
     if (orderId) recentlyCompletedOrdersRef.current.set(String(orderId), now);
     if (linkedBakeOrderNum) recentlyCompletedOrdersRef.current.set(linkedBakeOrderNum, now);
 
+    // Tính toán số tiền thu nốt tại thời điểm giao bánh
+    const totalAmt = Number(order.total_amount ?? (order as any).totalPrice ?? 0);
+    const depAmt = Number(order.deposit_amount ?? (order as any).depositAmount ?? 0);
+    const remAmt = order.remaining_amount !== undefined 
+      ? Number(order.remaining_amount) 
+      : ((order as any).remainingAmount !== undefined 
+          ? Number((order as any).remainingAmount) 
+          : Math.max(0, totalAmt - depAmt));
+
+    const isCashPay = method === 'cash';
+
+    // 1. Cập nhật dòng tiền vào ca bán hàng hiện tại nếu có thu tiền còn lại
+    if (remAmt > 0) {
+      setShift((prev) => {
+        const updated: ShiftState = {
+          ...prev,
+          cashSales: isCashPay ? (prev.cashSales || 0) + remAmt : (prev.cashSales || 0),
+          transferSales: !isCashPay ? (prev.transferSales || 0) + remAmt : (prev.transferSales || 0),
+        };
+        saveCurrentShiftLocally(updated);
+        saveCurrentShiftToDb(updated).catch(() => {});
+        return updated;
+      });
+
+      // Ghi sổ quỹ dòng tiền (bakery_cashflow) để liên kết kế toán & sổ sách đầy đủ
+      try {
+        const currentCashflow = getCashflow();
+        const nowIso = new Date().toISOString();
+        const newTx: CashflowTransaction = {
+          id: `cf-rem-${orderNum || orderId}-${Date.now()}`,
+          type: 'income',
+          category: 'Thu nốt tiền đặt bánh',
+          amount: remAmt,
+          desc: `Thu nốt tiền còn lại khi giao bánh đơn #${orderNum} (${order.customer_name || 'Khách đặt'}) - ${isCashPay ? 'Tiền mặt' : 'Chuyển khoản'}`,
+          date: nowIso,
+          method: isCashPay ? 'cash' : 'bank',
+        };
+        const updatedCf = [newTx, ...currentCashflow];
+        saveCashflowLocally(updatedCf);
+        saveCashflowToDb(updatedCf, user?.name || 'Thu Ngân').catch(() => {});
+      } catch (cfErr) {
+        console.warn('Lỗi ghi sổ quỹ thu nốt tiền đặt bánh:', cfErr);
+      }
+    }
+
+    const newPaymentRecord = remAmt > 0 ? {
+      id: generateUUID(),
+      method: isCashPay ? 'cash' : 'transfer',
+      amount: remAmt,
+      paid_at: new Date().toISOString(),
+      reference_code: isCashPay ? undefined : `CK-REM-${orderNum}`,
+      notes: 'Thu nốt tiền còn lại khi giao bánh',
+    } : null;
+
+    const currentPayments = Array.isArray(order.payments) ? order.payments : [];
+    const updatedPayments = newPaymentRecord ? [...currentPayments, newPaymentRecord] : currentPayments;
+
     if (typeof window !== 'undefined') {
       try {
         const raw = localStorage.getItem('bakery_orders');
@@ -1583,6 +1640,7 @@ export default function POSPage() {
                   remainingAmount: 0,
                   payment_status: 'paid',
                   final_payment_method: method,
+                  payments: updatedPayments,
                   transfer_proof_image: proofImageBase64 || o.transfer_proof_image,
                   paid_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
@@ -1621,6 +1679,7 @@ export default function POSPage() {
                   remainingAmount: 0,
                   payment_status: 'paid',
                   final_payment_method: method,
+                  payments: updatedPayments,
                   paid_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 };
@@ -1651,6 +1710,7 @@ export default function POSPage() {
       remainingAmount: 0,
       payment_status: 'paid',
       final_payment_method: method,
+      payments: updatedPayments,
       transfer_proof_image: proofImageBase64 || order.transfer_proof_image,
       paid_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -7323,12 +7383,63 @@ export default function POSPage() {
                                 if (po.local_id) targetNumbers.add(String(po.local_id));
                                 if (linkedBakeOrderNum) targetNumbers.add(linkedBakeOrderNum);
 
+                                const remAmt = Number(po.remaining_amount ?? po.remainingAmount ?? 0);
+                                const payMethod = po.final_payment_method || po.payment_method || 'cash';
+                                const isCashPay = payMethod === 'cash';
+
+                                // Cập nhật dòng tiền vào ca bán hàng hiện tại nếu có thu tiền còn lại
+                                if (remAmt > 0) {
+                                  setShift((prev) => {
+                                    const updated: ShiftState = {
+                                      ...prev,
+                                      cashSales: isCashPay ? (prev.cashSales || 0) + remAmt : (prev.cashSales || 0),
+                                      transferSales: !isCashPay ? (prev.transferSales || 0) + remAmt : (prev.transferSales || 0),
+                                    };
+                                    saveCurrentShiftLocally(updated);
+                                    saveCurrentShiftToDb(updated).catch(() => {});
+                                    return updated;
+                                  });
+
+                                  // Ghi sổ quỹ dòng tiền (bakery_cashflow)
+                                  try {
+                                    const currentCashflow = getCashflow();
+                                    const nowIso = new Date().toISOString();
+                                    const newTx: CashflowTransaction = {
+                                      id: `cf-rem-${orderNum || po.id}-${Date.now()}`,
+                                      type: 'income',
+                                      category: 'Thu nốt tiền đặt bánh',
+                                      amount: remAmt,
+                                      desc: `Thu nốt tiền còn lại khi giao bánh đơn #${orderNum} (${po.customer_name || 'Khách đặt'}) - ${isCashPay ? 'Tiền mặt' : 'Chuyển khoản'}`,
+                                      date: nowIso,
+                                      method: isCashPay ? 'cash' : 'bank',
+                                    };
+                                    const updatedCf = [newTx, ...currentCashflow];
+                                    saveCashflowLocally(updatedCf);
+                                    saveCashflowToDb(updatedCf, user?.name || 'Thu Ngân').catch(() => {});
+                                  } catch (cfErr) {
+                                    console.warn('Lỗi ghi sổ quỹ thu nốt tiền đặt bánh:', cfErr);
+                                  }
+                                }
+
+                                const newPaymentRecord = remAmt > 0 ? {
+                                  id: generateUUID(),
+                                  method: isCashPay ? 'cash' : 'transfer',
+                                  amount: remAmt,
+                                  paid_at: new Date().toISOString(),
+                                  reference_code: isCashPay ? undefined : `CK-REM-${orderNum}`,
+                                  notes: 'Thu nốt tiền còn lại khi giao bánh',
+                                } : null;
+
+                                const currentPayments = Array.isArray(po.payments) ? po.payments : [];
+                                const updatedPayments = newPaymentRecord ? [...currentPayments, newPaymentRecord] : currentPayments;
+
                                 const completedPo = {
                                   ...po,
                                   status: 'completed',
                                   remaining_amount: 0,
                                   remainingAmount: 0,
                                   payment_status: 'paid',
+                                  payments: updatedPayments,
                                   paid_at: new Date().toISOString(),
                                   updated_at: new Date().toISOString(),
                                 };

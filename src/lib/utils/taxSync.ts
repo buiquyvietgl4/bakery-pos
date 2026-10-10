@@ -926,10 +926,13 @@ export function generateS2aLedger(
 
   // Lặp qua từng đơn hàng - Phân loại doanh thu theo nhóm thuế: Bánh nhập (1.5%) vs Bánh tự làm (4.5%)
   orders.forEach((order, orderIdx) => {
-    // Bỏ qua đơn đã hủy nếu không phát sinh tiền
+    // Bỏ qua đơn đã hủy hoặc đã hoàn tiền 100% (hàng bán bị trả lại)
     if (order.status === 'cancelled') {
       const oTot = Number(order.total_amount || 0);
       if (oTot === 0) return;
+    }
+    if (order.status === 'refunded') {
+      return;
     }
 
     const rawDate = (order.created_at || order.createdAt || new Date().toISOString()).slice(0, 10);
@@ -954,7 +957,7 @@ export function generateS2aLedger(
       paymentMethod = 'Tiền mặt';
     }
 
-    // 1. Xác định tổng doanh thu của đơn hàng
+    // 1. Xác định tổng doanh thu của đơn hàng (đã giảm trừ tiền hoàn trả nếu có)
     let orderRevenue = Number(order.total_amount ?? order.totalPrice ?? order.subtotal ?? 0);
     if (isNaN(orderRevenue)) orderRevenue = 0;
 
@@ -966,6 +969,11 @@ export function generateS2aLedger(
       } else if (fromNotes.deposit_amount && fromNotes.remaining_amount) {
         orderRevenue = fromNotes.deposit_amount + fromNotes.remaining_amount;
       }
+    }
+
+    // Giảm trừ doanh thu trả lại nếu đơn bị hoàn tiền một phần
+    if (order.refunded_amount && Number(order.refunded_amount) > 0) {
+      orderRevenue = Math.max(0, orderRevenue - Number(order.refunded_amount));
     }
 
     // Nếu đơn hàng không có doanh thu -> Bỏ qua
@@ -1183,7 +1191,12 @@ export function generateS2eLedger(
   // 1. Nạp các hóa đơn bán hàng POS (options.orders)
   if (Array.isArray(options?.orders) && options.orders.length > 0) {
     options.orders.forEach((o: any) => {
-      const amt = Number(o.total_amount || o.totalPrice || 0);
+      const isCompleted = o.status === 'completed';
+      const isPreorder = o.order_type === 'preorder' || o.order_number?.startsWith('BK-PRE') || !!o.preorder_pickup_at;
+      const dep = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
+      const fullTotal = Number(o.total_amount || o.totalPrice || 0);
+      const isDepositOnly = isPreorder && !isCompleted && dep > 0;
+      const amt = isDepositOnly ? dep : fullTotal;
       if (amt <= 0) return;
       const num = o.order_number || o.orderNumber || 'BK';
       const ordId = String(o.id || num);
@@ -1192,6 +1205,7 @@ export function generateS2eLedger(
 
       const rawDate = (o.created_at || o.createdAt || new Date().toISOString()).slice(0, 10);
       const customerName = o.customer_name || o.customerName || 'Khách lẻ';
+      const actionDesc = isDepositOnly ? 'tiền cọc đơn đặt' : 'tiền bán bánh đơn';
 
       // Xác định phương thức thanh toán chuẩn
       const method = (
@@ -1228,7 +1242,7 @@ export function generateS2eLedger(
           amount: amt,
           cashAmt,
           transferAmt,
-          desc: `Thu tiền bán bánh đơn #${num} (${customerName}) [Tiền mặt: ${cashAmt.toLocaleString('vi-VN')}₫ | Chuyển khoản: ${transferAmt.toLocaleString('vi-VN')}₫]`,
+          desc: `Thu ${actionDesc} #${num} (${customerName}) [Tiền mặt: ${cashAmt.toLocaleString('vi-VN')}₫ | Chuyển khoản: ${transferAmt.toLocaleString('vi-VN')}₫]`,
           fund_type: `Kết hợp (TM: ${cashAmt.toLocaleString('vi-VN')}₫ + CK: ${transferAmt.toLocaleString('vi-VN')}₫)`,
           source: 'split',
         });
@@ -1240,7 +1254,7 @@ export function generateS2eLedger(
           isIncome: true,
           amount: amt,
           desc: isCash
-            ? `Thu tiền mặt bán bánh đơn #${num} (${customerName})`
+            ? `Thu tiền mặt ${actionDesc} #${num} (${customerName})`
             : (method === 'momo'
               ? `Thu Ví MoMo đơn #${num} (${customerName})`
               : method === 'zalopay'

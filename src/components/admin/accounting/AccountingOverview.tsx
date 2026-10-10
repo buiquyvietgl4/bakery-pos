@@ -87,7 +87,12 @@ export const isOrderCash = (o: any): boolean => {
 };
 
 export const getOrderCashAndBank = (o: any): { cash: number; bank: number } => {
-  const total = Number(o?.total_amount || o?.totalPrice || 0);
+  const isCompleted = o?.status === 'completed';
+  const isPreorder = o?.order_type === 'preorder' || o?.order_number?.startsWith('BK-PRE') || !!o?.preorder_pickup_at;
+  const dep = Number(o?.deposit_amount !== undefined ? o.deposit_amount : (o?.depositAmount || 0));
+  const fullTotal = Number(o?.total_amount || o?.totalPrice || 0);
+  const total = (isPreorder && !isCompleted && dep > 0) ? dep : fullTotal;
+
   if (total <= 0) return { cash: 0, bank: 0 };
   const method = getOrderPaymentMethod(o);
   if (method === 'cash') return { cash: total, bank: 0 };
@@ -174,9 +179,13 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
 
   const getOrderNetRevenue = (o: any) => {
     if (o.status === 'refunded' || o.status === 'cancelled') return 0;
-    const amt = Number(o.total_amount || o.totalPrice || 0);
+    const isCompleted = o.status === 'completed';
+    const isPreorder = o.order_type === 'preorder' || o.order_number?.startsWith('BK-PRE') || !!o.preorder_pickup_at;
+    const total = Number(o.total_amount || o.totalPrice || 0);
+    const dep = Number(o.deposit_amount !== undefined ? o.deposit_amount : (o.depositAmount || 0));
+    const effectiveTotal = (isPreorder && !isCompleted && dep > 0) ? dep : total;
     const refunded = Number(o.refunded_amount || 0);
-    return Math.max(0, amt - refunded);
+    return Math.max(0, effectiveTotal - refunded);
   };
 
   // 2. Doanh thu thuần (đã trừ hoàn trả / đổi hàng)
@@ -219,8 +228,15 @@ export const AccountingOverview: React.FC<AccountingOverviewProps> = ({
 
   const bankRevenue = Math.max(0, totalRevenue - cashRevenue);
 
-  // 3. Giá vốn hàng bán (COGS BOM ~ 36.5% hoặc 31.8%)
-  const totalCOGS = useMemo(() => Math.round(totalRevenue * 0.365), [totalRevenue]);
+  // 3. Giá vốn hàng bán (COGS BOM - ưu tiên đọc giá vốn thực tế của các đơn hàng)
+  const totalCOGS = useMemo(() => {
+    const sumOrderCogs = periodOrders.reduce((acc, o: any) => {
+      const c = Number(o.total_cogs ?? o.totalCogs ?? 0);
+      return acc + (c > 0 ? c : 0);
+    }, 0);
+    if (sumOrderCogs > 0) return sumOrderCogs;
+    return Math.round(totalRevenue * 0.365);
+  }, [periodOrders, totalRevenue]);
   const flourCost = Math.round(totalCOGS * 0.70);
   const milkPackagingCost = totalCOGS - flourCost;
 
