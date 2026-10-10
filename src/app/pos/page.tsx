@@ -972,6 +972,7 @@ export default function POSPage() {
 
   const prevUrgentCountRef = useRef<number>(0);
   const recentlyCompletedOrdersRef = useRef<Map<string, number>>(new Map());
+  const isLoadingProductsRef = useRef<boolean>(false);
 
   // ── CAKE STICKER LABEL MODAL STATE ──
   const [isStickerModalOpen, setIsStickerModalOpen] = useState(false);
@@ -1274,6 +1275,8 @@ export default function POSPage() {
 
   // 1. Fetch Products with offline-first persistence
   const loadProducts = async () => {
+    if (isLoadingProductsRef.current) return;
+    isLoadingProductsRef.current = true;
     try {
       let currentProducts: CachedProduct[] = [];
       let localProducts: CachedProduct[] = [];
@@ -1383,14 +1386,24 @@ export default function POSPage() {
               } catch {}
               return;
             } else {
-              let merged = mergeProductLists([], data);
+              let merged = mergeProductLists(currentProducts, data);
               try {
                 const currentRecipes = getStoredRecipes();
                 const bPresets = getFullCakeBomConfig()?.birthdayBomPresets || [];
                 const { updatedProducts: synced } = syncBomToProducts(currentRecipes, bPresets, merged);
                 merged = synced;
               } catch {}
-              setProducts(merged);
+
+              // Kiểm tra xem danh sách có thay đổi thực sự không trước khi gọi setProducts để tránh nháy giật giao diện
+              const isDiff = currentProducts.length !== merged.length ||
+                merged.some((mp, idx) => {
+                  const cp = currentProducts[idx];
+                  return !cp || cp.id !== mp.id || cp.selling_price !== mp.selling_price || cp.stock_qty !== mp.stock_qty;
+                });
+
+              if (isDiff || currentProducts.length === 0) {
+                setProducts(merged);
+              }
               if (typeof window !== 'undefined') {
                 localStorage.setItem('bakery_products', JSON.stringify(merged));
               }
@@ -1407,6 +1420,7 @@ export default function POSPage() {
     } catch (err) {
       console.error('Lỗi load products:', err);
     } finally {
+      isLoadingProductsRef.current = false;
       setLoading(false);
     }
   };
@@ -1414,12 +1428,36 @@ export default function POSPage() {
   useEffect(() => {
     loadProducts();
 
+    // Cập nhật số lượng tồn kho tức thì khi có sự kiện thay đổi tồn kho (không cần tải lại toàn bộ Supabase)
+    const handleStocksUpdated = () => {
+      try {
+        const raw = localStorage.getItem('bakery_stocks');
+        if (raw) {
+          const stockMap = JSON.parse(raw);
+          setProducts((prev) =>
+            prev.map((p) => {
+              const matchedQty = stockMap[p.id] ?? (p.name ? stockMap[p.name.toLowerCase().trim()] : undefined);
+              if (matchedQty !== undefined && matchedQty !== p.stock_qty) {
+                return { ...p, stock_qty: matchedQty };
+              }
+              return p;
+            })
+          );
+        }
+      } catch {}
+    };
+
+    // Debounce khi có sự kiện thay đổi cấu trúc sản phẩm để tránh gọi dồn dập
+    let prodDebounceTimer: any = null;
     const handleProductsUpdated = () => {
-      loadProducts();
+      if (prodDebounceTimer) clearTimeout(prodDebounceTimer);
+      prodDebounceTimer = setTimeout(() => {
+        loadProducts();
+      }, 300);
     };
 
     window.addEventListener('bakery_products_updated', handleProductsUpdated);
-    window.addEventListener('bakery_stocks_updated', handleProductsUpdated);
+    window.addEventListener('bakery_stocks_updated', handleStocksUpdated);
 
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('bakery_vietqr_config');
@@ -1484,11 +1522,12 @@ export default function POSPage() {
     window.addEventListener(AUTOBANK_CONFIG_UPDATED_EVENT, handleAutoBankEvt);
 
     return () => {
+      if (prodDebounceTimer) clearTimeout(prodDebounceTimer);
       window.removeEventListener('bakery_db_profile_changed', handleDbProfileChanged);
       window.removeEventListener('bakery_global_sql_synced', handleDbProfileChanged);
       window.removeEventListener('bakery_unified_sql_env_changed', handleDbProfileChanged);
       window.removeEventListener('bakery_products_updated', handleProductsUpdated);
-      window.removeEventListener('bakery_stocks_updated', handleProductsUpdated);
+      window.removeEventListener('bakery_stocks_updated', handleStocksUpdated);
       window.removeEventListener(VIETQR_UPDATED_EVENT, handleVietqrEvt);
       window.removeEventListener(EWALLET_UPDATED_EVENT, handleEwalletEvt);
       window.removeEventListener(AUTOBANK_CONFIG_UPDATED_EVENT, handleAutoBankEvt);

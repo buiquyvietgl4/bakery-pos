@@ -456,10 +456,12 @@ export async function persistProductToSupabase(product: any): Promise<{ success:
     is_preorder_only: isImported ? false : Boolean(product.is_preorder_only),
     cake_type_label: metaData.cake_type_label || 'standard',
     show_on_menu: metaData.show_on_menu !== false,
-    bom_preset_id: metaData.bom_preset_id || null,
+    bom_preset_id: (metaData.bom_preset_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(metaData.bom_preset_id)) ? metaData.bom_preset_id : null,
     is_active: product.is_active !== false,
   };
-  if (product.recipe_id) fullPayload.recipe_id = product.recipe_id;
+  if (product.recipe_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(product.recipe_id)) {
+    fullPayload.recipe_id = product.recipe_id;
+  }
 
   try {
     const { error: fullErr } = await supabase.from('products').upsert(fullPayload);
@@ -480,7 +482,9 @@ export async function persistProductToSupabase(product: any): Promise<{ success:
     is_active: product.is_active !== false,
     is_preorder_only: isImported ? false : Boolean(product.is_preorder_only),
   };
-  if (product.recipe_id) standardPayload.recipe_id = product.recipe_id;
+  if (product.recipe_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(product.recipe_id)) {
+    standardPayload.recipe_id = product.recipe_id;
+  }
 
   try {
     const { error: stdErr } = await supabase.from('products').upsert(standardPayload);
@@ -574,6 +578,15 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
           import_price: existing.import_price || decoded.import_price,
           barcode: existing.barcode || decoded.barcode,
         });
+      } else {
+        // Giữ nguyên sản phẩm chỉ có ở máy cục bộ (hoặc mới đồng bộ từ BOM) chưa có trên Supabase
+        const localKey = decoded.id || nameKey;
+        const localVal = localStocks[localKey] ?? (nameKey ? localStocks[nameKey] : undefined);
+        productMap.set(localKey, {
+          ...decoded,
+          stock_qty: localVal !== undefined ? localVal : (decoded.stock_qty ?? 10),
+        });
+        if (nameKey) nameToKeyMap.set(nameKey, localKey);
       }
     }
   }
@@ -687,7 +700,9 @@ export function syncBomToProducts(
         : (cost > 0 ? Math.round(cost / 0.35 / 1000) * 1000 : 35000);
 
       const isValidUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-      const prodId = isValidUuid(rec.product_id) ? rec.product_id : (isValidUuid(rec.id) ? rec.id : generateUUID());
+      const prodId = isValidUuid(rec.product_id)
+        ? rec.product_id
+        : (isValidUuid(rec.id) ? rec.id : toValidSupabaseUuid(`bom-recipe-${rec.id || recName}`));
 
       const newProd = {
         id: prodId,
@@ -747,7 +762,9 @@ export function syncBomToProducts(
       const cost = Math.round(sellPrice * targetCostPct / 100);
 
       const isValidUuid = (val: any) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val);
-      const prodId = isValidUuid(preset.id) ? preset.id : generateUUID();
+      const prodId = isValidUuid(preset.id)
+        ? preset.id
+        : toValidSupabaseUuid(`bom-preset-${preset.id || presetName}`);
 
       const newProd = {
         id: prodId,
@@ -783,7 +800,7 @@ export function syncBomToProducts(
   if (addedCount > 0 && typeof window !== 'undefined') {
     try {
       localStorage.setItem('bakery_products', JSON.stringify(result));
-      window.dispatchEvent(new Event('bakery_products_updated'));
+      // Không tự dispatch event bakery_products_updated ở đây để chặn vòng lặp vô hạn gây nháy màn hình POS
     } catch {}
   }
 
