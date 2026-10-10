@@ -4709,7 +4709,15 @@ export default function AdminDashboard() {
                 <div>
                   <div className="aspect-4/3 rounded-2xl bg-zinc-100 overflow-hidden relative group mb-3">
                     {p.image_url ? (
-                      <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
+                      <img
+                        src={p.image_url}
+                        alt={p.name}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = getDefaultCakeImageUrl(p.name, p.category);
+                        }}
+                      />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center text-zinc-300 text-xs gap-1">
                         <Camera className="w-8 h-8 stroke-1" /> Chưa có ảnh

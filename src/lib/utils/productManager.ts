@@ -160,23 +160,35 @@ export function unmarkProductDeleted(id: string, name?: string): void {
 
 /**
  * Lọc bỏ tất cả sản phẩm đã bị xóa hoặc có cờ is_active = false.
+ * Đồng thời tự động phục hồi các đường dẫn ảnh bị lỗi 404 (Unsplash photo ID cũ đã bị gỡ).
  */
 export function filterActiveProducts(products: any[]): any[] {
   if (!Array.isArray(products) || products.length === 0) return [];
   const deletedSet = getDeletedProductIds();
 
-  return products.filter((p) => {
-    if (!p) return false;
-    if (p.is_active === false) return false;
+  return products
+    .filter((p) => {
+      if (!p) return false;
+      if (p.is_active === false) return false;
 
-    const idKey = String(p.id || '').toLowerCase().trim();
-    const nameKey = String(p.name || '').toLowerCase().trim();
+      const idKey = String(p.id || '').toLowerCase().trim();
+      const nameKey = String(p.name || '').toLowerCase().trim();
 
-    if (idKey && deletedSet.has(idKey)) return false;
-    if (nameKey && deletedSet.has(nameKey)) return false;
+      if (idKey && deletedSet.has(idKey)) return false;
+      if (nameKey && deletedSet.has(nameKey)) return false;
 
-    return true;
-  });
+      return true;
+    })
+    .map((p) => {
+      // Tự động phục hồi ảnh bị lỗi 404 do Unsplash gỡ photo ID cũ (1535141192574)
+      if (typeof p.image_url === 'string' && p.image_url.includes('1535141192574')) {
+        return {
+          ...p,
+          image_url: getDefaultCakeImageUrl(p.name || '', p.category || ''),
+        };
+      }
+      return p;
+    });
 }
 
 /**
@@ -604,6 +616,8 @@ export function mergeProductLists(localList: any[], supabaseList: any[]): any[] 
   return Array.from(productMap.values());
 }
 
+export const DEFAULT_CAKE_FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1588195538326-c5b1e9f80a1b?w=600&auto=format&fit=crop';
+
 /**
  * Lấy ảnh bánh mặc định chất lượng cao dựa theo tên và phân loại bánh.
  */
@@ -633,7 +647,7 @@ export function getDefaultCakeImageUrl(name: string, category?: string): string 
   }
   // 6. Bánh sinh nhật vani, whipping, kem sữa, bento, trái cây
   if (n.includes('sinh nhật') || cat.includes('sinh nhật') || cat.includes('kem') || n.includes('bento') || n.includes('whipping')) {
-    return 'https://images.unsplash.com/photo-1535141192574-5d4897c13136?w=600&auto=format&fit=crop';
+    return 'https://images.unsplash.com/photo-1588195538326-c5b1e9f80a1b?w=600&auto=format&fit=crop';
   }
   // 7. Bánh su kem, choux
   if (n.includes('su kem') || n.includes('choux')) {
@@ -661,8 +675,13 @@ export function syncBomToProducts(
   const prodMap = new Map<string, any>();
   const nameMap = new Map<string, any>();
 
+  let hasImageHealed = false;
   for (const p of currentProducts) {
     if (!p) continue;
+    if (typeof p.image_url === 'string' && p.image_url.includes('1535141192574')) {
+      p.image_url = getDefaultCakeImageUrl(p.name || '', p.category || '');
+      hasImageHealed = true;
+    }
     const pId = String(p.id || '').toLowerCase().trim();
     const pName = String(p.name || '').toLowerCase().trim();
     if (pId) prodMap.set(pId, p);
@@ -729,11 +748,12 @@ export function syncBomToProducts(
       addedCount++;
       persistProductToSupabase(newProd).catch(() => {});
     } else {
-      // Nếu sản phẩm đã có nhưng chưa có ảnh hoặc ảnh trống -> bổ sung ảnh mặc định
-      if (!existing.image_url || existing.image_url === '') {
+      // Nếu sản phẩm đã có nhưng chưa có ảnh hoặc ảnh trống hoặc ảnh lỗi 404 cũ -> sửa ảnh mặc định
+      if (!existing.image_url || existing.image_url === '' || existing.image_url.includes('1535141192574')) {
         existing.image_url = getDefaultCakeImageUrl(recName, rec.category);
         if (!existing.bom_preset_id) existing.bom_preset_id = rec.id;
         if (!existing.recipe_id) existing.recipe_id = rec.id;
+        hasImageHealed = true;
       }
     }
   }
@@ -792,14 +812,15 @@ export function syncBomToProducts(
       addedCount++;
       persistProductToSupabase(newProd).catch(() => {});
     } else {
-      if (!existing.image_url || existing.image_url === '') {
+      if (!existing.image_url || existing.image_url === '' || existing.image_url.includes('1535141192574')) {
         existing.image_url = getDefaultCakeImageUrl(presetName, 'Bánh kem & Bánh đặt');
         if (!existing.bom_preset_id) existing.bom_preset_id = preset.id;
+        hasImageHealed = true;
       }
     }
   }
 
-  if (addedCount > 0 && typeof window !== 'undefined') {
+  if ((addedCount > 0 || hasImageHealed) && typeof window !== 'undefined') {
     try {
       localStorage.setItem('bakery_products', JSON.stringify(result));
       // Không tự dispatch event bakery_products_updated ở đây để chặn vòng lặp vô hạn gây nháy màn hình POS

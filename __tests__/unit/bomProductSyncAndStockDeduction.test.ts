@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { syncBomToProducts, getDefaultCakeImageUrl, isProductFromBom, deleteProductByBomRef } from '@/lib/utils/productManager';
+import { 
+  syncBomToProducts, 
+  getDefaultCakeImageUrl, 
+  isProductFromBom, 
+  deleteProductByBomRef,
+  filterActiveProducts,
+  DEFAULT_CAKE_FALLBACK_IMAGE,
+} from '@/lib/utils/productManager';
 import { deductRecipeIngredients, getBakeryIngredients, saveBakeryIngredients } from '@/lib/utils/inventoryDeductionManager';
 
 describe('BOM to Products Sync & Ingredient Stock Deduction', () => {
@@ -20,6 +27,32 @@ describe('BOM to Products Sync & Ingredient Stock Deduction', () => {
 
       const imgSuKem = getDefaultCakeImageUrl('Bánh su kem vani');
       expect(imgSuKem).toContain('images.unsplash.com');
+    });
+
+    it('bánh sinh nhật whipping/vani trả về ảnh hợp lệ đang hoạt động và không dùng link ảnh 404 cũ', () => {
+      const imgWhipping = getDefaultCakeImageUrl('BOM Bánh Sinh Nhật Whipping Vani 18cm (Tiêu chuẩn)');
+      // Không được trả về ảnh ID cũ đã bị Unsplash xóa (1535141192574)
+      expect(imgWhipping).not.toContain('1535141192574');
+      // Trả về ảnh mới hợp lệ (1588195538326)
+      expect(imgWhipping).toContain('1588195538326');
+      expect(DEFAULT_CAKE_FALLBACK_IMAGE).toContain('1588195538326');
+    });
+
+    it('filterActiveProducts tự động phục hồi bánh có ảnh bị lỗi 404 Unsplash', () => {
+      const brokenProducts = [
+        {
+          id: 'cake-01',
+          name: 'BOM Bánh Sinh Nhật Whipping Vani 18cm (Tiêu chuẩn)',
+          category: 'Bánh kem & Bánh đặt',
+          image_url: 'https://images.unsplash.com/photo-1535141192574-5d4897c13136?w=600&auto=format&fit=crop',
+          is_active: true,
+        },
+      ];
+
+      const healed = filterActiveProducts(brokenProducts);
+      expect(healed.length).toBe(1);
+      expect(healed[0].image_url).not.toContain('1535141192574');
+      expect(healed[0].image_url).toContain('1588195538326');
     });
   });
 

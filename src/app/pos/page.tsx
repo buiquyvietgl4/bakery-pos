@@ -12,6 +12,7 @@ import {
   decodeProductWithMeta,
   mergeProductLists,
   syncBomToProducts,
+  getDefaultCakeImageUrl,
 } from '@/lib/utils/productManager';
 import { getStoredRecipes } from '@/lib/utils/recipeCalculator';
 import { getFullCakeBomConfig } from '@/lib/utils/cakeBomManager';
@@ -5341,6 +5342,10 @@ export default function POSPage() {
                           alt={product.name}
                           className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-500 ease-out"
                           loading="lazy"
+                          onError={(e) => {
+                            e.currentTarget.onerror = null;
+                            e.currentTarget.src = getDefaultCakeImageUrl(product.name, product.category);
+                          }}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-zinc-300 text-xs font-medium">
@@ -10540,7 +10545,15 @@ export default function POSPage() {
                           <div className="flex items-center gap-3 min-w-[220px]">
                             <div className="w-12 h-12 rounded-xl bg-stone-100 overflow-hidden shrink-0 relative">
                               {product.image_url ? (
-                                <img src={product.image_url} alt={product.name} className="w-full h-full object-cover" />
+                                <img
+                                  src={product.image_url}
+                                  alt={product.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => {
+                                    e.currentTarget.onerror = null;
+                                    e.currentTarget.src = getDefaultCakeImageUrl(product.name, product.category);
+                                  }}
+                                />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-zinc-300 text-[10px]">
                                   No img
