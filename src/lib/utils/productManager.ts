@@ -217,7 +217,9 @@ export async function deleteProductEverywhere(
 
   // 3. Xóa trong IndexedDB Dexie
   try {
-    await db.products.delete(id);
+    if (db?.products) {
+      await db.products.delete(id);
+    }
   } catch (dbErr) {
     console.warn('Lỗi xóa IndexedDB:', dbErr);
   }
@@ -806,3 +808,122 @@ export function syncBomToProducts(
 
   return { updatedProducts: result, addedCount };
 }
+
+/**
+ * Kiểm tra xem một sản phẩm có thuộc định mức BOM (Công thức bánh thường hoặc BOM bánh sinh nhật) hay không.
+ * Bánh thuộc BOM mặc định không được phép xóa ở mục Bánh & Ảnh, chỉ bị xóa khi xóa BOM của bánh.
+ */
+export function isProductFromBom(
+  product: any,
+  recipesList?: any[],
+  birthdayPresetsList?: any[]
+): boolean {
+  if (!product) return false;
+
+  // 1. Kiểm tra cờ liên kết trực tiếp
+  if (product.bom_preset_id || product.recipe_id) return true;
+
+  const pId = String(product.id || '').toLowerCase().trim();
+  const pName = String(product.name || '').toLowerCase().trim();
+
+  // 2. Kiểm tra danh sách recipes (bánh thường có BOM)
+  let recipes = recipesList;
+  if (!recipes && typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_recipes');
+      if (raw) recipes = JSON.parse(raw);
+    } catch {}
+  }
+  if (Array.isArray(recipes)) {
+    for (const r of recipes) {
+      if (!r) continue;
+      const rId = String(r.id || '').toLowerCase().trim();
+      const rProdId = String(r.product_id || '').toLowerCase().trim();
+      const rName = String(r.name || '').toLowerCase().trim();
+      if (
+        (rId && (pId === rId || rId === String(product.recipe_id || '').toLowerCase().trim())) ||
+        (rProdId && pId === rProdId) ||
+        (rName && pName === rName)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  // 3. Kiểm tra danh sách birthdayPresets (bánh sinh nhật có BOM)
+  let bPresets = birthdayPresetsList;
+  if (!bPresets && typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_full_bom_config');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed?.birthdayBomPresets)) {
+          bPresets = parsed.birthdayBomPresets;
+        }
+      }
+    } catch {}
+  }
+  if (Array.isArray(bPresets)) {
+    for (const b of bPresets) {
+      if (!b) continue;
+      const bId = String(b.id || '').toLowerCase().trim();
+      const bName = String(b.name || '').toLowerCase().trim();
+      if (
+        (bId && (pId === bId || bId === String(product.bom_preset_id || '').toLowerCase().trim())) ||
+        (bName && pName === bName)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Tự động xóa sản phẩm tương ứng trong mục Bánh & Ảnh khi một công thức hoặc định mức BOM bị xóa.
+ */
+export async function deleteProductByBomRef(
+  bomId: string,
+  bomName?: string
+): Promise<{ success: boolean; deletedCount: number }> {
+  let deletedCount = 0;
+  if (typeof window === 'undefined') return { success: true, deletedCount: 0 };
+
+  try {
+    const raw = localStorage.getItem(BAKERY_PRODUCTS_KEY);
+    if (!raw) return { success: true, deletedCount: 0 };
+    const prods = JSON.parse(raw);
+    if (!Array.isArray(prods) || prods.length === 0) return { success: true, deletedCount: 0 };
+
+    const bIdLower = String(bomId || '').toLowerCase().trim();
+    const bNameLower = String(bomName || '').toLowerCase().trim();
+
+    const targets = prods.filter((p: any) => {
+      if (!p) return false;
+      const pId = String(p.id || '').toLowerCase().trim();
+      const pName = String(p.name || '').toLowerCase().trim();
+      const rId = String(p.recipe_id || '').toLowerCase().trim();
+      const presetId = String(p.bom_preset_id || '').toLowerCase().trim();
+
+      const matchId = Boolean(bIdLower && (pId === bIdLower || rId === bIdLower || presetId === bIdLower));
+      const matchName = Boolean(bNameLower && pName === bNameLower);
+
+      return matchId || matchName;
+    });
+
+    for (const t of targets) {
+      await deleteProductEverywhere(t.id, t.name);
+      deletedCount++;
+    }
+
+    if (deletedCount > 0) {
+      window.dispatchEvent(new Event('bakery_products_updated'));
+    }
+  } catch (err) {
+    console.warn('Lỗi deleteProductByBomRef:', err);
+  }
+
+  return { success: true, deletedCount };
+}
+

@@ -36,6 +36,8 @@ import {
   persistProductToSupabase,
   syncBomToProducts,
   getDefaultCakeImageUrl,
+  isProductFromBom,
+  deleteProductByBomRef,
 } from '@/lib/utils/productManager';
 import { deductRecipeIngredients, getBakeryIngredients } from '@/lib/utils/inventoryDeductionManager';
 import {
@@ -2570,10 +2572,21 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteRecipe = async (id: string, name: string) => {
-    if (confirm(`Bạn có chắc chắn muốn xóa công thức bánh "${name}"?`)) {
+    if (confirm(`Bạn có chắc chắn muốn xóa công thức bánh "${name}"?\n(Bánh này cũng sẽ được tự động xóa khỏi danh sách Bánh & Ảnh)`)) {
       const updated = recipes.filter((r) => r.id !== id);
       setRecipes(updated);
       await deleteRecipeEverywhere(id, name);
+      // Cập nhật lại state products trong Admin (xóa sản phẩm tương ứng khỏi giao diện)
+      setProducts((prev) =>
+        prev.filter((p) => {
+          const pId = String(p.id).toLowerCase().trim();
+          const pName = String(p.name).toLowerCase().trim();
+          const rId = String(id).toLowerCase().trim();
+          const rName = String(name).toLowerCase().trim();
+          const pRecId = String(p.recipe_id || '').toLowerCase().trim();
+          return pId !== rId && pRecId !== rId && pName !== rName;
+        })
+      );
     }
   };
 
@@ -3346,6 +3359,19 @@ export default function AdminDashboard() {
   };
 
   const handleDeleteProduct = async (id: string, name: string) => {
+    const targetProd = products.find(
+      (p) => p.id === id || String(p.name).toLowerCase().trim() === String(name).toLowerCase().trim()
+    );
+    const birthdayPresets = getFullCakeBomConfig()?.birthdayBomPresets || [];
+    if (targetProd && isProductFromBom(targetProd, recipes, birthdayPresets)) {
+      alert(
+        `🔒 BÁNH THUỘC ĐỊNH MỨC BOM!\n\n` +
+        `Bánh "${name}" được tạo tự động từ Định Mức BOM nên không thể xóa tại mục "Bánh & Thực Đơn".\n\n` +
+        `👉 Bánh này sẽ chỉ tự động bị xóa khi bạn xóa Công thức/Định mức BOM của bánh trong tab "Định Mức BOM".`
+      );
+      return;
+    }
+
     if (confirm(`Bạn có chắc chắn muốn xóa bánh "${name}" khỏi thực đơn?`)) {
       const updated = products.filter(
         (p) => p.id !== id && String(p.name).toLowerCase().trim() !== String(name).toLowerCase().trim()
@@ -4769,12 +4795,33 @@ export default function AdminDashboard() {
                         <option value="imported">📦 Nhập bán (1.5%)</option>
                       </select>
                     </div>
+                    {isProductFromBom(p, recipes) && (
+                      <span
+                        className="text-[10px] font-black px-1.5 py-0.5 rounded-md bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1 shrink-0"
+                        title="Bánh được quản lý từ Định mức BOM (chỉ xóa khi xóa BOM của bánh)"
+                      >
+                        <Lock className="w-2.5 h-2.5 text-purple-600" />
+                        BOM
+                      </span>
+                    )}
                     <button
                       onClick={() => handleDeleteProduct(p.id, p.name)}
-                      className="text-zinc-300 hover:text-rose-500 p-1 transition cursor-pointer shrink-0"
-                      title="Xóa bánh khỏi thực đơn"
+                      className={`p-1 transition cursor-pointer shrink-0 ${
+                        isProductFromBom(p, recipes)
+                          ? 'text-purple-400 hover:text-purple-700'
+                          : 'text-zinc-300 hover:text-rose-500'
+                      }`}
+                      title={
+                        isProductFromBom(p, recipes)
+                          ? 'Bánh thuộc BOM (chỉ xóa khi xóa BOM của bánh)'
+                          : 'Xóa bánh khỏi thực đơn'
+                      }
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      {isProductFromBom(p, recipes) ? (
+                        <Lock className="w-3.5 h-3.5" />
+                      ) : (
+                        <Trash2 className="w-3.5 h-3.5" />
+                      )}
                     </button>
                   </div>
                   <h3 className="font-black text-sm text-zinc-900 mt-0.5 line-clamp-1">{p.name}</h3>

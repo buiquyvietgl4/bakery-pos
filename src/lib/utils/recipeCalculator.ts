@@ -297,6 +297,14 @@ export async function deleteRecipeEverywhere(id: string, name?: string): Promise
   autoSyncToLocalSqlFolder().catch(() => {});
   broadcastRecipeChange('delete', { id, name });
 
+  // Tự động xóa sản phẩm tương ứng trong danh mục Bánh & Thực đơn khi xóa BOM
+  try {
+    const { deleteProductByBomRef } = await import('@/lib/utils/productManager');
+    await deleteProductByBomRef(id, name);
+  } catch (e) {
+    console.warn('Lỗi deleteProductByBomRef khi xóa recipe:', e);
+  }
+
   try {
     if (typeof navigator !== 'undefined' && navigator.onLine && !isLocalMode()) {
       try {
@@ -320,6 +328,19 @@ export async function deleteAllRecipesEverywhere(recipesToDelete: BakeryRecipe[]
   if (Array.isArray(recipesToDelete)) {
     recipesToDelete.forEach((r) => markRecipeAsDeleted(r.id, r.name));
   }
+
+  // Tự động xóa tất cả các sản phẩm bánh tương ứng trong danh mục Bánh & Thực đơn
+  try {
+    const { deleteProductByBomRef } = await import('@/lib/utils/productManager');
+    if (Array.isArray(recipesToDelete)) {
+      for (const r of recipesToDelete) {
+        await deleteProductByBomRef(r.id, r.name);
+      }
+    }
+  } catch (e) {
+    console.warn('Lỗi deleteProductByBomRef khi deleteAllRecipesEverywhere:', e);
+  }
+
   if (typeof window !== 'undefined') {
     try {
       localStorage.setItem(STORAGE_KEY_RECIPES, '[]');

@@ -784,7 +784,7 @@ export async function broadcastClearDemoOrders() {
  * Để tất cả máy tính và điện thoại đồng bộ tức thì menu và ảnh trong ~50ms
  */
 export async function broadcastProductChange(payload: ProductChangePayload) {
-  if (isLocalMode()) return;
+  if (isLocalMode() || (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test')) return;
   try {
     const channel = ensureSyncChannel();
     if (channel) {

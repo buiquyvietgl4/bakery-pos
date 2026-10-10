@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { syncBomToProducts, getDefaultCakeImageUrl } from '@/lib/utils/productManager';
+import { syncBomToProducts, getDefaultCakeImageUrl, isProductFromBom, deleteProductByBomRef } from '@/lib/utils/productManager';
 import { deductRecipeIngredients, getBakeryIngredients, saveBakeryIngredients } from '@/lib/utils/inventoryDeductionManager';
 
 describe('BOM to Products Sync & Ingredient Stock Deduction', () => {
@@ -222,6 +222,57 @@ describe('BOM to Products Sync & Ingredient Stock Deduction', () => {
       const updated = getBakeryIngredients();
       expect(updated.length).toBe(1);
       expect(updated[0].name).toBe('Hạt chia hữu cơ');
+    });
+  });
+
+  describe('isProductFromBom (Kiểm tra bánh có thuộc định mức BOM)', () => {
+    it('nhận diện chính xác bánh thuộc BOM theo recipe_id và bom_preset_id', () => {
+      const prodRecipe = { id: 'p1', name: 'Bánh Mì Chuột', recipe_id: 'rec-01' };
+      const prodPreset = { id: 'p2', name: 'Bánh Sinh Nhật Vani', bom_preset_id: 'preset-01' };
+      const prodFree = { id: 'p3', name: 'Nước Ngọt Coca', product_type: 'imported' };
+
+      expect(isProductFromBom(prodRecipe)).toBe(true);
+      expect(isProductFromBom(prodPreset)).toBe(true);
+      expect(isProductFromBom(prodFree)).toBe(false);
+    });
+
+    it('nhận diện chính xác theo tên khớp với công thức BOM hiện có', () => {
+      const recipes = [{ id: 'rec-baguette', name: 'Bánh Mì Chuột Giòn' }];
+      const prod = { id: 'p-custom', name: 'Bánh Mì Chuột Giòn' };
+
+      expect(isProductFromBom(prod, recipes)).toBe(true);
+
+      const prodOther = { id: 'p-other', name: 'Bánh Bông Lan Trứng Muối' };
+      expect(isProductFromBom(prodOther, recipes)).toBe(false);
+    });
+  });
+
+  describe('deleteProductByBomRef (Xóa bánh khi xóa BOM)', () => {
+    it('tự động xóa sản phẩm tương ứng trong danh mục bánh khi xóa BOM recipe hoặc preset', async () => {
+      const products = [
+        { id: 'prod-01', name: 'Bánh Mì Chuột Giòn', recipe_id: 'rec-01', is_active: true },
+        { id: 'prod-02', name: 'Bánh Sinh Nhật Socola', bom_preset_id: 'preset-01', is_active: true },
+        { id: 'prod-03', name: 'Nước Táo Ép', is_active: true },
+      ];
+      localStorage.setItem('bakery_products', JSON.stringify(products));
+
+      // Xóa BOM của Bánh mì chuột (rec-01)
+      const res1 = await deleteProductByBomRef('rec-01', 'Bánh Mì Chuột Giòn');
+      expect(res1.deletedCount).toBe(1);
+
+      const rawAfter1 = localStorage.getItem('bakery_products');
+      const prodsAfter1 = JSON.parse(rawAfter1 || '[]');
+      expect(prodsAfter1.some((p: any) => p.name === 'Bánh Mì Chuột Giòn')).toBe(false);
+      expect(prodsAfter1.some((p: any) => p.name === 'Bánh Sinh Nhật Socola')).toBe(true);
+
+      // Xóa BOM preset của Bánh sinh nhật socola (preset-01)
+      const res2 = await deleteProductByBomRef('preset-01', 'Bánh Sinh Nhật Socola');
+      expect(res2.deletedCount).toBe(1);
+
+      const rawAfter2 = localStorage.getItem('bakery_products');
+      const prodsAfter2 = JSON.parse(rawAfter2 || '[]');
+      expect(prodsAfter2.some((p: any) => p.name === 'Bánh Sinh Nhật Socola')).toBe(false);
+      expect(prodsAfter2.some((p: any) => p.name === 'Nước Táo Ép')).toBe(true);
     });
   });
 });

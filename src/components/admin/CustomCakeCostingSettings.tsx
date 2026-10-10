@@ -27,6 +27,7 @@ import { INITIAL_FULL_CAKE_BOM_CONFIG } from '@/lib/constants/defaultCakeBomData
 import { supabase } from '@/lib/supabase/client';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { filterActiveIngredients } from '@/lib/utils/ingredientManager';
+import { deleteProductByBomRef } from '@/lib/utils/productManager';
 import {
   Cake,
   Plus,
@@ -174,9 +175,14 @@ export function CustomCakeCostingSettings() {
   const handleClearAllBom = () => {
     if (
       confirm(
-        'Bạn có chắc chắn muốn XÓA SẠCH TOÀN BỘ cấu hình BOM bánh sinh nhật (cốt bánh, kem phủ, nhân, hộp, quà tặng, phụ kiện và mẫu BOM)? Dữ liệu sau khi xóa sẽ trở về trạng thái trống.'
+        'Bạn có chắc chắn muốn XÓA SẠCH TOÀN BỘ cấu hình BOM bánh sinh nhật (cốt bánh, kem phủ, nhân, hộp, quà tặng, phụ kiện và mẫu BOM)? Dữ liệu sau khi xóa sẽ trở về trạng thái trống.\n(Các bánh sinh nhật theo BOM trong danh mục Bánh & Thực đơn cũng sẽ được tự động xóa)'
       )
     ) {
+      if (Array.isArray(config.birthdayBomPresets)) {
+        for (const preset of config.birthdayBomPresets) {
+          deleteProductByBomRef(preset.id, preset.name).catch(() => {});
+        }
+      }
       resetFullCakeBomConfig();
       setConfig(EMPTY_FULL_CAKE_BOM_CONFIG);
       setSaveSuccess(true);
@@ -514,9 +520,21 @@ export function CustomCakeCostingSettings() {
   };
 
   const handleDeleteBomPreset = (idx: number) => {
+    const target = config.birthdayBomPresets[idx];
+    if (
+      target &&
+      !confirm(
+        `Bạn có chắc chắn muốn xóa định mức BOM bánh sinh nhật "${target.name}"?\n(Bánh này cũng sẽ được tự động xóa khỏi danh mục Bánh & Thực đơn)`
+      )
+    ) {
+      return;
+    }
     const newConfig = { ...config, birthdayBomPresets: config.birthdayBomPresets.filter((_, i) => i !== idx) };
     setConfig(newConfig);
     saveFullCakeBomConfig(newConfig);
+    if (target) {
+      deleteProductByBomRef(target.id, target.name).catch(() => {});
+    }
   };
 
   return (
