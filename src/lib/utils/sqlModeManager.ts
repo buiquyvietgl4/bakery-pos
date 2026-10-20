@@ -90,6 +90,10 @@ export const BAKERY_DATA_KEYS = [
   'bakery_deleted_order_keys',
   'bakery_oven_batches',
   'bakery_kds_status_locks',
+  'bakery_baking_history',
+  'bakery_system_reset_epoch',
+  'bakery_resolved_transfer_records',
+  'bakery_resolved_return_records',
 ];
 
 export const STORAGE_KEYS_BACKUP = BAKERY_DATA_KEYS;
