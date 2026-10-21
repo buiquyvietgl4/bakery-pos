@@ -4579,7 +4579,7 @@ export default function POSPage() {
   // Auth Guard: Chưa đăng nhập không thể vào Quầy POS
   if (!user) {
     return (
-      <div className="flex-1 min-h-[calc(100vh-4rem)] bg-[#faf7f2] flex items-center justify-center p-4">
+      <div className="flex-1 min-h-[calc(100vh-4rem)] bg-[#faf6f0] flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl border border-amber-200/80 p-6 sm:p-8 max-w-md w-full text-center shadow-xl space-y-5 animate-in zoom-in-95">
           <div className="w-16 h-16 rounded-3xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto shadow-inner">
             <Lock className="w-8 h-8" />
@@ -4613,7 +4613,7 @@ export default function POSPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col lg:flex-row items-start min-h-[calc(100vh-4rem)] bg-[#faf7f2] relative">
+    <div className="flex-1 flex flex-col lg:flex-row items-start min-h-[calc(100vh-4rem)] bg-[#faf6f0] relative">
       {/* Toast thông báo tức thời khi thêm bánh vào giỏ */}
       {cartToast && (
         <div className="fixed top-14 sm:top-16 left-1/2 -translate-x-1/2 z-[99999] bg-zinc-900/95 text-white px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-200 border border-amber-500/40 pointer-events-none">
@@ -4628,7 +4628,7 @@ export default function POSPage() {
       )}
 
       {/* ── THANH CHUYỂN TAB MOBILE (DÍNH Ở ĐỈNH MÀN HÌNH ĐIỆN THOẠI - HIỂN THỊ TOÀN BỘ 6 Ô GỌN GÀNG) ── */}
-      <div className="lg:hidden sticky top-0 grid grid-cols-6 gap-1 bg-[#fbf7f2]/95 backdrop-blur-md border-b border-amber-900/10 p-1.5 shadow-2xs shrink-0 z-30 w-full">
+      <div className="lg:hidden sticky top-0 grid grid-cols-6 gap-1 bg-[#faf6f0]/95 backdrop-blur-md border-b border-amber-900/10 p-1.5 shadow-xs shrink-0 z-30 w-full">
         {/* 1. THỰC ĐƠN */}
         <button
           onClick={() => setMobileTab('menu')}
@@ -4772,7 +4772,7 @@ export default function POSPage() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder="Tìm bánh nhanh hoặc quét mã..."
-                  className="w-full pl-10 pr-8 py-2 rounded-2xl bg-white border border-stone-200/90 text-xs text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25 focus:border-amber-500 transition-all shadow-2xs"
+                  className="w-full pl-10 pr-8 py-2 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 text-xs text-zinc-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:bg-white transition-all shadow-2xs"
                 />
                 {searchQuery && (
                   <button
@@ -4944,7 +4944,7 @@ export default function POSPage() {
                 className={`p-2.5 rounded-2xl border transition flex items-center justify-between text-left shadow-2xs active:scale-98 cursor-pointer ${
                   urgentPreorders.length > 0
                     ? 'bg-rose-50/90 border-rose-300 ring-1 ring-rose-400/40 hover:bg-rose-100/80'
-                    : 'bg-white border-stone-200/90 hover:border-pink-300 hover:bg-pink-50/40'
+                    : 'bg-white/85 backdrop-blur-md border-amber-900/10 hover:border-pink-300 hover:bg-pink-50/40'
                 }`}
                 title="Xem danh sách lịch hẹn giao bánh đặt trước"
               >
@@ -4977,7 +4977,7 @@ export default function POSPage() {
                   setClosingCashInput(expectedCashInRegister);
                   setIsShiftModalOpen(true);
                 }}
-                className="p-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-amber-400 hover:bg-amber-50/40 transition flex items-center justify-between text-left shadow-2xs active:scale-98 cursor-pointer"
+                className="p-2.5 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 hover:border-amber-400 hover:bg-amber-50/40 transition flex items-center justify-between text-left shadow-2xs active:scale-98 cursor-pointer"
                 title="Két tiền ca & Bàn giao ca"
               >
                 <div className="flex items-center gap-2 min-w-0">
@@ -5006,7 +5006,7 @@ export default function POSPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Tìm bánh nhanh (Bông lan, Tiramisu, Croissant...)"
-                className="w-full pl-10 pr-9 py-2.5 rounded-2xl bg-white border border-stone-200/90 text-sm text-zinc-900 placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500/25 focus:border-amber-500 transition-all shadow-2xs"
+                className="w-full pl-10 pr-9 py-2.5 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 text-sm text-zinc-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:bg-white transition-all shadow-2xs"
               />
               {searchQuery && (
                 <button
@@ -5025,7 +5025,7 @@ export default function POSPage() {
                 setBirthdayOrderProduct(null);
                 setIsBirthdayOrderModalOpen(true);
               }}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-rose-500 via-pink-500 to-rose-600 hover:from-rose-600 hover:to-pink-700 text-white text-xs font-black shadow-md shadow-rose-500/25 hover:shadow-rose-500/35 transition-all duration-200 hover:scale-[1.02] active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-rose-500 hover:from-rose-700 hover:to-pink-700 text-white text-xs font-black shadow-lg shadow-rose-600/30 hover:shadow-rose-600/40 transition-all duration-200 hover:scale-[1.02] active:scale-95 cursor-pointer border border-rose-400/30"
             >
               <Cake className="w-4 h-4 animate-bounce duration-1000" />
               <span>🎂 Đặt Bánh Sinh Nhật</span>
@@ -5037,7 +5037,7 @@ export default function POSPage() {
               className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition cursor-pointer ${
                 urgentPreorders.length > 0
                   ? 'bg-rose-50 border-rose-300 text-rose-800 shadow-sm ring-2 ring-rose-400/40 hover:bg-rose-100'
-                  : 'bg-white border-stone-200/90 hover:border-pink-300 text-zinc-700 shadow-2xs hover:bg-pink-50/50'
+                  : 'bg-white/85 backdrop-blur-md border-amber-900/10 hover:border-pink-400 text-stone-700 shadow-2xs hover:shadow-xs transition hover:bg-white hover:-translate-y-0.5'
               }`}
               title="Xem danh sách lịch hẹn giao bánh đặt trước"
             >
@@ -5062,7 +5062,7 @@ export default function POSPage() {
               className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition cursor-pointer ${
                 readyShippingOrders.length > 0
                   ? 'bg-emerald-50 border-emerald-400 text-emerald-950 shadow-sm ring-2 ring-emerald-400/40 hover:bg-emerald-100'
-                  : 'bg-white border-stone-200/90 hover:border-emerald-300 text-zinc-700 shadow-2xs hover:bg-emerald-50/50'
+                  : 'bg-white/85 backdrop-blur-md border-amber-900/10 hover:border-emerald-400 text-stone-700 shadow-2xs hover:shadow-xs transition hover:bg-white hover:-translate-y-0.5'
               }`}
               title="Xem danh sách đơn bánh làm xong ở Bếp đang chờ ship hoặc chờ giao quầy (Bước 3)"
             >
@@ -5078,7 +5078,7 @@ export default function POSPage() {
             {/* Nút Xem Lịch Sử Hóa Đơn Đã Xuất */}
             <button
               onClick={() => setIsInvoiceHistoryOpen(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-amber-400 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-amber-50/50 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 hover:border-amber-400 text-xs font-bold text-stone-700 shadow-2xs hover:shadow-xs transition hover:bg-white hover:-translate-y-0.5 cursor-pointer"
               title="Xem lại các hóa đơn đã xuất và in lại hóa đơn"
             >
               <Receipt className="w-4 h-4 text-amber-600" />
@@ -5094,7 +5094,7 @@ export default function POSPage() {
               className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition shadow-2xs cursor-pointer ${
                 heldOrders.length > 0
                   ? 'bg-amber-500/10 border-amber-400 text-amber-900 hover:bg-amber-500/20'
-                  : 'bg-white border-stone-200/90 hover:border-amber-400 text-zinc-700 hover:bg-amber-50/50'
+                  : 'bg-white/85 backdrop-blur-md border border-amber-900/10 hover:border-amber-400 text-stone-700 shadow-2xs hover:shadow-xs transition hover:bg-white hover:-translate-y-0.5'
               }`}
               title="Xem danh sách các đơn hàng đang tạm lưu"
             >
@@ -5113,7 +5113,7 @@ export default function POSPage() {
                 setOrderToReturn(null);
                 setIsReturnExchangeModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-rose-400 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-rose-50/50 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 hover:border-rose-400 text-xs font-bold text-stone-700 shadow-2xs hover:shadow-xs transition hover:bg-white hover:-translate-y-0.5 cursor-pointer"
               title="Đổi trả hàng hoặc hoàn tiền hóa đơn"
             >
               <RotateCcw className="w-4 h-4 text-rose-600" />
@@ -5125,7 +5125,7 @@ export default function POSPage() {
               <button
                 type="button"
                 onClick={() => setIsSettingsDropdownOpen(!isSettingsDropdownOpen)}
-                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-amber-500 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-amber-50/40 cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 hover:border-amber-500 text-xs font-bold text-stone-700 shadow-2xs hover:shadow-xs transition hover:bg-white hover:-translate-y-0.5 cursor-pointer"
                 title="Cài đặt hệ thống: Máy in, Âm thanh thông báo, Đồng bộ SQL"
               >
                 <div className="relative">
@@ -5240,7 +5240,7 @@ export default function POSPage() {
                 setClosingCashInput(expectedCashInRegister);
                 setIsShiftModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white border border-stone-200/90 hover:border-amber-400 text-xs font-bold text-zinc-700 shadow-2xs hover:shadow-xs transition hover:bg-amber-50/50 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 hover:border-amber-400 text-xs font-bold text-stone-700 shadow-2xs hover:shadow-xs transition hover:bg-white hover:-translate-y-0.5 cursor-pointer"
               title="Két tiền ca & Bàn giao ca"
             >
               <Wallet className="w-4 h-4 text-amber-600" />
@@ -5256,7 +5256,7 @@ export default function POSPage() {
               className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl border text-xs font-bold transition cursor-pointer ${
                 lowStockItems.length > 0
                   ? 'bg-amber-50 border-amber-300 text-amber-900 shadow-2xs hover:bg-amber-100'
-                  : 'bg-white border-stone-200/90 hover:border-emerald-400 text-zinc-700 shadow-2xs hover:bg-emerald-50/50'
+                  : 'bg-white/85 backdrop-blur-md border-amber-900/10 hover:border-emerald-400 text-stone-700 shadow-2xs hover:shadow-xs transition hover:bg-white hover:-translate-y-0.5'
               }`}
               title="Quản lý tồn kho bánh sẵn & bán thành phẩm cốt bánh"
             >
@@ -5321,8 +5321,8 @@ export default function POSPage() {
                   onClick={() => setSelectedCategory(cat)}
                   className={`px-4 py-2 rounded-2xl text-xs font-bold whitespace-nowrap transition-all duration-200 flex items-center gap-1.5 cursor-pointer ${
                     isSelected
-                      ? 'bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 text-white shadow-md shadow-amber-600/30 scale-[1.02]'
-                      : 'bg-[#faf4ec] hover:bg-white text-stone-700 hover:text-amber-950 border border-amber-200/60 shadow-2xs'
+                      ? 'bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 text-white shadow-lg shadow-amber-600/30 scale-[1.03] ring-2 ring-amber-400/40 font-black'
+                      : 'bg-white/80 backdrop-blur-md hover:bg-white text-stone-700 hover:text-amber-950 border border-amber-900/10 hover:border-amber-300 shadow-2xs hover:shadow-xs font-bold hover:scale-[1.01]'
                   }`}
                 >
                   <span>{cat}</span>
@@ -5375,17 +5375,17 @@ export default function POSPage() {
                       }
                       addToCart(product, false, e);
                     }}
-                    className={`group bg-white rounded-3xl p-3 sm:p-3.5 border hover:border-amber-400 hover:shadow-xl hover:shadow-amber-950/10 hover:-translate-y-1.5 transition-all duration-300 text-left flex flex-col justify-between overflow-hidden relative active:scale-[0.98] select-none ${
+                    className={`group rounded-3xl p-3.5 border transition-all duration-300 text-left flex flex-col justify-between overflow-hidden relative active:scale-[0.98] select-none ${
                       isImportedOutOfStock
-                        ? 'border-zinc-300 bg-zinc-100/70 opacity-60 cursor-not-allowed hover:translate-y-0 hover:shadow-none hover:border-zinc-300'
+                        ? 'border-stone-200/90 bg-stone-100/60 opacity-60 cursor-not-allowed hover:translate-y-0 hover:shadow-none'
                         : itemInCart
-                        ? 'border-amber-500 ring-2 ring-amber-400/60 bg-amber-50/15 shadow-md cursor-pointer'
+                        ? 'border-amber-400/90 ring-2 ring-amber-400/50 bg-amber-50/20 shadow-md shadow-amber-950/5 cursor-pointer backdrop-blur-sm'
                         : isOutOfStock
-                        ? 'border-zinc-200/80 bg-zinc-50/40 cursor-pointer'
-                        : 'border-amber-200/40 cursor-pointer'
+                        ? 'border-amber-900/10 bg-white/70 hover:bg-white hover:border-amber-300 hover:shadow-xl hover:shadow-amber-950/10 hover:-translate-y-1.5 cursor-pointer backdrop-blur-sm'
+                        : 'border-amber-900/10 bg-white/90 hover:bg-white hover:border-amber-400 hover:shadow-xl hover:shadow-amber-950/10 hover:-translate-y-1.5 cursor-pointer backdrop-blur-sm'
                     }`}
                   >
-                    <div className="w-full aspect-[16/11] rounded-2xl bg-stone-100 overflow-hidden mb-3 relative shrink-0">
+                    <div className="w-full aspect-[16/11] rounded-2xl bg-amber-50/40 overflow-hidden mb-3 relative shrink-0 shadow-xs group-hover:shadow-md transition-shadow">
                       {product.image_url ? (
                         <img
                           src={product.image_url}
@@ -5451,7 +5451,7 @@ export default function POSPage() {
                     <div className="flex-1 flex flex-col justify-between">
                       <div>
                         <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                          <span className="inline-block text-[11px] text-amber-800/80 font-bold bg-amber-50/80 px-2 py-0.5 rounded-lg truncate max-w-full">
+                          <span className="inline-block text-[11px] text-amber-900 font-bold bg-amber-100/70 border border-amber-900/5 px-2 py-0.5 rounded-lg truncate max-w-full">
                             {product.category}
                           </span>
                           {product.is_semi_finished && (
@@ -5460,12 +5460,12 @@ export default function POSPage() {
                             </span>
                           )}
                         </div>
-                        <h3 className="font-extrabold text-zinc-900 text-xs sm:text-sm line-clamp-2 mb-2 leading-snug group-hover:text-amber-700 transition-colors">
+                        <h3 className="font-black text-stone-900 text-xs sm:text-sm line-clamp-2 mb-2 leading-snug group-hover:text-amber-800 transition-colors">
                           {product.name}
                         </h3>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-stone-100 mt-auto">
+                      <div className="flex items-center justify-between pt-2.5 border-t border-amber-900/10 mt-auto">
                         <span className="font-black text-amber-700 text-sm sm:text-base tracking-tight">
                           {(product.selling_price ?? product.price ?? 0).toLocaleString('vi-VN')}₫
                         </span>
@@ -5512,7 +5512,7 @@ export default function POSPage() {
                             className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black transition-all duration-200 shadow-2xs active:scale-85 active:animate-pop-scale ${
                               isImportedOutOfStock
                                 ? 'bg-zinc-200 text-zinc-400 cursor-not-allowed'
-                                : 'bg-amber-50 hover:bg-amber-600 text-amber-700 hover:text-white group-hover:bg-gradient-to-tr group-hover:from-amber-600 group-hover:to-amber-500 group-hover:text-white group-hover:scale-105 cursor-pointer'
+                                : 'bg-amber-50/90 hover:bg-amber-600 text-amber-700 hover:text-white border border-amber-900/10 group-hover:bg-gradient-to-tr group-hover:from-amber-600 group-hover:to-amber-500 group-hover:text-white group-hover:border-transparent group-hover:scale-105 group-hover:shadow-md group-hover:shadow-amber-600/30 cursor-pointer'
                             }`}
                             title={isImportedOutOfStock ? 'Hàng nhập ngoài đã hết tồn kho, không thể bán' : (product.is_preorder_only ? "Bấm để thêm vào giỏ bán tại quầy ngay" : "Thêm vào giỏ")}
                           >
@@ -5554,9 +5554,9 @@ export default function POSPage() {
       </div>
 
       {/* ── CỘT PHẢI: GIỎ HÀNG (CỐ ĐỊNH DẠNG STICKY TRÊN DESKTOP) ── */}
-      <div className={`w-full lg:w-96 xl:w-[420px] bg-white rounded-3xl shadow-xl shadow-amber-950/5 border border-amber-200/60 flex flex-col justify-between shrink-0 lg:sticky lg:top-20 lg:self-start lg:h-[calc(100vh-6rem)] lg:max-h-[calc(100vh-6rem)] overflow-hidden lg:mr-6 lg:my-3 z-20 ${mobileTab === 'cart' ? 'flex flex-1 min-h-[calc(100vh-4rem)] rounded-none border-none shadow-none m-0' : 'hidden lg:flex'}`}>
+      <div className={`w-full lg:w-96 xl:w-[420px] bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl shadow-amber-950/8 border border-amber-900/10 flex flex-col justify-between shrink-0 lg:sticky lg:top-20 lg:self-start lg:h-[calc(100vh-6rem)] lg:max-h-[calc(100vh-6rem)] overflow-hidden lg:mr-6 lg:my-3 z-20 ${mobileTab === 'cart' ? 'flex flex-1 min-h-[calc(100vh-4rem)] rounded-none border-none shadow-none m-0' : 'hidden lg:flex'}`}>
         {/* Header Giỏ Hàng */}
-        <div className="p-4 border-b border-stone-200/80 flex items-center justify-between shrink-0 bg-white/95 backdrop-blur-md">
+        <div className="p-4 border-b border-amber-900/10 flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md">
           <div className="flex items-center gap-2.5">
             <button
               onClick={() => setMobileTab('menu')}
@@ -5641,10 +5641,10 @@ export default function POSPage() {
             cart.map((item) => (
               <div
                 key={item.product.id}
-                className="p-2.5 sm:p-3 rounded-2xl bg-stone-50/90 hover:bg-stone-50 border border-stone-200/80 flex items-center gap-3 transition-all shadow-2xs group animate-slide-in-right"
+                className="p-2.5 sm:p-3 rounded-2xl bg-stone-50/80 hover:bg-amber-50/30 border border-amber-900/10 hover:border-amber-300 flex items-center gap-3 transition-all shadow-2xs group animate-slide-in-right"
               >
                 {/* Thumbnail Image Bánh */}
-                <div className="w-12 h-12 rounded-xl bg-stone-100 overflow-hidden shrink-0 border border-stone-200/80">
+                <div className="w-12 h-12 rounded-xl bg-amber-50/60 overflow-hidden shrink-0 border border-amber-900/10">
                   {item.product.image_url ? (
                     <img
                       src={item.product.image_url}
@@ -5689,7 +5689,7 @@ export default function POSPage() {
                 </div>
 
                 {/* Stepper Tăng / Giảm */}
-                <div className="flex items-center gap-1 bg-white border border-stone-200 rounded-xl p-1 shadow-2xs">
+                <div className="flex items-center gap-1 bg-white border border-amber-900/10 rounded-xl p-1 shadow-2xs">
                   <button
                     onClick={() => updateQuantity(item.product.id, -1)}
                     className="w-6 h-6 rounded-lg hover:bg-stone-100 flex items-center justify-center text-zinc-600 font-bold transition active:scale-90 cursor-pointer"
@@ -5724,7 +5724,7 @@ export default function POSPage() {
         </div>
 
         {/* Footer Giỏ Hàng & Nút Thanh Toán */}
-        <div className="p-4 border-t border-stone-200/80 bg-stone-50/80 space-y-3 shrink-0">
+        <div className="p-4 border-t border-amber-900/10 bg-amber-50/30 backdrop-blur-md space-y-3 shrink-0">
           <div className="space-y-2 text-xs text-zinc-600">
             <div className="flex justify-between">
               <span>Tạm tính ({cart.reduce((s, i) => s + i.quantity, 0)} món):</span>
@@ -5732,7 +5732,7 @@ export default function POSPage() {
             </div>
 
             {/* MỤC GIẢM GIÁ: CHỌN THEO % HOẶC SỐ TIỀN */}
-            <div className="p-2.5 bg-white rounded-xl border border-stone-200 shadow-2xs space-y-1.5">
+            <div className="p-2.5 bg-white/90 backdrop-blur-sm rounded-2xl border border-amber-900/10 shadow-2xs space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="font-bold text-zinc-700 flex items-center gap-1 text-[11px]">
                   <Tag className="w-3 h-3 text-amber-600" /> Giảm giá:
@@ -5870,7 +5870,7 @@ export default function POSPage() {
                 <span>-{(discountAmount || 0).toLocaleString('vi-VN')}₫</span>
               </div>
             )}
-            <div className="flex justify-between text-sm sm:text-base font-black text-zinc-900 pt-2 border-t border-stone-200">
+            <div className="flex justify-between text-sm sm:text-base font-black text-stone-900 pt-2.5 border-t border-amber-900/10">
               <span>TỔNG CỘNG:</span>
               <span className={`text-amber-700 text-lg sm:text-xl font-black transition-all ${totalPulsing ? 'animate-glow-pulse scale-105 inline-block text-amber-600' : ''}`}>
                 {(totalAmount || 0).toLocaleString('vi-VN')}₫
@@ -5926,7 +5926,7 @@ export default function POSPage() {
               setCapturedTransferProofImage(null);
               setIsCheckoutOpen(true);
             }}
-            className={`w-full py-3.5 rounded-2xl text-white font-black text-sm sm:text-base shadow-xl disabled:opacity-50 disabled:pointer-events-none transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${
+            className={`w-full py-4 rounded-2xl text-white font-black text-sm sm:text-base shadow-xl disabled:opacity-50 disabled:pointer-events-none transition-all duration-300 flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer ${
               cart.length > 0 ? 'animate-shimmer-smooth' : ''
             } ${
               cart.some(
@@ -5935,7 +5935,7 @@ export default function POSPage() {
                   item.quantity > Number(item.product.stock_qty ?? item.product.stock ?? 0)
               )
                 ? 'bg-zinc-700 cursor-not-allowed'
-                : 'bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 hover:from-amber-700 hover:to-orange-600 shadow-amber-600/25 hover:shadow-amber-600/35'
+                : 'bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 hover:from-amber-700 hover:to-orange-600 shadow-amber-600/30 hover:shadow-amber-600/40 hover:-translate-y-0.5'
             }`}
           >
             <Banknote className="w-5 h-5" />

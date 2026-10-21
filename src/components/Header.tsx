@@ -91,7 +91,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-[#fbf7f2]/95 backdrop-blur-xl border-b border-amber-200/50 shadow-xs w-full overflow-x-hidden">
+      <header className="sticky top-0 z-40 bg-[#faf6f0]/90 backdrop-blur-xl border-b border-amber-900/10 shadow-xs w-full overflow-x-hidden">
         <div className="max-w-7xl mx-auto px-1.5 sm:px-6 flex items-center justify-between h-14 sm:h-16 w-full gap-1 sm:gap-2">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-1 sm:gap-3 font-bold text-lg text-amber-950 group shrink-0">
@@ -113,7 +113,7 @@ export default function Header() {
           </Link>
 
           {/* Navigation Tabs - Modern Segmented Pills */}
-          <nav className="flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 bg-[#ebe0d3]/70 rounded-xl sm:rounded-2xl border border-amber-200/40 shrink-0">
+          <nav className="flex items-center gap-0.5 sm:gap-1 p-0.5 sm:p-1 bg-amber-900/5 backdrop-blur-md rounded-xl sm:rounded-2xl border border-amber-900/10 shrink-0">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = pathname.startsWith(item.href);
@@ -175,8 +175,8 @@ export default function Header() {
                   href={item.href}
                   className={`flex items-center justify-center gap-1 sm:gap-2 p-1.5 sm:px-4 sm:py-1.5 rounded-lg sm:rounded-xl text-xs sm:text-sm font-bold transition-all duration-200 ${
                     isActive
-                      ? 'bg-white text-amber-800 shadow-xs shadow-zinc-200'
-                      : 'text-zinc-600 hover:text-amber-900 hover:bg-white/50'
+                      ? 'bg-white text-amber-900 shadow-sm shadow-amber-950/5 font-extrabold'
+                      : 'text-stone-600 hover:text-amber-950 hover:bg-white/60'
                   }`}
                 >
                   <Icon className={`w-4 h-4 ${isActive ? 'text-amber-600' : 'text-zinc-400'}`} />
@@ -209,7 +209,7 @@ export default function Header() {
                   </div>
                 ) : (
                   // Đã đăng nhập tài khoản
-                  <div className="flex items-center gap-0.5 sm:gap-2 bg-stone-100/90 p-0.5 sm:py-1.5 sm:px-3 rounded-xl border border-stone-200 text-xs shadow-2xs shrink-0">
+                  <div className="flex items-center gap-0.5 sm:gap-2 bg-white/80 backdrop-blur-md p-0.5 sm:py-1.5 sm:px-3 rounded-xl border border-amber-900/10 text-xs shadow-2xs shrink-0">
                     <span className="flex items-center gap-1 sm:gap-1.5 font-bold text-zinc-800 text-[11px] sm:text-sm shrink-0 pl-0.5">
                       {isAdmin ? (
                         <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-600 shrink-0" />
