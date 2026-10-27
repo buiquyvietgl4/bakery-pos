@@ -129,6 +129,7 @@ import { AccountingDashboard } from '@/components/admin/accounting/AccountingDas
 import { getOrderCashAndBank } from '@/components/admin/accounting/AccountingOverview';
 import { TaxAccountingSection } from '@/components/admin/tax/TaxAccountingSection';
 import CustomSqlConfigSection from '@/components/admin/CustomSqlConfigSection';
+import SupabaseKeepAliveSection from '@/components/admin/SupabaseKeepAliveSection';
 import LocalSqlConfigSection from '@/components/admin/LocalSqlConfigSection';
 import { ShiftManagementSection } from '@/components/admin/ShiftManagementSection';
 import AccountManagementSection from '@/components/admin/AccountManagementSection';
@@ -8412,6 +8413,9 @@ export default function AdminDashboard() {
 
               {/* KHỐI 1: QUẢN TRỊ ĐA CSDL SQL (CHÍNH & THỬ NGHIỆM) - TÙY BIẾN KẾT NỐI */}
               <CustomSqlConfigSection />
+
+              {/* KHỐI 1.5: CƠ CHẾ CHỐNG KHÓA TẠM THỜI SUPABASE CLOUD (ANTI-INACTIVITY) */}
+              <SupabaseKeepAliveSection />
 
               {/* KHỐI 2: SAO LƯU & ĐẨY ĐỐI SOÁT LÊN CLOUD (Dung lượng CSDL & Ảnh được hiển thị đồng bộ ở đầu Mục Dữ Liệu) */}
 

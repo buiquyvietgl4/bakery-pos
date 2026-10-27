@@ -49,6 +49,21 @@ if (typeof window !== 'undefined') {
   window.addEventListener('bakery_global_sql_synced', () => {
     reinitSupabaseClient();
   });
+
+
+  // Tự động kiểm tra và gửi tín hiệu Chống Tạm Dừng Supabase nếu đã quá 2 ngày (In-App Heartbeat)
+  try {
+    const isTest = typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || Boolean(process.env.VITEST));
+    if (!isTest) {
+      setTimeout(() => {
+        import('./keepAliveManager').then((m) => {
+          m.checkAndTriggerClientKeepAlive();
+        }).catch(() => {});
+      }, 3500);
+    }
+  } catch {
+    // ignore
+  }
 }
 
 function createSafeDummyMutation(table: string, methodName: string) {

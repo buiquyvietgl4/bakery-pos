@@ -1,0 +1,25 @@
+name: Supabase Anti-Inactivity Keep-Alive
+
+on:
+  schedule:
+    # Chạy tự động mỗi 3 ngày lúc 03:00 UTC (10:00 sáng giờ VN)
+    - cron: '0 3 */3 * *'
+  workflow_dispatch: # Cho phép kích hoạt thủ công từ tab Actions trên GitHub
+
+jobs:
+  keepalive:
+    name: Ping Supabase Keep-Alive API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Keep-Alive Signal to Bakery ERP
+        run: |
+          echo "🚀 Sending anti-inactivity ping to Bakery ERP Keep-Alive API..."
+          RESPONSE=$(curl -L -s -w "\nHTTP_STATUS:%{http_code}" -m 30 "https://bakery-pos-one.vercel.app/api/cron/keep-alive/?source=github-actions")
+          echo "$RESPONSE"
+          STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
+          if [ "$STATUS" -eq 200 ]; then
+            echo "✅ Supabase Keep-Alive ping succeeded with HTTP 200!"
+          else
+            echo "⚠️ Non-200 response received: $STATUS. Checking direct REST endpoint..."
+            curl -s -m 20 -H "apikey: sb_publishable_ZH4xsT4R5cWZ3P9uW76IZg_-k3mRtED" "https://fhiuojcvsouwugatnmve.supabase.co/rest/v1/recipes?select=id&limit=1" || true
+          fi
