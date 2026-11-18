@@ -17,7 +17,8 @@
     "config:test": "node scripts/auto_config_vercel_supabase.js --test-supabase",
     "config:all": "node scripts/auto_config_vercel_supabase.js --all",
     "verify:env": "npx tsx scripts/verify_env_integrity.ts",
-    "deploy:prod": "node scripts/auto_config_vercel_supabase.js --deploy"
+    "deploy:prod": "node scripts/auto_config_vercel_supabase.js --deploy",
+    "deploy:dual": "git push origin main && npx vercel --prod --yes"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.115.0",
