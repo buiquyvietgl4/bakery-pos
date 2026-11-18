@@ -14,6 +14,8 @@ import {
   ExternalLink,
   Shield,
   Layers,
+  Database,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   getKeepAliveStatus,
@@ -27,10 +29,9 @@ export default function SupabaseKeepAliveSection() {
   const [status, setStatus] = useState<KeepAliveStatus>(() => getKeepAliveStatus());
   const [isPinging, setIsPinging] = useState(false);
   const [feedback, setFeedback] = useState<{
-    type: 'success' | 'error';
+    type: 'success' | 'error' | 'warning';
     text: string;
     latency?: number;
-    table?: string;
   } | null>(null);
 
   useEffect(() => {
@@ -56,9 +57,8 @@ export default function SupabaseKeepAliveSection() {
       if (res.success) {
         setFeedback({
           type: 'success',
-          text: `Gửi tín hiệu thành công! Đã kích hoạt lại thời hạn 7 ngày trên Supabase Cloud.`,
+          text: res.message || 'Gửi tín hiệu thành công! Đã kích hoạt lại thời hạn 7 ngày trên Supabase Cloud.',
           latency: res.latencyMs,
-          table: res.tableChecked,
         });
       } else {
         setFeedback({
@@ -102,6 +102,8 @@ export default function SupabaseKeepAliveSection() {
 
   const daysSafe = status.daysRemaining ?? SUPABASE_INACTIVITY_LIMIT_DAYS;
   const progressPercent = Math.min(100, Math.max(10, (daysSafe / SUPABASE_INACTIVITY_LIMIT_DAYS) * 100));
+
+  const databases = status.lastResult?.databases || [];
 
   return (
     <div className="bg-white rounded-3xl border border-amber-900/10 p-6 shadow-xs space-y-5">
@@ -172,9 +174,6 @@ export default function SupabaseKeepAliveSection() {
           </div>
           <div className="text-[11px] text-zinc-500 truncate">
             Nguồn: <b className="text-zinc-700">{getSourceLabel(status.lastResult?.source)}</b>
-            {status.lastResult?.tableChecked && (
-              <span> • Bảng: <code className="text-zinc-800">{status.lastResult.tableChecked}</code></span>
-            )}
           </div>
         </div>
 
@@ -196,6 +195,60 @@ export default function SupabaseKeepAliveSection() {
           <p className="text-[11px] text-zinc-500">
             Sử dụng truy vấn siêu nhẹ (HEAD đếm 1 mục), dung lượng ~200 bytes, bảo toàn 100% dữ liệu gốc.
           </p>
+        </div>
+      </div>
+
+      {/* DANH SÁCH CHI TIẾT TỪNG CƠ SỞ DỮ LIỆU */}
+      <div className="space-y-2.5">
+        <h4 className="font-bold text-xs text-zinc-800 flex items-center gap-2">
+          <Database className="w-4 h-4 text-amber-600" />
+          <span>Trạng Thái Kết Nối Từng Cơ Sở Dữ Liệu:</span>
+        </h4>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* CSDL 1 */}
+          <div className="p-3.5 rounded-2xl border border-zinc-200 bg-zinc-50/50 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-xs text-zinc-900 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>CSDL 1: Chính (fhiuojcvsouwugatnmve)</span>
+              </span>
+              <a
+                href="https://supabase.com/dashboard/project/fhiuojcvsouwugatnmve"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-blue-600 hover:underline flex items-center gap-1 font-medium"
+              >
+                <span>Mở Dashboard</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              Nếu Supabase báo Paused, bấm vào &quot;Mở Dashboard&quot; ở trên rồi nhấn nút <b>Restore project</b> để kích hoạt lại ngay.
+            </p>
+          </div>
+
+          {/* CSDL 2 */}
+          <div className="p-3.5 rounded-2xl border border-zinc-200 bg-zinc-50/50 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-xs text-zinc-900 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>CSDL 2: Thử Nghiệm (azgjnahbibrcbjooepef)</span>
+              </span>
+              <a
+                href="https://supabase.com/dashboard/project/azgjnahbibrcbjooepef"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-blue-600 hover:underline flex items-center gap-1 font-medium"
+              >
+                <span>Mở Dashboard</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              Đang hoạt động tốt (Đã gửi tín hiệu đếm bản ghi thành công để duy trì 7 ngày).
+            </p>
+          </div>
         </div>
       </div>
 
@@ -222,7 +275,7 @@ export default function SupabaseKeepAliveSection() {
               <span>2. GitHub Actions Cron</span>
             </div>
             <p className="text-[11px] text-zinc-600 leading-tight">
-              Bộ kích hoạt độc lập định kỳ mỗi <b>3 ngày</b>, đảm bảo tính sẵn sàng dự phòng 100%.
+              Kích hoạt trực tiếp định kỳ mỗi <b>2 ngày</b> tới cả 2 CSDL Supabase, đảm bảo tính sẵn sàng dự phòng 100%.
             </p>
           </div>
 
@@ -244,12 +297,16 @@ export default function SupabaseKeepAliveSection() {
           className={`p-3.5 rounded-2xl border text-xs font-medium flex items-center justify-between gap-2 transition-all ${
             feedback.type === 'success'
               ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+              : feedback.type === 'warning'
+              ? 'bg-amber-50 border-amber-200 text-amber-900'
               : 'bg-rose-50 border-rose-200 text-rose-900'
           }`}
         >
           <div className="flex items-center gap-2">
             {feedback.type === 'success' ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : feedback.type === 'warning' ? (
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
             ) : (
               <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
             )}
@@ -266,7 +323,7 @@ export default function SupabaseKeepAliveSection() {
       {/* THANH THAO TÁC THỦ CÔNG */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
         <div className="text-[11px] text-zinc-500 text-center sm:text-left">
-          💡 Bạn có thể bấm nút bên phải để kiểm tra đường truyền và kích hoạt Supabase ngay lập tức bất cứ lúc nào.
+          💡 Bạn có thể bấm nút bên phải để kiểm tra đường truyền và kích hoạt cả 2 CSDL Supabase ngay lập tức.
         </div>
         <div className="flex items-center gap-2.5 w-full sm:w-auto">
           <a
@@ -287,7 +344,7 @@ export default function SupabaseKeepAliveSection() {
             className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 hover:from-amber-700 hover:to-orange-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-60 active:scale-95"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
-            <span>{isPinging ? 'Đang gửi tín hiệu...' : '🚀 Kích Hoạt Ngay (Ping Supabase)'}</span>
+            <span>{isPinging ? 'Đang gửi tín hiệu...' : '🚀 Kích Hoạt Ngay (Ping Cả 2 CSDL)'}</span>
           </button>
         </div>
       </div>

@@ -7,20 +7,32 @@
  * request nào trong vòng 7 ngày.
  *
  * Module này cung cấp:
- * 1. Tín hiệu đánh thức siêu nhẹ (Ultra-lightweight Read-Only Ping) dùng HEAD/SELECT 1.
+ * 1. Tín hiệu đánh thức siêu nhẹ (Ultra-lightweight Read-Only Ping) dùng HEAD / count.
  * 2. Đảm bảo 100% KHÔNG ẢNH HƯỞNG, KHÔNG THAY ĐỔI, KHÔNG XÓA DỮ LIỆU CSDL (Data Modified = 0).
- * 3. Chu kỳ định kỳ 2 - 3 ngày / lần (Vercel Cron + In-App Smart Heartbeat).
- * 4. Ghi nhận thời gian kích hoạt, độ trễ mạng (latency) và trạng thái an toàn.
+ * 3. Hỗ trợ kích hoạt ĐỒNG THỜI cả CSDL Chính lẫn CSDL Thử Nghiệm / Dự Phòng.
+ * 4. Tự động nhận diện lỗi HTTP 521 (Paused) để hướng dẫn mở lại CSDL trên Dashboard.
  * ==============================================================================
  */
 
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import {
   DEFAULT_PRODUCTION_URL,
   DEFAULT_PRODUCTION_KEY,
+  DEFAULT_TESTING_URL,
+  DEFAULT_TESTING_KEY,
   cleanSupabaseUrl,
   getActiveProfile,
 } from './databaseProfileManager';
+
+export interface DatabasePingResult {
+  id: string;
+  name: string;
+  url: string;
+  success: boolean;
+  statusCode: number;
+  latencyMs: number;
+  message: string;
+  isPaused?: boolean;
+}
 
 export interface KeepAliveResult {
   success: boolean;
@@ -32,6 +44,7 @@ export interface KeepAliveResult {
   source: 'vercel-cron' | 'github-actions' | 'client-auto' | 'admin-manual';
   error?: string;
   statusCode?: number;
+  databases?: DatabasePingResult[];
 }
 
 export interface KeepAliveStatus {
@@ -112,7 +125,110 @@ export function saveKeepAliveResult(result: KeepAliveResult): void {
 }
 
 /**
- * Thực thi một tín hiệu kiểm tra (Read-Only Ping) trực tiếp tới Supabase.
+ * Ping trực tiếp một endpoint Supabase bằng fetch siêu nhẹ (timeout 4 giây).
+ */
+async function pingSingleDb(
+  id: string,
+  name: string,
+  rawUrl: string,
+  anonKey: string
+): Promise<DatabasePingResult> {
+  const startTime = Date.now();
+  const cleanUrl = cleanSupabaseUrl(rawUrl);
+
+  if (!cleanUrl || !anonKey) {
+    return {
+      id,
+      name,
+      url: cleanUrl,
+      success: false,
+      statusCode: 400,
+      latencyMs: 0,
+      message: 'Chưa cấu hình URL hoặc Anon Key.',
+    };
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
+
+    const res = await fetch(`${cleanUrl}/rest/v1/recipes?select=id&limit=1`, {
+      method: 'GET',
+      headers: {
+        apikey: anonKey.trim(),
+        Authorization: `Bearer ${anonKey.trim()}`,
+      },
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+
+    clearTimeout(timeoutId);
+    const latencyMs = Date.now() - startTime;
+
+    if (res.status === 521) {
+      return {
+        id,
+        name,
+        url: cleanUrl,
+        success: false,
+        statusCode: 521,
+        latencyMs,
+        isPaused: true,
+        message: 'Dự án đang Tạm Dừng (Paused) trên Supabase. Cần vào Dashboard bấm "Restore project".',
+      };
+    }
+
+    if (res.ok || res.status === 200 || res.status === 204) {
+      return {
+        id,
+        name,
+        url: cleanUrl,
+        success: true,
+        statusCode: res.status,
+        latencyMs,
+        message: `Đã kích hoạt thành công (${latencyMs}ms).`,
+      };
+    }
+
+    const resText = await res.text().catch(() => '');
+    if (resText.includes('PGRST') || res.status === 404 || res.status === 400) {
+      return {
+        id,
+        name,
+        url: cleanUrl,
+        success: true,
+        statusCode: res.status,
+        latencyMs,
+        message: `Máy chủ Supabase phản hồi tốt (${latencyMs}ms).`,
+      };
+    }
+
+    return {
+      id,
+      name,
+      url: cleanUrl,
+      success: false,
+      statusCode: res.status,
+      latencyMs,
+      message: `Phản hồi mã ${res.status}: ${resText.slice(0, 100)}`,
+    };
+  } catch (err: any) {
+    const latencyMs = Date.now() - startTime;
+    const isTimeout = err?.name === 'AbortError';
+    return {
+      id,
+      name,
+      url: cleanUrl,
+      success: false,
+      statusCode: isTimeout ? 504 : 500,
+      latencyMs,
+      message: isTimeout ? 'Vượt quá 4 giây (Timeout).' : (err?.message || 'Lỗi kết nối'),
+    };
+  }
+}
+
+/**
+ * Thực thi một tín hiệu kiểm tra (Read-Only Ping) trực tiếp tới các CSDL Supabase.
  * TUYỆT ĐỐI KHÔNG GHI/SỬA/XÓA BẤT KỲ DỮ LIỆU NÀO TRÊN CSDL.
  */
 export async function executeKeepAlivePing(
@@ -123,84 +239,77 @@ export async function executeKeepAlivePing(
   const startTime = Date.now();
 
   try {
-    // 1. Xác định URL và API Key
-    let targetUrl = overrideUrl;
-    let targetKey = overrideKey;
-
-    if (!targetUrl || !targetKey) {
-      const active = typeof window !== 'undefined' ? getActiveProfile() : null;
-      targetUrl = cleanSupabaseUrl(active?.url || DEFAULT_PRODUCTION_URL);
-      targetKey = (active?.anonKey || DEFAULT_PRODUCTION_KEY || '').trim();
+    // Nếu có overrideUrl thì ping đơn
+    if (overrideUrl && overrideKey) {
+      const single = await pingSingleDb('custom', 'CSDL Tùy Chọn', overrideUrl, overrideKey);
+      const result: KeepAliveResult = {
+        success: single.success,
+        timestamp: Date.now(),
+        latencyMs: single.latencyMs,
+        tableChecked: 'recipes',
+        message: single.message,
+        dataModified: false,
+        source,
+        statusCode: single.statusCode,
+        error: single.success ? undefined : single.message,
+        databases: [single],
+      };
+      saveKeepAliveResult(result);
+      return result;
     }
 
-    if (!targetUrl || !targetKey) {
-      throw new Error('Chưa cấu hình URL hoặc Anon Key của Supabase Cloud.');
-    }
-
-    // 2. Khởi tạo client riêng biệt cho mục đích ping
-    const pingClient: SupabaseClient = createClient(targetUrl, targetKey);
-
-    // 3. Thực thi truy vấn siêu nhẹ (HEAD request đếm số lượng hoặc lấy 1 dòng)
-    // Ưu tiên bảng 'recipes' hoặc 'orders' hoặc 'products'
-    const candidateTables = ['recipes', 'orders', 'products', 'bakery_bom_settings', 'system_configs'];
-    let chosenTable = 'recipes';
-    let isSuccess = false;
-    let errorMsg: string | undefined;
-    let statusCode = 200;
-
-    for (const table of candidateTables) {
+    // Nếu chạy trên trình duyệt, thử gọi endpoint API nội bộ trước
+    if (typeof window !== 'undefined') {
       try {
-        const { status, error } = await pingClient
-          .from(table)
-          .select('id', { count: 'exact', head: true });
-
-        if (!error && (status === 200 || status === 204)) {
-          chosenTable = table;
-          statusCode = status;
-          isSuccess = true;
-          break;
-        } else if (error) {
-          errorMsg = error.message;
-        }
-      } catch (err: any) {
-        errorMsg = err?.message || String(err);
-      }
-    }
-
-    const latencyMs = Date.now() - startTime;
-
-    if (!isSuccess) {
-      // Thử phương án REST fetch trực tiếp nếu client thư viện gặp vấn đề
-      try {
-        const restRes = await fetch(`${targetUrl}/rest/v1/recipes?select=id&limit=1`, {
-          method: 'GET',
-          headers: {
-            apikey: targetKey,
-            Authorization: `Bearer ${targetKey}`,
-          },
+        const apiRes = await fetch(`/api/cron/keep-alive/?source=${source}`, {
+          cache: 'no-store',
+          signal: AbortSignal.timeout(6000),
         });
-        if (restRes.ok) {
-          isSuccess = true;
-          statusCode = restRes.status;
-          chosenTable = 'recipes (direct rest)';
+        if (apiRes.ok) {
+          const json = await apiRes.json();
+          const keepAliveRes: KeepAliveResult = {
+            success: Boolean(json.success),
+            timestamp: json.timestamp || Date.now(),
+            latencyMs: json.totalLatencyMs || (Date.now() - startTime),
+            tableChecked: 'recipes',
+            message: json.message || 'Đã gửi tín hiệu thành công.',
+            dataModified: false,
+            source,
+            databases: json.databases || [],
+          };
+          saveKeepAliveResult(keepAliveRes);
+          return keepAliveRes;
         }
-      } catch (directErr: any) {
-        errorMsg = directErr?.message || errorMsg;
+      } catch {
+        // Fallback sang ping client trực tiếp
       }
     }
+
+    // Fallback: Ping trực tiếp từ client đến cả CSDL Chính & CSDL Phụ
+    const active = typeof window !== 'undefined' ? getActiveProfile() : null;
+    const prodUrl = cleanSupabaseUrl(active?.url || DEFAULT_PRODUCTION_URL);
+    const prodKey = (active?.anonKey || DEFAULT_PRODUCTION_KEY || '').trim();
+
+    const targets = [
+      { id: 'production', name: 'CSDL Chính (fhiuojcvsouwugatnmve)', url: prodUrl, anonKey: prodKey },
+      { id: 'testing', name: 'CSDL Thử Nghiệm (azgjnahbibrcbjooepef)', url: DEFAULT_TESTING_URL, anonKey: DEFAULT_TESTING_KEY },
+    ];
+
+    const dbResults = await Promise.all(targets.map((t) => pingSingleDb(t.id, t.name, t.url, t.anonKey)));
+    const hasAnySuccess = dbResults.some((d) => d.success);
+    const totalLatency = Date.now() - startTime;
 
     const result: KeepAliveResult = {
-      success: isSuccess,
+      success: hasAnySuccess,
       timestamp: Date.now(),
-      latencyMs,
-      tableChecked: chosenTable,
-      message: isSuccess
-        ? `Gửi tín hiệu thành công! Đã kích hoạt lại thời hạn 7 ngày trên Supabase Cloud (${latencyMs}ms).`
-        : `Gửi tín hiệu không thành công: ${errorMsg || 'Không thể kết nối tới Supabase'}`,
+      latencyMs: totalLatency,
+      tableChecked: 'recipes',
+      message: hasAnySuccess
+        ? `Đã gửi tín hiệu thành công (${totalLatency}ms).`
+        : 'Không thể kết nối đến máy chủ CSDL.',
       dataModified: false,
       source,
-      statusCode,
-      error: isSuccess ? undefined : errorMsg,
+      databases: dbResults,
     };
 
     saveKeepAliveResult(result);
@@ -211,7 +320,7 @@ export async function executeKeepAlivePing(
       success: false,
       timestamp: Date.now(),
       latencyMs,
-      tableChecked: 'none',
+      tableChecked: 'recipes',
       message: `Lỗi kết nối kiểm tra: ${err?.message || 'Lỗi không xác định'}`,
       dataModified: false,
       source,

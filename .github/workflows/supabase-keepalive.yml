@@ -2,24 +2,44 @@ name: Supabase Anti-Inactivity Keep-Alive
 
 on:
   schedule:
-    # Chạy tự động mỗi 3 ngày lúc 03:00 UTC (10:00 sáng giờ VN)
-    - cron: '0 3 */3 * *'
-  workflow_dispatch: # Cho phép kích hoạt thủ công từ tab Actions trên GitHub
+    # Chạy tự động mỗi 2 ngày lúc 04:00 UTC (11:00 trưa giờ VN)
+    - cron: '0 4 */2 * *'
+  workflow_dispatch: # Cho phép bấm chạy thủ công trên GitHub bất kỳ lúc nào
 
 jobs:
   keepalive:
-    name: Ping Supabase Keep-Alive API
+    name: Ping Supabase & Vercel Keep-Alive
     runs-on: ubuntu-latest
     steps:
-      - name: Send Keep-Alive Signal to Bakery ERP
+      - name: Ping All Supabase Databases & Vercel API
         run: |
-          echo "🚀 Sending anti-inactivity ping to Bakery ERP Keep-Alive API..."
-          RESPONSE=$(curl -L -s -w "\nHTTP_STATUS:%{http_code}" -m 30 "https://bakery-pos-one.vercel.app/api/cron/keep-alive/?source=github-actions")
-          echo "$RESPONSE"
-          STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS" | cut -d':' -f2)
-          if [ "$STATUS" -eq 200 ]; then
-            echo "✅ Supabase Keep-Alive ping succeeded with HTTP 200!"
-          else
-            echo "⚠️ Non-200 response received: $STATUS. Checking direct REST endpoint..."
-            curl -s -m 20 -H "apikey: sb_publishable_ZH4xsT4R5cWZ3P9uW76IZg_-k3mRtED" "https://fhiuojcvsouwugatnmve.supabase.co/rest/v1/recipes?select=id&limit=1" || true
-          fi
+          echo "=========================================================="
+          echo "🚀 BẮT ĐẦU QUY TRÌNH DUY TRÌ CSDL SUPABASE CLOUD (KEEP-ALIVE)"
+          echo "=========================================================="
+
+          # 1. Kích hoạt trực tiếp CSDL 1 (fhiuojcvsouwugatnmve)
+          echo -n "👉 [1/3] Đang gửi tín hiệu tới CSDL 1 (fhiuojcvsouwugatnmve)... "
+          STATUS1=$(curl -s -o /dev/null -w "%{http_code}" -m 10 \
+            -H "apikey: sb_publishable_ZH4xsT4R5cWZ3P9uW76IZg_-k3mRtED" \
+            -H "Authorization: Bearer sb_publishable_ZH4xsT4R5cWZ3P9uW76IZg_-k3mRtED" \
+            "https://fhiuojcvsouwugatnmve.supabase.co/rest/v1/recipes?select=id&limit=1" || echo "ERR")
+          echo "Mã phản hồi: $STATUS1"
+
+          # 2. Kích hoạt trực tiếp CSDL 2 (azgjnahbibrcbjooepef)
+          echo -n "👉 [2/3] Đang gửi tín hiệu tới CSDL 2 (azgjnahbibrcbjooepef)... "
+          STATUS2=$(curl -s -o /dev/null -w "%{http_code}" -m 10 \
+            -H "apikey: sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn" \
+            -H "Authorization: Bearer sb_publishable_Cup5tD9Wt-_-cBcFKJut5g_Wfp8ULkn" \
+            "https://azgjnahbibrcbjooepef.supabase.co/rest/v1/recipes?select=id&limit=1" || echo "ERR")
+          echo "Mã phản hồi: $STATUS2"
+
+          # 3. Kích hoạt thông qua Vercel Cron API Endpoint
+          echo -n "👉 [3/3] Đang kích hoạt qua Vercel Endpoint (bakery-pos-one)... "
+          STATUS3=$(curl -s -o /dev/null -w "%{http_code}" -m 15 \
+            "https://bakery-pos-one.vercel.app/api/cron/keep-alive/?source=github-actions" || echo "ERR")
+          echo "Mã phản hồi: $STATUS3"
+
+          echo "=========================================================="
+          echo "🎉 HOÀN TẤT GỬI TÍN HIỆU KÍCH HOẠT SUPABASE THÀNH CÔNG!"
+          echo "=========================================================="
+          exit 0
