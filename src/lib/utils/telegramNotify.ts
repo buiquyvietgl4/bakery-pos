@@ -94,6 +94,8 @@ export async function fetchTelegramConfigFromDb(): Promise<TelegramConfig> {
       .from('recipes')
       .select('notes')
       .eq('name', DB_ROW_NAME)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (!error && data && data.notes) {

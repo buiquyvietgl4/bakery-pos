@@ -2821,3 +2821,117 @@ export async function checkReturnResolvedStatus(orderNumber: string, requestId?:
 
   return null;
 }
+
+export const DB_ROW_DELETED_ORDERS_ID = '00000000-0000-0000-0000-000000000033';
+export const DB_ROW_DELETED_ORDERS_NAME = 'SYS_CONFIG_DELETED_ORDERS';
+
+/**
+ * Lưu danh sách đen đơn hàng đã xóa vĩnh viễn lên Supabase SQL (SYS_CONFIG_DELETED_ORDERS)
+ * Chống 100% hiện tượng máy khác đang offline đẩy ngược đơn đã xóa sống lại (Anti-Resurrection).
+ */
+export async function saveDeletedOrderKeysToDb(keys: string[]): Promise<void> {
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    const cleanKeys = Array.from(
+      new Set(
+        (keys || [])
+          .map((k) => String(k || '').replace(/^#/, '').trim().toLowerCase())
+          .filter(Boolean)
+      )
+    ).slice(-500);
+
+    // Hợp nhất với danh sách đã có trên Cloud để tránh 2 máy xóa đơn ghi đè mất của nhau
+    let merged = cleanKeys;
+    try {
+      const { data } = await supabase
+        .from('recipes')
+        .select('notes')
+        .or(`id.eq.${DB_ROW_DELETED_ORDERS_ID},name.eq.${DB_ROW_DELETED_ORDERS_NAME}`)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data?.notes) {
+        const cloudKeys = JSON.parse(data.notes);
+        if (Array.isArray(cloudKeys)) {
+          merged = Array.from(
+            new Set([
+              ...cloudKeys.map((k: any) => String(k || '').replace(/^#/, '').trim().toLowerCase()).filter(Boolean),
+              ...cleanKeys,
+            ])
+          ).slice(-500);
+        }
+      }
+    } catch {}
+
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem('bakery_deleted_order_keys', JSON.stringify(merged));
+      } catch {}
+    }
+
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_DELETED_ORDERS_ID,
+        name: DB_ROW_DELETED_ORDERS_NAME,
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: 0,
+        notes: JSON.stringify(merged),
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi lưu SYS_CONFIG_DELETED_ORDERS:', err);
+  }
+}
+
+/**
+ * Tải danh sách đen đơn hàng đã xóa từ Supabase SQL (SYS_CONFIG_DELETED_ORDERS)
+ * và hợp nhất vào localStorage.
+ */
+export async function fetchDeletedOrderKeysFromDb(): Promise<string[]> {
+  let localKeys: string[] = [];
+  if (typeof window !== 'undefined') {
+    try {
+      const raw = localStorage.getItem('bakery_deleted_order_keys');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) localKeys = parsed;
+      }
+    } catch {}
+  }
+
+  if (isLocalMode()) return localKeys;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return localKeys;
+
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_DELETED_ORDERS_ID},name.eq.${DB_ROW_DELETED_ORDERS_NAME}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const cloudKeys = JSON.parse(data.notes);
+      if (Array.isArray(cloudKeys)) {
+        const merged = Array.from(
+          new Set([
+            ...localKeys.map((k) => String(k || '').replace(/^#/, '').trim().toLowerCase()).filter(Boolean),
+            ...cloudKeys.map((k: any) => String(k || '').replace(/^#/, '').trim().toLowerCase()).filter(Boolean),
+          ])
+        ).slice(-500);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('bakery_deleted_order_keys', JSON.stringify(merged));
+        }
+        return merged;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi tải SYS_CONFIG_DELETED_ORDERS:', err);
+  }
+  return localKeys;
+}

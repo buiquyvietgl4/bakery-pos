@@ -89,6 +89,8 @@ export async function checkServerResetEpoch(): Promise<{ shouldAbort: boolean; s
       .from('recipes')
       .select('notes')
       .or(`id.eq.${DB_ROW_RESET_EPOCH_ID},name.eq.${DB_ROW_RESET_EPOCH_NAME}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (error || !data || !data.notes) {

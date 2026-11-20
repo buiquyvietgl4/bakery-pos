@@ -152,6 +152,7 @@ export async function fetchExpensesFromDb(): Promise<ExpenseItem[]> {
       .from('recipes')
       .select('notes')
       .or(`id.eq.${DB_ROW_EXPENSES_ID},name.eq.${DB_ROW_EXPENSES_NAME}`)
+      .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -190,7 +191,8 @@ export async function saveExpensesToDb(
   }
 
   try {
-    const notesContent = JSON.stringify(deduped);
+    // Giới hạn tối đa 2.000 bản ghi gần nhất trong ô JSON nhanh để chống phình dòng sau nhiều năm
+    const notesContent = JSON.stringify(deduped.slice(0, 2000));
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_EXPENSES_ID,
@@ -206,17 +208,23 @@ export async function saveExpensesToDb(
     );
 
     if (upsertErr) {
-      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_EXPENSES_ID},name.eq.${DB_ROW_EXPENSES_NAME}`);
-      await supabase.from('recipes').insert({
-        id: DB_ROW_EXPENSES_ID,
-        name: DB_ROW_EXPENSES_NAME,
-        yield_qty: 1,
-        yield_unit: 'chiếc',
-        cost_per_unit: 0,
-        total_material_cost: 0,
-        notes: notesContent,
-        is_active: false,
-      });
+      // Ưu tiên UPDATE tại chỗ thay vì DELETE -> INSERT không nguyên tử
+      const { error: updErr } = await supabase
+        .from('recipes')
+        .update({ notes: notesContent, is_active: false })
+        .or(`id.eq.${DB_ROW_EXPENSES_ID},name.eq.${DB_ROW_EXPENSES_NAME}`);
+      if (updErr) {
+        await supabase.from('recipes').insert({
+          id: DB_ROW_EXPENSES_ID,
+          name: DB_ROW_EXPENSES_NAME,
+          yield_qty: 1,
+          yield_unit: 'chiếc',
+          cost_per_unit: 0,
+          total_material_cost: 0,
+          notes: notesContent,
+          is_active: false,
+        });
+      }
     }
 
     return { success: true };
@@ -262,6 +270,7 @@ export async function fetchCashflowFromDb(): Promise<CashflowTransaction[]> {
       .from('recipes')
       .select('notes')
       .or(`id.eq.${DB_ROW_CASHFLOW_ID},name.eq.${DB_ROW_CASHFLOW_NAME}`)
+      .order('updated_at', { ascending: false })
       .limit(1)
       .maybeSingle();
 
@@ -299,7 +308,8 @@ export async function saveCashflowToDb(
   }
 
   try {
-    const notesContent = JSON.stringify(deduped);
+    // Giới hạn tối đa 2.000 giao dịch gần nhất trong ô JSON nhanh để chống phình dòng sau nhiều năm
+    const notesContent = JSON.stringify(deduped.slice(0, 2000));
     const { error: upsertErr } = await supabase.from('recipes').upsert(
       {
         id: DB_ROW_CASHFLOW_ID,
@@ -315,17 +325,23 @@ export async function saveCashflowToDb(
     );
 
     if (upsertErr) {
-      await supabase.from('recipes').delete().or(`id.eq.${DB_ROW_CASHFLOW_ID},name.eq.${DB_ROW_CASHFLOW_NAME}`);
-      await supabase.from('recipes').insert({
-        id: DB_ROW_CASHFLOW_ID,
-        name: DB_ROW_CASHFLOW_NAME,
-        yield_qty: 1,
-        yield_unit: 'chiếc',
-        cost_per_unit: 0,
-        total_material_cost: 0,
-        notes: notesContent,
-        is_active: false,
-      });
+      // Ưu tiên UPDATE tại chỗ thay vì DELETE -> INSERT không nguyên tử
+      const { error: updErr } = await supabase
+        .from('recipes')
+        .update({ notes: notesContent, is_active: false })
+        .or(`id.eq.${DB_ROW_CASHFLOW_ID},name.eq.${DB_ROW_CASHFLOW_NAME}`);
+      if (updErr) {
+        await supabase.from('recipes').insert({
+          id: DB_ROW_CASHFLOW_ID,
+          name: DB_ROW_CASHFLOW_NAME,
+          yield_qty: 1,
+          yield_unit: 'chiếc',
+          cost_per_unit: 0,
+          total_material_cost: 0,
+          notes: notesContent,
+          is_active: false,
+        });
+      }
     }
 
     return { success: true };

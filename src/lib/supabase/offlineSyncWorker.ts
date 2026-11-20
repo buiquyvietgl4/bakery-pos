@@ -2,7 +2,7 @@
 // Background Worker: Tự động quét và đẩy bù (Catch-up sync) các đơn hàng tạo khi offline/mất mạng lên Supabase SQL
 
 import { db } from '@/lib/db/dexie';
-import { syncOrderToSupabase, broadcastNewOrder } from './realtimeSync';
+import { syncOrderToSupabase, broadcastNewOrder, fetchDeletedOrderKeysFromDb } from './realtimeSync';
 import { isLocalMode } from '@/lib/utils/sqlModeManager';
 import { autoSyncToLocalSqlFolder } from '@/lib/utils/localSqlManager';
 import { reconcileSecurityConfigWithCloudDb } from '@/lib/auth/AuthContext';
@@ -148,12 +148,23 @@ class OfflineSyncWorker {
       });
 
       // Lọc bỏ bất kỳ đơn nào đã bị xóa vĩnh viễn khỏi hàng đợi đẩy lên đám mây
+      const cleanDelKey = (v: any) => String(v || '').replace(/^#/, '').trim().toLowerCase();
       const deletedKeys = new Set<string>();
       try {
+        const syncedDelKeys = await fetchDeletedOrderKeysFromDb().catch(() => []);
+        syncedDelKeys.forEach((k: any) => {
+          const ck = cleanDelKey(k);
+          if (ck) deletedKeys.add(ck);
+        });
         const rawDel = localStorage.getItem('bakery_deleted_order_keys');
         if (rawDel) {
           const arr = JSON.parse(rawDel);
-          if (Array.isArray(arr)) arr.forEach((k: any) => deletedKeys.add(String(k)));
+          if (Array.isArray(arr)) {
+            arr.forEach((k: any) => {
+              const ck = cleanDelKey(k);
+              if (ck) deletedKeys.add(ck);
+            });
+          }
         }
       } catch {}
 
@@ -165,10 +176,10 @@ class OfflineSyncWorker {
 
       if (deletedKeys.size > 0) {
         ordersToSync = ordersToSync.filter((o) => {
-          const k1 = o.order_number ? String(o.order_number) : '';
-          const k2 = o.orderNumber ? String(o.orderNumber) : '';
-          const k3 = o.id ? String(o.id) : '';
-          const k4 = o.local_id ? String(o.local_id) : '';
+          const k1 = cleanDelKey(o.order_number);
+          const k2 = cleanDelKey(o.orderNumber);
+          const k3 = cleanDelKey(o.id);
+          const k4 = cleanDelKey(o.local_id);
           return !deletedKeys.has(k1) && !deletedKeys.has(k2) && !deletedKeys.has(k3) && !deletedKeys.has(k4);
         });
       }

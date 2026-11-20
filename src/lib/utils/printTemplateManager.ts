@@ -6,8 +6,12 @@ import {
   StickerElementConfig,
   ReceiptBlockConfig,
 } from '../types/printTemplate';
+import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from './sqlModeManager';
 
 export const PRINT_TEMPLATE_UPDATED_EVENT = 'bakery_print_template_updated';
+export const DB_ROW_PRINT_TEMPLATES_ID = '00000000-0000-0000-0000-000000000019';
+export const DB_ROW_PRINT_TEMPLATES_NAME = 'SYS_CONFIG_PRINT_TEMPLATES';
 
 // ============================================================================
 // TEMPLATE MẶC ĐỊNH CHO TEM DÁN 50x30 mm
@@ -583,7 +587,68 @@ export function getStickerTemplate(size: LabelPaperSize = '50x30'): StickerTempl
 }
 
 /**
- * Lưu cấu hình mẫu tem dán vào localStorage và phát event đồng bộ
+ * Lưu toàn bộ 4 mẫu thiết kế hóa đơn & tem nhiệt lên Supabase SQL (SYS_CONFIG_PRINT_TEMPLATES)
+ */
+export async function savePrintTemplatesToDb(): Promise<void> {
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    const payload = getAllPrintTemplatesForBackup();
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_PRINT_TEMPLATES_ID,
+        name: DB_ROW_PRINT_TEMPLATES_NAME,
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: 0,
+        notes: JSON.stringify(payload),
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi đồng bộ mẫu in nhiệt lên SQL:', err);
+  }
+}
+
+/**
+ * Tải cấu hình 4 mẫu in nhiệt từ Supabase SQL (SYS_CONFIG_PRINT_TEMPLATES) về localStorage
+ */
+export async function fetchPrintTemplatesFromDb(): Promise<Record<string, any>> {
+  const fallback = getAllPrintTemplatesForBackup();
+  if (isLocalMode()) return fallback;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return fallback;
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_PRINT_TEMPLATES_ID},name.eq.${DB_ROW_PRINT_TEMPLATES_NAME}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (parsed && typeof parsed === 'object') {
+        if (typeof window !== 'undefined') {
+          for (const [k, val] of Object.entries(parsed)) {
+            if (k.startsWith('bakery_print_') && val) {
+              localStorage.setItem(k, JSON.stringify(val));
+            }
+          }
+          window.dispatchEvent(new CustomEvent(PRINT_TEMPLATE_UPDATED_EVENT, { detail: { type: 'synced_from_db' } }));
+        }
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi tải mẫu in nhiệt từ SQL:', err);
+  }
+  return fallback;
+}
+
+/**
+ * Lưu cấu hình mẫu tem dán vào localStorage, đồng bộ lên SQL và phát event đồng bộ
  */
 export function saveStickerTemplate(config: StickerTemplateConfig): void {
   if (typeof window === 'undefined') return;
@@ -596,6 +661,7 @@ export function saveStickerTemplate(config: StickerTemplateConfig): void {
     };
     localStorage.setItem(key, JSON.stringify(toSave));
     window.dispatchEvent(new CustomEvent(PRINT_TEMPLATE_UPDATED_EVENT, { detail: { type: 'sticker', size: config.canvasSize } }));
+    savePrintTemplatesToDb().catch(() => {});
   } catch (err) {
     console.error('Lỗi lưu template tem dán:', err);
   }
@@ -672,6 +738,7 @@ export function saveReceiptTemplate(config: ReceiptTemplateConfig): void {
     };
     localStorage.setItem(key, JSON.stringify(toSave));
     window.dispatchEvent(new CustomEvent(PRINT_TEMPLATE_UPDATED_EVENT, { detail: { type: 'receipt', size: config.paperSize } }));
+    savePrintTemplatesToDb().catch(() => {});
   } catch (err) {
     console.error('Lỗi lưu template hóa đơn:', err);
   }
@@ -697,6 +764,7 @@ export function clearAllPrintTemplates(): void {
     localStorage.removeItem('bakery_print_receipt_template_80mm');
     localStorage.removeItem('bakery_print_receipt_template_58mm');
     window.dispatchEvent(new CustomEvent(PRINT_TEMPLATE_UPDATED_EVENT, { detail: { type: 'reset_all' } }));
+    savePrintTemplatesToDb().catch(() => {});
   } catch (err) {
     console.error('Lỗi xóa toàn bộ mẫu in:', err);
   }
@@ -736,5 +804,6 @@ export function restorePrintTemplatesFromBackup(templates: Record<string, any>):
     }
   }
   window.dispatchEvent(new CustomEvent(PRINT_TEMPLATE_UPDATED_EVENT, { detail: { type: 'restored' } }));
+  savePrintTemplatesToDb().catch(() => {});
 }
 

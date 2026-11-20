@@ -39,6 +39,8 @@ import {
   cleanDisplayNotes,
   PaymentReceivedPayload,
   parseOrderBakeShortage,
+  saveDeletedOrderKeysToDb,
+  fetchDeletedOrderKeysFromDb,
 } from '@/lib/supabase/realtimeSync';
 import { soundManager } from '@/lib/utils/audioAlert';
 import { phoneNotificationService } from '@/lib/utils/phoneNotification';
@@ -728,7 +730,9 @@ export default function POSPage() {
         const deletedSet: string[] = rawDeleted ? JSON.parse(rawDeleted) : [];
         if (orderNum && !deletedSet.includes(orderNum)) deletedSet.push(orderNum);
         if (orderId && !deletedSet.includes(orderId)) deletedSet.push(orderId);
-        localStorage.setItem('bakery_deleted_order_keys', JSON.stringify(deletedSet.slice(-500)));
+        const trimmedSet = deletedSet.slice(-500);
+        localStorage.setItem('bakery_deleted_order_keys', JSON.stringify(trimmedSet));
+        saveDeletedOrderKeysToDb(trimmedSet).catch(() => {});
       } catch (e) {
         console.warn('Lỗi ghi bakery_deleted_order_keys:', e);
       }

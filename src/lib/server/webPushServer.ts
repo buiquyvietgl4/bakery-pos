@@ -73,6 +73,8 @@ export async function getAllPushSubscriptions(): Promise<StoredSubscription[]> {
       .from('recipes')
       .select('notes')
       .or(`id.eq.${DB_ROW_PUSH_SUBSCRIPTIONS_ID},name.eq.${DB_ROW_PUSH_SUBSCRIPTIONS_NAME}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
 
     if (!error && data && data.notes) {

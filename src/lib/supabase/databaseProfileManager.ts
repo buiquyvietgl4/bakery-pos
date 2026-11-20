@@ -696,6 +696,7 @@ export async function fetchAndApplyGlobalSqlProfile(): Promise<{
         .from('recipes')
         .select('notes')
         .or(`id.eq.${DB_ROW_GLOBAL_SQL_ID},name.eq.${DB_ROW_GLOBAL_SQL_NAME}`)
+        .order('updated_at', { ascending: false })
         .limit(1)
         .maybeSingle();
 

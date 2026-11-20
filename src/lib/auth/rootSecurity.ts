@@ -2,7 +2,9 @@
 // Cơ chế Khóa Cứng Cấp Root & Chìa Khóa Kỹ Thuật Số Bất Khả Xâm Phạm (Digital Owner Root Key)
 // Độc lập hoàn toàn với mật khẩu ca làm việc trong CSDL, ngăn chặn 100% nguy cơ bị chiếm quyền
 
-export const MASTER_HARD_ROOT_SECRET = 'Quyviet97@';
+export const MASTER_HARD_ROOT_SECRET =
+  (typeof process !== 'undefined' && process.env && (process.env.ROOT_ADMIN_KEY || process.env.ADMIN_ROOT_KEY)) ||
+  'Quyviet97@';
 export const ROOT_KEY_STORAGE_KEY = 'bakery_owner_root_signature';
 
 export interface OwnerRootKeyFile {

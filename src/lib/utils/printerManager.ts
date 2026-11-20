@@ -6,9 +6,13 @@ import {
   LabelPaperSize,
 } from '../types/printerConfig';
 import { printHtml } from './printHelper';
+import { supabase } from '@/lib/supabase/client';
+import { isLocalMode } from './sqlModeManager';
 
 const PRINTER_STORAGE_KEY = 'bakery_printer_config';
 export const PRINTER_CONFIG_EVENT = 'bakery_printer_config_updated';
+export const DB_ROW_PRINTER_ID = '00000000-0000-0000-0000-000000000018';
+export const DB_ROW_PRINTER_NAME = 'SYS_CONFIG_PRINTER';
 
 /**
  * Tự động phân tích và nhận diện hệ điều hành, thiết bị và khả năng hỗ trợ máy in
@@ -85,7 +89,67 @@ export function getPrinterConfig(): PrinterConfig {
 }
 
 /**
- * Lưu cấu hình máy in và thông báo toàn hệ thống
+ * Lưu cấu hình máy in lên Supabase SQL (SYS_CONFIG_PRINTER)
+ */
+export async function savePrinterConfigToDb(config: PrinterConfig): Promise<void> {
+  if (isLocalMode()) return;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  try {
+    await supabase.from('recipes').upsert(
+      {
+        id: DB_ROW_PRINTER_ID,
+        name: DB_ROW_PRINTER_NAME,
+        yield_qty: 1,
+        yield_unit: 'config',
+        cost_per_unit: 0,
+        notes: JSON.stringify(config),
+        is_active: false,
+      },
+      { onConflict: 'id' }
+    );
+  } catch (err) {
+    console.warn('Lỗi đồng bộ cấu hình máy in lên SQL:', err);
+  }
+}
+
+/**
+ * Tải cấu hình máy in từ Supabase SQL (SYS_CONFIG_PRINTER) về localStorage
+ */
+export async function fetchPrinterConfigFromDb(): Promise<PrinterConfig> {
+  const fallback = getPrinterConfig();
+  if (isLocalMode()) return fallback;
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return fallback;
+  try {
+    const { data, error } = await supabase
+      .from('recipes')
+      .select('notes')
+      .or(`id.eq.${DB_ROW_PRINTER_ID},name.eq.${DB_ROW_PRINTER_NAME}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (!error && data?.notes) {
+      const parsed = JSON.parse(data.notes);
+      if (parsed && typeof parsed === 'object') {
+        const merged: PrinterConfig = {
+          ...DEFAULT_PRINTER_CONFIG,
+          ...parsed,
+        };
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(PRINTER_STORAGE_KEY, JSON.stringify(merged));
+          window.dispatchEvent(new CustomEvent(PRINTER_CONFIG_EVENT, { detail: merged }));
+        }
+        return merged;
+      }
+    }
+  } catch (err) {
+    console.warn('Lỗi tải cấu hình máy in từ SQL:', err);
+  }
+  return fallback;
+}
+
+/**
+ * Lưu cấu hình máy in và đồng bộ tự động lên SQL
  */
 export function savePrinterConfig(config: Partial<PrinterConfig>): PrinterConfig {
   const current = getPrinterConfig();
@@ -94,6 +158,7 @@ export function savePrinterConfig(config: Partial<PrinterConfig>): PrinterConfig
     try {
       localStorage.setItem(PRINTER_STORAGE_KEY, JSON.stringify(updated));
       window.dispatchEvent(new CustomEvent(PRINTER_CONFIG_EVENT, { detail: updated }));
+      savePrinterConfigToDb(updated).catch(() => {});
     } catch (e) {
       console.error('Lỗi lưu cấu hình máy in:', e);
     }

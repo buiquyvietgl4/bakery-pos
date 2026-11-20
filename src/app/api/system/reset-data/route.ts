@@ -113,24 +113,33 @@ export async function POST(req: NextRequest) {
 
     // Lấy mật khẩu admin hiện tại từ CSDL
     let currentAdminPassword = 'admin123';
+    let hasCustomAdminPassword = false;
     try {
       const { data: secRow } = await supabase
         .from('recipes')
         .select('notes')
         .or(`id.eq.${DB_ROW_SECURITY_ID},name.eq.${DB_ROW_SECURITY_NAME}`)
+        .order('updated_at', { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       if (secRow && secRow.notes) {
         const secParsed = JSON.parse(secRow.notes);
-        if (secParsed.adminPasswordHash) {
-          currentAdminPassword = secParsed.adminPasswordHash;
+        if (secParsed.adminPasswordHash && String(secParsed.adminPasswordHash).trim()) {
+          currentAdminPassword = String(secParsed.adminPasswordHash).trim();
+          hasCustomAdminPassword = true;
         }
       }
     } catch {}
 
-    // Xác thực mật khẩu
+    // Xác thực mật khẩu chặt chẽ: Khi đã có mật khẩu Admin trong CSDL, bắt buộc phải khớp 100% (chặn backdoor 'admin123'/'rootadmin')
     const inputPass = String(adminPassword || '').trim();
-    if (inputPass !== currentAdminPassword && inputPass !== 'admin123' && inputPass !== 'rootadmin') {
+    const rootEnvSecret = (process.env.ROOT_ADMIN_KEY || process.env.ADMIN_ROOT_KEY || '').trim();
+    const isAuthorized = hasCustomAdminPassword
+      ? inputPass === currentAdminPassword || (Boolean(rootEnvSecret) && inputPass === rootEnvSecret)
+      : inputPass === currentAdminPassword || inputPass === 'admin123';
+
+    if (!inputPass || !isAuthorized) {
       return NextResponse.json(
         { success: false, error: 'Mật khẩu Quản trị viên (Admin) không chính xác! Không thể thực hiện lệnh reset.' },
         { status: 401 }

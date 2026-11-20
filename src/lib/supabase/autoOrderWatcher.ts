@@ -459,10 +459,12 @@ class AutoOrderWatcher {
       if (rawDel) {
         const delArr = JSON.parse(rawDel);
         if (Array.isArray(delArr)) {
-          const delSet = new Set(delArr.map(String));
-          const oId = String(order.id || '');
-          const oNum = String(order.order_number || '');
-          if ((oId && delSet.has(oId)) || (oNum && (delSet.has(oNum) || delSet.has(oNum.replace(/-LAM$/, ''))))) {
+          const cleanK = (v: any) => String(v || '').replace(/^#/, '').trim().toLowerCase();
+          const delSet = new Set(delArr.map(cleanK).filter(Boolean));
+          const oId = cleanK(order.id);
+          const oNum = cleanK(order.order_number);
+          const oBaseNum = cleanK(String(order.order_number || '').replace(/-LAM$/i, ''));
+          if ((oId && delSet.has(oId)) || (oNum && delSet.has(oNum)) || (oBaseNum && delSet.has(oBaseNum))) {
             return;
           }
         }

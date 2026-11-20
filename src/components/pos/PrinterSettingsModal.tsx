@@ -33,6 +33,7 @@ import {
 import {
   getPrinterConfig,
   savePrinterConfig,
+  fetchPrinterConfigFromDb,
   detectDevicePlatform,
   requestBluetoothPrinter,
   requestUsbPrinter,
@@ -40,6 +41,7 @@ import {
   printTestSticker,
   PRINTER_CONFIG_EVENT,
 } from '@/lib/utils/printerManager';
+import { fetchPrintTemplatesFromDb } from '@/lib/utils/printTemplateManager';
 import { PrintTemplateDesignerModal } from './PrintTemplateDesignerModal';
 
 interface PrinterSettingsModalProps {
@@ -65,6 +67,10 @@ export const PrinterSettingsModal: React.FC<PrinterSettingsModalProps> = ({
     setConfig(getPrinterConfig());
     setDiagnostics(detectDevicePlatform());
     setStatusMessage(null);
+    fetchPrinterConfigFromDb().then((cfg) => {
+      if (cfg) setConfig(cfg);
+    }).catch(() => {});
+    fetchPrintTemplatesFromDb().catch(() => {});
 
     const handleConfigUpdate = (e: any) => {
       if (e?.detail) setConfig(e.detail);
