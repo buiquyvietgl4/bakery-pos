@@ -393,10 +393,10 @@ export default function CustomSqlConfigSection() {
         <div>
           <h3 className="font-black text-base text-zinc-900 flex items-center gap-2">
             <Globe className="w-5 h-5 text-emerald-600" />
-            Quản Trị Đa CSDL SQL: Chính (Vận Hành) &amp; Thử Nghiệm (Test)
+            Kết Nối Đa CSDL (Chính &amp; Dự Phòng)
           </h3>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Tùy biến liên kết SQL linh hoạt, chuyển đổi 1-click giữa môi trường bán hàng thật và môi trường test độc lập.
+            Chuyển đổi nhanh giữa môi trường bán hàng chính thức và môi trường thử nghiệm.
           </p>
         </div>
 

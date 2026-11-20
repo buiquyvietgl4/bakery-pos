@@ -3228,7 +3228,7 @@ export default function KitchenPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col p-3 sm:p-6 bg-zinc-950 text-zinc-100 min-h-[calc(100vh-4rem)]">
+    <div className="flex-1 flex flex-col p-3 sm:p-6 bg-[#141210] text-stone-100 min-h-[calc(100vh-4rem)]">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-zinc-800">
         <div className="flex items-center gap-3">
@@ -3237,9 +3237,9 @@ export default function KitchenPage() {
           </div>
           <div>
             <h1 className="text-xl font-black tracking-tight text-white flex items-center gap-2">
-              Màn Hình Bếp KDS <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">Realtime</span>
+              Bếp &amp; Lò Nướng <span className="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">Realtime</span>
             </h1>
-            <p className="text-xs text-zinc-400">Tự động nhận đơn bán tại quầy và các đơn đặt bánh sinh nhật</p>
+            <p className="text-xs text-stone-400">Đồng bộ đơn hàng &amp; mẻ nướng thời gian thực</p>
           </div>
         </div>
 
@@ -3294,7 +3294,7 @@ export default function KitchenPage() {
             title="Xem lại toàn bộ lịch sử thông báo đơn hàng, nướng bánh ra lò & đơn khẩn cấp"
           >
             <History className="w-3.5 h-3.5 text-amber-400" />
-            <span>Lịch Sử Báo</span>
+            <span>Thông Báo</span>
             {unreadNotifs > 0 && (
               <span className="px-1.5 py-0.2 rounded-full bg-rose-500 text-white text-[10px] font-black animate-pulse">
                 {unreadNotifs}
@@ -3313,7 +3313,7 @@ export default function KitchenPage() {
             title="Cài đặt bot và nhận tin nhắn Telegram khi nướng bánh & ra lò"
           >
             <Send className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">Telegram Báo Lò</span>
+            <span className="hidden sm:inline">Telegram</span>
             <span className="sm:hidden">Telegram</span>
           </button>
 
@@ -3349,7 +3349,7 @@ export default function KitchenPage() {
             }`}
           >
             <ChefHat className="w-4 h-4" />
-            <span>🎂 Đơn Khách & Bán Quầy ({orders.length})</span>
+            <span>🎂 Đơn Khách Đặt ({orders.length})</span>
           </button>
 
           <button
@@ -3362,7 +3362,7 @@ export default function KitchenPage() {
             }`}
           >
             <Flame className="w-4 h-4 text-orange-400" />
-            <span>🥖 Làm Bánh Bán (BOM & Lò Nướng)</span>
+            <span>🥖 Nướng Theo Mẻ (BOM)</span>
             {ovenBatches.length > 0 && (
               <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                 ovenBatches.some((b) => b.status === 'done')
@@ -3460,9 +3460,9 @@ export default function KitchenPage() {
           <div className="w-16 h-16 rounded-3xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-emerald-400 shadow-lg">
             <CheckCircle2 className="w-8 h-8" />
           </div>
-          <h2 className="text-lg font-black text-zinc-200">Khu Vực Bếp Đang Trống</h2>
-          <p className="text-xs text-zinc-500 max-w-sm">
-            Tất cả các món bánh đã hoàn thành hoặc đã giao cho khách. Khi quầy POS tạo đơn mới hoặc đơn đặt bánh, màn hình sẽ tự động cập nhật ngay tức thì.
+          <h2 className="text-lg font-black text-stone-200">Chưa Có Đơn Cần Làm</h2>
+          <p className="text-xs text-stone-400 max-w-sm">
+            Đơn mới từ quầy POS sẽ tự động hiển thị tại đây.
           </p>
         </div>
       )}
@@ -3483,7 +3483,7 @@ export default function KitchenPage() {
             }`}
           >
             <div className="flex items-center gap-1">
-              <span className="text-[11px]">🟡 Mới Nhận</span>
+              <span className="text-[11px]">🟡 Chờ Làm</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 kdsMobileTab === 'pending'
                   ? 'bg-zinc-950 text-amber-300'
@@ -3537,7 +3537,7 @@ export default function KitchenPage() {
             }`}
           >
             <div className="flex items-center gap-1">
-              <span className="text-[11px]">🟢 Chờ Ship</span>
+              <span className="text-[11px]">🟢 Chờ Giao</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 kdsMobileTab === 'ready'
                   ? 'bg-zinc-950 text-emerald-300'
@@ -3581,24 +3581,23 @@ export default function KitchenPage() {
       {orders.length > 0 && (
         <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-5 mt-4 sm:mt-5">
           {/* ── CỘT 1: ĐƠN MỚI NHẬN (PENDING) ── */}
-          <div className={`flex-col bg-zinc-950/80 rounded-3xl border border-zinc-800/80 p-3.5 sm:p-4 ${
+          <div className={`flex-col bg-stone-950/90 rounded-3xl border border-stone-800/80 p-3.5 sm:p-4 shadow-xl ${
             kdsMobileTab === 'pending' || kdsMobileTab === 'all' ? 'flex' : 'hidden md:flex'
           }`}>
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
                 <h2 className="font-black text-sm uppercase tracking-wider text-amber-400">
-                  1. Mới Nhận ({pendingOrders.length})
+                  1. Chờ Làm ({pendingOrders.length})
                 </h2>
               </div>
-              <span className="text-[11px] text-zinc-500">Chờ nướng / Làm bánh</span>
+              <span className="text-[11px] text-stone-400">Chờ chế biến</span>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3">
               {pendingOrders.length === 0 && (
-                <div className="py-12 text-center text-zinc-500 text-xs italic bg-zinc-900/30 rounded-2xl border border-dashed border-zinc-800/80 p-4">
-                  <p className="font-semibold text-zinc-400">Không có đơn nào mới nhận.</p>
-                  <p className="text-[11px] text-zinc-600 mt-1">Đơn từ quầy POS hoặc đơn đặt trước sẽ xuất hiện tại đây.</p>
+                <div className="py-10 text-center text-stone-400 text-xs italic bg-stone-900/40 rounded-2xl border border-dashed border-stone-800 p-4">
+                  <p className="font-semibold text-stone-400">Chưa có đơn chờ làm.</p>
                 </div>
               )}
               {sortPreordersByUrgency(pendingOrders, currentTime).map((order) => {
@@ -4095,24 +4094,23 @@ export default function KitchenPage() {
           </div>
 
           {/* ── CỘT 2: ĐANG LÀM / ĐANG NƯỚNG (PREPARING) ── */}
-          <div className={`flex-col bg-zinc-950/80 rounded-3xl border border-zinc-800/80 p-3.5 sm:p-4 ${
+          <div className={`flex-col bg-stone-950/90 rounded-3xl border border-stone-800/80 p-3.5 sm:p-4 shadow-xl ${
             kdsMobileTab === 'preparing' || kdsMobileTab === 'all' ? 'flex' : 'hidden md:flex'
           }`}>
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-blue-400 animate-pulse"></span>
                 <h2 className="font-black text-sm uppercase tracking-wider text-blue-400">
-                  2. Đang Nướng / Làm Bánh ({preparingOrders.length})
+                  2. Đang Làm ({preparingOrders.length})
                 </h2>
               </div>
-              <span className="text-[11px] text-zinc-500">Trong lò / Bắt kem</span>
+              <span className="text-[11px] text-stone-400">Đang chế biến</span>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3">
               {preparingOrders.length === 0 && (
-                <div className="py-12 text-center text-zinc-500 text-xs italic bg-zinc-900/30 rounded-2xl border border-dashed border-zinc-800/80 p-4">
-                  <p className="font-semibold text-zinc-400">Chưa có đơn nào đang làm.</p>
-                  <p className="text-[11px] text-zinc-600 mt-1">Nhấn &quot;Bắt Đầu Nướng / Trang Trí&quot; ở mục Mới Nhận để chuyển đơn sang đây.</p>
+                <div className="py-10 text-center text-stone-400 text-xs italic bg-stone-900/40 rounded-2xl border border-dashed border-stone-800 p-4">
+                  <p className="font-semibold text-stone-400">Chưa có đơn đang làm.</p>
                 </div>
               )}
               {sortPreordersByUrgency(preparingOrders, currentTime).map((order) => {
@@ -4619,24 +4617,23 @@ export default function KitchenPage() {
           </div>
 
           {/* ── CỘT 3: SẴN SÀNG GIAO (READY) ── */}
-          <div className={`flex-col bg-zinc-950/80 rounded-3xl border border-zinc-800/80 p-3.5 sm:p-4 ${
+          <div className={`flex-col bg-stone-950/90 rounded-3xl border border-stone-800/80 p-3.5 sm:p-4 shadow-xl ${
             kdsMobileTab === 'ready' || kdsMobileTab === 'all' ? 'flex' : 'hidden md:flex'
           }`}>
             <div className="flex items-center justify-between pb-3 mb-3 border-b border-zinc-800">
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
                 <h2 className="font-black text-sm uppercase tracking-wider text-emerald-400">
-                  3. Sẵn Sàng Giao ({readyOrders.length})
+                  3. Chờ Giao ({readyOrders.length})
                 </h2>
               </div>
-              <span className="text-[11px] text-zinc-500">Đã đóng hộp tại quầy</span>
+              <span className="text-[11px] text-stone-400">Sẵn sàng bàn giao</span>
             </div>
 
             <div className="flex-1 overflow-y-auto space-y-3">
               {readyOrders.length === 0 && (
-                <div className="py-12 text-center text-zinc-500 text-xs italic bg-zinc-900/30 rounded-2xl border border-dashed border-zinc-800/80 p-4">
-                  <p className="font-semibold text-zinc-400">Chưa có đơn nào chờ ship / sẵn sàng.</p>
-                  <p className="text-[11px] text-zinc-600 mt-1">Bánh làm xong Bước 2 sẽ chuyển sang đây để bàn giao cho khách hoặc shipper.</p>
+                <div className="py-10 text-center text-stone-400 text-xs italic bg-stone-900/40 rounded-2xl border border-dashed border-stone-800 p-4">
+                  <p className="font-semibold text-stone-400">Chưa có đơn chờ giao.</p>
                 </div>
               )}
               {sortPreordersByUrgency(readyOrders, currentTime).map((order) => {

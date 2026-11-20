@@ -115,11 +115,11 @@ export default function SupabaseKeepAliveSection() {
               <ShieldCheck className="w-5 h-5 text-amber-600" />
             </div>
             <h3 className="font-black text-sm sm:text-base text-zinc-900">
-              Cơ Chế Chống Khóa Tạm Thời CSDL Supabase Cloud (Anti-Inactivity)
+              Duy Trì Kết Nối Supabase (Auto Keep-Alive)
             </h3>
           </div>
           <p className="text-xs text-zinc-500 max-w-2xl leading-relaxed">
-            Supabase Free Tier sẽ tạm dừng dự án nếu không có hoạt động trong 7 ngày. Hệ thống đã cài đặt cơ chế <b>tự động gửi tín hiệu đọc siêu nhẹ mỗi 2 ngày</b> để kích hoạt lại thời hạn 7 ngày, đảm bảo <b>100% không làm thay đổi hay ảnh hưởng dữ liệu</b>.
+            Tự động gửi tín hiệu đọc (Read-Only) mỗi 2 ngày để giữ CSDL luôn hoạt động, bảo toàn 100% dữ liệu.
           </p>
         </div>
 
@@ -344,7 +344,7 @@ export default function SupabaseKeepAliveSection() {
             className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 via-amber-500 to-orange-500 hover:from-amber-700 hover:to-orange-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition cursor-pointer disabled:opacity-60 active:scale-95"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isPinging ? 'animate-spin' : ''}`} />
-            <span>{isPinging ? 'Đang gửi tín hiệu...' : '🚀 Kích Hoạt Ngay (Ping Cả 2 CSDL)'}</span>
+            <span>{isPinging ? 'Đang gửi...' : '🚀 Ping Kích Hoạt Ngay'}</span>
           </button>
         </div>
       </div>

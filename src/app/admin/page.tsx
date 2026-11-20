@@ -4404,7 +4404,7 @@ export default function AdminDashboard() {
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] font-black uppercase tracking-wider text-amber-700 bg-amber-100/80 border border-amber-200/80 px-2.5 py-0.5 rounded-full">
-                Phân Hệ Quản Trị Trung Tâm
+                Quản Trị Hệ Thống
               </span>
               <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2.5 py-0.5 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -4412,7 +4412,7 @@ export default function AdminDashboard() {
               </span>
             </div>
             <h1 className="text-xl sm:text-2xl font-black text-amber-950 tracking-tight mt-1">
-              Quản Lý Tiệm Bánh, Kho & Kế Toán
+              Trung Tâm Điều Hành Tiệm Bánh
             </h1>
           </div>
         </div>
@@ -4426,7 +4426,7 @@ export default function AdminDashboard() {
             title="Cài đặt máy in hóa đơn & tem nhãn bánh (Bluetooth, USB, WiFi)"
           >
             <Printer className="w-4 h-4 text-blue-600" />
-            <span>Máy In POS</span>
+            <span>Máy In</span>
           </button>
 
           <button
@@ -4476,12 +4476,12 @@ export default function AdminDashboard() {
             {[
               // Nhóm 1: Tài chính & Thuế
               { id: 'overview', label: 'Tài Chính', icon: BarChart3, group: 'finance' },
-              { id: 'tax_accounting', label: 'Thuế & Sổ Sách', icon: FileSpreadsheet, group: 'finance' },
+              { id: 'tax_accounting', label: 'Thuế HKD', icon: FileSpreadsheet, group: 'finance' },
               { id: 'shifts', label: 'Ca & Két', icon: Wallet, group: 'finance' },
               // Nhóm 2: Vận hành & Kho
-              { id: 'images', label: 'Bánh & Ảnh', icon: Cake, group: 'operations' },
-              { id: 'inventory', label: 'Kho', icon: Package, group: 'operations' },
-              { id: 'bom', label: 'BOM', icon: BookOpen, group: 'operations' },
+              { id: 'images', label: 'Thực Đơn', icon: Cake, group: 'operations' },
+              { id: 'inventory', label: 'Kho Vật Tư', icon: Package, group: 'operations' },
+              { id: 'bom', label: 'Định Mức BOM', icon: BookOpen, group: 'operations' },
               // Nhóm 3: Thanh toán
               { id: 'payment', label: 'Thanh Toán', icon: ShieldCheck, group: 'payment' },
               // Nhóm 4: Hệ thống
@@ -4592,8 +4592,8 @@ export default function AdminDashboard() {
                 <Cake className="w-6 h-6" />
               </div>
               <div>
-                <h2 className="font-black text-base text-zinc-900">Danh Mục Thực Đơn & Ảnh Sản Phẩm</h2>
-                <p className="text-xs text-zinc-600">Thêm bánh mới hoặc tải ảnh 1 lần — mọi máy POS & Bếp tự động cập nhật ngay!</p>
+                <h2 className="font-black text-base text-amber-950">Thực Đơn &amp; Sản Phẩm</h2>
+                <p className="text-xs text-stone-600">Đồng bộ tức thì thực đơn và hình ảnh trên mọi thiết bị.</p>
               </div>
             </div>
 
@@ -4608,7 +4608,7 @@ export default function AdminDashboard() {
                 title="Xem toàn bộ lịch sử thay đổi số lượng tồn kho bánh"
               >
                 <History className="w-4 h-4 text-amber-600" />
-                <span>Lịch Sử Thay Đổi Tồn Kho</span>
+                <span>Lịch Sử Tồn Kho</span>
                 {stockLogsCount > 0 && (
                   <span className="px-2 py-0.5 text-[10px] bg-amber-100 text-amber-800 font-black rounded-full border border-amber-300">
                     {stockLogsCount}
@@ -4620,7 +4620,7 @@ export default function AdminDashboard() {
                 onClick={() => setIsAddProductModalOpen(true)}
                 className="px-4 py-2.5 rounded-2xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md shadow-amber-600/30 flex items-center justify-center gap-1.5 transition hover:scale-102 cursor-pointer"
               >
-                <Plus className="w-4 h-4" /> Thêm Bánh Tự Làm
+                <Plus className="w-4 h-4" /> Bánh Tự Làm
               </button>
 
               <button
@@ -4636,7 +4636,7 @@ export default function AdminDashboard() {
                 }}
                 className="px-4 py-2.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-md shadow-blue-600/30 flex items-center justify-center gap-1.5 transition hover:scale-102 cursor-pointer"
               >
-                <Plus className="w-4 h-4" /> Thêm Hàng Nhập Về Bán
+                <Plus className="w-4 h-4" /> Hàng Nhập Bán
               </button>
             </div>
           </div>
@@ -7943,15 +7943,15 @@ export default function AdminDashboard() {
           <div className="max-w-5xl w-full mx-auto space-y-6">
 
           {/* ── BẢNG ĐIỀU KHIỂN THEO DÕI DUNG LƯỢNG HỆ THỐNG (500 MB CSDL ĐƠN HÀNG & 1 GB STORE ẢNH) ── */}
-          <div className="bg-white rounded-3xl border border-zinc-200 p-5 sm:p-6 shadow-xs space-y-5">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-zinc-100">
+          <div className="bg-white/90 backdrop-blur-md rounded-3xl border border-amber-900/10 p-5 sm:p-6 shadow-xs space-y-5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
               <div>
-                <h3 className="font-black text-base text-zinc-900 flex items-center gap-2">
+                <h3 className="font-black text-base text-amber-950 flex items-center gap-2">
                   <Database className="w-5 h-5 text-amber-600" />
-                  <span>Giám Sát Dung Lượng Bộ Nhớ &amp; Tài Nguyên Hệ Thống</span>
+                  <span>Dung Lượng Lưu Trữ Đám Mây</span>
                 </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  Theo dõi thời gian thực dung lượng CSDL lưu đơn hàng (500 MB) và kho lưu trữ hình ảnh (1 GB) để đảm bảo tiệm vận hành thông suốt.
+                <p className="text-xs text-stone-500 mt-0.5">
+                  Theo dõi bộ nhớ CSDL đơn hàng (500 MB) và kho ảnh &amp; sao lưu (1 GB).
                 </p>
               </div>
               <div className="flex items-center gap-3 shrink-0">
@@ -7979,7 +7979,7 @@ export default function AdminDashboard() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1.5">
                   <span className="text-zinc-900 flex items-center gap-2">
                     <Database className="w-4 h-4 text-emerald-600" />
-                    <span>Dung lượng CSDL lưu đơn hàng &amp; vận hành (Gói 500 MB):</span>
+                    <span>CSDL Đơn Hàng &amp; Vận Hành (500 MB):</span>
                   </span>
                   <span className="text-emerald-700">
                     <b>{dbStorageStats.totalDbMB} MB</b> / 500 MB (Mức an toàn tuyệt đối)
@@ -8024,7 +8024,7 @@ export default function AdminDashboard() {
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center text-xs font-bold gap-1.5">
                   <span className="text-zinc-900 flex items-center gap-2">
                     <Cloud className="w-4 h-4 text-emerald-600" />
-                    <span>Dung lượng Kho Lưu Trữ Đám Mây (Ảnh &amp; Bản Sao Lưu 7 Ngày - Gói 1 GB):</span>
+                    <span>Kho Ảnh &amp; Sao Lưu 7 Ngày (1 GB):</span>
                   </span>
                   <span className="text-emerald-700">
                     <b>{formatBytes(imageStats.totalBytes)}</b> / 1 GB (Mức an toàn tuyệt đối)
@@ -8078,7 +8078,7 @@ export default function AdminDashboard() {
               }`}
             >
               <Sliders className="w-4 h-4 text-amber-600" />
-              <span>1. Cài Đặt Chung & Chế Độ</span>
+              <span>1. Chế Độ Chạy</span>
               {pendingDbMode !== sqlModeConfig.mode && (
                 <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping" title="Có thay đổi chưa lưu" />
               )}
@@ -8094,7 +8094,7 @@ export default function AdminDashboard() {
               }`}
             >
               <Globe className="w-4 h-4 text-emerald-600" />
-              <span>2. Cài Đặt Cho Online (Cloud SQL)</span>
+              <span>2. Cloud SQL (Online)</span>
               {sqlModeConfig.mode === 'online' && (
                 <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-[10px] font-bold">
                   Đang dùng
@@ -8112,7 +8112,7 @@ export default function AdminDashboard() {
               }`}
             >
               <HardDrive className="w-4 h-4 text-amber-600" />
-              <span>3. Cài Đặt Cho Local (Máy Tính)</span>
+              <span>3. Local SQL (Máy Tính)</span>
               {sqlModeConfig.mode === 'local' && (
                 <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
                   Đang dùng
@@ -8147,14 +8147,14 @@ export default function AdminDashboard() {
           {dbSubTab === 'common' && (
             <div className="space-y-6 animate-in fade-in duration-300">
               {/* KHỐI CHỌN CHẾ ĐỘ VỚI CƠ CHẾ CHỐNG TÍCH NHẦM & NÚT LƯU CÀI ĐẶT */}
-              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-5">
+              <div className="bg-white/90 backdrop-blur-md rounded-3xl border border-amber-900/10 p-6 shadow-xs space-y-5">
                 <div>
-                  <div className="flex items-center gap-2 font-black text-base text-zinc-900">
+                  <div className="flex items-center gap-2 font-black text-base text-amber-950">
                     <Sliders className="w-5 h-5 text-amber-600" />
                     Chọn Chế Độ Cơ Sở Dữ Liệu
                   </div>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    Bấm vào một trong hai chế độ dưới đây để chọn. Lựa chọn của bạn sẽ chỉ có hiệu lực khi bấm <b>&quot;Lưu & Áp Dụng Cài Đặt&quot;</b> để tránh bấm nhầm.
+                  <p className="text-xs text-stone-500 mt-0.5">
+                    Chọn chế độ vận hành và nhấn <b>&quot;Lưu &amp; Áp Dụng&quot;</b> để kích hoạt.
                   </p>
                 </div>
 
@@ -8196,7 +8196,7 @@ export default function AdminDashboard() {
                       </div>
 
                       <p className="text-xs text-zinc-600 leading-relaxed">
-                        Phù hợp vận hành tiệm hàng ngày với nhiều thiết bị. Đồng bộ tức thì thời gian thực (~50ms) giữa máy tính quầy POS thu ngân, máy tính bảng thợ làm bánh trong bếp và điện thoại chủ tiệm.
+                        Đồng bộ tức thì (~50ms) giữa máy POS, Bếp và điện thoại quản lý.
                       </p>
 
                       <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-zinc-600 pt-1">
@@ -8259,7 +8259,7 @@ export default function AdminDashboard() {
                       </div>
 
                       <p className="text-xs text-zinc-600 leading-relaxed">
-                        Phù hợp khi mất mạng Internet hoặc muốn chạy độc lập 100% trên một máy tính. Dữ liệu lưu thẳng vào thư mục ổ cứng máy tính dạng tệp SQL chuẩn (`bakery_master.sql`). Không gửi lên Cloud.
+                        Vận hành độc lập 100% không cần Internet, lưu trực tiếp tệp SQL vào ổ cứng.
                       </p>
 
                       <div className="flex flex-wrap gap-2 text-[11px] font-semibold text-zinc-600 pt-1">
@@ -8348,20 +8348,20 @@ export default function AdminDashboard() {
                       }`}
                     >
                       <Save className="w-4 h-4" />
-                      <span>{pendingDbMode !== sqlModeConfig.mode ? 'Lưu & Áp Dụng Cài Đặt' : 'Đã Lưu (Đang Chạy)'}</span>
+                      <span>{pendingDbMode !== sqlModeConfig.mode ? 'Lưu & Áp Dụng' : 'Đã Lưu (Đang Chạy)'}</span>
                     </button>
                   </div>
                 </div>
               </div>
 
               {/* BẢNG ĐỐI CHIẾU NGUYÊN TẮC AN TOÀN & CÔ LẬP DỮ LIỆU */}
-              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
-                <div className="flex items-center gap-2 font-black text-sm text-zinc-900">
+              <div className="bg-white/90 backdrop-blur-md rounded-3xl border border-amber-900/10 p-6 shadow-xs space-y-4">
+                <div className="flex items-center gap-2 font-black text-sm text-amber-950">
                   <Shield className="w-4 h-4 text-emerald-600" />
-                  Cam Kết An Toàn & Cô Lập Dữ Liệu Tuyệt Đối Giữa Online và Local
+                  Cơ Chế Cô Lập &amp; Bảo Toàn Dữ Liệu
                 </div>
-                <p className="text-xs text-zinc-600 leading-relaxed">
-                  Để đảm bảo công việc bán hàng không bị xáo trộn, hệ thống sử dụng 2 bộ nhớ Snapshot riêng biệt:
+                <p className="text-xs text-stone-600 leading-relaxed">
+                  Hai bộ nhớ Snapshot độc lập giúp chuyển đổi an toàn, không trộn lẫn dữ liệu.
                 </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
@@ -8420,15 +8420,15 @@ export default function AdminDashboard() {
               {/* KHỐI 2: SAO LƯU & ĐẨY ĐỐI SOÁT LÊN CLOUD (Dung lượng CSDL & Ảnh được hiển thị đồng bộ ở đầu Mục Dữ Liệu) */}
 
               {/* KHỐI 3: SAO LƯU & ĐẨY ĐỐI SOÁT LÊN CLOUD */}
-              <div className="bg-white rounded-3xl border border-zinc-200 p-6 shadow-xs space-y-4">
+              <div className="bg-white/90 backdrop-blur-md rounded-3xl border border-amber-900/10 p-6 shadow-xs space-y-4">
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div className="space-y-1">
-                    <h3 className="font-black text-sm text-zinc-900 flex items-center gap-2">
+                    <h3 className="font-black text-sm text-amber-950 flex items-center gap-2">
                       <Shield className="w-4 h-4 text-amber-600" />
-                      Công Cụ Sao Lưu Tự Động & Đối Soát Đẩy Lên Cloud SQL
+                      Sao Lưu &amp; Đối Soát Dữ Liệu Cloud
                     </h3>
-                    <p className="text-xs text-zinc-500 max-w-xl">
-                      Tự động kiểm tra dữ liệu mới, lưu file sao lưu vào máy tính tùy chọn, đóng gói 100% dữ liệu kèm toàn bộ hình ảnh và đẩy ngược lên SQL với thuật toán đối soát thông minh tránh trùng lặp.
+                    <p className="text-xs text-stone-500 max-w-xl">
+                      Đóng gói toàn bộ dữ liệu &amp; hình ảnh, đối soát thông minh chống trùng lặp.
                     </p>
                   </div>
                   <button
@@ -8437,7 +8437,7 @@ export default function AdminDashboard() {
                     className="px-5 py-3 rounded-2xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white font-black text-xs shrink-0 flex items-center justify-center gap-2 shadow-xs transition cursor-pointer"
                   >
                     <Database className="w-4 h-4" />
-                    <span>Mở Công Cụ Sao Lưu & Đối Soát SQL</span>
+                    <span>Mở Công Cụ Sao Lưu</span>
                   </button>
                 </div>
               </div>
@@ -8448,10 +8448,10 @@ export default function AdminDashboard() {
                   <div className="space-y-1">
                     <h3 className="font-black text-sm text-red-900 flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4 text-red-600" />
-                      Vùng Nguy Hiểm: Khởi Tạo Lại (Reset) Dữ Liệu Hệ Thống
+                      Khởi Tạo Lại Hệ Thống (Reset)
                     </h3>
                     <p className="text-xs text-red-700/80 max-w-xl">
-                      Xóa trắng dữ liệu giao dịch trên CSDL SQL và toàn bộ thiết bị (POS, Bếp, Mobile) với giao thức Zero-Resurrection chống nạp ngược dữ liệu cũ. Tự động sao lưu dự phòng trước khi xóa.
+                      Xóa dữ liệu giao dịch trên toàn bộ thiết bị (Tự động sao lưu dự phòng trước khi xóa).
                     </p>
                   </div>
                   <button

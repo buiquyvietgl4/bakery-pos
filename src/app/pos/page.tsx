@@ -3850,7 +3850,7 @@ export default function POSPage() {
             type: 'new_order',
             appTitle: 'TIỆM BÁNH HẠNH PHÚC (POS)',
             title: fulfillmentType === 'shipping'
-              ? `🚚 Đơn Ship Bánh Mới #${orderData.order_number}`
+              ? `🚚 Đơn Giao Ship Mới #${orderData.order_number}`
               : fulfillmentType === 'pickup'
               ? `⏰ Đơn Hẹn Lấy Bánh #${orderData.order_number}`
               : `🛒 Đơn Bán Tại Quầy #${orderData.order_number}`,
@@ -4715,7 +4715,7 @@ export default function POSPage() {
             )}
           </div>
           <span className="text-[10px] font-bold leading-tight mt-1 truncate w-full text-center">
-            Chờ Ship
+            Chờ Giao
           </span>
         </button>
 
@@ -4771,7 +4771,7 @@ export default function POSPage() {
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Tìm bánh nhanh hoặc quét mã..."
+                  placeholder="Tìm tên bánh, mã món..."
                   className="w-full pl-10 pr-8 py-2 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 text-xs text-zinc-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:bg-white transition-all shadow-2xs"
                 />
                 {searchQuery && (
@@ -4822,7 +4822,7 @@ export default function POSPage() {
                 />
                 <div className="fixed right-3 top-14 z-50 w-72 bg-white rounded-2xl border border-stone-200 shadow-2xl p-2 space-y-1 animate-in fade-in zoom-in-95 duration-150">
                   <div className="px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-400 border-b border-stone-100 flex items-center justify-between">
-                    <span>Cài Đặt & Thiết Bị</span>
+                    <span>Cài Đặt Nhanh</span>
                     <button
                       type="button"
                       onClick={() => setIsMobileUtilityMenuOpen(false)}
@@ -4845,8 +4845,8 @@ export default function POSPage() {
                       <Printer className="w-4 h-4" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-bold text-zinc-900 group-hover:text-blue-700">Máy In Hóa Đơn & Tem</div>
-                      <div className="text-[10px] text-zinc-500 truncate">Cài đặt Bluetooth, USB, khổ giấy</div>
+                      <div className="text-xs font-bold text-zinc-900 group-hover:text-blue-700">Máy In & Tem Nhãn</div>
+                      <div className="text-[10px] text-zinc-500 truncate">Bluetooth, USB, khổ giấy</div>
                     </div>
                   </button>
 
@@ -4866,14 +4866,14 @@ export default function POSPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-bold text-zinc-900 group-hover:text-amber-700 flex items-center gap-1">
-                        <span>Cài Đặt Báo & Âm Thanh</span>
+                        <span>Âm Báo & Telegram</span>
                         {soundEnabled ? (
                           <Volume2 className="w-3 h-3 text-emerald-600" />
                         ) : (
                           <VolumeX className="w-3 h-3 text-zinc-400" />
                         )}
                       </div>
-                      <div className="text-[10px] text-zinc-500 truncate">Chuông báo lò, đơn giao, Telegram</div>
+                      <div className="text-[10px] text-zinc-500 truncate">Chuông đơn, báo lò, Telegram</div>
                     </div>
                   </button>
 
@@ -4904,9 +4904,9 @@ export default function POSPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-bold text-zinc-900 group-hover:text-emerald-700">
-                        {isPosSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ SQL (Xóa Cache)'}
+                        {isPosSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ Dữ Liệu'}
                       </div>
-                      <div className="text-[10px] text-zinc-500 truncate">Kéo lại món, ca và đơn mới nhất</div>
+                      <div className="text-[10px] text-zinc-500 truncate">Tải lại món, ca & đơn mới nhất</div>
                     </div>
                   </button>
 
@@ -4923,7 +4923,7 @@ export default function POSPage() {
                   >
                     <div className="flex items-center gap-2">
                       <Package className="w-4 h-4 text-emerald-600" />
-                      <span>Kho Bánh Sẵn ({products.length})</span>
+                      <span>Tồn Kho ({products.length})</span>
                     </div>
                     {lowStockItems.length > 0 && (
                       <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-rose-100 text-rose-700">
@@ -4955,9 +4955,9 @@ export default function POSPage() {
                     <Calendar className={`w-4 h-4 ${urgentPreorders.length > 0 ? 'animate-bounce' : ''}`} />
                   </div>
                   <div className="truncate">
-                    <div className="text-[10px] font-bold text-zinc-500 leading-none">Lịch Hẹn Giao</div>
+                    <div className="text-[10px] font-bold text-zinc-500 leading-none">Lịch Hẹn</div>
                     <div className="text-xs font-black text-zinc-900 mt-1">
-                      {undeliveredPreorders.length} đơn chưa giao
+                      {undeliveredPreorders.length} đơn chờ
                     </div>
                   </div>
                 </div>
@@ -4985,7 +4985,7 @@ export default function POSPage() {
                     <Wallet className="w-4 h-4 text-amber-700" />
                   </div>
                   <div className="truncate">
-                    <div className="text-[10px] font-bold text-zinc-500 leading-none">Tiền Két Quầy</div>
+                    <div className="text-[10px] font-bold text-zinc-500 leading-none">Két Tiền Ca</div>
                     <div className="text-xs font-black text-amber-800 mt-1 truncate">
                       {(expectedCashInRegister || 0).toLocaleString('vi-VN')}₫
                     </div>
@@ -5005,7 +5005,7 @@ export default function POSPage() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Tìm bánh nhanh (Bông lan, Tiramisu, Croissant...)"
+                placeholder="Tìm tên bánh, mã món..."
                 className="w-full pl-10 pr-9 py-2.5 rounded-2xl bg-white/85 backdrop-blur-md border border-amber-900/10 text-sm text-zinc-900 placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-amber-500/30 focus:border-amber-500 focus:bg-white transition-all shadow-2xs"
               />
               {searchQuery && (
@@ -5028,7 +5028,7 @@ export default function POSPage() {
               className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 via-pink-600 to-rose-500 hover:from-rose-700 hover:to-pink-700 text-white text-xs font-black shadow-lg shadow-rose-600/30 hover:shadow-rose-600/40 transition-all duration-200 hover:scale-[1.02] active:scale-95 cursor-pointer border border-rose-400/30"
             >
               <Cake className="w-4 h-4 animate-bounce duration-1000" />
-              <span>🎂 Đặt Bánh Sinh Nhật</span>
+              <span>🎂 Đặt Bánh Kem</span>
             </button>
 
             {/* Nút Xem Lịch Đơn Đặt Trước */}
@@ -5042,7 +5042,7 @@ export default function POSPage() {
               title="Xem danh sách lịch hẹn giao bánh đặt trước"
             >
               <Calendar className={`w-4 h-4 ${urgentPreorders.length > 0 ? 'text-rose-600 animate-bounce' : 'text-pink-600'}`} />
-              <span className="hidden sm:inline">Lịch hẹn giao</span>
+              <span className="hidden sm:inline">Lịch Hẹn</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 urgentPreorders.length > 0 ? 'bg-rose-600 text-white animate-pulse' : 'bg-pink-100 text-pink-700'
               }`}>
@@ -5067,7 +5067,7 @@ export default function POSPage() {
               title="Xem danh sách đơn bánh làm xong ở Bếp đang chờ ship hoặc chờ giao quầy (Bước 3)"
             >
               <Truck className={`w-4 h-4 ${readyShippingOrders.length > 0 ? 'text-emerald-600 animate-bounce' : 'text-emerald-600'}`} />
-              <span className="hidden sm:inline">Chờ ship / giao</span>
+              <span className="hidden sm:inline">Chờ Giao</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 readyShippingOrders.length > 0 ? 'bg-emerald-600 text-white animate-pulse' : 'bg-zinc-100 text-zinc-600'
               }`}>
@@ -5082,7 +5082,7 @@ export default function POSPage() {
               title="Xem lại các hóa đơn đã xuất và in lại hóa đơn"
             >
               <Receipt className="w-4 h-4 text-amber-600" />
-              <span className="hidden sm:inline">Hóa đơn</span>
+              <span className="hidden sm:inline">Hóa Đơn</span>
               <span className="px-1.5 py-0.2 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black">
                 {invoicesList.length}
               </span>
@@ -5147,7 +5147,7 @@ export default function POSPage() {
                   />
                   <div className="absolute left-0 mt-2 w-72 rounded-2xl bg-white border border-stone-200 shadow-2xl p-2 z-50 animate-in fade-in-50 zoom-in-95">
                     <div className="px-3 py-1.5 text-[11px] font-black text-zinc-400 uppercase tracking-wider border-b border-stone-100 mb-1">
-                      Cài Đặt Tiệm & Thiết Bị
+                      Cài Đặt Nhanh
                     </div>
 
                     {/* 1. Máy In */}
@@ -5163,8 +5163,8 @@ export default function POSPage() {
                         <Printer className="w-4 h-4" />
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-bold text-zinc-900 group-hover:text-blue-700">Máy In Hóa Đơn & Tem</div>
-                        <div className="text-[10px] text-zinc-500 truncate">Cài đặt Bluetooth, USB, khổ giấy</div>
+                        <div className="text-xs font-bold text-zinc-900 group-hover:text-blue-700">Máy In & Tem Nhãn</div>
+                        <div className="text-[10px] text-zinc-500 truncate">Bluetooth, USB, khổ giấy</div>
                       </div>
                     </button>
 
@@ -5184,14 +5184,14 @@ export default function POSPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-zinc-900 group-hover:text-amber-700 flex items-center gap-1">
-                          <span>Cài Đặt Báo & Âm Thanh</span>
+                          <span>Âm Báo & Telegram</span>
                           {soundEnabled ? (
                             <Volume2 className="w-3 h-3 text-emerald-600" />
                           ) : (
                             <VolumeX className="w-3 h-3 text-zinc-400" />
                           )}
                         </div>
-                        <div className="text-[10px] text-zinc-500 truncate">Chuông báo lò, đơn giao, Telegram</div>
+                        <div className="text-[10px] text-zinc-500 truncate">Chuông đơn, báo lò, Telegram</div>
                       </div>
                     </button>
 
@@ -5224,9 +5224,9 @@ export default function POSPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-bold text-zinc-900 group-hover:text-emerald-700">
-                          {isPosSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ SQL (Xóa Cache)'}
+                          {isPosSyncing ? 'Đang đồng bộ...' : 'Đồng Bộ Dữ Liệu'}
                         </div>
-                        <div className="text-[10px] text-zinc-500 truncate">Kéo lại món, ca và đơn mới nhất</div>
+                        <div className="text-[10px] text-zinc-500 truncate">Tải lại món, ca & đơn mới nhất</div>
                       </div>
                     </button>
                   </div>
@@ -5261,7 +5261,7 @@ export default function POSPage() {
               title="Quản lý tồn kho bánh sẵn & bán thành phẩm cốt bánh"
             >
               <Package className={`w-4 h-4 ${lowStockItems.length > 0 ? 'text-amber-600 animate-bounce' : 'text-emerald-600'}`} />
-              <span className="hidden sm:inline">Kho Bánh</span>
+              <span className="hidden sm:inline">Tồn Kho</span>
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
                 lowStockItems.length > 0 ? 'bg-amber-500 text-white animate-pulse' : 'bg-emerald-100 text-emerald-800'
               }`}>
@@ -5577,7 +5577,7 @@ export default function POSPage() {
               )}
             </div>
             <div>
-              <h2 className="font-black text-amber-950 text-sm sm:text-base leading-none">Đơn Bán Tại Quầy</h2>
+              <h2 className="font-black text-amber-950 text-sm sm:text-base leading-none">Giỏ Hàng</h2>
               <span className={`text-[10px] font-bold block transition-all ${cartBumping ? 'text-amber-600 font-black animate-pop-scale' : 'text-zinc-400'}`}>
                 {cart.length > 0 ? `${cart.reduce((s, i) => s + i.quantity, 0)} món trong giỏ` : 'Chưa chọn món'}
               </span>
@@ -5628,7 +5628,7 @@ export default function POSPage() {
               </div>
               <span className="font-extrabold text-zinc-700 text-sm">Giỏ hàng đang trống</span>
               <span className="text-xs text-zinc-400 text-center max-w-[230px] leading-relaxed">
-                Chọn bánh bên thực đơn hoặc bấm <b>"🎂 Đặt Bánh Sinh Nhật"</b> để bắt đầu tạo đơn
+                Chọn món bên thực đơn hoặc bấm <b>"🎂 Đặt Bánh Kem"</b>.
               </span>
               <button
                 onClick={() => setMobileTab('menu')}
@@ -8759,7 +8759,7 @@ export default function POSPage() {
                     }`}
                   >
                     <span className="text-lg leading-none">🏪</span>
-                    <span className="truncate w-full leading-tight text-[11px]">Lấy Tại Quầy</span>
+                    <span className="truncate w-full leading-tight text-[11px]">Tại Quầy</span>
                   </button>
                   <button
                     type="button"
@@ -8771,7 +8771,7 @@ export default function POSPage() {
                     }`}
                   >
                     <span className="text-lg leading-none">⏰</span>
-                    <span className="truncate w-full leading-tight text-[11px]">Hẹn Giờ Lấy</span>
+                    <span className="truncate w-full leading-tight text-[11px]">Hẹn Lấy</span>
                   </button>
                   <button
                     type="button"
@@ -8793,7 +8793,7 @@ export default function POSPage() {
                 <div className="space-y-3 p-3.5 bg-blue-50/70 rounded-2xl border border-blue-200 text-xs animate-in fade-in duration-150">
                   <div className="flex items-center justify-between font-black text-blue-900">
                     <span className="flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-blue-600" /> Thông Tin Hẹn Giờ Lấy Bánh
+                      <Clock className="w-4 h-4 text-blue-600" /> Thông Tin Hẹn Lấy
                     </span>
                     <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 uppercase font-black">
                       Khách đến lấy
